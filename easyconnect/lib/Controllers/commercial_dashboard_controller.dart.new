@@ -1,0 +1,94 @@
+import 'package:get/get.dart';
+import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
+import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/Views/Components/data_chart.dart';
+
+class CommercialDashboardController extends BaseDashboardController {
+  final ClientService _clientService = ClientService();
+
+  // Statistiques
+  final activeClientsCount = 0.obs;
+  final prospectsCount = 0.obs;
+  final rejectedClientsCount = 0.obs;
+  final conversionRate = 0.0.obs;
+
+  // Données des graphiques
+  final salesData = <ChartData>[].obs;
+  final clientsData = <ChartData>[].obs;
+  final opportunitiesData = <ChartData>[].obs;
+  final conversionData = <ChartData>[].obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    loadData(); // Appel de la méthode abstraite implémentée
+  }
+
+  @override
+  Future<void> loadData() async {
+    await loadDashboardData();
+  }
+
+  Future<void> loadDashboardData() async {
+    try {
+      isLoading.value = true;
+
+      // Charger les statistiques depuis le service
+      final stats = await _clientService.getClientStats();
+      activeClientsCount.value = stats['active_clients'] ?? 0;
+      prospectsCount.value = stats['prospects'] ?? 0;
+      rejectedClientsCount.value = stats['rejected_clients'] ?? 0;
+      conversionRate.value = stats['conversion_rate']?.toDouble() ?? 0.0;
+
+      // Données de test pour les graphiques
+      salesData.value = [
+        ChartData(1, 25000, "Janvier"),
+        ChartData(2, 30000, "Février"),
+        ChartData(3, 28000, "Mars"),
+        ChartData(4, 35000, "Avril"),
+        ChartData(5, 40000, "Mai"),
+        ChartData(6, 45000, "Juin"),
+      ];
+
+      clientsData.value = [
+        ChartData(1, 30, "Industrie"),
+        ChartData(2, 25, "Services"),
+        ChartData(3, 20, "Commerce"),
+        ChartData(4, 15, "Autres"),
+      ];
+
+      opportunitiesData.value = [
+        ChartData(1, 15, "Prospection"),
+        ChartData(2, 10, "Qualification"),
+        ChartData(3, 8, "Proposition"),
+        ChartData(4, 5, "Négociation"),
+      ];
+
+      conversionData.value = [
+        ChartData(1, 65, "Web"),
+        ChartData(2, 72, "Référence"),
+        ChartData(3, 58, "Direct"),
+        ChartData(4, 45, "Autre"),
+      ];
+
+      // Mettre à jour les données des graphiques
+      updateChartData('sales', salesData);
+      updateChartData('clients', clientsData);
+      updateChartData('opportunities', opportunitiesData);
+      updateChartData('conversion', conversionData);
+    } catch (e) {
+      print('Erreur lors du chargement des données: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Actions de navigation
+  void createNewClient() => Get.toNamed('/clients/new');
+  void showProspects() => Get.toNamed('/clients', arguments: {'status': 0});
+  void showOpportunities() => Get.toNamed('/opportunities');
+  void showQuotes() => Get.toNamed('/devis');
+  void createNewProspect() => Get.toNamed('/prospects/new');
+  void createNewOpportunity() => Get.toNamed('/opportunities/new');
+  void scheduleFollowUp() => Get.toNamed('/follow-up/new');
+}
