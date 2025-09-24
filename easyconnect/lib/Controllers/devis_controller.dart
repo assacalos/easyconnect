@@ -27,7 +27,7 @@ class DevisController extends GetxController {
   final tauxConversion = 0.0.obs;
   final montantTotal = 0.0.obs;
 
-  get clients => null;
+  final clients = <Client>[].obs;
 
   @override
   void onInit() {

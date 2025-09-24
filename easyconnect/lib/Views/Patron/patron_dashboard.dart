@@ -88,6 +88,14 @@ class PatronDashboardController extends GetxController {
       requiredPermission: Permissions.VIEW_PAYMENTS,
       onTap: () => Get.toNamed('/payments'),
     ),
+    StatCard(
+      title: "Rapports",
+      value: "Voir",
+      icon: Icons.assessment,
+      color: Colors.brown,
+      requiredPermission: Permissions.VIEW_REPORTS,
+      onTap: () => Get.toNamed('/reporting'),
+    ),
   ];
 
   void switchSection(PatronSection section) {

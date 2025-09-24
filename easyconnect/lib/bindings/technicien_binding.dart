@@ -5,8 +5,8 @@ class TechnicienBinding extends Bindings {
   @override
   void dependencies() {
     print('=== INITIALISATION TECHNICIEN BINDING ===');
-    
+
     // Contrôleur technicien
-    Get.lazyPut(() => TechnicienDashboardController());
+    Get.put(TechnicienDashboardController(), permanent: true);
   }
 }

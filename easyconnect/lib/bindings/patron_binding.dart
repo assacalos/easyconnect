@@ -7,6 +7,6 @@ class PatronBinding extends Bindings {
     print('=== INITIALISATION PATRON BINDING ===');
     
     // Contrôleur patron
-    Get.lazyPut(() => PatronDashboardController());
+    Get.put(PatronDashboardController(), permanent: true);
   }
 }

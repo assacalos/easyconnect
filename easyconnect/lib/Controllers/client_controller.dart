@@ -17,7 +17,7 @@ class ClientController extends GetxController {
     try {
       isLoading.value = true;
       final loadedClients = await _clientService.getClients(status: status);
-      clients.assignAll(loadedClients); // ✅ assignAll au lieu de value=
+      clients.assignAll(loadedClients);
     } catch (e) {
       Get.snackbar(
         'Erreur',

@@ -195,6 +195,17 @@ class AppRoutes {
       page: () => PaymentDetail(paymentId: Get.arguments),
       middlewares: [AuthMiddleware()],
     ),
+    // Pages avec bottom navigation
+    GetPage(
+      name: '/clients-page',
+      page: () => ClientsPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/devis-page',
+      page: () => DevisListPage(),
+      middlewares: [AuthMiddleware()],
+    ),
   ];
 
   static String getInitialRoute(int? userRole) {

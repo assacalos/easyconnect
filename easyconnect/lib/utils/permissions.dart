@@ -203,6 +203,20 @@ class Permissions {
     description: 'Voir les statistiques',
     allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL],
   );
+
+  // Permissions Reporting
+  static const VIEW_REPORTS = Permission(
+    code: 'view_reports',
+    description: 'Voir les rapports',
+    allowedRoles: [
+      Roles.ADMIN,
+      Roles.PATRON,
+      Roles.COMMERCIAL,
+      Roles.COMPTABLE,
+      Roles.RH,
+      Roles.TECHNICIEN,
+    ],
+  );
   // Chat et Communication
   static const USE_CHAT = Permission(
     code: 'use_chat',
@@ -245,6 +259,7 @@ class Permissions {
       MANAGE_EQUIPMENT,
       APPROVE_DECISIONS,
       VIEW_ANALYTICS,
+      VIEW_REPORTS,
       USE_CHAT,
     ];
   }

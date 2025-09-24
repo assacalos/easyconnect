@@ -6,7 +6,6 @@ import 'package:get/get.dart';
 class ClientsPage extends StatelessWidget {
   final bool isPatron;
   final int status;
-  final ClientController controller = Get.put(ClientController());
 
   ClientsPage({super.key, this.isPatron = false, this.status = 1});
 
@@ -46,7 +45,7 @@ class ClientsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    controller.loadClients();
+    final ClientController controller = Get.find<ClientController>();
 
     return Scaffold(
       appBar: AppBar(

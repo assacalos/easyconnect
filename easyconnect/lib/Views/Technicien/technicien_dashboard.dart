@@ -4,6 +4,7 @@ import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
+import 'package:easyconnect/Views/Components/dashboard_wrapper.dart';
 import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/utils/permissions.dart';
@@ -48,6 +49,18 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       label: 'Équipements',
       icon: Icons.devices,
       onTap: () => controller.manageEquipment(),
+    ),
+    FavoriteItem(
+      id: 'attendance',
+      label: 'Pointage',
+      icon: Icons.access_time,
+      route: '/attendance',
+    ),
+    FavoriteItem(
+      id: 'reporting',
+      label: 'Rapports',
+      icon: Icons.assessment,
+      route: '/reporting',
     ),
   ];
 
@@ -114,6 +127,14 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       requiredPermission: Permissions.MANAGE_EQUIPMENT,
     ),
   };
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardWrapper(
+      currentIndex: 0, // Index pour le dashboard technicien
+      child: super.build(context),
+    );
+  }
 
   @override
   Widget buildCustomContent(BuildContext context) {

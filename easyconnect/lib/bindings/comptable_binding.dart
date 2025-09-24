@@ -7,6 +7,6 @@ class ComptableBinding extends Bindings {
     print('=== INITIALISATION COMPTABLE BINDING ===');
     
     // Contrôleur comptable
-    Get.lazyPut(() => ComptableDashboardController());
+    Get.put(ComptableDashboardController(), permanent: true);
   }
 }

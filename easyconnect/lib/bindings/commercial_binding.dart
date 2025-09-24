@@ -12,11 +12,11 @@ class CommercialBinding extends Bindings {
     print('=== INITIALISATION COMMERCIAL BINDING ===');
     
     // Contrôleurs commerciaux
-    Get.lazyPut(() => ClientController());
-    Get.lazyPut(() => DevisController());
-    Get.lazyPut(() => BordereauController());
-    Get.lazyPut(() => BonCommandeController());
-    Get.lazyPut(() => CommercialDashboardController());
-    Get.lazyPut(() => ReportingController());
+    Get.put(ClientController(), permanent: true);
+    Get.put(DevisController(), permanent: true);
+    Get.put(BordereauController(), permanent: true);
+    Get.put(BonCommandeController(), permanent: true);
+    Get.put(CommercialDashboardController(), permanent: true);
+    Get.put(ReportingController(), permanent: true);
   }
 }

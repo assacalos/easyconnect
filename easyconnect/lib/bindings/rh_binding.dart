@@ -5,8 +5,8 @@ class RhBinding extends Bindings {
   @override
   void dependencies() {
     print('=== INITIALISATION RH BINDING ===');
-    
+
     // Contrôleur RH
-    Get.lazyPut(() => RhDashboardController());
+    Get.put(RhDashboardController(), permanent: true);
   }
 }

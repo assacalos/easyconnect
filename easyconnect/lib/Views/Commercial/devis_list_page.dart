@@ -5,7 +5,6 @@ import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
 
 class DevisListPage extends StatelessWidget {
-  final DevisController controller = Get.put(DevisController());
   final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
   final formatDate = DateFormat('dd/MM/yyyy');
 
@@ -47,6 +46,7 @@ class DevisListPage extends StatelessWidget {
   }
 
   Widget _buildDevisList(int status) {
+    final DevisController controller = Get.find<DevisController>();
     return Obx(() {
       if (controller.isLoading.value) {
         return const Center(child: CircularProgressIndicator());
@@ -231,6 +231,7 @@ class DevisListPage extends StatelessWidget {
 
   void _showRejectDialog(Devis devis) {
     final commentController = TextEditingController();
+    final DevisController controller = Get.put(DevisController());
     Get.dialog(
       AlertDialog(
         title: const Text('Rejeter le devis'),
@@ -274,6 +275,7 @@ class DevisListPage extends StatelessWidget {
   }
 
   void _showDeleteDialog(Devis devis) {
+    final DevisController controller = Get.find<DevisController>();
     Get.dialog(
       AlertDialog(
         title: const Text('Supprimer le devis'),

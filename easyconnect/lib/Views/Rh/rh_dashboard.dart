@@ -4,6 +4,7 @@ import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
+import 'package:easyconnect/Views/Components/dashboard_wrapper.dart';
 import 'package:easyconnect/Controllers/rh_dashboard_controller.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/utils/permissions.dart';
@@ -48,6 +49,12 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       label: 'Formations',
       icon: Icons.school,
       onTap: () => controller.showTraining(),
+    ),
+    FavoriteItem(
+      id: 'reporting',
+      label: 'Rapports',
+      icon: Icons.assessment,
+      route: '/reporting',
     ),
   ];
 
@@ -114,6 +121,14 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       requiredPermission: Permissions.MANAGE_LEAVES,
     ),
   };
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardWrapper(
+      currentIndex: 0, // Index pour le dashboard RH
+      child: super.build(context),
+    );
+  }
 
   @override
   Widget buildCustomContent(BuildContext context) {

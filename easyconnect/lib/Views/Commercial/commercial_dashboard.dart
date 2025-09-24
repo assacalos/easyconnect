@@ -4,6 +4,7 @@ import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
+import 'package:easyconnect/Views/Components/dashboard_wrapper.dart';
 import 'package:easyconnect/Controllers/commercial_dashboard_controller.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/utils/permissions.dart';
@@ -54,6 +55,12 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
       label: 'Pointage',
       icon: Icons.access_time,
       route: '/attendance',
+    ),
+    FavoriteItem(
+      id: 'reporting',
+      label: 'Rapports',
+      icon: Icons.assessment,
+      route: '/reporting',
     ),
   ];
 
@@ -123,6 +130,14 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
       requiredPermission: Permissions.VIEW_SALES,
     ),
   };
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardWrapper(
+      currentIndex: 0, // Index pour le dashboard commercial
+      child: super.build(context),
+    );
+  }
 
   @override
   Widget buildCustomContent(BuildContext context) {

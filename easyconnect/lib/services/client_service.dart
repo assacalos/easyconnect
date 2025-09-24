@@ -7,46 +7,42 @@ import 'package:easyconnect/utils/constant.dart';
 class ClientService {
   final storage = GetStorage();
 
-  Future<List<Client>> getClients({int? status}) async {
+  Future<List<Client>> getClients({
+    int? status,
+    bool? isPending = false,
+  }) async {
     try {
       final token = storage.read('token');
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
-      print('Récupération des clients - Role: $userRole, UserId: $userId');
-
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status.toString();
+      if (isPending == true) queryParams['pending'] = 'true';
+      if (userRole == 2) queryParams['commercial_id'] = userId.toString();
 
       final queryString =
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
-      final url = '$baseUrl/clients$queryString';
-
-      print('URL de requête: $url');
 
       final response = await http.get(
-        Uri.parse(url),
+        Uri.parse('$baseUrl/clients$queryString'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      print('Status code: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body)['data'];
         return data.map((json) => Client.fromJson(json)).toList();
       }
-
       throw Exception(
         'Erreur lors de la récupération des clients: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur détaillée: $e');
+      print('Erreur: $e');
       throw Exception('Erreur lors de la récupération des clients: $e');
     }
   }
@@ -54,8 +50,10 @@ class ClientService {
   Future<Client> createClient(Client client) async {
     try {
       final token = storage.read('token');
+      final userId = storage.read('userId');
 
       var clientData = client.toJson();
+      clientData['commercial_id'] = userId;
       clientData['status'] = 0; // Toujours en attente à la création
 
       final response = await http.post(
@@ -68,15 +66,12 @@ class ClientService {
         body: json.encode(clientData),
       );
 
-      print('Création client - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 201) {
         return Client.fromJson(json.decode(response.body)['data']);
       }
       throw Exception('Erreur lors de la création du client');
     } catch (e) {
-      print('Erreur détaillée: $e');
+      print('Erreur: $e');
       throw Exception('Erreur lors de la création du client');
     }
   }
@@ -84,7 +79,6 @@ class ClientService {
   Future<Client> updateClient(Client client) async {
     try {
       final token = storage.read('token');
-
       final response = await http.put(
         Uri.parse('$baseUrl/clients/${client.id}'),
         headers: {
@@ -172,15 +166,12 @@ class ClientService {
         },
       );
 
-      print('Stats clients - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         return json.decode(response.body)['data'];
       }
       throw Exception('Erreur lors de la récupération des statistiques');
     } catch (e) {
-      print('Erreur détaillée: $e');
+      print('Erreur: $e');
       throw Exception('Erreur lors de la récupération des statistiques');
     }
   }
