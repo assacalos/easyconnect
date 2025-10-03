@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
+import 'package:easyconnect/services/http_client.dart';
 
 class ApiService {
   // -------------------- HEADERS --------------------
@@ -23,7 +24,7 @@ class ApiService {
       print("Headers: ${headers()}");
       print("Body: ${jsonEncode({"email": email, "password": password})}");
 
-      final response = await http.post(
+      final response = await CustomHttpClient.postLong(
         Uri.parse("$baseUrl/login"),
         headers: headers(),
         body: jsonEncode({"email": email, "password": password}),

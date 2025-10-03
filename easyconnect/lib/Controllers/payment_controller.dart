@@ -17,6 +17,11 @@ class PaymentController extends GetxController {
   final Rx<DateTime?> startDate = Rx<DateTime?>(null);
   final Rx<DateTime?> endDate = Rx<DateTime?>(null);
 
+  // Filtres par statut d'approbation
+  final RxString selectedApprovalStatus = 'all'.obs;
+  final RxList<String> approvalStatuses =
+      <String>['all', 'pending', 'approved', 'rejected'].obs;
+
   // Observables pour les statistiques
   final Rx<PaymentStats?> paymentStats = Rx<PaymentStats?>(null);
 
@@ -52,22 +57,53 @@ class PaymentController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    print('🔄 PaymentController: onInit() appelé');
+    print(
+      '📊 PaymentController: Nombre de paiements avant chargement: ${payments.length}',
+    );
     loadPayments();
     loadPaymentStats();
+    print(
+      '📊 PaymentController: Nombre de paiements après chargement: ${payments.length}',
+    );
   }
 
   // Charger les paiements
   Future<void> loadPayments() async {
+    print('🔄 PaymentController: loadPayments() appelé');
     try {
       isLoading.value = true;
+      print('⏳ PaymentController: Chargement en cours...');
 
       final user = _authController.userAuth.value;
-      if (user == null) return;
+      if (user == null) {
+        print('❌ PaymentController: Utilisateur non connecté');
+        Get.snackbar(
+          'Erreur',
+          'Utilisateur non connecté',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      print(
+        '👤 PaymentController: Utilisateur connecté - Role: ${user.role}, ID: ${user.id}',
+      );
+
+      // Tester la connectivité d'abord
+      print('🧪 PaymentController: Test de connectivité...');
+      final isConnected = await _paymentService.testPaymentConnection();
+      if (!isConnected) {
+        throw Exception('Impossible de se connecter à l\'API Laravel');
+      }
 
       List<PaymentModel> paymentList;
 
       if (user.role == 1) {
         // Patron
+        print('👑 PaymentController: Chargement des paiements pour le patron');
         paymentList = await _paymentService.getAllPayments(
           startDate: startDate.value,
           endDate: endDate.value,
@@ -76,14 +112,21 @@ class PaymentController extends GetxController {
         );
       } else {
         // Comptable
+        print(
+          '💰 PaymentController: Chargement des paiements pour le comptable',
+        );
         paymentList = await _paymentService.getComptablePayments(
-          comptableId: user.id!,
+          comptableId: user.id,
           startDate: startDate.value,
           endDate: endDate.value,
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
           type: selectedType.value != 'all' ? selectedType.value : null,
         );
       }
+
+      print(
+        '📦 PaymentController: ${paymentList.length} paiements reçus du service',
+      );
 
       // Filtrer par recherche
       if (searchQuery.value.isNotEmpty) {
@@ -102,23 +145,101 @@ class PaymentController extends GetxController {
       }
 
       payments.value = paymentList;
+
+      // Afficher un message de succès si des paiements sont trouvés
+      if (paymentList.isNotEmpty) {
+        print(
+          '✅ PaymentController: ${paymentList.length} paiements chargés avec succès',
+        );
+        Get.snackbar(
+          'Succès',
+          '${paymentList.length} paiements chargés avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 2),
+        );
+      } else {
+        print(
+          '⚠️ PaymentController: Aucun paiement trouvé dans la base de données',
+        );
+        Get.snackbar(
+          'Information',
+          'Aucun paiement trouvé dans la base de données',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.blue,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      }
     } catch (e) {
-      print('Erreur lors du chargement des paiements: $e');
-      Get.snackbar('Erreur', 'Erreur lors du chargement des paiements');
+      print('❌ PaymentController: Erreur lors du chargement: $e');
+
+      // Vider la liste des paiements en cas d'erreur
+      payments.value = [];
+
+      // Message d'erreur spécifique selon le type d'erreur
+      String errorMessage;
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('Connection refused')) {
+        errorMessage =
+            'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
+      } else if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
+        errorMessage = 'Session expirée. Veuillez vous reconnecter.';
+      } else if (e.toString().contains('500')) {
+        errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.';
+      } else if (e.toString().contains('FormatException') ||
+          e.toString().contains('Unexpected end of input') ||
+          e.toString().contains('Unexpected character')) {
+        errorMessage =
+            'Erreur de format des données. Contactez l\'administrateur.';
+      } else if (e.toString().contains('Null') ||
+          e.toString().contains('not a subtype')) {
+        errorMessage =
+            'Erreur de format des données. Contactez l\'administrateur.';
+      } else if (e.toString().contains('Erreur de format des données')) {
+        errorMessage =
+            'Données corrompues reçues du serveur. Veuillez réessayer.';
+      } else {
+        errorMessage = 'Erreur lors du chargement des paiements: $e';
+      }
+
+      Get.snackbar(
+        'Erreur',
+        errorMessage,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+      );
     } finally {
       isLoading.value = false;
+      print('🏁 PaymentController: Chargement terminé');
+    }
+  }
+
+  // Tester la connectivité à l'API pour les paiements
+  Future<bool> testPaymentConnection() async {
+    try {
+      print('🧪 PaymentController: Test de connectivité API...');
+      return await _paymentService.testPaymentConnection();
+    } catch (e) {
+      print('❌ PaymentController: Erreur de test de connectivité: $e');
+      return false;
     }
   }
 
   // Charger les statistiques
   Future<void> loadPaymentStats() async {
     try {
-      final stats = await _paymentService.getPaymentStats(
+      final statsData = await _paymentService.getPaymentStats(
         startDate: startDate.value,
         endDate: endDate.value,
         type: selectedType.value != 'all' ? selectedType.value : null,
       );
-      paymentStats.value = stats;
+      // Convertir Map en PaymentStats si nécessaire
+      paymentStats.value = PaymentStats.fromJson(statsData);
     } catch (e) {
       print('Erreur lors du chargement des statistiques: $e');
     }
@@ -158,7 +279,7 @@ class PaymentController extends GetxController {
         clientName: selectedClientName.value,
         clientEmail: selectedClientEmail.value,
         clientAddress: selectedClientAddress.value,
-        comptableId: user.id!,
+        comptableId: user.id,
         comptableName: user.nom ?? 'Comptable',
         type: paymentType.value,
         paymentDate: paymentDate.value,
@@ -222,49 +343,6 @@ class PaymentController extends GetxController {
     } catch (e) {
       print('Erreur lors de la soumission du paiement: $e');
       Get.snackbar('Erreur', 'Erreur lors de la soumission du paiement');
-    }
-  }
-
-  // Approuver un paiement
-  Future<void> approvePayment(int paymentId, {String? comments}) async {
-    try {
-      final result = await _paymentService.approvePayment(
-        paymentId,
-        comments: comments,
-      );
-
-      if (result['success'] == true) {
-        Get.snackbar('Succès', 'Paiement approuvé');
-        await loadPayments();
-      } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de l\'approbation',
-        );
-      }
-    } catch (e) {
-      print('Erreur lors de l\'approbation du paiement: $e');
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation du paiement');
-    }
-  }
-
-  // Rejeter un paiement
-  Future<void> rejectPayment(int paymentId, {required String reason}) async {
-    try {
-      final result = await _paymentService.rejectPayment(
-        paymentId,
-        reason: reason,
-      );
-
-      if (result['success'] == true) {
-        Get.snackbar('Succès', 'Paiement rejeté');
-        await loadPayments();
-      } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
-      }
-    } catch (e) {
-      print('Erreur lors du rejet du paiement: $e');
-      Get.snackbar('Erreur', 'Erreur lors du rejet du paiement');
     }
   }
 
@@ -464,6 +542,143 @@ class PaymentController extends GetxController {
   bool get canSubmitPayments {
     final user = _authController.userAuth.value;
     return user?.role == 3; // Comptable
+  }
+
+  // Méthodes de filtrage par statut d'approbation
+  void setApprovalStatusFilter(String approvalStatus) {
+    selectedApprovalStatus.value = approvalStatus;
+    loadPayments();
+  }
+
+  List<PaymentModel> getPendingPayments() {
+    final pendingPayments =
+        payments.where((payment) => payment.isPending).toList();
+    print(
+      '📊 PaymentController: getPendingPayments() - ${pendingPayments.length} paiements en attente',
+    );
+    return pendingPayments;
+  }
+
+  List<PaymentModel> getApprovedPayments() {
+    final approvedPayments =
+        payments.where((payment) => payment.isApproved).toList();
+    print(
+      '📊 PaymentController: getApprovedPayments() - ${approvedPayments.length} paiements approuvés',
+    );
+    return approvedPayments;
+  }
+
+  List<PaymentModel> getRejectedPayments() {
+    final rejectedPayments =
+        payments.where((payment) => payment.isRejected).toList();
+    print(
+      '📊 PaymentController: getRejectedPayments() - ${rejectedPayments.length} paiements rejetés',
+    );
+    return rejectedPayments;
+  }
+
+  List<PaymentModel> getPaymentsByApprovalStatus(String status) {
+    switch (status) {
+      case 'pending':
+        return getPendingPayments();
+      case 'approved':
+        return getApprovedPayments();
+      case 'rejected':
+        return getRejectedPayments();
+      default:
+        return payments;
+    }
+  }
+
+  // Méthodes pour gérer l'approbation des paiements
+  Future<void> approvePayment(int paymentId, {String? comments}) async {
+    try {
+      print('✅ PaymentController: Approbation du paiement $paymentId');
+
+      await _paymentService.approvePayment(paymentId, comments: comments);
+
+      // Recharger les paiements
+      await loadPayments();
+
+      Get.snackbar(
+        'Succès',
+        'Paiement approuvé avec succès',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      print('❌ PaymentController: Erreur lors de l\'approbation: $e');
+      Get.snackbar(
+        'Erreur',
+        'Impossible d\'approuver le paiement: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
+  Future<void> rejectPayment(int paymentId, {required String reason}) async {
+    try {
+      print('❌ PaymentController: Rejet du paiement $paymentId');
+
+      await _paymentService.rejectPayment(paymentId, reason: reason);
+
+      // Recharger les paiements
+      await loadPayments();
+
+      Get.snackbar(
+        'Succès',
+        'Paiement rejeté avec succès',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.orange,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      print('❌ PaymentController: Erreur lors du rejet: $e');
+      Get.snackbar(
+        'Erreur',
+        'Impossible de rejeter le paiement: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+    }
+  }
+
+  Future<void> reactivatePayment(int paymentId) async {
+    try {
+      print('🔄 PaymentController: Réactivation du paiement $paymentId');
+
+      await _paymentService.reactivatePayment(paymentId);
+
+      // Recharger les paiements
+      await loadPayments();
+
+      Get.snackbar(
+        'Succès',
+        'Paiement réactivé avec succès',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.blue,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      print('❌ PaymentController: Erreur lors de la réactivation: $e');
+      Get.snackbar(
+        'Erreur',
+        'Impossible de réactiver le paiement: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+    }
   }
 
   @override

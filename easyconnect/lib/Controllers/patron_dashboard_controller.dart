@@ -30,8 +30,8 @@ class PatronDashboardController extends BaseDashboardController {
   List<StatCard> get stats => [
     StatCard(
       title: "Chiffre d'affaires",
-      value: "103.5k €",
-      icon: Icons.euro,
+      value: "103.5k fcfa",
+      icon: Icons.currency_franc,
       color: Colors.green,
       requiredPermission: Permissions.VIEW_FINANCES,
     ),

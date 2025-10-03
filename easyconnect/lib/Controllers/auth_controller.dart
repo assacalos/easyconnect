@@ -103,9 +103,11 @@ class AuthController extends GetxController {
     try {
       final savedUser = storage.read("user");
       final savedToken = storage.read("token");
-      
+
       if (savedUser != null && savedToken != null) {
-        userAuth.value = UserModel.fromJson(Map<String, dynamic>.from(savedUser));
+        userAuth.value = UserModel.fromJson(
+          Map<String, dynamic>.from(savedUser),
+        );
 
         // Vérifier et stocker l'ID et le rôle
         storage.write("userId", userAuth.value?.id);
@@ -129,7 +131,7 @@ class AuthController extends GetxController {
     try {
       final token = storage.read("token");
       if (token == null) return false;
-      
+
       // Ici vous pouvez ajouter une vérification côté serveur
       // Pour l'instant, on considère que le token est valide s'il existe
       return true;

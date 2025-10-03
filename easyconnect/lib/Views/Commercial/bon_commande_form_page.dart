@@ -2,19 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
-import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'package:intl/intl.dart';
 
-class BonCommandeFormPage extends GetView<BonCommandeController> {
+class BonCommandeFormPage extends StatelessWidget {
+  final BonCommandeController controller = Get.put(BonCommandeController());
   final bool isEditing;
   final int? bonCommandeId;
 
-  const BonCommandeFormPage({
-    super.key,
-    this.isEditing = false,
-    this.bonCommandeId,
-  });
+  BonCommandeFormPage({super.key, this.isEditing = false, this.bonCommandeId});
 
   @override
   Widget build(BuildContext context) {
@@ -43,9 +39,7 @@ class BonCommandeFormPage extends GetView<BonCommandeController> {
         ).format(bonCommande.dateLivraisonPrevue!);
       }
       controller.items.value = bonCommande.items;
-      if (bonCommande.clientId != null) {
-        // TODO: Charger le client
-      }
+      // TODO: Charger le client si nécessaire
     }
 
     return Scaffold(
@@ -68,12 +62,36 @@ class BonCommandeFormPage extends GetView<BonCommandeController> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Client',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          const Text(
+                            'Client',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green),
+                            ),
+                            child: const Text(
+                              'Validés uniquement',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Obx(() {
@@ -294,58 +312,84 @@ class BonCommandeFormPage extends GetView<BonCommandeController> {
       ),
       bottomNavigationBar: BottomAppBar(
         child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Get.back(),
-                child: const Text('Annuler'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  if (controller.selectedClient.value == null) {
+                    Get.snackbar(
+                      'Erreur',
+                      'Veuillez sélectionner un client',
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                    return;
+                  }
+
+                  if (controller.items.isEmpty) {
+                    Get.snackbar(
+                      'Erreur',
+                      'Veuillez ajouter au moins un article',
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                    return;
+                  }
+
+                  final data = {
+                    'reference': referenceController.text,
+                    'date_livraison_prevue': DateFormat(
+                      'dd/MM/yyyy',
+                    ).parse(dateLivraisonController.text),
+                    'adresse_livraison': adresseLivraisonController.text,
+                    'notes': notesController.text,
+                    'remise_globale': double.tryParse(remiseController.text),
+                    'tva': double.tryParse(tvaController.text),
+                    'conditions': conditionsController.text,
+                  };
+
+                  if (isEditing && bonCommandeId != null) {
+                    controller.updateBonCommande(bonCommandeId!, data);
+                  } else {
+                    // Vérifier qu'un client validé est sélectionné
                     if (controller.selectedClient.value == null) {
                       Get.snackbar(
                         'Erreur',
-                        'Veuillez sélectionner un client',
+                        'Veuillez sélectionner un client validé',
                         snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.red,
+                        colorText: Colors.white,
                       );
                       return;
                     }
 
-                    if (controller.items.isEmpty) {
+                    // Vérifier que le client sélectionné est bien validé
+                    if (controller.selectedClient.value!.status != 1) {
                       Get.snackbar(
                         'Erreur',
-                        'Veuillez ajouter au moins un article',
+                        'Seuls les clients validés peuvent être sélectionnés',
                         snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.red,
+                        colorText: Colors.white,
                       );
                       return;
                     }
 
-                    final data = {
-                      'reference': referenceController.text,
-                      'date_livraison_prevue': DateFormat(
-                        'dd/MM/yyyy',
-                      ).parse(dateLivraisonController.text),
-                      'adresse_livraison': adresseLivraisonController.text,
-                      'notes': notesController.text,
-                      'remise_globale': double.tryParse(remiseController.text),
-                      'tva': double.tryParse(tvaController.text),
-                      'conditions': conditionsController.text,
-                    };
-
-                    if (isEditing && bonCommandeId != null) {
-                      controller.updateBonCommande(bonCommandeId!, data);
-                    } else {
-                      controller.createBonCommande(data);
-                    }
+                    controller.createBonCommande(data);
                   }
-                },
-                child: Text(isEditing ? 'Mettre à jour' : 'Créer'),
+                }
+              },
+              icon: const Icon(Icons.save),
+              label: const Text('Enregistrer'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -353,7 +397,10 @@ class BonCommandeFormPage extends GetView<BonCommandeController> {
   }
 
   Widget _buildItemCard(BonCommandeItem item, int index) {
-    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final formatCurrency = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: 'fcfa',
+    );
     final formatDate = DateFormat('dd/MM/yyyy');
 
     return Card(

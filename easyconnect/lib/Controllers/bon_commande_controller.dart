@@ -1,20 +1,28 @@
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 
-class BonCommandeController extends GetxController {
+class BonCommandeController extends GetxController
+    with GetSingleTickerProviderStateMixin {
   late int userId;
   final BonCommandeService _bonCommandeService = BonCommandeService();
   final ClientService _clientService = ClientService();
 
   final bonCommandes = <BonCommande>[].obs;
   final selectedClient = Rxn<Client>();
+  final availableClients = <Client>[].obs;
   final isLoading = false.obs;
+  final isLoadingClients = false.obs;
   final currentBonCommande = Rxn<BonCommande>();
   final items = <BonCommandeItem>[].obs;
+
+  // Gestion des onglets
+  late TabController tabController;
+  final selectedStatus = Rxn<int>();
 
   // Statistiques
   final totalBonCommandes = 0.obs;
@@ -30,8 +38,33 @@ class BonCommandeController extends GetxController {
     userId = int.parse(
       Get.find<AuthController>().userAuth.value!.id.toString(),
     );
+    tabController = TabController(length: 5, vsync: this);
+    tabController.addListener(_onTabChanged);
     loadBonCommandes();
     loadStats();
+  }
+
+  @override
+  void onClose() {
+    tabController.dispose();
+    super.onClose();
+  }
+
+  void _onTabChanged() {
+    if (tabController.indexIsChanging) {
+      selectedStatus.value =
+          tabController.index == 0 ? null : tabController.index;
+    }
+  }
+
+  // Obtenir les bons de commande filtrés selon l'onglet sélectionné
+  List<BonCommande> getFilteredBonCommandes() {
+    if (selectedStatus.value == null) {
+      return bonCommandes;
+    }
+    return bonCommandes
+        .where((bonCommande) => bonCommande.status == selectedStatus.value)
+        .toList();
   }
 
   Future<void> loadBonCommandes({int? status}) async {
@@ -69,6 +102,7 @@ class BonCommandeController extends GetxController {
   Future<void> createBonCommande(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
+
       final newBonCommande = BonCommande(
         clientId: selectedClient.value!.id!,
         reference: data['reference'],
@@ -83,14 +117,26 @@ class BonCommandeController extends GetxController {
         commercialId: userId,
       );
 
-      await _bonCommandeService.createBonCommande(newBonCommande);
+      final createdBonCommande = await _bonCommandeService.createBonCommande(
+        newBonCommande,
+      );
+
+      // Effacer le formulaire
+      clearForm();
+
+      // Recharger la liste des bons de commande
+      await loadBonCommandes();
+
+      // Fermer le formulaire et afficher le message de succès
       Get.back();
       Get.snackbar(
         'Succès',
         'Bon de commande créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
       );
-      loadBonCommandes();
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -326,11 +372,32 @@ class BonCommandeController extends GetxController {
     items.clear();
   }
 
-  // Sélection du client
+  // Chargement des clients validés
+  Future<void> loadValidatedClients() async {
+    try {
+      isLoadingClients.value = true;
+      final clients = await _clientService.getClients(
+        status: 1,
+      ); // Status 1 = Validé
+      availableClients.value = clients;
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les clients validés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoadingClients.value = false;
+    }
+  }
+
+  // Recherche de clients validés
   Future<void> searchClients(String query) async {
     try {
-      final clients = await _clientService.getClients();
-      // TODO: Implémenter la recherche de clients
+      if (availableClients.isEmpty) {
+        await loadValidatedClients();
+      }
+      // La recherche sera implémentée dans l'interface utilisateur
     } catch (e) {
       print('Erreur lors de la recherche des clients: $e');
     }
@@ -342,5 +409,11 @@ class BonCommandeController extends GetxController {
 
   void clearSelectedClient() {
     selectedClient.value = null;
+  }
+
+  /// Effacer toutes les données du formulaire
+  void clearForm() {
+    selectedClient.value = null;
+    items.clear();
   }
 }

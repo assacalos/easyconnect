@@ -2,10 +2,11 @@ import 'package:easyconnect/Controllers/attendance_controller.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
-import 'package:easyconnect/services/attendance_service.dart';
+import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/reporting_service.dart';
+import 'package:easyconnect/services/stock_service.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
@@ -44,12 +45,13 @@ class AppBindings extends Bindings {
   void dependencies() {
     Get.put(AuthController());
     Get.put(DevisController());
-    Get.put(BordereauController());
+    Get.put(BordereauxController());
     Get.put(BonCommandeController());
+    Get.put(StockService(), permanent: true);
     Get.put(NotificationService(), permanent: true);
     Get.put(FavoritesService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
-    Get.put(AttendanceService(), permanent: true);
+    Get.put(AttendancePunchService(), permanent: true);
     Get.put(InvoiceService(), permanent: true);
     Get.put(ReportingService(), permanent: true);
 

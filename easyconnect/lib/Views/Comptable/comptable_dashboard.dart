@@ -45,6 +45,12 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
       onTap: () => controller.showBalance(),
     ),
     FavoriteItem(
+      id: 'attendance_punch',
+      label: 'Pointage avec Photo',
+      icon: Icons.camera_alt,
+      route: '/attendance-punch',
+    ),
+    FavoriteItem(
       id: 'reports',
       label: 'Rapports',
       icon: Icons.assessment,
@@ -63,10 +69,10 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
       route: '/payments',
     ),
     FavoriteItem(
-      id: 'attendance',
+      id: 'attendance_punch',
       label: 'Pointage',
       icon: Icons.access_time,
-      route: '/attendance',
+      route: '/attendance-punch',
     ),
     FavoriteItem(
       id: 'reporting',
@@ -74,21 +80,51 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
       icon: Icons.assessment,
       route: '/reporting',
     ),
+    FavoriteItem(
+      id: 'suppliers',
+      label: 'Fournisseurs',
+      icon: Icons.business,
+      route: '/suppliers',
+    ),
+    FavoriteItem(
+      id: 'taxes',
+      label: 'Impôts et Taxes',
+      icon: Icons.receipt,
+      route: '/taxes',
+    ),
+    FavoriteItem(
+      id: 'expenses',
+      label: 'Dépenses',
+      icon: Icons.money_off,
+      route: '/expenses',
+    ),
+    FavoriteItem(
+      id: 'salaries',
+      label: 'Salaires',
+      icon: Icons.account_balance_wallet,
+      route: '/salaries',
+    ),
+    FavoriteItem(
+      id: 'stocks',
+      label: 'Stock',
+      icon: Icons.inventory,
+      route: '/stocks',
+    ),
   ];
 
   @override
   List<StatCard> get statsCards => [
     StatCard(
       title: "Chiffre d'affaires",
-      value: "103.5k €",
-      icon: Icons.euro,
+      value: "103.5k fcfa",
+      icon: Icons.currency_franc,
       color: Colors.green,
       requiredPermission: Permissions.VIEW_FINANCES,
       subtitle: "Ce mois-ci",
     ),
     StatCard(
       title: "Dépenses",
-      value: "45.2k €",
+      value: "45.2k fcfa",
       icon: Icons.money_off,
       color: Colors.red,
       requiredPermission: Permissions.MANAGE_EXPENSES,
@@ -104,7 +140,7 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
     ),
     StatCard(
       title: "Trésorerie",
-      value: "58.3k €",
+      value: "58.3k fcfa",
       icon: Icons.account_balance,
       color: Colors.blue,
       requiredPermission: Permissions.VIEW_FINANCES,
@@ -124,6 +160,62 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
       color: Colors.teal,
       requiredPermission: Permissions.MANAGE_PAYMENTS,
       onTap: () => Get.toNamed('/payments'),
+    ),
+    StatCard(
+      title: "Fournisseurs",
+      value: "8",
+      icon: Icons.business,
+      color: Colors.indigo,
+      requiredPermission: Permissions.MANAGE_SUPPLIERS,
+      onTap: () => Get.toNamed('/suppliers'),
+    ),
+    StatCard(
+      title: "Impôts en attente",
+      value: "3",
+      icon: Icons.receipt,
+      color: Colors.red,
+      requiredPermission: Permissions.MANAGE_TAXES,
+      onTap: () => Get.toNamed('/taxes'),
+    ),
+    StatCard(
+      title: "Dépenses en attente",
+      value: "7",
+      icon: Icons.money_off,
+      color: Colors.orange,
+      requiredPermission: Permissions.MANAGE_EXPENSES,
+      onTap: () => Get.toNamed('/expenses'),
+    ),
+    StatCard(
+      title: "Salaires en attente",
+      value: "5",
+      icon: Icons.account_balance_wallet,
+      color: Colors.indigo,
+      requiredPermission: Permissions.MANAGE_SALARIES,
+      onTap: () => Get.toNamed('/salaries'),
+    ),
+    StatCard(
+      title: "Produits en stock",
+      value: "45",
+      icon: Icons.inventory,
+      color: Colors.blue,
+      requiredPermission: Permissions.MANAGE_STOCKS,
+      onTap: () => Get.toNamed('/stocks'),
+    ),
+    StatCard(
+      title: "Stock faible",
+      value: "8",
+      icon: Icons.warning,
+      color: Colors.orange,
+      requiredPermission: Permissions.MANAGE_STOCKS,
+      onTap: () => Get.toNamed('/stocks'),
+    ),
+    StatCard(
+      title: "Ruptures de stock",
+      value: "3",
+      icon: Icons.error,
+      color: Colors.red,
+      requiredPermission: Permissions.MANAGE_STOCKS,
+      onTap: () => Get.toNamed('/stocks'),
     ),
   ];
 
@@ -190,7 +282,7 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
         title: const Text('Dépenses'),
         onTap: () => controller.showExpenses(),
       ),
-      ListTile(
+      /*  ListTile(
         leading: const Icon(Icons.account_balance),
         title: const Text('Trésorerie'),
         onTap: () => controller.showBalance(),
@@ -199,6 +291,31 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
         leading: const Icon(Icons.assessment),
         title: const Text('Rapports'),
         onTap: () => controller.showReports(),
+      ), */
+      ListTile(
+        leading: const Icon(Icons.business),
+        title: const Text('Fournisseurs'),
+        onTap: () => Get.toNamed('/suppliers'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.receipt),
+        title: const Text('Impôts et Taxes'),
+        onTap: () => Get.toNamed('/taxes'),
+      ),
+      /*  ListTile(
+        leading: const Icon(Icons.money_off),
+        title: const Text('Dépenses'),
+        onTap: () => Get.toNamed('/expenses'),
+      ), */
+      ListTile(
+        leading: const Icon(Icons.account_balance_wallet),
+        title: const Text('Salaires'),
+        onTap: () => Get.toNamed('/salaries'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.inventory),
+        title: const Text('Stock'),
+        onTap: () => Get.toNamed('/stocks'),
       ),
       ListTile(
         leading: const Icon(Icons.settings),
@@ -211,9 +328,9 @@ class ComptableDashboard extends BaseDashboard<ComptableDashboardController> {
   @override
   Widget? buildFloatingActionButton() {
     return FloatingActionButton.extended(
-      onPressed: () => controller.createNewInvoice(),
-      icon: const Icon(Icons.receipt),
-      label: const Text('Nouvelle facture'),
+      onPressed: () => Get.toNamed('/stocks/new'),
+      icon: const Icon(Icons.add),
+      label: const Text('Nouveau produit'),
     );
   }
 }

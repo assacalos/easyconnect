@@ -21,7 +21,9 @@ class RedirectIfAuthenticated
 
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
-                return redirect(RouteServiceProvider::HOME);
+                // Nettoyer l'URL pour éviter les caractères de nouvelle ligne
+                $homeUrl = trim(str_replace(["\r", "\n", "\r\n"], '', RouteServiceProvider::HOME));
+                return redirect($homeUrl);
             }
         }
 

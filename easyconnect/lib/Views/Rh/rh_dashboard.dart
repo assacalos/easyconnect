@@ -33,10 +33,34 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       onTap: () => controller.createNewEmployee(),
     ),
     FavoriteItem(
+      id: 'employees',
+      label: 'Employés',
+      icon: Icons.people,
+      route: '/employees',
+    ),
+    FavoriteItem(
       id: 'leaves',
       label: 'Congés',
       icon: Icons.event,
-      onTap: () => controller.showLeaves(),
+      route: '/leaves',
+    ),
+    FavoriteItem(
+      id: 'validation_pointages',
+      label: 'Validation Pointages',
+      icon: Icons.camera_alt,
+      route: '/attendance-validation',
+    ),
+    FavoriteItem(
+      id: 'recruitment',
+      label: 'Recrutement',
+      icon: Icons.work,
+      route: '/recruitment',
+    ),
+    FavoriteItem(
+      id: 'contracts',
+      label: 'Contrats',
+      icon: Icons.description,
+      route: '/contracts',
     ),
     FavoriteItem(
       id: 'attendance',
@@ -66,6 +90,15 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       icon: Icons.people,
       color: Colors.blue,
       requiredPermission: Permissions.MANAGE_EMPLOYEES,
+      onTap: () => Get.toNamed('/employees'),
+    ),
+    StatCard(
+      title: "Nouveaux employés",
+      value: "3",
+      icon: Icons.person_add,
+      color: Colors.green,
+      requiredPermission: Permissions.MANAGE_EMPLOYEES,
+      onTap: () => Get.toNamed('/employees'),
     ),
     StatCard(
       title: "Congés en attente",
@@ -73,6 +106,39 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       icon: Icons.event,
       color: Colors.orange,
       requiredPermission: Permissions.MANAGE_LEAVES,
+      onTap: () => Get.toNamed('/leaves'),
+    ),
+    StatCard(
+      title: "Offres publiées",
+      value: "3",
+      icon: Icons.work,
+      color: Colors.blue,
+      requiredPermission: Permissions.MANAGE_RECRUITMENT,
+      onTap: () => Get.toNamed('/recruitment'),
+    ),
+    StatCard(
+      title: "Candidatures",
+      value: "12",
+      icon: Icons.people_alt,
+      color: Colors.green,
+      requiredPermission: Permissions.VIEW_RECRUITMENT,
+      onTap: () => Get.toNamed('/recruitment'),
+    ),
+    StatCard(
+      title: "Contrats actifs",
+      value: "78",
+      icon: Icons.description,
+      color: Colors.blue,
+      requiredPermission: Permissions.VIEW_CONTRACTS,
+      onTap: () => Get.toNamed('/contracts'),
+    ),
+    StatCard(
+      title: "Contrats en attente",
+      value: "5",
+      icon: Icons.schedule,
+      color: Colors.orange,
+      requiredPermission: Permissions.MANAGE_CONTRACTS,
+      onTap: () => Get.toNamed('/contracts'),
     ),
     StatCard(
       title: "Présents aujourd'hui",
@@ -87,6 +153,14 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       icon: Icons.person_search,
       color: Colors.purple,
       requiredPermission: Permissions.MANAGE_RECRUITMENT,
+    ),
+    StatCard(
+      title: "Employés actifs",
+      value: "82",
+      icon: Icons.check_circle,
+      color: Colors.green,
+      requiredPermission: Permissions.VIEW_EMPLOYEES,
+      onTap: () => Get.toNamed('/employees'),
     ),
   ];
 
@@ -146,12 +220,22 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
       ListTile(
         leading: const Icon(Icons.people),
         title: const Text('Employés'),
-        onTap: () => controller.showEmployees(),
+        onTap: () => Get.toNamed('/employees'),
       ),
       ListTile(
         leading: const Icon(Icons.event),
         title: const Text('Congés'),
-        onTap: () => controller.showLeaves(),
+        onTap: () => Get.toNamed('/leaves'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.work),
+        title: const Text('Recrutement'),
+        onTap: () => Get.toNamed('/recruitment'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.description),
+        title: const Text('Contrats'),
+        onTap: () => Get.toNamed('/contracts'),
       ),
       ListTile(
         leading: const Icon(Icons.access_time),
@@ -184,7 +268,7 @@ class RhDashboard extends BaseDashboard<RhDashboardController> {
   @override
   Widget? buildFloatingActionButton() {
     return FloatingActionButton.extended(
-      onPressed: () => controller.createNewEmployee(),
+      onPressed: () => Get.toNamed('/employees/new'),
       icon: const Icon(Icons.person_add),
       label: const Text('Nouvel employé'),
     );

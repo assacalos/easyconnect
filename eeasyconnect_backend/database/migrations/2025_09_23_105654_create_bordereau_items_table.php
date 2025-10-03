@@ -13,13 +13,15 @@ return new class extends Migration
     {
         Schema::create('bordereau_items', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('bordereau_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('bordereau_id');
             $table->string('designation');
             $table->string('unite');
             $table->integer('quantite');
             $table->decimal('prix_unitaire', 10, 2);
             $table->text('description')->nullable();
             $table->timestamps();
+
+            $table->foreign('bordereau_id')->references('id')->on('bordereaus')->onDelete('cascade');
         });
     }
 

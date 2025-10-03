@@ -21,7 +21,7 @@ return new class extends Migration
             $table->date('date_livraison')->nullable();
             $table->decimal('montant_total', 10, 2);
             $table->text('description')->nullable();
-            $table->enum('status', ['en_attente', 'valide', 'en_cours', 'livre', 'annule'])->default('en_attente');
+            $table->enum('status', ['en_attente', 'valide', 'rejete'])->default('en_attente');
             $table->text('commentaire')->nullable();
             $table->text('conditions_paiement')->nullable();
             $table->integer('delai_livraison')->nullable(); // en jours

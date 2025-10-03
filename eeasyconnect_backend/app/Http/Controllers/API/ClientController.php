@@ -26,7 +26,7 @@ class ClientController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $query->get(),
+            'data' => $query->orderBy('created_at', 'desc')->get(),
         ], 200);
     }
 
@@ -119,19 +119,66 @@ class ClientController extends Controller
     // Rejeter un client (patron)
     public function reject(Request $request, $id)
     {
-        $request->validate([
-            'commentaire' => 'required|string|max:255',
-        ]);
 
         $client = Client::findOrFail($id);
         $client->status = 2; // rejeté
-        $client->commentaire_rejet = $request->commentaire;
+        $client->commentaire = $request->commentaire;
         $client->save();
 
         return response()->json([
             'success' => true,
             'data' => $client,
             'message' => 'Client rejeté avec succès'
+        ], 200);
+    }
+
+    // Statistiques des clients
+    public function stats(Request $request)
+    {
+        $user = $request->user();
+        $query = Client::query();
+
+        // Si commercial → filtre uniquement ses clients
+        if ($user->role == 2) { // 2 = commercial
+            $query->where('user_id', $user->id);
+        }
+
+        $totalClients = $query->count();
+        $clientsEnAttente = $query->where('status', 0)->count();
+        $clientsValides = $query->where('status', 1)->count();
+        $clientsRejetes = $query->where('status', 2)->count();
+
+        // Statistiques par mois (derniers 12 mois)
+        $clientsParMois = $query->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as mois, COUNT(*) as total')
+            ->where('created_at', '>=', now()->subMonths(12))
+            ->groupBy('mois')
+            ->orderBy('mois')
+            ->get();
+
+        // Top 5 des situations géographiques
+        $topSituations = $query->selectRaw('situation_geographique, COUNT(*) as total')
+            ->groupBy('situation_geographique')
+            ->orderBy('total', 'desc')
+            ->limit(5)
+            ->get();
+
+        // Répartition par statut
+        $repartitionStatuts = [
+            'en_attente' => $clientsEnAttente,
+            'valides' => $clientsValides,
+            'rejetes' => $clientsRejetes
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_clients' => $totalClients,
+                'repartition_statuts' => $repartitionStatuts,
+                'clients_par_mois' => $clientsParMois,
+                'top_situations_geographiques' => $topSituations,
+                'taux_validation' => $totalClients > 0 ? round(($clientsValides / $totalClients) * 100, 2) : 0,
+                'taux_rejet' => $totalClients > 0 ? round(($clientsRejetes / $totalClients) * 100, 2) : 0
+            ]
         ], 200);
     }
 }

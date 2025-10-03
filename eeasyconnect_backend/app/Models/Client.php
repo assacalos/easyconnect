@@ -18,7 +18,7 @@ class Client extends Model
         'adresse',
         'situation_geographique',
         'nom_entreprise',
-        'motif',
+        'commentaire',
         'status',
     ];
     

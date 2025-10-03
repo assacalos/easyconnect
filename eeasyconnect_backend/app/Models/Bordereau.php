@@ -9,9 +9,12 @@ class Bordereau extends Model
 {
     use HasFactory;
 
+    protected $table = 'bordereaus';
+
     protected $fillable = [
         'reference',
         'client_id',
+        'devis_id',
         'user_id',
         'date_creation',
         'date_validation',
@@ -32,7 +35,11 @@ class Bordereau extends Model
         return $this->belongsTo(Client::class);
     }
 
-    public function commercial() {
+    public function devis() {
+        return $this->belongsTo(Devis::class);
+    }
+
+    public function user() {
         return $this->belongsTo(User::class, 'user_id');
     }
 

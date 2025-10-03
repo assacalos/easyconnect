@@ -19,8 +19,13 @@ class PaiementController extends Controller
         $query = Paiement::with(['facture.client']);
         
         // Filtrage par statut si fourni
-        if ($request->has('statut')) {
-            $query->where('statut', $request->statut);
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+        
+        // Filtrage par type de paiement
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
         }
         
         // Filtrage par date si fourni
@@ -48,7 +53,7 @@ class PaiementController extends Controller
             });
         }
         
-        $paiements = $query->orderBy('date_paiement', 'desc')->get();
+        $paiements = $query->orderBy('created_at', 'desc')->paginate($request->get('per_page', 15));
         
         return response()->json([
             'success' => true,
@@ -172,7 +177,7 @@ class PaiementController extends Controller
      * Valider un paiement
      * Accessible par Comptable et Admin
      */
-    public function validate($id)
+    public function validatePaiement($id)
     {
         $paiement = Paiement::findOrFail($id);
         
@@ -287,5 +292,134 @@ class PaiementController extends Controller
             'rapport' => $rapport,
             'message' => 'Rapport de paiements généré avec succès'
         ]);
+    }
+
+    /**
+     * Soumettre un paiement
+     */
+    public function submit($id)
+    {
+        $paiement = Paiement::findOrFail($id);
+
+        if ($paiement->submit()) {
+            return response()->json([
+                'success' => true,
+                'paiement' => $paiement,
+                'message' => 'Paiement soumis avec succès'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible de soumettre ce paiement'
+        ], 400);
+    }
+
+    /**
+     * Approuver un paiement
+     */
+    public function approve(Request $request, $id)
+    {
+        $paiement = Paiement::findOrFail($id);
+
+        $request->validate([
+            'comment' => 'nullable|string'
+        ]);
+
+        if ($paiement->approve(auth()->id(), $request->comment)) {
+            return response()->json([
+                'success' => true,
+                'paiement' => $paiement,
+                'message' => 'Paiement approuvé avec succès'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible d\'approuver ce paiement'
+        ], 400);
+    }
+
+    /**
+     * Marquer comme payé
+     */
+    public function markAsPaid($id)
+    {
+        $paiement = Paiement::findOrFail($id);
+
+        if ($paiement->pay(auth()->id())) {
+            return response()->json([
+                'success' => true,
+                'paiement' => $paiement,
+                'message' => 'Paiement marqué comme payé avec succès'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible de marquer ce paiement comme payé'
+        ], 400);
+    }
+
+    /**
+     * Marquer comme en retard
+     */
+    public function markAsOverdue($id)
+    {
+        $paiement = Paiement::findOrFail($id);
+
+        if ($paiement->markAsOverdue()) {
+            return response()->json([
+                'success' => true,
+                'paiement' => $paiement,
+                'message' => 'Paiement marqué comme en retard avec succès'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible de marquer ce paiement comme en retard'
+        ], 400);
+    }
+
+    /**
+     * Créer un paiement avec numéro automatique
+     */
+    public function createWithNumber(Request $request)
+    {
+        $request->validate([
+            'facture_id' => 'required|exists:factures,id',
+            'montant' => 'required|numeric|min:0.01',
+            'date_paiement' => 'required|date',
+            'due_date' => 'nullable|date|after:date_paiement',
+            'type' => 'required|in:one_time,monthly',
+            'type_paiement' => 'required|in:especes,virement,cheque,carte_bancaire,mobile_money',
+            'currency' => 'nullable|string|max:3',
+            'description' => 'nullable|string',
+            'commentaire' => 'nullable|string',
+            'reference' => 'nullable|string|max:255'
+        ]);
+
+        $paiement = Paiement::create([
+            'payment_number' => Paiement::generatePaymentNumber(),
+            'type' => $request->type,
+            'facture_id' => $request->facture_id,
+            'montant' => $request->montant,
+            'date_paiement' => $request->date_paiement,
+            'due_date' => $request->due_date,
+            'currency' => $request->currency ?? 'FCFA',
+            'type_paiement' => $request->type_paiement,
+            'status' => 'draft',
+            'description' => $request->description,
+            'commentaire' => $request->commentaire,
+            'reference' => $request->reference,
+            'user_id' => auth()->id()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'paiement' => $paiement,
+            'message' => 'Paiement créé avec succès'
+        ], 201);
     }
 }

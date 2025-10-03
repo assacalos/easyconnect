@@ -19,7 +19,7 @@ class ClientService {
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status.toString();
       if (isPending == true) queryParams['pending'] = 'true';
-      if (userRole == 2) queryParams['commercial_id'] = userId.toString();
+      if (userRole == 2) queryParams['user_id'] = userId.toString();
 
       final queryString =
           queryParams.isEmpty
@@ -27,7 +27,7 @@ class ClientService {
               : '?${Uri(queryParameters: queryParams).query}';
 
       final response = await http.get(
-        Uri.parse('$baseUrl/clients$queryString'),
+        Uri.parse('$baseUrl/clients-list$queryString'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -53,17 +53,23 @@ class ClientService {
       final userId = storage.read('userId');
 
       var clientData = client.toJson();
-      clientData['commercial_id'] = userId;
+      clientData['user_id'] = userId;
       clientData['status'] = 0; // Toujours en attente à la création
 
+      print('➡️ Données envoyées: $clientData');
+      print('➡️ User ID: $userId');
+
       final response = await http.post(
-        Uri.parse('$baseUrl/clients'),
+        Uri.parse('$baseUrl/clients-create'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
         body: json.encode(clientData),
+      );
+      print(
+        '➡️ Réponse API createClient: ${response.statusCode} - ${response.body}',
       );
 
       if (response.statusCode == 201) {
@@ -80,7 +86,7 @@ class ClientService {
     try {
       final token = storage.read('token');
       final response = await http.put(
-        Uri.parse('$baseUrl/clients/${client.id}'),
+        Uri.parse('$baseUrl/clients-update/${client.id}'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -102,17 +108,40 @@ class ClientService {
   Future<bool> approveClient(int clientId) async {
     try {
       final token = storage.read('token');
+      print('🔍 ClientService.approveClient - Début');
+      print(
+        '📊 Paramètres: clientId=$clientId, token=${token?.substring(0, 10)}...',
+      );
+
+      final url = '$baseUrl/clients-validate/$clientId';
+      print('🌐 URL de requête: $url');
+
       final response = await http.post(
-        Uri.parse('$baseUrl/clients/$clientId/approve'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      return response.statusCode == 200;
+      print('📡 Réponse reçue: ${response.statusCode}');
+      print('📄 Contenu de la réponse: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ ClientService.approveClient - Succès');
+        return true;
+      } else {
+        print('❌ ClientService.approveClient - Échec: ${response.statusCode}');
+        print('📄 Détails de l\'erreur: ${response.body}');
+        print('🔍 ClientService.approveClient - Analyse de l\'erreur:');
+        print('   - Code de statut: ${response.statusCode}');
+        print('   - URL appelée: $url');
+        print('   - Token présent: ${token != null}');
+        print('   - Client ID: $clientId');
+        return false;
+      }
     } catch (e) {
-      print('Erreur: $e');
+      print('❌ ClientService.approveClient - Erreur: $e');
       return false;
     }
   }
@@ -120,19 +149,51 @@ class ClientService {
   Future<bool> rejectClient(int clientId, String comment) async {
     try {
       final token = storage.read('token');
+      print('🔍 ClientService.rejectClient - Début');
+      print('📊 Paramètres: clientId=$clientId, comment=$comment');
+
+      final url = '$baseUrl/clients-reject/$clientId';
+      print('🌐 URL de requête: $url');
+
+      final body = json.encode({'commentaire': comment});
+      print('📦 Corps de la requête: $body');
+
       final response = await http.post(
-        Uri.parse('$baseUrl/clients/$clientId/reject'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode({'commentaire': comment}),
+        body: body,
       );
 
-      return response.statusCode == 200;
+      print('📡 Réponse reçue: ${response.statusCode}');
+      print('📄 Contenu de la réponse: ${response.body}');
+
+      // Log spécial pour les erreurs 500
+      if (response.statusCode == 500) {
+        print('🚨 ERREUR 500 - Erreur serveur Laravel');
+        print('📄 Détails complets de l\'erreur:');
+        print('   ${response.body}');
+        print('🔍 Vérifiez les logs Laravel: storage/logs/laravel.log');
+      }
+
+      if (response.statusCode == 200) {
+        print('✅ ClientService.rejectClient - Succès');
+        return true;
+      } else {
+        print('❌ ClientService.rejectClient - Échec: ${response.statusCode}');
+        print('📄 Détails de l\'erreur: ${response.body}');
+        print('🔍 ClientService.rejectClient - Analyse de l\'erreur:');
+        print('   - Code de statut: ${response.statusCode}');
+        print('   - URL appelée: $url');
+        print('   - Token présent: ${token != null}');
+        print('   - Commentaire envoyé: $comment');
+        return false;
+      }
     } catch (e) {
-      print('Erreur: $e');
+      print('❌ ClientService.rejectClient - Erreur: $e');
       return false;
     }
   }
@@ -141,7 +202,7 @@ class ClientService {
     try {
       final token = storage.read('token');
       final response = await http.delete(
-        Uri.parse('$baseUrl/clients/$clientId'),
+        Uri.parse('$baseUrl/clients-delete/$clientId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',

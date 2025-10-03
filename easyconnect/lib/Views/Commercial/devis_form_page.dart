@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
-import 'package:easyconnect/Models/client_model.dart';
 import 'package:intl/intl.dart';
 
 class DevisFormPage extends StatelessWidget {
-  final DevisController controller = Get.find<DevisController>();
+  final DevisController controller = Get.put(DevisController());
   final bool isEditing;
   final int? devisId;
 
-  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
   final formatDate = DateFormat('dd/MM/yyyy');
 
   // Contrôleurs de formulaire
@@ -25,6 +24,11 @@ class DevisFormPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Charger les clients au démarrage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.searchClients('');
+    });
+
     // Pré-remplir le formulaire si édition
     if (isEditing && devisId != null) {
       final devis = controller.devis.firstWhere(
@@ -63,9 +67,6 @@ class DevisFormPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(isEditing ? 'Modifier le devis' : 'Nouveau devis'),
-        actions: [
-          IconButton(icon: const Icon(Icons.save), onPressed: _saveDevis),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -81,6 +82,8 @@ class DevisFormPage extends StatelessWidget {
             _buildTotauxSection(),
             const SizedBox(height: 16),
             _buildNotesConditionsSection(),
+            const SizedBox(height: 24),
+            _buildSaveButton(),
           ],
         ),
       ),
@@ -214,7 +217,7 @@ class DevisFormPage extends StatelessWidget {
                   final item = controller.items[index];
                   return Card(
                     child: ListTile(
-                      title: Text(item.designation ?? ''),
+                      title: Text(item.designation),
                       subtitle: Text(
                         '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
                       ),
@@ -430,18 +433,67 @@ class DevisFormPage extends StatelessWidget {
                 if (controller.isLoading.value) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                if (controller.clients.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_off, size: 48, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'Aucun client validé trouvé',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Veuillez d\'abord créer et valider des clients',
+                          style: TextStyle(color: Colors.grey, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
                 return ListView.builder(
                   itemCount: controller.clients.length,
                   itemBuilder: (context, index) {
                     final client = controller.clients[index];
                     return ListTile(
                       leading: CircleAvatar(
-                        child: Text(
-                          client.nom?.substring(0, 1).toUpperCase() ?? '',
+                        backgroundColor: Colors.green.shade100,
+                        child: Icon(
+                          Icons.check_circle,
+                          color: Colors.green.shade600,
+                          size: 20,
                         ),
                       ),
                       title: Text(client.nom ?? ''),
-                      subtitle: Text(client.email ?? ''),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(client.email ?? ''),
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Validé',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       onTap: () {
                         controller.selectClient(client);
                         Get.back();
@@ -453,6 +505,16 @@ class DevisFormPage extends StatelessWidget {
             ),
           ],
         ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              Get.toNamed('/clients/new');
+            },
+            child: const Text('Nouveau client'),
+          ),
+        ],
       ),
     );
   }
@@ -546,6 +608,34 @@ class DevisFormPage extends StatelessWidget {
     );
   }
 
+  /// Effacer tous les champs du formulaire
+  void _clearForm() {
+    referenceController.clear();
+    notesController.clear();
+    conditionsController.clear();
+    remiseGlobaleController.clear();
+    tvaController.clear();
+    dateValiditeController.clear();
+    controller.clearForm();
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _saveDevis,
+        icon: const Icon(Icons.save),
+        label: Text(isEditing ? 'Modifier le devis' : 'Créer le devis'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
   void _saveDevis() {
     if (controller.selectedClient.value == null) {
       Get.snackbar(
@@ -587,7 +677,10 @@ class DevisFormPage extends StatelessWidget {
     if (isEditing && devisId != null) {
       controller.updateDevis(devisId!, data);
     } else {
-      controller.createDevis(data);
+      // Pour la création, effacer le formulaire après la création
+      controller.createDevis(data).then((_) {
+        _clearForm();
+      });
     }
   }
 }

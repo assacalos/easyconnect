@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Attendance extends Model
 {
@@ -12,222 +12,132 @@ class Attendance extends Model
 
     protected $fillable = [
         'user_id',
-        'check_in_time',
-        'check_out_time',
-        'status',
-        'location',
+        'type',
+        'timestamp',
+        'latitude',
+        'longitude',
+        'address',
+        'accuracy',
         'photo_path',
-        'notes'
+        'notes',
+        'status',
+        'rejection_reason',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
-        'check_in_time' => 'datetime',
-        'check_out_time' => 'datetime',
-        'location' => 'array'
+        'timestamp' => 'datetime',
+        'approved_at' => 'datetime',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
+        'accuracy' => 'decimal:2',
     ];
 
     // Relations
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     // Scopes
-    public function scopeToday($query)
+    public function scopePending($query)
     {
-        return $query->whereDate('check_in_time', today());
+        return $query->where('status', 'pending');
     }
 
-    public function scopeThisWeek($query)
+    public function scopeApproved($query)
     {
-        return $query->whereBetween('check_in_time', [
-            now()->startOfWeek(),
-            now()->endOfWeek()
-        ]);
+        return $query->where('status', 'approved');
     }
 
-    public function scopeThisMonth($query)
+    public function scopeRejected($query)
     {
-        return $query->whereBetween('check_in_time', [
-            now()->startOfMonth(),
-            now()->endOfMonth()
-        ]);
+        return $query->where('status', 'rejected');
     }
 
-    public function scopeByUser($query, $userId)
+    public function scopeCheckIn($query)
     {
-        return $query->where('user_id', $userId);
+        return $query->where('type', 'check_in');
     }
 
-    public function scopePresent($query)
+    public function scopeCheckOut($query)
     {
-        return $query->where('status', 'present');
+        return $query->where('type', 'check_out');
     }
 
-    public function scopeLate($query)
+    // Accessors
+    public function getPhotoUrlAttribute()
     {
-        return $query->where('status', 'late');
-    }
-
-    public function scopeAbsent($query)
-    {
-        return $query->where('status', 'absent');
-    }
-
-    // Méthodes utilitaires
-    public function isCheckedIn()
-    {
-        return !is_null($this->check_in_time) && is_null($this->check_out_time);
-    }
-
-    public function isCheckedOut()
-    {
-        return !is_null($this->check_in_time) && !is_null($this->check_out_time);
-    }
-
-    public function getWorkDuration()
-    {
-        if ($this->isCheckedOut()) {
-            return $this->check_in_time->diffInMinutes($this->check_out_time);
+        if ($this->photo_path) {
+            return asset('storage/' . $this->photo_path);
         }
         return null;
     }
 
-    public function getWorkDurationInHours()
+    public function getStatusLabelAttribute()
     {
-        $duration = $this->getWorkDuration();
-        return $duration ? round($duration / 60, 2) : null;
+        return match($this->status) {
+            'pending' => 'En attente',
+            'approved' => 'Approuvé',
+            'rejected' => 'Rejeté',
+            default => 'Inconnu'
+        };
     }
 
-    public function isLate($workStartTime = '08:00')
+    public function getTypeLabelAttribute()
     {
-        $startTime = Carbon::parse($this->check_in_time->format('Y-m-d') . ' ' . $workStartTime);
-        return $this->check_in_time->gt($startTime);
+        return match($this->type) {
+            'check_in' => 'Arrivée',
+            'check_out' => 'Départ',
+            default => 'Inconnu'
+        };
     }
 
-    public function getLateMinutes($workStartTime = '08:00')
+    // Méthodes
+    public function canBeApproved(): bool
     {
-        if (!$this->isLate($workStartTime)) {
-            return 0;
-        }
-        
-        $startTime = Carbon::parse($this->check_in_time->format('Y-m-d') . ' ' . $workStartTime);
-        return $this->check_in_time->diffInMinutes($startTime);
+        return $this->status === 'pending';
     }
 
-    // Accesseurs
-    public function getUserNameAttribute()
+    public function canBeRejected(): bool
     {
-        return $this->user ? $this->user->nom . ' ' . $this->user->prenom : 'Utilisateur inconnu';
+        return $this->status === 'pending';
     }
 
-    public function getUserRoleAttribute()
+    public function approve(User $approver): bool
     {
-        if (!$this->user) return 'Inconnu';
-        
-        $roles = [
-            1 => 'Admin',
-            2 => 'Commercial',
-            3 => 'Comptable',
-            4 => 'RH',
-            5 => 'Technicien',
-            6 => 'Patron'
-        ];
-
-        return $roles[$this->user->role] ?? 'Inconnu';
-    }
-
-    public function getStatusLibelleAttribute()
-    {
-        $statuses = [
-            'present' => 'Présent',
-            'absent' => 'Absent',
-            'late' => 'En retard',
-            'early_leave' => 'Départ anticipé'
-        ];
-
-        return $statuses[$this->status] ?? $this->status;
-    }
-
-    public function getLocationInfoAttribute()
-    {
-        if (!$this->location) return null;
-
-        return [
-            'latitude' => $this->location['latitude'] ?? null,
-            'longitude' => $this->location['longitude'] ?? null,
-            'address' => $this->location['address'] ?? null,
-            'accuracy' => $this->location['accuracy'] ?? null,
-            'timestamp' => $this->location['timestamp'] ?? null
-        ];
-    }
-
-    // Méthodes statiques pour les statistiques
-    public static function getAttendanceStats($userId, $startDate = null, $endDate = null)
-    {
-        $query = self::where('user_id', $userId);
-        
-        if ($startDate && $endDate) {
-            $query->whereBetween('check_in_time', [$startDate, $endDate]);
+        if (!$this->canBeApproved()) {
+            return false;
         }
 
-        $attendances = $query->get();
-        
-        $totalDays = $attendances->count();
-        $presentDays = $attendances->where('status', 'present')->count();
-        $absentDays = $attendances->where('status', 'absent')->count();
-        $lateDays = $attendances->where('status', 'late')->count();
-        
-        $totalHours = $attendances->whereNotNull('check_out_time')
-            ->sum(function ($attendance) {
-                return $attendance->getWorkDurationInHours() ?? 0;
-            });
-        
-        $averageHours = $totalDays > 0 ? round($totalHours / $totalDays, 2) : 0;
+        $this->update([
+            'status' => 'approved',
+            'approved_by' => $approver->id,
+            'approved_at' => now(),
+        ]);
 
-        return [
-            'total_days' => $totalDays,
-            'present_days' => $presentDays,
-            'absent_days' => $absentDays,
-            'late_days' => $lateDays,
-            'average_hours' => $averageHours,
-            'attendance_rate' => $totalDays > 0 ? round(($presentDays / $totalDays) * 100, 2) : 0
-        ];
+        return true;
     }
 
-    public static function getMonthlyStats($userId, $year = null)
+    public function reject(User $approver, string $reason): bool
     {
-        $year = $year ?? now()->year;
-        
-        $stats = [];
-        for ($month = 1; $month <= 12; $month++) {
-            $startDate = Carbon::create($year, $month, 1)->startOfMonth();
-            $endDate = Carbon::create($year, $month, 1)->endOfMonth();
-            
-            $monthStats = self::getAttendanceStats($userId, $startDate, $endDate);
-            $stats[$month] = $monthStats['present_days'];
+        if (!$this->canBeRejected()) {
+            return false;
         }
-        
-        return $stats;
-    }
 
-    // Méthode pour vérifier si l'utilisateur peut pointer
-    public static function canCheckIn($userId)
-    {
-        $todayAttendance = self::where('user_id', $userId)
-            ->whereDate('check_in_time', today())
-            ->first();
-            
-        return !$todayAttendance || $todayAttendance->isCheckedOut();
-    }
+        $this->update([
+            'status' => 'rejected',
+            'approved_by' => $approver->id,
+            'approved_at' => now(),
+            'rejection_reason' => $reason,
+        ]);
 
-    public static function canCheckOut($userId)
-    {
-        $todayAttendance = self::where('user_id', $userId)
-            ->whereDate('check_in_time', today())
-            ->whereNull('check_out_time')
-            ->first();
-            
-        return $todayAttendance && $todayAttendance->isCheckedIn();
+        return true;
     }
 }

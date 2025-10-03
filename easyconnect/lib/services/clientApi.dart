@@ -9,12 +9,12 @@ class ClientApi {
     final token = GetStorage().read("token");
     final response = await http.get(
       Uri.parse(
-        "$baseUrl/list-clients${status != null ? '?status=$status' : ''}",
+        "$baseUrl/clients-list${status != null ? '?status=$status' : ''}",
       ),
       headers: {"Authorization": "Bearer $token"},
     );
     print(
-      "data => ${baseUrl}/list-clients${status != null ? '?status=$status' : ''}",
+      "data => ${baseUrl}/clients-list${status != null ? '?status=$status' : ''}",
     );
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body)["clients"];
@@ -28,7 +28,7 @@ class ClientApi {
   static Future<void> addClient(Map<String, dynamic> data) async {
     final token = GetStorage().read("token");
     await http.post(
-      Uri.parse("$baseUrl/clients"),
+      Uri.parse("$baseUrl/clients-create"),
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",
@@ -40,7 +40,7 @@ class ClientApi {
   static Future<void> updateClient(int id, Map<String, dynamic> data) async {
     final token = GetStorage().read("token");
     await http.put(
-      Uri.parse("$baseUrl/clients/$id"),
+      Uri.parse("$baseUrl/clients-update/$id"),
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",
@@ -52,7 +52,7 @@ class ClientApi {
   static Future<void> deleteClient(int id) async {
     final token = GetStorage().read("token");
     await http.delete(
-      Uri.parse("$baseUrl/clients/$id"),
+      Uri.parse("$baseUrl/clients-delete/$id"),
       headers: {"Authorization": "Bearer $token"},
     );
   }
@@ -60,7 +60,7 @@ class ClientApi {
   static Future<void> approveClient(int id) async {
     final token = GetStorage().read("token");
     await http.post(
-      Uri.parse("$baseUrl/clients/$id/approve"),
+      Uri.parse("$baseUrl/clients-validate/$id"),
       headers: {"Authorization": "Bearer $token"},
     );
   }
@@ -68,7 +68,7 @@ class ClientApi {
   static Future<void> rejectClient(int id, String commentaire) async {
     final token = GetStorage().read("token");
     await http.post(
-      Uri.parse("$baseUrl/clients/$id/reject"),
+      Uri.parse("$baseUrl/clients-reject/$id"),
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",

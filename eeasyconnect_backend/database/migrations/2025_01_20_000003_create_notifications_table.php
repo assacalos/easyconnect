@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('notifications', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('user_id');
             $table->string('type'); // pointage, conge, evaluation, facture, paiement, etc.
             $table->string('titre');
             $table->text('message');
@@ -25,6 +25,8 @@ return new class extends Migration
             $table->timestamp('date_expiration')->nullable();
             $table->boolean('envoyee')->default(false);
             $table->timestamps();
+
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 

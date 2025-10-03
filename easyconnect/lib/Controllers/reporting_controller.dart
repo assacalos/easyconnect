@@ -31,6 +31,16 @@ class ReportingController extends GetxController {
   final rdvTypeController = TextEditingController();
   final rdvNotesController = TextEditingController();
 
+  // Contrôleurs pour les notes des métriques
+  final noteClientsProspectesController = TextEditingController();
+  final noteDevisCreesController = TextEditingController();
+  final noteDevisAcceptesController = TextEditingController();
+  final noteChiffreAffairesController = TextEditingController();
+  final noteNouveauxClientsController = TextEditingController();
+  final noteAppelsEffectuesController = TextEditingController();
+  final noteEmailsEnvoyesController = TextEditingController();
+  final noteVisitesRealiseesController = TextEditingController();
+
   @override
   void onInit() {
     super.onInit();
@@ -52,10 +62,10 @@ class ReportingController extends GetxController {
   Future<void> loadReports() async {
     try {
       isLoading.value = true;
-      
+
       final userRole = _authController.userAuth.value?.role;
       final userId = _authController.userAuth.value?.id;
-      
+
       if (userRole == Roles.ADMIN || userRole == Roles.PATRON) {
         // Le patron peut voir tous les rapports
         reports.value = await _reportingService.getAllReports(
@@ -82,12 +92,12 @@ class ReportingController extends GetxController {
   Future<void> createReport() async {
     try {
       isLoading.value = true;
-      
+
       final userRole = _authController.userAuth.value?.role;
       final userId = _authController.userAuth.value?.id;
-      
+
       Map<String, dynamic> metrics = {};
-      
+
       // Générer les métriques selon le rôle
       switch (userRole) {
         case Roles.COMMERCIAL:
@@ -114,6 +124,8 @@ class ReportingController extends GetxController {
       Get.snackbar('Succès', 'Rapport créé avec succès');
       loadReports();
       clearForm();
+      // Navigation automatique vers la page précédente
+      Get.back();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création du rapport: $e');
     } finally {
@@ -125,7 +137,7 @@ class ReportingController extends GetxController {
   Future<void> submitReport(int reportId) async {
     try {
       isLoading.value = true;
-      
+
       await _reportingService.submitReport(reportId);
       Get.snackbar('Succès', 'Rapport soumis avec succès');
       loadReports();
@@ -140,7 +152,7 @@ class ReportingController extends GetxController {
   Future<void> approveReport(int reportId) async {
     try {
       isLoading.value = true;
-      
+
       await _reportingService.approveReport(
         reportId,
         comments: commentsController.text,
@@ -156,8 +168,8 @@ class ReportingController extends GetxController {
 
   // Ajouter un RDV (pour commercial)
   void addRdv() {
-    if (rdvClientController.text.isEmpty || 
-        rdvDateController.text.isEmpty || 
+    if (rdvClientController.text.isEmpty ||
+        rdvDateController.text.isEmpty ||
         rdvHeureController.text.isEmpty) {
       Get.snackbar('Erreur', 'Veuillez remplir tous les champs du RDV');
       return;
@@ -167,27 +179,32 @@ class ReportingController extends GetxController {
       clientName: rdvClientController.text,
       dateRdv: DateTime.parse(rdvDateController.text),
       heureRdv: rdvHeureController.text,
-      typeRdv: rdvTypeController.text.isNotEmpty ? rdvTypeController.text : 'presentiel',
+      typeRdv:
+          rdvTypeController.text.isNotEmpty
+              ? rdvTypeController.text
+              : 'presentiel',
       status: 'planifie',
       notes: rdvNotesController.text,
     );
 
     // Ajouter le RDV à la liste des RDV du commercial
-    final currentMetrics = commercialMetrics.value ?? CommercialMetrics(
-      clientsProspectes: 0,
-      rdvObtenus: 0,
-      rdvList: [],
-      devisCrees: 0,
-      devisAcceptes: 0,
-      chiffreAffaires: 0,
-      nouveauxClients: 0,
-      appelsEffectues: 0,
-      emailsEnvoyes: 0,
-      visitesRealisees: 0,
-    );
+    final currentMetrics =
+        commercialMetrics.value ??
+        CommercialMetrics(
+          clientsProspectes: 0,
+          rdvObtenus: 0,
+          rdvList: [],
+          devisCrees: 0,
+          devisAcceptes: 0,
+          chiffreAffaires: 0,
+          nouveauxClients: 0,
+          appelsEffectues: 0,
+          emailsEnvoyes: 0,
+          visitesRealisees: 0,
+        );
 
     final updatedRdvList = List<RdvInfo>.from(currentMetrics.rdvList)..add(rdv);
-    
+
     commercialMetrics.value = CommercialMetrics(
       clientsProspectes: currentMetrics.clientsProspectes,
       rdvObtenus: updatedRdvList.length,
@@ -213,54 +230,60 @@ class ReportingController extends GetxController {
 
   // Générer les métriques commercial
   Map<String, dynamic> _generateCommercialMetrics() {
-    final metrics = commercialMetrics.value ?? CommercialMetrics(
-      clientsProspectes: 0,
-      rdvObtenus: 0,
-      rdvList: [],
-      devisCrees: 0,
-      devisAcceptes: 0,
-      chiffreAffaires: 0,
-      nouveauxClients: 0,
-      appelsEffectues: 0,
-      emailsEnvoyes: 0,
-      visitesRealisees: 0,
-    );
-    
+    final metrics =
+        commercialMetrics.value ??
+        CommercialMetrics(
+          clientsProspectes: 0,
+          rdvObtenus: 0,
+          rdvList: [],
+          devisCrees: 0,
+          devisAcceptes: 0,
+          chiffreAffaires: 0,
+          nouveauxClients: 0,
+          appelsEffectues: 0,
+          emailsEnvoyes: 0,
+          visitesRealisees: 0,
+        );
+
     return metrics.toJson();
   }
 
   // Générer les métriques comptable
   Map<String, dynamic> _generateComptableMetrics() {
-    final metrics = comptableMetrics.value ?? ComptableMetrics(
-      facturesEmises: 0,
-      facturesPayees: 0,
-      montantFacture: 0,
-      montantEncaissement: 0,
-      bordereauxTraites: 0,
-      bonsCommandeTraites: 0,
-      chiffreAffaires: 0,
-      clientsFactures: 0,
-      relancesEffectuees: 0,
-      encaissements: 0,
-    );
-    
+    final metrics =
+        comptableMetrics.value ??
+        ComptableMetrics(
+          facturesEmises: 0,
+          facturesPayees: 0,
+          montantFacture: 0,
+          montantEncaissement: 0,
+          bordereauxTraites: 0,
+          bonsCommandeTraites: 0,
+          chiffreAffaires: 0,
+          clientsFactures: 0,
+          relancesEffectuees: 0,
+          encaissements: 0,
+        );
+
     return metrics.toJson();
   }
 
   // Générer les métriques technicien
   Map<String, dynamic> _generateTechnicienMetrics() {
-    final metrics = technicienMetrics.value ?? TechnicienMetrics(
-      interventionsPlanifiees: 0,
-      interventionsRealisees: 0,
-      interventionsAnnulees: 0,
-      interventionsList: [],
-      clientsVisites: 0,
-      problemesResolus: 0,
-      problemesEnCours: 0,
-      tempsTravail: 0,
-      deplacements: 0,
-    );
-    
+    final metrics =
+        technicienMetrics.value ??
+        TechnicienMetrics(
+          interventionsPlanifiees: 0,
+          interventionsRealisees: 0,
+          interventionsAnnulees: 0,
+          interventionsList: [],
+          clientsVisites: 0,
+          problemesResolus: 0,
+          problemesEnCours: 0,
+          tempsTravail: 0,
+          deplacements: 0,
+        );
+
     return metrics.toJson();
   }
 
@@ -274,19 +297,29 @@ class ReportingController extends GetxController {
     int? appelsEffectues,
     int? emailsEnvoyes,
     int? visitesRealisees,
+    String? noteClientsProspectes,
+    String? noteDevisCrees,
+    String? noteDevisAcceptes,
+    String? noteChiffreAffaires,
+    String? noteNouveauxClients,
+    String? noteAppelsEffectues,
+    String? noteEmailsEnvoyes,
+    String? noteVisitesRealisees,
   }) {
-    final current = commercialMetrics.value ?? CommercialMetrics(
-      clientsProspectes: 0,
-      rdvObtenus: 0,
-      rdvList: [],
-      devisCrees: 0,
-      devisAcceptes: 0,
-      chiffreAffaires: 0,
-      nouveauxClients: 0,
-      appelsEffectues: 0,
-      emailsEnvoyes: 0,
-      visitesRealisees: 0,
-    );
+    final current =
+        commercialMetrics.value ??
+        CommercialMetrics(
+          clientsProspectes: 0,
+          rdvObtenus: 0,
+          rdvList: [],
+          devisCrees: 0,
+          devisAcceptes: 0,
+          chiffreAffaires: 0,
+          nouveauxClients: 0,
+          appelsEffectues: 0,
+          emailsEnvoyes: 0,
+          visitesRealisees: 0,
+        );
 
     commercialMetrics.value = CommercialMetrics(
       clientsProspectes: clientsProspectes ?? current.clientsProspectes,
@@ -299,6 +332,17 @@ class ReportingController extends GetxController {
       appelsEffectues: appelsEffectues ?? current.appelsEffectues,
       emailsEnvoyes: emailsEnvoyes ?? current.emailsEnvoyes,
       visitesRealisees: visitesRealisees ?? current.visitesRealisees,
+      noteClientsProspectes:
+          noteClientsProspectes ?? current.noteClientsProspectes,
+      noteRdvObtenus: current.noteRdvObtenus,
+      noteDevisCrees: noteDevisCrees ?? current.noteDevisCrees,
+      noteDevisAcceptes: noteDevisAcceptes ?? current.noteDevisAcceptes,
+      noteChiffreAffaires: noteChiffreAffaires ?? current.noteChiffreAffaires,
+      noteNouveauxClients: noteNouveauxClients ?? current.noteNouveauxClients,
+      noteAppelsEffectues: noteAppelsEffectues ?? current.noteAppelsEffectues,
+      noteEmailsEnvoyes: noteEmailsEnvoyes ?? current.noteEmailsEnvoyes,
+      noteVisitesRealisees:
+          noteVisitesRealisees ?? current.noteVisitesRealisees,
     );
   }
 
@@ -314,19 +358,31 @@ class ReportingController extends GetxController {
     int? clientsFactures,
     int? relancesEffectuees,
     double? encaissements,
+    String? noteFacturesEmises,
+    String? noteFacturesPayees,
+    String? noteMontantFacture,
+    String? noteMontantEncaissement,
+    String? noteBordereauxTraites,
+    String? noteBonsCommandeTraites,
+    String? noteChiffreAffaires,
+    String? noteClientsFactures,
+    String? noteRelancesEffectuees,
+    String? noteEncaissements,
   }) {
-    final current = comptableMetrics.value ?? ComptableMetrics(
-      facturesEmises: 0,
-      facturesPayees: 0,
-      montantFacture: 0,
-      montantEncaissement: 0,
-      bordereauxTraites: 0,
-      bonsCommandeTraites: 0,
-      chiffreAffaires: 0,
-      clientsFactures: 0,
-      relancesEffectuees: 0,
-      encaissements: 0,
-    );
+    final current =
+        comptableMetrics.value ??
+        ComptableMetrics(
+          facturesEmises: 0,
+          facturesPayees: 0,
+          montantFacture: 0,
+          montantEncaissement: 0,
+          bordereauxTraites: 0,
+          bonsCommandeTraites: 0,
+          chiffreAffaires: 0,
+          clientsFactures: 0,
+          relancesEffectuees: 0,
+          encaissements: 0,
+        );
 
     comptableMetrics.value = ComptableMetrics(
       facturesEmises: facturesEmises ?? current.facturesEmises,
@@ -339,6 +395,20 @@ class ReportingController extends GetxController {
       clientsFactures: clientsFactures ?? current.clientsFactures,
       relancesEffectuees: relancesEffectuees ?? current.relancesEffectuees,
       encaissements: encaissements ?? current.encaissements,
+      noteFacturesEmises: noteFacturesEmises ?? current.noteFacturesEmises,
+      noteFacturesPayees: noteFacturesPayees ?? current.noteFacturesPayees,
+      noteMontantFacture: noteMontantFacture ?? current.noteMontantFacture,
+      noteMontantEncaissement:
+          noteMontantEncaissement ?? current.noteMontantEncaissement,
+      noteBordereauxTraites:
+          noteBordereauxTraites ?? current.noteBordereauxTraites,
+      noteBonsCommandeTraites:
+          noteBonsCommandeTraites ?? current.noteBonsCommandeTraites,
+      noteChiffreAffaires: noteChiffreAffaires ?? current.noteChiffreAffaires,
+      noteClientsFactures: noteClientsFactures ?? current.noteClientsFactures,
+      noteRelancesEffectuees:
+          noteRelancesEffectuees ?? current.noteRelancesEffectuees,
+      noteEncaissements: noteEncaissements ?? current.noteEncaissements,
     );
   }
 
@@ -353,23 +423,36 @@ class ReportingController extends GetxController {
     double? tempsTravail,
     int? deplacements,
     String? notesTechniques,
+    String? noteInterventionsPlanifiees,
+    String? noteInterventionsRealisees,
+    String? noteInterventionsAnnulees,
+    String? noteClientsVisites,
+    String? noteProblemesResolus,
+    String? noteProblemesEnCours,
+    String? noteTempsTravail,
+    String? noteDeplacements,
   }) {
-    final current = technicienMetrics.value ?? TechnicienMetrics(
-      interventionsPlanifiees: 0,
-      interventionsRealisees: 0,
-      interventionsAnnulees: 0,
-      interventionsList: [],
-      clientsVisites: 0,
-      problemesResolus: 0,
-      problemesEnCours: 0,
-      tempsTravail: 0,
-      deplacements: 0,
-    );
+    final current =
+        technicienMetrics.value ??
+        TechnicienMetrics(
+          interventionsPlanifiees: 0,
+          interventionsRealisees: 0,
+          interventionsAnnulees: 0,
+          interventionsList: [],
+          clientsVisites: 0,
+          problemesResolus: 0,
+          problemesEnCours: 0,
+          tempsTravail: 0,
+          deplacements: 0,
+        );
 
     technicienMetrics.value = TechnicienMetrics(
-      interventionsPlanifiees: interventionsPlanifiees ?? current.interventionsPlanifiees,
-      interventionsRealisees: interventionsRealisees ?? current.interventionsRealisees,
-      interventionsAnnulees: interventionsAnnulees ?? current.interventionsAnnulees,
+      interventionsPlanifiees:
+          interventionsPlanifiees ?? current.interventionsPlanifiees,
+      interventionsRealisees:
+          interventionsRealisees ?? current.interventionsRealisees,
+      interventionsAnnulees:
+          interventionsAnnulees ?? current.interventionsAnnulees,
       interventionsList: current.interventionsList,
       clientsVisites: clientsVisites ?? current.clientsVisites,
       problemesResolus: problemesResolus ?? current.problemesResolus,
@@ -377,6 +460,19 @@ class ReportingController extends GetxController {
       tempsTravail: tempsTravail ?? current.tempsTravail,
       deplacements: deplacements ?? current.deplacements,
       notesTechniques: notesTechniques ?? current.notesTechniques,
+      noteInterventionsPlanifiees:
+          noteInterventionsPlanifiees ?? current.noteInterventionsPlanifiees,
+      noteInterventionsRealisees:
+          noteInterventionsRealisees ?? current.noteInterventionsRealisees,
+      noteInterventionsAnnulees:
+          noteInterventionsAnnulees ?? current.noteInterventionsAnnulees,
+      noteClientsVisites: noteClientsVisites ?? current.noteClientsVisites,
+      noteProblemesResolus:
+          noteProblemesResolus ?? current.noteProblemesResolus,
+      noteProblemesEnCours:
+          noteProblemesEnCours ?? current.noteProblemesEnCours,
+      noteTempsTravail: noteTempsTravail ?? current.noteTempsTravail,
+      noteDeplacements: noteDeplacements ?? current.noteDeplacements,
     );
   }
 

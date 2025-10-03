@@ -53,30 +53,51 @@ class InvoiceModel {
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     return InvoiceModel(
-      id: json['id'],
+      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
       invoiceNumber: json['invoice_number'],
-      clientId: json['client_id'],
-      clientName: json['client_name'],
-      clientEmail: json['client_email'],
-      clientAddress: json['client_address'],
-      commercialId: json['commercial_id'],
-      commercialName: json['commercial_name'],
+      clientId:
+          (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
+                  is String
+              ? int.tryParse(
+                json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
+              )
+              : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
+      clientName: json['nom'],
+      clientEmail: json['email'],
+      clientAddress: json['adresse'],
+      commercialId: json['user_id'],
+      commercialName: json['nom'],
       invoiceDate: DateTime.parse(json['invoice_date']),
       dueDate: DateTime.parse(json['due_date']),
       status: json['status'],
-      subtotal: (json['subtotal'] ?? 0).toDouble(),
-      taxRate: (json['tax_rate'] ?? 0).toDouble(),
-      taxAmount: (json['tax_amount'] ?? 0).toDouble(),
-      totalAmount: (json['total_amount'] ?? 0).toDouble(),
+      subtotal:
+          json['subtotal'] is String
+              ? double.tryParse(json['subtotal']) ?? 0.0
+              : (json['subtotal']?.toDouble() ?? 0.0),
+      taxRate:
+          json['tax_rate'] is String
+              ? double.tryParse(json['tax_rate']) ?? 0.0
+              : (json['tax_rate']?.toDouble() ?? 0.0),
+      taxAmount:
+          json['tax_amount'] is String
+              ? double.tryParse(json['tax_amount']) ?? 0.0
+              : (json['tax_amount']?.toDouble() ?? 0.0),
+      totalAmount:
+          json['total_amount'] is String
+              ? double.tryParse(json['total_amount']) ?? 0.0
+              : (json['total_amount']?.toDouble() ?? 0.0),
       currency: json['currency'] ?? 'EUR',
       notes: json['notes'],
       terms: json['terms'],
-      items: (json['items'] as List<dynamic>?)
-          ?.map((item) => InvoiceItem.fromJson(item))
-          .toList() ?? [],
-      paymentInfo: json['payment_info'] != null 
-          ? PaymentInfo.fromJson(json['payment_info']) 
-          : null,
+      items:
+          (json['items'] as List<dynamic>?)
+              ?.map((item) => InvoiceItem.fromJson(item))
+              .toList() ??
+          [],
+      paymentInfo:
+          json['payment_info'] != null
+              ? PaymentInfo.fromJson(json['payment_info'])
+              : null,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
       sentAt: json['sent_at'] != null ? DateTime.parse(json['sent_at']) : null,
@@ -89,11 +110,11 @@ class InvoiceModel {
       'id': id,
       'invoice_number': invoiceNumber,
       'client_id': clientId,
-      'client_name': clientName,
-      'client_email': clientEmail,
-      'client_address': clientAddress,
-      'commercial_id': commercialId,
-      'commercial_name': commercialName,
+      'nom': clientName,
+      'email': clientEmail,
+      'adresse': clientAddress,
+      'user_id': commercialId,
+      'nom': commercialName,
       'invoice_date': invoiceDate.toIso8601String(),
       'due_date': dueDate.toIso8601String(),
       'status': status,
@@ -173,9 +194,10 @@ class PaymentInfo {
     return PaymentInfo(
       method: json['method'],
       reference: json['reference'],
-      paymentDate: json['payment_date'] != null 
-          ? DateTime.parse(json['payment_date']) 
-          : null,
+      paymentDate:
+          json['payment_date'] != null
+              ? DateTime.parse(json['payment_date'])
+              : null,
       amount: (json['amount'] ?? 0).toDouble(),
       notes: json['notes'],
     );
@@ -230,9 +252,11 @@ class InvoiceStats {
       paidAmount: (json['paid_amount'] ?? 0).toDouble(),
       pendingAmount: (json['pending_amount'] ?? 0).toDouble(),
       overdueAmount: (json['overdue_amount'] ?? 0).toDouble(),
-      recentInvoices: (json['recent_invoices'] as List<dynamic>?)
-          ?.map((invoice) => InvoiceModel.fromJson(invoice))
-          .toList() ?? [],
+      recentInvoices:
+          (json['recent_invoices'] as List<dynamic>?)
+              ?.map((invoice) => InvoiceModel.fromJson(invoice))
+              .toList() ??
+          [],
       monthlyStats: Map<String, double>.from(json['monthly_stats'] ?? {}),
     );
   }
@@ -248,7 +272,8 @@ class InvoiceStats {
       'paid_amount': paidAmount,
       'pending_amount': pendingAmount,
       'overdue_amount': overdueAmount,
-      'recent_invoices': recentInvoices.map((invoice) => invoice.toJson()).toList(),
+      'recent_invoices':
+          recentInvoices.map((invoice) => invoice.toJson()).toList(),
       'monthly_stats': monthlyStats,
     };
   }

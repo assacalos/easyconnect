@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('evaluations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Employé évalué
-            $table->foreignId('evaluateur_id')->constrained('users'); // RH ou Manager qui évalue
+            $table->unsignedBigInteger('user_id'); // Employé évalué
+            $table->unsignedBigInteger('evaluateur_id'); // RH ou Manager qui évalue
             $table->string('type_evaluation'); // annuelle, trimestrielle, probation, etc.
             $table->date('date_evaluation');
             $table->date('periode_debut');
@@ -29,6 +29,9 @@ return new class extends Migration
             $table->date('date_signature_evaluateur')->nullable();
             $table->boolean('confidentiel')->default(true);
             $table->timestamps();
+
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('evaluateur_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 

@@ -1,4 +1,3 @@
-import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/services/notification_service.dart';
@@ -6,7 +5,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 
 abstract class BaseDashboardController extends GetxController {
-  final AuthController l = Get.put(AuthController());
+  final AuthController l = Get.find<AuthController>();
   final NotificationService notificationService =
       Get.find<NotificationService>();
 

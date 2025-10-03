@@ -17,7 +17,39 @@ class Reporting extends Model
         'submitted_at',
         'approved_at',
         'approved_by',
-        'comments'
+        'comments',
+        // Notes pour les métriques commerciales
+        'notes_clients_prospectes',
+        'notes_rdv_obtenus',
+        'notes_devis_crees',
+        'notes_devis_acceptes',
+        'notes_chiffre_affaires',
+        'notes_nouveaux_clients',
+        'notes_appels_effectues',
+        'notes_emails_envoyes',
+        'notes_visites_realisees',
+        // Notes pour les métriques comptables
+        'notes_factures_emises',
+        'notes_factures_payees',
+        'notes_montant_facture',
+        'notes_montant_encaissement',
+        'notes_bordereaux_traites',
+        'notes_bons_commande_traites',
+        'notes_clients_factures',
+        'notes_relances_effectuees',
+        'notes_encaissements',
+        // Notes pour les métriques techniques
+        'notes_interventions_planifiees',
+        'notes_interventions_realisees',
+        'notes_interventions_annulees',
+        'notes_clients_visites',
+        'notes_problemes_resolus',
+        'notes_problemes_en_cours',
+        'notes_temps_travail',
+        'notes_deplacements',
+        'notes_techniques',
+        // Notes générales
+        'notes_generales'
     ];
 
     protected $casts = [
@@ -137,6 +169,51 @@ class Reporting extends Model
         ];
 
         return $statuses[$this->status] ?? $this->status;
+    }
+
+    // Méthodes pour gérer les notes par colonne
+    public function getNotesForColumn($columnName)
+    {
+        $notesField = 'notes_' . $columnName;
+        return $this->$notesField ?? null;
+    }
+
+    public function setNotesForColumn($columnName, $notes)
+    {
+        $notesField = 'notes_' . $columnName;
+        $this->$notesField = $notes;
+        return $this;
+    }
+
+    public function getAllNotes()
+    {
+        $notes = [];
+        $fillableFields = $this->getFillable();
+        
+        foreach ($fillableFields as $field) {
+            if (str_starts_with($field, 'notes_') && $field !== 'notes_generales') {
+                $columnName = str_replace('notes_', '', $field);
+                $notes[$columnName] = $this->$field;
+            }
+        }
+        
+        $notes['generales'] = $this->notes_generales;
+        return $notes;
+    }
+
+    public function updateNotes($notesData)
+    {
+        foreach ($notesData as $columnName => $notes) {
+            if ($columnName === 'generales') {
+                $this->notes_generales = $notes;
+            } else {
+                $notesField = 'notes_' . $columnName;
+                if (in_array($notesField, $this->getFillable())) {
+                    $this->$notesField = $notes;
+                }
+            }
+        }
+        return $this;
     }
 
     // Méthodes pour générer les métriques selon le rôle

@@ -2,9 +2,9 @@ class Roles {
   static const int ADMIN = 1;
   static const int COMMERCIAL = 2;
   static const int COMPTABLE = 3;
-  static const int PATRON = 4;
-  static const int RH = 5;
-  static const int TECHNICIEN = 6;
+  static const int RH = 4;
+  static const int TECHNICIEN = 5;
+  static const int PATRON = 6;
 
   static String getRoleName(int? role) {
     switch (role) {
@@ -14,12 +14,12 @@ class Roles {
         return 'Commercial';
       case COMPTABLE:
         return 'Comptable';
-      case PATRON:
-        return 'Patron';
       case RH:
         return 'Ressources Humaines';
       case TECHNICIEN:
         return 'Technicien';
+      case PATRON:
+        return 'Patron';
       default:
         return 'Utilisateur';
     }
@@ -30,9 +30,9 @@ class Roles {
       {'id': ADMIN, 'name': 'Administrateur'},
       {'id': COMMERCIAL, 'name': 'Commercial'},
       {'id': COMPTABLE, 'name': 'Comptable'},
-      {'id': PATRON, 'name': 'Patron'},
       {'id': RH, 'name': 'Ressources Humaines'},
       {'id': TECHNICIEN, 'name': 'Technicien'},
+      {'id': PATRON, 'name': 'Patron'},
     ];
   }
 
@@ -56,12 +56,7 @@ class Roles {
         'manage_expenses',
         'generate_reports',
       ],
-      PATRON: [
-        'view_all_data',
-        'manage_settings',
-        'view_analytics',
-        'approve_major_decisions',
-      ],
+
       RH: [
         'manage_employees',
         'manage_leaves',
@@ -73,6 +68,12 @@ class Roles {
         'view_technical_data',
         'manage_maintenance',
         'update_status',
+      ],
+      PATRON: [
+        'view_all_data',
+        'manage_settings',
+        'view_analytics',
+        'approve_major_decisions',
       ],
     };
   }

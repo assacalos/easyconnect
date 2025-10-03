@@ -2,43 +2,52 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
 class DevisListPage extends StatelessWidget {
-  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
+  final DevisController controller = Get.find<DevisController>();
   final formatDate = DateFormat('dd/MM/yyyy');
 
   DevisListPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Recharger les devis au démarrage de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadDevis();
+    });
+
     return DefaultTabController(
-      length: 4,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Devis'),
           bottom: const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(text: 'Brouillons'),
-              Tab(text: 'Envoyés'),
-              Tab(text: 'Acceptés'),
-              Tab(text: 'Refusés'),
+              Tab(text: 'En attente'),
+              Tab(text: 'Validés'),
+              Tab(text: 'Rejetés'),
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () => Get.toNamed('/devis/new'),
-            ),
-          ],
         ),
-        body: TabBarView(
+        body: Stack(
           children: [
-            _buildDevisList(0), // Brouillons
-            _buildDevisList(1), // Envoyés
-            _buildDevisList(2), // Acceptés
-            _buildDevisList(3), // Refusés
+            TabBarView(
+              children: [
+                _buildDevisList(1), // En attente
+                _buildDevisList(2), // Validés
+                _buildDevisList(3), // Rejetés
+              ],
+            ),
+            // Bouton d'ajout uniforme en bas à droite
+            UniformAddButton(
+              onPressed: () => Get.toNamed('/devis/new'),
+              label: 'Nouveau Devis',
+              icon: Icons.description,
+            ),
           ],
         ),
       ),
@@ -61,10 +70,8 @@ class DevisListPage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                status == 0
-                    ? Icons.edit_note
-                    : status == 1
-                    ? Icons.send
+                status == 1
+                    ? Icons.access_time
                     : status == 2
                     ? Icons.check_circle
                     : Icons.cancel,
@@ -73,13 +80,11 @@ class DevisListPage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                status == 0
-                    ? 'Aucun brouillon'
-                    : status == 1
-                    ? 'Aucun devis envoyé'
+                status == 1
+                    ? 'Aucun devis en attente'
                     : status == 2
-                    ? 'Aucun devis accepté'
-                    : 'Aucun devis refusé',
+                    ? 'Aucun devis validé'
+                    : 'Aucun devis rejeté',
                 style: const TextStyle(fontSize: 18, color: Colors.grey),
               ),
             ],
@@ -184,18 +189,6 @@ class DevisListPage extends StatelessWidget {
                 ButtonBar(
                   alignment: MainAxisAlignment.end,
                   children: [
-                    if (status == 0) ...[
-                      TextButton.icon(
-                        icon: const Icon(Icons.send),
-                        label: const Text('Envoyer'),
-                        onPressed: () => controller.sendDevis(devis.id!),
-                      ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Modifier'),
-                        onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
-                      ),
-                    ],
                     if (status == 1) ...[
                       TextButton.icon(
                         icon: const Icon(Icons.check),
@@ -213,12 +206,6 @@ class DevisListPage extends StatelessWidget {
                       onPressed: () => controller.generatePDF(devis.id!),
                       tooltip: 'Générer PDF',
                     ),
-                    if (status == 0)
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => _showDeleteDialog(devis),
-                        tooltip: 'Supprimer',
-                      ),
                   ],
                 ),
               ],
@@ -268,32 +255,6 @@ class DevisListPage extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteDialog(Devis devis) {
-    final DevisController controller = Get.find<DevisController>();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Supprimer le devis'),
-        content: const Text(
-          'Êtes-vous sûr de vouloir supprimer ce devis ? Cette action est irréversible.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.deleteDevis(devis.id!);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Supprimer'),
           ),
         ],
       ),

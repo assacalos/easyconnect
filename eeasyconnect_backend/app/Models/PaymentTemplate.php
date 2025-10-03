@@ -17,18 +17,34 @@ class PaymentTemplate extends Model
         'default_payment_method',
         'default_frequency',
         'template',
-        'is_default'
+        'is_default',
+        'is_active',
+        'created_by',
+        'updated_by'
     ];
 
     protected $casts = [
         'default_amount' => 'decimal:2',
-        'is_default' => 'boolean'
+        'is_default' => 'boolean',
+        'is_active' => 'boolean',
+        'template' => 'array'
     ];
 
-    // Scopes
-    public function scopeDefault($query)
+    // Relations
+    public function creator()
     {
-        return $query->where('is_default', true);
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updater()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
     }
 
     public function scopeOneTime($query)
@@ -41,45 +57,80 @@ class PaymentTemplate extends Model
         return $query->where('type', 'monthly');
     }
 
-    // Méthodes utilitaires
-    public function setAsDefault()
+    public function scopeDefault($query)
     {
-        // Désactiver tous les autres templates par défaut
-        self::where('is_default', true)->update(['is_default' => false]);
-        
-        // Activer ce template
-        $this->update(['is_default' => true]);
+        return $query->where('is_default', true);
     }
 
-    public static function getDefaultTemplate($type = 'one_time')
+    // Accesseurs
+    public function getTypeLibelleAttribute()
     {
-        return self::where('is_default', true)
-            ->where('type', $type)
-            ->first() ?? self::where('type', $type)->first();
-    }
-
-    // Méthode pour rendre le template avec des données
-    public function render($payment, $client, $comptable)
-    {
-        $template = $this->template;
-        
-        // Variables disponibles dans le template
-        $variables = [
-            '{{payment_number}}' => $payment->payment_number,
-            '{{payment_date}}' => $payment->payment_date->format('d/m/Y'),
-            '{{due_date}}' => $payment->due_date ? $payment->due_date->format('d/m/Y') : '',
-            '{{client_name}}' => $client->nom,
-            '{{client_email}}' => $client->email,
-            '{{client_address}}' => $client->adresse,
-            '{{comptable_name}}' => $comptable->nom . ' ' . $comptable->prenom,
-            '{{amount}}' => number_format($payment->amount, 2, ',', ' '),
-            '{{currency}}' => $payment->currency,
-            '{{payment_method}}' => $payment->payment_method_libelle,
-            '{{description}}' => $payment->description ?? '',
-            '{{notes}}' => $payment->notes ?? '',
-            '{{reference}}' => $payment->reference ?? '',
+        $types = [
+            'one_time' => 'Paiement unique',
+            'monthly' => 'Paiement mensuel'
         ];
 
-        return str_replace(array_keys($variables), array_values($variables), $template);
+        return $types[$this->type] ?? $this->type;
+    }
+
+    public function getFormattedAmountAttribute()
+    {
+        return number_format($this->default_amount, 2, ',', ' ') . ' FCFA';
+    }
+
+    public function getPaymentMethodLibelleAttribute()
+    {
+        $methods = [
+            'especes' => 'Espèces',
+            'virement' => 'Virement',
+            'cheque' => 'Chèque',
+            'carte_bancaire' => 'Carte bancaire',
+            'mobile_money' => 'Mobile Money'
+        ];
+
+        return $methods[$this->default_payment_method] ?? $this->default_payment_method;
+    }
+
+    // Méthodes utilitaires
+    public function canBeSetAsDefault()
+    {
+        return $this->is_active;
+    }
+
+    public function setAsDefault()
+    {
+        if ($this->canBeSetAsDefault()) {
+            // Retirer le statut par défaut des autres templates du même type
+            self::where('type', $this->type)
+                ->where('id', '!=', $this->id)
+                ->update(['is_default' => false]);
+            
+            $this->update(['is_default' => true]);
+            return true;
+        }
+        return false;
+    }
+
+    public function createPaymentFromTemplate($data = [])
+    {
+        $paymentData = array_merge([
+            'type' => $this->type,
+            'montant' => $this->default_amount,
+            'type_paiement' => $this->default_payment_method,
+            'currency' => 'FCFA',
+            'status' => 'draft'
+        ], $data);
+
+        return Paiement::create($paymentData);
+    }
+
+    public function getTemplateData()
+    {
+        return $this->template ?? [];
+    }
+
+    public function setTemplateData($data)
+    {
+        $this->update(['template' => $data]);
     }
 }

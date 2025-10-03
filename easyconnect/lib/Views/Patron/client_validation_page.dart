@@ -3,33 +3,58 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
 
-class ClientValidationPage extends StatelessWidget {
-  final ClientController controller = Get.find<ClientController>();
+class ClientValidationPage extends StatefulWidget {
+  const ClientValidationPage({super.key});
 
-  ClientValidationPage({super.key});
+  @override
+  State<ClientValidationPage> createState() => _ClientValidationPageState();
+}
+
+class _ClientValidationPageState extends State<ClientValidationPage>
+    with SingleTickerProviderStateMixin {
+  final ClientController controller = Get.put(ClientController());
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        final status = _tabController.index;
+        print('🔄 Changement d\'onglet vers: $status');
+        controller.loadClients(status: status);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Validation des Clients'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'En attente'),
-              Tab(text: 'Validés'),
-              Tab(text: 'Rejetés'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildClientList(0), // En attente
-            _buildClientList(1), // Validés
-            _buildClientList(2), // Rejetés
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Validation des Clients'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'En attente'),
+            Tab(text: 'Validés'),
+            Tab(text: 'Rejetés'),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildClientList(0), // En attente
+          _buildClientList(1), // Validés
+          _buildClientList(2), // Rejetés
+        ],
       ),
     );
   }

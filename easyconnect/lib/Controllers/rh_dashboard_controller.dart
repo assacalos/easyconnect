@@ -1,7 +1,6 @@
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
-import 'package:easyconnect/utils/roles.dart';
 
 class RhDashboardController extends BaseDashboardController {
   // Données des graphiques
@@ -70,15 +69,23 @@ class RhDashboardController extends BaseDashboardController {
 
   // Actions spécifiques RH
   void createNewEmployee() {
-    Get.toNamed('/rh/employees/new');
+    Get.toNamed('/employees/new');
   }
 
   void showEmployees() {
-    Get.toNamed('/rh/employees');
+    Get.toNamed('/employees');
   }
 
   void showLeaves() {
-    Get.toNamed('/rh/leaves');
+    Get.toNamed('/leaves');
+  }
+
+  void showRecruitment() {
+    Get.toNamed('/recruitment');
+  }
+
+  void showContracts() {
+    Get.toNamed('/contracts');
   }
 
   void showAttendance() {
@@ -89,9 +96,6 @@ class RhDashboardController extends BaseDashboardController {
     Get.toNamed('/rh/training');
   }
 
-  void showRecruitment() {
-    Get.toNamed('/rh/recruitment');
-  }
 
   void showReports() {
     Get.toNamed('/rh/reports');

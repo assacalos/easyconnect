@@ -33,7 +33,7 @@ class DevisController extends GetxController {
   void onInit() {
     super.onInit();
     loadDevis();
-    loadStats();
+    // loadStats(); // Temporairement désactivé
   }
 
   Future<void> loadDevis({int? status}) async {
@@ -69,12 +69,14 @@ class DevisController extends GetxController {
   Future<void> createDevis(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
+
       final newDevis = Devis(
         clientId: selectedClient.value!.id!,
         reference: data['reference'],
         dateCreation: DateTime.now(),
         dateValidite: data['date_validite'],
         notes: data['notes'],
+        status: 1, // Forcer le statut à 1 (En attente)
         items: items,
         remiseGlobale: data['remise_globale'],
         tva: data['tva'],
@@ -82,14 +84,18 @@ class DevisController extends GetxController {
         commercialId: userId,
       );
 
-      await _devisService.createDevis(newDevis);
+      final createdDevis = await _devisService.createDevis(newDevis);
+      await loadDevis();
+
+      // Effacer le formulaire
+      clearForm();
+
       Get.back();
       Get.snackbar(
         'Succès',
         'Devis créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
-      loadDevis();
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -242,7 +248,7 @@ class DevisController extends GetxController {
   Future<void> generatePDF(int devisId) async {
     try {
       isLoading.value = true;
-      final pdfUrl = await _devisService.generatePDF(devisId);
+      await _devisService.generatePDF(devisId);
       // Ouvrir le PDF ou le télécharger
       // TODO: Implémenter l'ouverture ou le téléchargement du PDF
     } catch (e) {
@@ -276,8 +282,21 @@ class DevisController extends GetxController {
   // Sélection du client
   Future<void> searchClients(String query) async {
     try {
-      final clients = await _clientService.getClients();
-      // TODO: Implémenter la recherche de clients
+      final clientsList = await _clientService.getClients();
+      final validatedClients =
+          clientsList.where((client) => client.status == 1).toList();
+
+      if (query.isNotEmpty) {
+        clients.value =
+            validatedClients.where((client) {
+              final nom = client.nom?.toLowerCase() ?? '';
+              final email = client.email?.toLowerCase() ?? '';
+              final searchQuery = query.toLowerCase();
+              return nom.contains(searchQuery) || email.contains(searchQuery);
+            }).toList();
+      } else {
+        clients.value = validatedClients;
+      }
     } catch (e) {
       print('Erreur lors de la recherche des clients: $e');
     }
@@ -289,5 +308,11 @@ class DevisController extends GetxController {
 
   void clearSelectedClient() {
     selectedClient.value = null;
+  }
+
+  /// Effacer toutes les données du formulaire
+  void clearForm() {
+    selectedClient.value = null;
+    items.clear();
   }
 }

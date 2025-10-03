@@ -26,7 +26,7 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
 
   @override
   List<FavoriteItem> get favoriteItems => [
-    FavoriteItem(
+    /*FavoriteItem(
       id: 'new_ticket',
       label: 'Nouveau ticket',
       icon: Icons.add_task,
@@ -37,12 +37,18 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       label: 'Maintenance',
       icon: Icons.build,
       onTap: () => controller.scheduleMaintenance(),
-    ),
+    ), */
     FavoriteItem(
       id: 'inventory',
       label: 'Inventaire',
       icon: Icons.inventory,
       onTap: () => controller.checkInventory(),
+    ),
+    FavoriteItem(
+      id: 'attendance_punch',
+      label: 'Pointage avec Photo',
+      icon: Icons.camera_alt,
+      route: '/attendance-punch',
     ),
     FavoriteItem(
       id: 'equipment',
@@ -54,7 +60,7 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       id: 'attendance',
       label: 'Pointage',
       icon: Icons.access_time,
-      route: '/attendance',
+      route: '/attendance-punch',
     ),
     FavoriteItem(
       id: 'reporting',
@@ -62,17 +68,29 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       icon: Icons.assessment,
       route: '/reporting',
     ),
+    FavoriteItem(
+      id: 'interventions',
+      label: 'Interventions',
+      icon: Icons.build,
+      route: '/interventions',
+    ),
+    FavoriteItem(
+      id: 'equipments',
+      label: 'Équipements',
+      icon: Icons.devices,
+      route: '/equipments',
+    ),
   ];
 
   @override
   List<StatCard> get statsCards => [
-    StatCard(
+    /*  StatCard(
       title: "Tickets ouverts",
       value: "12",
       icon: Icons.report_problem,
       color: Colors.orange,
       requiredPermission: Permissions.MANAGE_TICKETS,
-    ),
+    ), */
     StatCard(
       title: "En cours",
       value: "5",
@@ -94,11 +112,43 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       color: Colors.purple,
       requiredPermission: Permissions.MANAGE_TICKETS,
     ),
+    StatCard(
+      title: "Interventions en attente",
+      value: "3",
+      icon: Icons.schedule,
+      color: Colors.orange,
+      requiredPermission: Permissions.MANAGE_INTERVENTIONS,
+      onTap: () => Get.toNamed('/interventions'),
+    ),
+    StatCard(
+      title: "Interventions en cours",
+      value: "2",
+      icon: Icons.build,
+      color: Colors.blue,
+      requiredPermission: Permissions.MANAGE_INTERVENTIONS,
+      onTap: () => Get.toNamed('/interventions'),
+    ),
+    StatCard(
+      title: "Équipements actifs",
+      value: "45",
+      icon: Icons.devices,
+      color: Colors.green,
+      requiredPermission: Permissions.MANAGE_EQUIPMENTS,
+      onTap: () => Get.toNamed('/equipments'),
+    ),
+    /*  StatCard(
+      title: "Maintenance requise",
+      value: "8",
+      icon: Icons.build,
+      color: Colors.orange,
+      requiredPermission: Permissions.MANAGE_EQUIPMENTS,
+      onTap: () => Get.toNamed('/equipments'),
+    ), */
   ];
 
   @override
   Map<String, ChartConfig> get charts => {
-    'tickets': ChartConfig(
+    /* 'tickets': ChartConfig(
       title: "Évolution des tickets",
       type: ChartType.line,
       color: Colors.orange,
@@ -111,7 +161,7 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
       color: Colors.blue,
       subtitle: "Répartition actuelle",
       requiredPermission: Permissions.MANAGE_TICKETS,
-    ),
+    ), */
     'resolution': ChartConfig(
       title: "Temps de résolution",
       type: ChartType.bar,
@@ -149,7 +199,7 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
         title: const Text('Tableau de bord'),
         onTap: () {},
       ),
-      ListTile(
+      /*  ListTile(
         leading: const Icon(Icons.report_problem),
         title: const Text('Tickets'),
         onTap: () => controller.showTickets(),
@@ -158,21 +208,28 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
         leading: const Icon(Icons.build),
         title: const Text('Maintenance'),
         onTap: () => controller.scheduleMaintenance(),
-      ),
+      ), */
       ListTile(
         leading: const Icon(Icons.devices),
         title: const Text('Équipements'),
-        onTap: () => controller.manageEquipment(),
+        onTap: () {
+          Get.toNamed('/equipments');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.inventory),
         title: const Text('Inventaire'),
         onTap: () => controller.checkInventory(),
       ),
-      ListTile(
+      /* ListTile(
         leading: const Icon(Icons.analytics),
         title: const Text('Rapports'),
         onTap: () => controller.showReports(),
+      ), */
+      ListTile(
+        leading: const Icon(Icons.build),
+        title: const Text('Interventions'),
+        onTap: () => Get.toNamed('/interventions'),
       ),
       ListTile(
         leading: const Icon(Icons.settings),
@@ -185,9 +242,9 @@ class TechnicienDashboard extends BaseDashboard<TechnicienDashboardController> {
   @override
   Widget? buildFloatingActionButton() {
     return FloatingActionButton.extended(
-      onPressed: () => controller.createNewTicket(),
-      icon: const Icon(Icons.add_task),
-      label: const Text('Nouveau ticket'),
+      onPressed: () => Get.toNamed('/equipments/new'),
+      icon: const Icon(Icons.add),
+      label: const Text('Nouvel équipement'),
     );
   }
 }

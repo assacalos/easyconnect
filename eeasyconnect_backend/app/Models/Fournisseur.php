@@ -18,51 +18,172 @@ class Fournisseur extends Model
         'pays',
         'contact_principal',
         'description',
-        'statut',
+        'status',
         'note_evaluation',
-        'commentaires'
+        'commentaires',
+        'created_by',
+        'updated_by',
+        'validated_by',
+        'validated_at',
+        'validation_comment',
+        'rejected_by',
+        'rejected_at',
+        'rejection_reason',
+        'rejection_comment'
     ];
 
     protected $casts = [
-        'note_evaluation' => 'decimal:2'
+        'note_evaluation' => 'decimal:1',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
-    // Relations
-    public function bonsDeCommande()
-    {
-        return $this->hasMany(BonDeCommande::class);
-    }
+    // Constantes pour les statuts
+    const STATUS_EN_ATTENTE = 'en_attente';
+    const STATUS_VALIDE = 'valide';
+    const STATUS_REJETE = 'rejete';
 
     // Scopes
-    public function scopeActifs($query)
+    public function scopeEnAttente($query)
     {
-        return $query->where('statut', 'actif');
+        return $query->where('status', self::STATUS_EN_ATTENTE);
     }
 
-    public function scopeInactifs($query)
+    public function scopeValide($query)
     {
-        return $query->where('statut', 'inactif');
+        return $query->where('status', self::STATUS_VALIDE);
     }
 
-    public function scopeSuspendus($query)
+    public function scopeRejete($query)
     {
-        return $query->where('statut', 'suspendu');
+        return $query->where('status', self::STATUS_REJETE);
     }
 
-    // Accesseurs
-    public function getStatutLibelleAttribute()
+    public function scopeByStatus($query, $status)
     {
-        $statuts = [
-            'actif' => 'Actif',
-            'inactif' => 'Inactif',
-            'suspendu' => 'Suspendu'
-        ];
-
-        return $statuts[$this->statut] ?? $this->statut;
+        if ($status && $status !== 'all') {
+            return $query->where('status', $status);
+        }
+        return $query;
     }
 
-    public function getNoteFormateeAttribute()
+    public function scopeSearch($query, $search)
     {
-        return $this->note_evaluation ? number_format($this->note_evaluation, 1) . '/5' : 'Non évalué';
+        if ($search) {
+            return $query->where(function ($q) use ($search) {
+                $q->where('nom', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('ville', 'like', "%{$search}%")
+                  ->orWhere('contact_principal', 'like', "%{$search}%");
+            });
+        }
+        return $query;
+    }
+
+    // Accessors
+    public function getStatusTextAttribute()
+    {
+        return match ($this->status) {
+            self::STATUS_EN_ATTENTE => 'En attente',
+            self::STATUS_VALIDE => 'Validé',
+            self::STATUS_REJETE => 'Rejeté',
+            default => 'Inconnu',
+        };
+    }
+
+    public function getStatusColorAttribute()
+    {
+        return match ($this->status) {
+            self::STATUS_EN_ATTENTE => 'orange',
+            self::STATUS_VALIDE => 'green',
+            self::STATUS_REJETE => 'red',
+            default => 'grey',
+        };
+    }
+
+    // Relations
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function validatedBy()
+    {
+        return $this->belongsTo(User::class, 'validated_by');
+    }
+
+    public function rejectedBy()
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
+    }
+
+    // Méthodes utilitaires
+    public function isEnAttente()
+    {
+        return $this->status === self::STATUS_EN_ATTENTE;
+    }
+
+    public function isValide()
+    {
+        return $this->status === self::STATUS_VALIDE;
+    }
+
+    public function isRejete()
+    {
+        return $this->status === self::STATUS_REJETE;
+    }
+
+    public function validate($comment = null)
+    {
+        $this->update([
+            'status' => self::STATUS_VALIDE,
+            'validated_by' => auth()->id(),
+            'validated_at' => now(),
+            'validation_comment' => $comment,
+            'updated_by' => auth()->id(),
+        ]);
+    }
+
+    public function reject($reason, $comment = null)
+    {
+        $this->update([
+            'status' => self::STATUS_REJETE,
+            'rejected_by' => auth()->id(),
+            'rejected_at' => now(),
+            'rejection_reason' => $reason,
+            'rejection_comment' => $comment,
+            'updated_by' => auth()->id(),
+        ]);
+    }
+
+    public function activate()
+    {
+        $this->update([
+            'statut' => self::STATUS_ACTIVE,
+            'updated_by' => auth()->id(),
+        ]);
+    }
+
+    public function deactivate()
+    {
+        $this->update([
+            'statut' => self::STATUS_INACTIVE,
+            'updated_by' => auth()->id(),
+        ]);
+    }
+
+    public function rate($rating, $comments = null)
+    {
+        $this->update([
+            'note_evaluation' => $rating,
+            'commentaires' => $comments,
+            'updated_by' => auth()->id(),
+        ]);
     }
 }

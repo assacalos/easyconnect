@@ -1,20 +1,31 @@
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Models/devis_model.dart';
+import 'package:easyconnect/services/devis_service.dart';
 
-class BordereauController extends GetxController {
+class BordereauxController extends GetxController {
   late int userId;
   final BordereauService _bordereauService = BordereauService();
   final ClientService _clientService = ClientService();
+  final DevisService _devisService = DevisService();
 
   final bordereaux = <Bordereau>[].obs;
   final selectedClient = Rxn<Client>();
+  final availableClients = <Client>[].obs;
   final isLoading = false.obs;
+  final isLoadingClients = false.obs;
   final currentBordereau = Rxn<Bordereau>();
   final items = <BordereauItem>[].obs;
+
+  // Variables pour la gestion des devis
+  final availableDevis = <Devis>[].obs;
+  final selectedDevis = Rxn<Devis>();
+  final isLoadingDevis = false.obs;
 
   // Statistiques
   final totalBordereaux = 0.obs;
@@ -30,7 +41,7 @@ class BordereauController extends GetxController {
       Get.find<AuthController>().userAuth.value!.id.toString(),
     );
     loadBordereaux();
-    loadStats();
+    // loadStats(); // Temporairement désactivé car l'endpoint n'existe pas
   }
 
   Future<void> loadBordereaux({int? status}) async {
@@ -67,11 +78,14 @@ class BordereauController extends GetxController {
   Future<void> createBordereau(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
+
       final newBordereau = Bordereau(
         clientId: selectedClient.value!.id!,
+        devisId: selectedDevis.value?.id,
         reference: data['reference'],
         dateCreation: DateTime.now(),
         notes: data['notes'],
+        status: 1, // Forcer le statut à 1 (En attente)
         items: items,
         remiseGlobale: data['remise_globale'],
         tva: data['tva'],
@@ -79,14 +93,26 @@ class BordereauController extends GetxController {
         commercialId: userId,
       );
 
-      await _bordereauService.createBordereau(newBordereau);
+      final createdBordereau = await _bordereauService.createBordereau(
+        newBordereau,
+      );
+
+      // Effacer le formulaire
+      clearForm();
+
+      // Recharger la liste des bordereaux
+      await loadBordereaux();
+
+      // Fermer le formulaire et afficher le message de succès
       Get.back();
       Get.snackbar(
         'Succès',
         'Bordereau créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
       );
-      loadBordereaux();
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -193,23 +219,36 @@ class BordereauController extends GetxController {
 
   Future<void> approveBordereau(int bordereauId) async {
     try {
+      print('🔍 BordereauxController.approveBordereau - Début');
+      print('📊 Paramètres: bordereauId=$bordereauId');
+
       isLoading.value = true;
       final success = await _bordereauService.approveBordereau(bordereauId);
+
+      print('📊 Résultat service: $success');
+
       if (success) {
+        print('✅ Approbation réussie, rechargement des bordereaux');
         await loadBordereaux();
         Get.snackbar(
           'Succès',
           'Bordereau approuvé avec succès',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
         );
       } else {
+        print('❌ Échec de l\'approbation');
         throw Exception('Erreur lors de l\'approbation');
       }
     } catch (e) {
+      print('❌ Erreur détaillée: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible d\'approuver le bordereau',
+        'Impossible d\'approuver le bordereau: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -218,26 +257,41 @@ class BordereauController extends GetxController {
 
   Future<void> rejectBordereau(int bordereauId, String commentaire) async {
     try {
+      print('🔍 BordereauxController.rejectBordereau - Début');
+      print(
+        '📊 Paramètres: bordereauId=$bordereauId, commentaire=$commentaire',
+      );
+
       isLoading.value = true;
       final success = await _bordereauService.rejectBordereau(
         bordereauId,
         commentaire,
       );
+
+      print('📊 Résultat service: $success');
+
       if (success) {
+        print('✅ Rejet réussi, rechargement des bordereaux');
         await loadBordereaux();
         Get.snackbar(
           'Succès',
           'Bordereau rejeté avec succès',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
         );
       } else {
+        print('❌ Échec du rejet');
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
+      print('❌ Erreur détaillée: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter le bordereau',
+        'Impossible de rejeter le bordereau: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -261,11 +315,32 @@ class BordereauController extends GetxController {
     items.clear();
   }
 
-  // Sélection du client
+  // Chargement des clients validés
+  Future<void> loadValidatedClients() async {
+    try {
+      isLoadingClients.value = true;
+      final clients = await _clientService.getClients(
+        status: 1,
+      ); // Status 1 = Validé
+      availableClients.value = clients;
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les clients validés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoadingClients.value = false;
+    }
+  }
+
+  // Recherche de clients validés
   Future<void> searchClients(String query) async {
     try {
-      final clients = await _clientService.getClients();
-      // TODO: Implémenter la recherche de clients
+      if (availableClients.isEmpty) {
+        await loadValidatedClients();
+      }
+      // La recherche sera implémentée dans l'interface utilisateur
     } catch (e) {
       print('Erreur lors de la recherche des clients: $e');
     }
@@ -273,9 +348,75 @@ class BordereauController extends GetxController {
 
   void selectClient(Client client) {
     selectedClient.value = client;
+    // Charger les devis validés pour ce client
+    onClientChanged(client);
   }
 
   void clearSelectedClient() {
     selectedClient.value = null;
+  }
+
+  /// Effacer toutes les données du formulaire
+  void clearForm() {
+    selectedClient.value = null;
+    selectedDevis.value = null;
+    availableDevis.clear();
+    items.clear();
+  }
+
+  // Chargement des devis validés pour le client sélectionné
+  Future<void> loadValidatedDevisForClient(int clientId) async {
+    try {
+      isLoadingDevis.value = true;
+      final devis = await _devisService.getDevis();
+
+      // Filtrer par client et statut côté client
+      final devisForClient =
+          devis.where((d) => d.clientId == clientId && d.status == 2).toList();
+      availableDevis.value = devisForClient;
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les devis validés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoadingDevis.value = false;
+    }
+  }
+
+  // Sélection d'un devis
+  void selectDevis(Devis devis) {
+    selectedDevis.value = devis;
+
+    // Pré-remplir les items du bordereau avec les items du devis (sans les prix)
+    items.clear();
+    for (final devisItem in devis.items) {
+      final bordereauItem = BordereauItem(
+        designation: devisItem.designation,
+        unite: 'unité', // Valeur par défaut
+        quantite: devisItem.quantite,
+        prixUnitaire: 0.0, // Prix à saisir manuellement
+        description: 'Basé sur le devis ${devis.reference}',
+      );
+      items.add(bordereauItem);
+    }
+  }
+
+  // Effacer la sélection du devis
+  void clearSelectedDevis() {
+    selectedDevis.value = null;
+    items.clear();
+  }
+
+  // Recharger les devis quand le client change
+  void onClientChanged(Client? client) {
+    if (client != null) {
+      loadValidatedDevisForClient(client.id!);
+    } else {
+      availableDevis.clear();
+      selectedDevis.value = null;
+      items.clear();
+    }
   }
 }

@@ -39,28 +39,35 @@ class ReportingForm extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Obx(() => TextFormField(
-                            decoration: const InputDecoration(
-                              labelText: 'Date du rapport',
-                              border: OutlineInputBorder(),
+                          child: Obx(
+                            () => TextFormField(
+                              decoration: const InputDecoration(
+                                labelText: 'Date du rapport',
+                                border: OutlineInputBorder(),
+                              ),
+                              readOnly: true,
+                              controller: TextEditingController(
+                                text:
+                                    reportingController.selectedDate.value
+                                        .toString()
+                                        .split(' ')[0],
+                              ),
+                              onTap: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      reportingController.selectedDate.value,
+                                  firstDate: DateTime.now().subtract(
+                                    const Duration(days: 365),
+                                  ),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (date != null) {
+                                  reportingController.selectedDate.value = date;
+                                }
+                              },
                             ),
-                            readOnly: true,
-                            controller: TextEditingController(
-                              text: reportingController.selectedDate.value
-                                  .toString().split(' ')[0],
-                            ),
-                            onTap: () async {
-                              final date = await showDatePicker(
-                                context: context,
-                                initialDate: reportingController.selectedDate.value,
-                                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                                lastDate: DateTime.now(),
-                              );
-                              if (date != null) {
-                                reportingController.selectedDate.value = date;
-                              }
-                            },
-                          )),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -108,18 +115,24 @@ class ReportingForm extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Obx(() => ElevatedButton(
-                    onPressed: reportingController.isLoading.value
-                        ? null
-                        : () => reportingController.createReport(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
+                  child: Obx(
+                    () => ElevatedButton(
+                      onPressed:
+                          reportingController.isLoading.value
+                              ? null
+                              : () => reportingController.createReport(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                      ),
+                      child:
+                          reportingController.isLoading.value
+                              ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                              : const Text('Créer le Rapport'),
                     ),
-                    child: reportingController.isLoading.value
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Créer le Rapport'),
-                  )),
+                  ),
                 ),
               ],
             ),
@@ -129,7 +142,10 @@ class ReportingForm extends StatelessWidget {
     );
   }
 
-  Widget _buildCommercialMetrics(BuildContext context, ReportingController controller) {
+  Widget _buildCommercialMetrics(
+    BuildContext context,
+    ReportingController controller,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -141,159 +157,300 @@ class ReportingForm extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
+
             // Métriques de base
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Clients prospectés',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        clientsProspectes: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Clients prospectés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            clientsProspectes: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note clients prospectés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les prospects...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteClientsProspectes: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Devis créés',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        devisCrees: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Devis créés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            devisCrees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note devis créés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les devis...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteDevisCrees: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Devis acceptés',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        devisAcceptes: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Devis acceptés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            devisAcceptes: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note devis acceptés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les acceptations...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteDevisAcceptes: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Chiffre d\'affaires (€)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        chiffreAffaires: double.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Chiffre d\'affaires (fcfa)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            chiffreAffaires: double.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note chiffre d\'affaires',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur le CA...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteChiffreAffaires: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Nouveaux clients',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        nouveauxClients: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Nouveaux clients',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            nouveauxClients: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note nouveaux clients',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les nouveaux clients...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteNouveauxClients: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Appels effectués',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        appelsEffectues: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Appels effectués',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            appelsEffectues: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note appels effectués',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les appels...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteAppelsEffectues: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Emails envoyés',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        emailsEnvoyes: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Emails envoyés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            emailsEnvoyes: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note emails envoyés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les emails...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteEmailsEnvoyes: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Visites réalisées',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateCommercialMetrics(
-                        visitesRealisees: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Visites réalisées',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            visitesRealisees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note visites réalisées',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les visites...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateCommercialMetrics(
+                            noteVisitesRealisees: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
 
             const SizedBox(height: 24),
-            
+
             // Section RDV
-            Text(
-              'Rendez-vous',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('Rendez-vous', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -323,7 +480,8 @@ class ReportingForm extends StatelessWidget {
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (date != null) {
-                        controller.rdvDateController.text = date.toString().split(' ')[0];
+                        controller.rdvDateController.text =
+                            date.toString().split(' ')[0];
                       }
                     },
                   ),
@@ -342,16 +500,17 @@ class ReportingForm extends StatelessWidget {
                         initialTime: TimeOfDay.now(),
                       );
                       if (time != null) {
-                        controller.rdvHeureController.text = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+                        controller.rdvHeureController.text =
+                            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
                       }
                     },
                   ),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -375,9 +534,9 @@ class ReportingForm extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -396,7 +555,10 @@ class ReportingForm extends StatelessWidget {
     );
   }
 
-  Widget _buildComptableMetrics(BuildContext context, ReportingController controller) {
+  Widget _buildComptableMetrics(
+    BuildContext context,
+    ReportingController controller,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -408,49 +570,85 @@ class ReportingForm extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Factures émises',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateComptableMetrics(
-                        facturesEmises: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Factures émises',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateComptableMetrics(
+                            facturesEmises: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note factures émises',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les factures émises...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateComptableMetrics(
+                            noteFacturesEmises: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Factures payées',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      controller.updateComptableMetrics(
-                        facturesPayees: int.tryParse(value) ?? 0,
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Factures payées',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateComptableMetrics(
+                            facturesPayees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note factures payées',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les factures payées...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateComptableMetrics(
+                            noteFacturesPayees: value,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
                     decoration: const InputDecoration(
-                      labelText: 'Montant facturé (€)',
+                      labelText: 'Montant facturé (fcfa)',
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
@@ -465,7 +663,7 @@ class ReportingForm extends StatelessWidget {
                 Expanded(
                   child: TextFormField(
                     decoration: const InputDecoration(
-                      labelText: 'Montant encaissé (€)',
+                      labelText: 'Montant encaissé (fcfa)',
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
@@ -478,9 +676,9 @@ class ReportingForm extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -520,7 +718,10 @@ class ReportingForm extends StatelessWidget {
     );
   }
 
-  Widget _buildTechnicienMetrics(BuildContext context, ReportingController controller) {
+  Widget _buildTechnicienMetrics(
+    BuildContext context,
+    ReportingController controller,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -532,7 +733,7 @@ class ReportingForm extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -566,9 +767,9 @@ class ReportingForm extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -602,9 +803,9 @@ class ReportingForm extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
@@ -638,9 +839,9 @@ class ReportingForm extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             TextFormField(
               decoration: const InputDecoration(
                 labelText: 'Notes techniques',
@@ -648,9 +849,7 @@ class ReportingForm extends StatelessWidget {
               ),
               maxLines: 3,
               onChanged: (value) {
-                controller.updateTechnicienMetrics(
-                  notesTechniques: value,
-                );
+                controller.updateTechnicienMetrics(notesTechniques: value);
               },
             ),
           ],

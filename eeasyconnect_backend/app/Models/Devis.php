@@ -34,4 +34,8 @@ class Devis extends Model
     public function items() {
         return $this->hasMany(DevisItem::class);
     }
+
+    public function bordereaux() {
+        return $this->hasMany(Bordereau::class);
+    }
 }

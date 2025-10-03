@@ -1,4 +1,5 @@
 import 'package:easyconnect/Views/Components/reporting_form.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
@@ -26,28 +27,26 @@ class ReportingList extends StatelessWidget {
             onPressed:
                 () => _showFilterDialog(context, reportingController, userRole),
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => Get.to(() => const ReportingForm()),
-          ),
         ],
       ),
-      body: Obx(() {
-        if (reportingController.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
+      body: Stack(
+        children: [
+          Obx(() {
+            if (reportingController.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-        if (reportingController.reports.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.assessment, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  'Aucun rapport trouvé',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
+            if (reportingController.reports.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.assessment, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Aucun rapport trouvé',
+                      style: TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
                 SizedBox(height: 8),
                 Text(
                   'Créez votre premier rapport',
@@ -58,20 +57,28 @@ class ReportingList extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: reportingController.reports.length,
-          itemBuilder: (context, index) {
-            final report = reportingController.reports[index];
-            return _buildReportCard(
-              context,
-              report,
-              reportingController,
-              userRole,
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: reportingController.reports.length,
+              itemBuilder: (context, index) {
+                final report = reportingController.reports[index];
+                return _buildReportCard(
+                  context,
+                  report,
+                  reportingController,
+                  userRole,
+                );
+              },
             );
-          },
-        );
-      }),
+          }),
+          // Bouton d'ajout uniforme en bas à droite
+          UniformAddButton(
+            onPressed: () => Get.to(() => const ReportingForm()),
+            label: 'Nouveau Rapport',
+            icon: Icons.assessment,
+          ),
+        ],
+      ),
     );
   }
 
@@ -262,7 +269,7 @@ class ReportingList extends StatelessWidget {
               metrics['devis_acceptes']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'CA (€)',
+              'CA (fcfa)',
               metrics['chiffre_affaires']?.toString() ?? '0',
             ),
             _buildMetricChip(
@@ -297,11 +304,11 @@ class ReportingList extends StatelessWidget {
               metrics['factures_payees']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'Montant facturé (€)',
+              'Montant facturé (fcfa)',
               metrics['montant_facture']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'Montant encaissé (€)',
+              'Montant encaissé (fcfa)',
               metrics['montant_encaissement']?.toString() ?? '0',
             ),
             _buildMetricChip(

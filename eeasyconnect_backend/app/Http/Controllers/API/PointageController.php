@@ -256,7 +256,7 @@ class PointageController extends Controller
      * Valider un pointage
      * Accessible par RH, Patron et Admin
      */
-    public function validate($id)
+    public function validatePointage($id)
     {
         $pointage = Pointage::findOrFail($id);
         

@@ -72,30 +72,30 @@ class ComptableDashboardController extends BaseDashboardController {
 
   // Actions spécifiques au comptable
   void createNewInvoice() {
-    Get.toNamed('/comptable/invoices/new');
+    Get.toNamed('/invoices/new');
   }
 
   void showInvoices() {
-    Get.toNamed('/comptable/invoices');
+    Get.toNamed('/invoices');
   }
 
   void showExpenses() {
-    Get.toNamed('/comptable/expenses');
+    Get.toNamed('/expenses');
   }
 
   void showBalance() {
-    Get.toNamed('/comptable/balance');
+    Get.toNamed('/payments');
   }
 
   void showReports() {
-    Get.toNamed('/comptable/reports');
+    Get.toNamed('/reporting');
   }
 
   void createNewExpense() {
-    Get.toNamed('/comptable/expenses/new');
+    Get.toNamed('/expenses/new');
   }
 
   void startBankReconciliation() {
-    Get.toNamed('/comptable/bank/reconciliation');
+    Get.toNamed('/payments');
   }
 }

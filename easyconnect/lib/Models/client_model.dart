@@ -15,7 +15,7 @@ class Client {
   final String? commentaire;
   final String? createdAt;
   final String? updatedAt;
-  final int? commercialId;
+  final int? userId;
 
   Client({
     this.id,
@@ -30,12 +30,12 @@ class Client {
     this.commentaire,
     this.createdAt,
     this.updatedAt,
-    this.commercialId,
+    this.userId,
   });
 
   factory Client.fromJson(Map<String, dynamic> json) {
     return Client(
-      id: json['id'],
+      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
       nom: json['nom'],
       prenom: json['prenom'],
       email: json['email'],
@@ -43,11 +43,17 @@ class Client {
       adresse: json['adresse'],
       nomEntreprise: json['nom_entreprise'],
       situationGeographique: json['situation_geographique'],
-      status: json['status'],
+      status:
+          json['status'] is String
+              ? int.tryParse(json['status'])
+              : json['status'],
       commentaire: json['commentaire'],
       createdAt: json['created_at'],
       updatedAt: json['updated_at'],
-      commercialId: json['user_id'],
+      userId:
+          json['user_id'] is String
+              ? int.tryParse(json['user_id'])
+              : json['user_id'],
     );
   }
 
@@ -63,7 +69,7 @@ class Client {
       'situation_geographique': situationGeographique,
       'status': status,
       'commentaire': commentaire,
-      'user_id': commercialId,
+      'user_id': userId,
     };
   }
 

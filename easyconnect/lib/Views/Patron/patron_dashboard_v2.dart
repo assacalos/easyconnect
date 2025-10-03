@@ -8,6 +8,7 @@ import 'package:easyconnect/Controllers/patron_dashboard_controller.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/bindings/app_bindings.dart';
 import 'package:get/get.dart';
 
 class PatronDashboard extends BaseDashboard<PatronDashboardController> {
@@ -38,10 +39,22 @@ class PatronDashboard extends BaseDashboard<PatronDashboardController> {
       route: '/bordereaux/validation',
     ),
     FavoriteItem(
+      id: 'validation_devis',
+      label: 'Validation Devis',
+      icon: Icons.assignment,
+      route: '/devis/validation',
+    ),
+    FavoriteItem(
       id: 'validation_bon_commandes',
       label: 'Validation Bons',
       icon: Icons.shopping_cart,
       route: '/bon-commandes/validation',
+    ),
+    FavoriteItem(
+      id: 'validation_pointages',
+      label: 'Validation Pointages',
+      icon: Icons.camera_alt,
+      route: '/attendance-validation',
     ),
     FavoriteItem(
       id: 'employees',
@@ -105,20 +118,99 @@ class PatronDashboard extends BaseDashboard<PatronDashboardController> {
         title: const Text('Tableau de bord'),
         onTap: () {},
       ),
+      // Section Validations
+      const Divider(),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          'VALIDATIONS',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
+      ),
       ListTile(
-        leading: const Icon(Icons.approval),
-        title: const Text('Validation des Clients'),
+        leading: const Icon(Icons.people, color: Colors.blue),
+        title: const Text('Validation Clients'),
         onTap: () => Get.toNamed('/clients/validation'),
       ),
       ListTile(
-        leading: const Icon(Icons.assignment_turned_in),
-        title: const Text('Validation des Bordereaux'),
+        leading: const Icon(Icons.assignment, color: Colors.purple),
+        title: const Text('Validation Devis'),
+        onTap: () => Get.toNamed('/devis/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.description, color: Colors.green),
+        title: const Text('Validation Bordereaux'),
         onTap: () => Get.toNamed('/bordereaux/validation'),
       ),
       ListTile(
-        leading: const Icon(Icons.shopping_cart),
-        title: const Text('Validation des Bons'),
+        leading: const Icon(Icons.shopping_cart, color: Colors.orange),
+        title: const Text('Validation Bons de Commande'),
         onTap: () => Get.toNamed('/bon-commandes/validation'),
+      ),
+
+      ListTile(
+        leading: const Icon(Icons.receipt, color: Colors.red),
+        title: const Text('Validation Factures'),
+        onTap: () => Get.toNamed('/factures/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.payment, color: Colors.teal),
+        title: const Text('Validation Paiements'),
+        onTap: () => Get.toNamed('/paiements/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.inventory, color: Colors.deepPurple),
+        title: const Text('Validation Stock'),
+        onTap: () => Get.toNamed('/stock/validation'),
+      ),
+
+      ListTile(
+        leading: const Icon(Icons.account_balance_wallet, color: Colors.amber),
+        title: const Text('Validation Salaires'),
+        onTap: () => Get.toNamed('/salaires/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.account_balance, color: Colors.deepOrange),
+        title: const Text('Validation Taxes'),
+        onTap: () => Get.toNamed('/taxes/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.person_add, color: Colors.cyan),
+        title: const Text('Validation Recrutement'),
+        onTap: () => Get.toNamed('/recrutement/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.build, color: Colors.indigo),
+        title: const Text('Validation Interventions'),
+        onTap: () => Get.toNamed('/interventions/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.access_time, color: Colors.brown),
+        title: const Text('Validation Pointage'),
+        onTap: () => Get.toNamed('/pointage/validation'),
+      ),
+
+      ListTile(
+        leading: const Icon(Icons.analytics, color: Colors.pink),
+        title: const Text('Validation Reporting'),
+        onTap: () => Get.toNamed('/reporting/validation'),
+      ),
+      // Section Navigation générale
+      const Divider(),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          'NAVIGATION',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
       ),
       ListTile(
         leading: const Icon(Icons.list),
@@ -150,30 +242,7 @@ class PatronDashboard extends BaseDashboard<PatronDashboardController> {
 
   @override
   Widget? buildFloatingActionButton() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        FloatingActionButton.extended(
-          heroTag: 'validation_clients',
-          onPressed: () => Get.toNamed('/clients/validation'),
-          icon: const Icon(Icons.approval),
-          label: const Text('Clients en attente'),
-        ),
-        const SizedBox(width: 16),
-        FloatingActionButton.extended(
-          heroTag: 'validation_bordereaux',
-          onPressed: () => Get.toNamed('/bordereaux/validation'),
-          icon: const Icon(Icons.assignment_turned_in),
-          label: const Text('Bordereaux en attente'),
-        ),
-        const SizedBox(width: 16),
-        FloatingActionButton.extended(
-          heroTag: 'validation_bon_commandes',
-          onPressed: () => Get.toNamed('/bon-commandes/validation'),
-          icon: const Icon(Icons.shopping_cart),
-          label: const Text('Bons en attente'),
-        ),
-      ],
-    );
+    // Les boutons de validation ont été déplacés dans la sidebar
+    return null;
   }
 }

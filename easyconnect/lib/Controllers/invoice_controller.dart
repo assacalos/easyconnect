@@ -3,10 +3,13 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/services/client_service.dart';
 
 class InvoiceController extends GetxController {
   final InvoiceService _invoiceService = InvoiceService.to;
   final AuthController _authController = Get.find<AuthController>();
+  final ClientService _clientService = ClientService();
 
   // Variables observables
   final RxBool isLoading = false.obs;
@@ -16,6 +19,11 @@ class InvoiceController extends GetxController {
   final RxList<InvoiceModel> pendingInvoices = <InvoiceModel>[].obs;
   final Rx<InvoiceStats?> invoiceStats = Rx<InvoiceStats?>(null);
   final RxList<InvoiceTemplate> templates = <InvoiceTemplate>[].obs;
+
+  // Variables pour la gestion des clients validés
+  final RxList<Client> availableClients = <Client>[].obs;
+  final RxBool isLoadingClients = false.obs;
+  final Rx<Client?> selectedClient = Rx<Client?>(null);
 
   // Variables pour le formulaire de création
   final RxInt selectedClientId = 0.obs;
@@ -79,7 +87,7 @@ class InvoiceController extends GetxController {
       } else {
         // Comptable
         invoiceList = await _invoiceService.getCommercialInvoices(
-          commercialId: user.id!,
+          commercialId: user.id,
           startDate: startDate.value,
           endDate: endDate.value,
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
@@ -101,6 +109,22 @@ class InvoiceController extends GetxController {
                 )
                 .toList();
       }
+
+      // Trier les factures par statut et date
+      invoiceList.sort((a, b) {
+        // D'abord par statut (en_attente en premier, puis valide, puis rejete)
+        final statusOrder = {'en_attente': 0, 'valide': 1, 'rejete': 2};
+
+        final statusA = statusOrder[a.status] ?? 999;
+        final statusB = statusOrder[b.status] ?? 999;
+
+        if (statusA != statusB) {
+          return statusA.compareTo(statusB);
+        }
+
+        // Ensuite par date de création (plus récent en premier)
+        return b.createdAt.compareTo(a.createdAt);
+      });
 
       invoices.value = invoiceList;
 
@@ -169,6 +193,30 @@ class InvoiceController extends GetxController {
         return;
       }
 
+      // Vérifier qu'un client validé est sélectionné
+      if (selectedClient.value == null) {
+        Get.snackbar(
+          'Erreur',
+          'Veuillez sélectionner un client validé',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      // Vérifier que le client sélectionné est bien validé
+      if (selectedClient.value!.status != 1) {
+        Get.snackbar(
+          'Erreur',
+          'Seuls les clients validés peuvent être sélectionnés',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
       if (invoiceItems.isEmpty) {
         Get.snackbar('Erreur', 'Veuillez ajouter au moins un article');
         return;
@@ -179,7 +227,7 @@ class InvoiceController extends GetxController {
         clientName: selectedClientName.value,
         clientEmail: selectedClientEmail.value,
         clientAddress: selectedClientAddress.value,
-        commercialId: user.id!,
+        commercialId: user.id,
         commercialName: user.nom ?? 'Comptable',
         invoiceDate: invoiceDate.value,
         dueDate: dueDate.value,
@@ -196,16 +244,22 @@ class InvoiceController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Facture créée avec succès');
+        // Effacer le formulaire
+        clearForm();
 
         // Recharger les factures
         await loadInvoices();
 
-        // Réinitialiser le formulaire
-        resetForm();
-
-        // Retourner à la liste
+        // Fermer le formulaire et afficher le message de succès
         Get.back();
+        Get.snackbar(
+          'Succès',
+          'Facture créée avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
       } else {
         Get.snackbar(
           'Erreur',
@@ -384,24 +438,36 @@ class InvoiceController extends GetxController {
     loadInvoices();
   }
 
+  // Trier les factures par statut
+  void sortInvoicesByStatus() {
+    final sortedInvoices = List<InvoiceModel>.from(invoices);
+
+    sortedInvoices.sort((a, b) {
+      // Ordre de priorité des statuts
+      final statusOrder = {'en_attente': 0, 'valide': 1, 'rejete': 2};
+
+      final statusA = statusOrder[a.status] ?? 999;
+      final statusB = statusOrder[b.status] ?? 999;
+
+      if (statusA != statusB) {
+        return statusA.compareTo(statusB);
+      }
+
+      // Ensuite par date de création (plus récent en premier)
+      return b.createdAt.compareTo(a.createdAt);
+    });
+
+    invoices.value = sortedInvoices;
+  }
+
   // Obtenir le statut de la facture
   String getInvoiceStatusText(String status) {
     switch (status) {
-      case 'draft':
-        return 'Brouillon';
-      case 'sent':
-        return 'Envoyée';
-      case 'paid':
-        return 'Payée';
-      case 'overdue':
-        return 'En retard';
-      case 'cancelled':
-        return 'Annulée';
-      case 'pending_approval':
-        return 'En attente d\'approbation';
-      case 'approved':
-        return 'Approuvée';
-      case 'rejected':
+      case 'en_attente':
+        return 'En attente';
+      case 'valide':
+        return 'Validée';
+      case 'rejete':
         return 'Rejetée';
       default:
         return 'Inconnu';
@@ -411,21 +477,11 @@ class InvoiceController extends GetxController {
   // Obtenir la couleur du statut
   Color getInvoiceStatusColor(String status) {
     switch (status) {
-      case 'draft':
-        return Colors.grey;
-      case 'sent':
-        return Colors.blue;
-      case 'paid':
-        return Colors.green;
-      case 'overdue':
-        return Colors.red;
-      case 'cancelled':
-        return Colors.red;
-      case 'pending_approval':
+      case 'en_attente':
         return Colors.orange;
-      case 'approved':
+      case 'valide':
         return Colors.green;
-      case 'rejected':
+      case 'rejete':
         return Colors.red;
       default:
         return Colors.grey;
@@ -442,5 +498,51 @@ class InvoiceController extends GetxController {
   bool get canSubmitInvoices {
     final user = _authController.userAuth.value;
     return user?.role == 3; // Comptable
+  }
+
+  // Chargement des clients validés
+  Future<void> loadValidatedClients() async {
+    try {
+      isLoadingClients.value = true;
+      final clients = await _clientService.getClients(
+        status: 1,
+      ); // Status 1 = Validé
+      availableClients.value = clients;
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les clients validés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoadingClients.value = false;
+    }
+  }
+
+  // Sélection d'un client
+  void selectClientForInvoice(Client client) {
+    selectedClient.value = client;
+    selectedClientId.value = client.id!;
+    selectedClientName.value =
+        '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+    selectedClientEmail.value = client.email ?? '';
+    selectedClientAddress.value = client.adresse ?? '';
+  }
+
+  // Effacer la sélection du client
+  void clearSelectedClient() {
+    selectedClient.value = null;
+    selectedClientId.value = 0;
+    selectedClientName.value = '';
+    selectedClientEmail.value = '';
+    selectedClientAddress.value = '';
+  }
+
+  /// Effacer toutes les données du formulaire
+  void clearForm() {
+    clearSelectedClient();
+    invoiceItems.clear();
+    notes.value = '';
+    terms.value = '';
   }
 }

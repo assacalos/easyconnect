@@ -9,6 +9,8 @@ class BordereauItem extends Model
 {
     use HasFactory;
 
+    protected $table = 'bordereau_items';
+
     protected $fillable = [
         'bordereau_id',
         'designation',

@@ -45,6 +45,12 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
       route: '/bordereaux/new',
     ),
     FavoriteItem(
+      id: 'attendance_punch',
+      label: 'Pointage avec Photo',
+      icon: Icons.camera_alt,
+      route: '/attendance-punch',
+    ),
+    FavoriteItem(
       id: 'new_bon_commande',
       label: 'Nouveau bon de commande',
       icon: Icons.shopping_cart,
@@ -68,8 +74,8 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
   List<StatCard> get statsCards => [
     StatCard(
       title: "Chiffre d'affaires",
-      value: "45.2k €",
-      icon: Icons.euro,
+      value: "45.2k fcfa",
+      icon: Icons.currency_franc,
       color: Colors.green,
       requiredPermission: Permissions.VIEW_SALES,
       subtitle: "Ce mois-ci",
@@ -174,11 +180,11 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
         title: const Text('Bons de commande'),
         onTap: () => Get.toNamed('/bon-commandes'),
       ),
-      ListTile(
+      /*  ListTile(
         leading: const Icon(Icons.analytics),
         title: const Text('Rapports'),
         onTap: () {},
-      ),
+      ), */
       ListTile(
         leading: const Icon(Icons.settings),
         title: const Text('Paramètres'),
@@ -189,37 +195,6 @@ class CommercialDashboard extends BaseDashboard<CommercialDashboardController> {
 
   @override
   Widget? buildFloatingActionButton() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        FloatingActionButton.extended(
-          heroTag: 'new_client',
-          onPressed: () => controller.createNewClient(),
-          icon: const Icon(Icons.person_add),
-          label: const Text('Nouveau client'),
-        ),
-        const SizedBox(width: 16),
-        FloatingActionButton.extended(
-          heroTag: 'new_devis',
-          onPressed: () => Get.toNamed('/devis/new'),
-          icon: const Icon(Icons.description),
-          label: const Text('Nouveau devis'),
-        ),
-        const SizedBox(width: 16),
-        FloatingActionButton.extended(
-          heroTag: 'new_bordereau',
-          onPressed: () => Get.toNamed('/bordereaux/new'),
-          icon: const Icon(Icons.assignment),
-          label: const Text('Nouveau bordereau'),
-        ),
-        const SizedBox(width: 16),
-        FloatingActionButton.extended(
-          heroTag: 'new_bon_commande',
-          onPressed: () => Get.toNamed('/bon-commandes/new'),
-          icon: const Icon(Icons.shopping_cart),
-          label: const Text('Nouveau bon'),
-        ),
-      ],
-    );
+    return null; // Suppression des boutons flottants
   }
 }

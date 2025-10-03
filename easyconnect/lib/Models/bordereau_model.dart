@@ -1,5 +1,3 @@
-import 'package:get/get.dart';
-
 class BordereauItem {
   final int? id;
   final String designation;
@@ -32,8 +30,14 @@ class BordereauItem {
     id: json['id'],
     designation: json['designation'],
     unite: json['unite'],
-    quantite: json['quantite'],
-    prixUnitaire: json['prix_unitaire']?.toDouble() ?? 0.0,
+    quantite:
+        json['quantite'] is String
+            ? int.tryParse(json['quantite']) ?? 0
+            : json['quantite'],
+    prixUnitaire:
+        json['prix_unitaire'] is String
+            ? double.tryParse(json['prix_unitaire']) ?? 0.0
+            : (json['prix_unitaire']?.toDouble() ?? 0.0),
     description: json['description'],
   );
 }
@@ -42,6 +46,7 @@ class Bordereau {
   final int? id;
   final String reference;
   final int clientId;
+  final int? devisId; // Référence au devis
   final int commercialId;
   final DateTime dateCreation;
   final DateTime? dateValidation;
@@ -50,13 +55,14 @@ class Bordereau {
   final double? remiseGlobale;
   final double? tva;
   final String? conditions;
-  final int status; // 0: brouillon, 1: soumis, 2: validé, 3: rejeté
+  final int status; // 1: soumis, 2: validé, 3: rejeté
   final String? commentaireRejet;
 
   Bordereau({
     this.id,
     required this.reference,
     required this.clientId,
+    this.devisId,
     required this.commercialId,
     required this.dateCreation,
     this.dateValidation,
@@ -65,7 +71,7 @@ class Bordereau {
     this.remiseGlobale,
     this.tva = 20.0,
     this.conditions,
-    this.status = 0,
+    this.status = 1,
     this.commentaireRejet,
   });
 
@@ -82,8 +88,6 @@ class Bordereau {
 
   String get statusText {
     switch (status) {
-      case 0:
-        return 'Brouillon';
       case 1:
         return 'En attente';
       case 2:
@@ -99,23 +103,36 @@ class Bordereau {
     'id': id,
     'reference': reference,
     'client_id': clientId,
+    'devis_id': devisId,
     'user_id': commercialId,
     'date_creation': dateCreation.toIso8601String(),
     'date_validation': dateValidation?.toIso8601String(),
     'notes': notes,
     'items': items.map((item) => item.toJson()).toList(),
-    'remise_globale': remiseGlobale,
-    'tva': tva,
+    'remise_globale': remiseGlobale?.toString(),
+    'tva': tva?.toString(),
     'conditions': conditions,
     'status': status,
     'commentaire': commentaireRejet,
   };
 
   factory Bordereau.fromJson(Map<String, dynamic> json) => Bordereau(
-    id: json['id'],
+    id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
     reference: json['reference'],
-    clientId: json['client_id'],
-    commercialId: json['user_id'],
+    clientId:
+        (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
+                is String
+            ? int.tryParse(
+              json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
+            )
+            : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
+    devisId: json['devis_id'] is String 
+        ? int.tryParse(json['devis_id']) 
+        : json['devis_id'],
+    commercialId:
+        json['user_id'] is String
+            ? int.tryParse(json['user_id'])
+            : json['user_id'],
     dateCreation: DateTime.parse(json['date_creation']),
     dateValidation:
         json['date_validation'] != null
@@ -126,10 +143,19 @@ class Bordereau {
         (json['items'] as List)
             .map((item) => BordereauItem.fromJson(item))
             .toList(),
-    remiseGlobale: json['remise_globale']?.toDouble(),
-    tva: json['tva']?.toDouble(),
+    remiseGlobale:
+        json['remise_globale'] is String
+            ? double.tryParse(json['remise_globale'])
+            : json['remise_globale']?.toDouble(),
+    tva:
+        json['tva'] is String
+            ? double.tryParse(json['tva'])
+            : json['tva']?.toDouble(),
     conditions: json['conditions'],
-    status: json['status'] ?? 0,
+    status:
+        json['status'] is String
+            ? int.tryParse(json['status'])
+            : json['status'] ?? 1,
     commentaireRejet: json['commentaire'],
   );
 }

@@ -14,8 +14,9 @@ return new class extends Migration
         Schema::create('bordereaus', function (Blueprint $table) {
             $table->id();
             $table->string('reference')->unique();
-            $table->foreignId('client_id')->constrained()->onDelete('cascade');
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->unsignedBigInteger('client_id');
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('devis_id')->nullable();
             $table->date('date_creation');
             $table->date('date_validation')->nullable();
             $table->text('notes')->nullable();
@@ -26,7 +27,9 @@ return new class extends Migration
             $table->text('commentaire')->nullable();
             $table->timestamps();
 
-            
+            $table->foreign('client_id')->references('id')->on('clients')->onDelete('cascade');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('devis_id')->references('id')->on('devis')->onDelete('cascade');
         });
     }
 

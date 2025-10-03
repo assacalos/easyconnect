@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\API;
 
 use App\Models\Bordereau;
 use App\Models\BordereauItem;
@@ -13,13 +13,13 @@ class BordereauController extends Controller
     public function index(Request $request)
     {
         $status = $request->query('status'); // facultatif
-        $query = Bordereau::with('items', 'client', 'user');
+        $query = Bordereau::with('items', 'client', 'user', 'devis');
 
         if ($status !== null) {
             $query->where('status', $status);
         }
 
-        $bordereaux = $query->get();
+        $bordereaux = $query->orderBy('created_at', 'desc')->get();
         return response()->json($bordereaux);
     }
 
@@ -27,8 +27,9 @@ class BordereauController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'reference' => 'required|unique:bordereaux,reference',
+            'reference' => 'required|unique:bordereaus,reference',
             'client_id' => 'required|exists:clients,id',
+            'devis_id' => 'nullable|exists:devis,id',
             'user_id' => 'required|exists:users,id',
             'date_creation' => 'required|date',
             'items' => 'required|array|min:1',
@@ -45,6 +46,7 @@ class BordereauController extends Controller
         $bordereau = Bordereau::create([
             'reference' => $request->reference,
             'client_id' => $request->client_id,
+            'devis_id' => $request->devis_id,
             'user_id' => $request->user_id,
             'date_creation' => $request->date_creation,
             'notes' => $request->notes,
@@ -85,7 +87,7 @@ class BordereauController extends Controller
         }
 
         $bordereau->update($request->only([
-            'notes', 'remise_globale', 'tva', 'conditions', 'status', 'commentaire_rejet'
+            'notes', 'remise_globale', 'tva', 'conditions', 'status', 'commentaire'
         ]));
 
         // Mise à jour des items si fournis
@@ -119,28 +121,81 @@ class BordereauController extends Controller
         return response()->json(['message' => 'Bordereau supprimé']);
     }
 
-    // Valider ou rejeter (seulement par le patron)
-    public function validateBordereau(Request $request, $id)
+    // ✅ NOUVELLE MÉTHODE : Valider un bordereau
+    public function accept(Request $request, $id)
     {
-        $bordereau = Bordereau::findOrFail($id);
-        $action = $request->input('action'); // 'valider' ou 'rejeter'
-        $commentaire = $request->input('commentaire');
+        try {
+            $bordereau = Bordereau::findOrFail($id);
+            
+            // Vérifier que le bordereau est soumis (status = 1)
+            if ($bordereau->status != 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seuls les bordereaux soumis peuvent être validés'
+                ], 403);
+            }
 
-        if ($action === 'valider') {
             $bordereau->update([
-                'status' => 2,
+                'status' => 2, // validé
                 'date_validation' => now(),
-                'commentaire' => null
+                'commentaire' => null // effacer tout commentaire de rejet
             ]);
-        } elseif ($action === 'rejeter') {
-            $bordereau->update([
-                'status' => 3,
-                'commentaire' => $commentaire
-            ]);
-        } else {
-            return response()->json(['message' => 'Action invalide'], 422);
-        }
 
-        return response()->json($bordereau->load('items'));
+            return response()->json([
+                'success' => true,
+                'message' => 'Bordereau validé avec succès',
+                'data' => $bordereau->load(['items', 'client', 'user', 'devis'])
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la validation: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ NOUVELLE MÉTHODE : Rejeter un bordereau
+    public function reject(Request $request, $id)
+    {
+        try {
+            $bordereau = Bordereau::findOrFail($id);
+            
+            // Vérifier que le bordereau est soumis (status = 1)
+            if ($bordereau->status != 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seuls les bordereaux soumis peuvent être rejetés'
+                ], 403);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'commentaire' => 'required|string|max:1000'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $bordereau->update([
+                'status' => 3, // rejeté
+                'commentaire' => $request->commentaire
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bordereau rejeté avec succès',
+                'data' => $bordereau->load(['items', 'client', 'user', 'devis'])
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du rejet: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

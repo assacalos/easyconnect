@@ -7,10 +7,7 @@ import 'package:easyconnect/services/client_service.dart';
 class ClientSelectionDialog extends StatefulWidget {
   final Function(Client) onClientSelected;
 
-  const ClientSelectionDialog({
-    super.key,
-    required this.onClientSelected,
-  });
+  const ClientSelectionDialog({super.key, required this.onClientSelected});
 
   @override
   State<ClientSelectionDialog> createState() => _ClientSelectionDialogState();
@@ -39,12 +36,14 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
   Future<void> _loadClients() async {
     try {
       _isLoading.value = true;
-      final clients = await _clientService.getClients();
+      final clients = await _clientService.getClients(
+        status: 1,
+      ); // Status 1 = Validé
       _clients.value = clients;
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les clients',
+        'Impossible de charger les clients validés',
         snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
@@ -58,15 +57,16 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
       if (query.isEmpty) {
         _loadClients();
       } else {
-        final filteredClients = _clients.where((client) {
-          final searchLower = query.toLowerCase();
-          final nomLower = client.nom?.toLowerCase() ?? '';
-          final emailLower = client.email?.toLowerCase() ?? '';
-          final contactLower = client.contact?.toLowerCase() ?? '';
-          return nomLower.contains(searchLower) ||
-              emailLower.contains(searchLower) ||
-              contactLower.contains(searchLower);
-        }).toList();
+        final filteredClients =
+            _clients.where((client) {
+              final searchLower = query.toLowerCase();
+              final nomLower = client.nom?.toLowerCase() ?? '';
+              final emailLower = client.email?.toLowerCase() ?? '';
+              final contactLower = client.contact?.toLowerCase() ?? '';
+              return nomLower.contains(searchLower) ||
+                  emailLower.contains(searchLower) ||
+                  contactLower.contains(searchLower);
+            }).toList();
         _clients.value = filteredClients;
       }
     });
@@ -86,9 +86,26 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
               children: [
                 const Text(
                   'Sélectionner un client',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: const Text(
+                    'Validés uniquement',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -111,43 +128,60 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
             const SizedBox(height: 16),
             Expanded(
               child: Obx(
-                () => _isLoading.value
-                    ? const Center(child: CircularProgressIndicator())
-                    : _clients.isEmpty
+                () =>
+                    _isLoading.value
+                        ? const Center(child: CircularProgressIndicator())
+                        : _clients.isEmpty
                         ? const Center(child: Text('Aucun client trouvé'))
                         : ListView.builder(
-                            itemCount: _clients.length,
-                            itemBuilder: (context, index) {
-                              final client = _clients[index];
-                              return Card(
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: Colors.blue.shade100,
-                                    child: Text(
-                                      client.nom?[0].toUpperCase() ?? '?',
+                          itemCount: _clients.length,
+                          itemBuilder: (context, index) {
+                            final client = _clients[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: client.statusColor,
+                                  child: Icon(
+                                    client.statusIcon,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                title: Text(
+                                  '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                      .trim(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (client.nomEntreprise != null)
+                                      Text(
+                                        'Entreprise: ${client.nomEntreprise}',
+                                      ),
+                                    if (client.email != null)
+                                      Text('Email: ${client.email}'),
+                                    if (client.contact != null)
+                                      Text('Contact: ${client.contact}'),
+                                    Text(
+                                      'Statut: ${client.statusText}',
                                       style: TextStyle(
-                                        color: Colors.blue.shade900,
+                                        color: client.statusColor,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  ),
-                                  title: Text(client.nom ?? ''),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (client.email != null)
-                                        Text(client.email!),
-                                      if (client.contact != null)
-                                        Text(client.contact!),
-                                    ],
-                                  ),
-                                  onTap: () {
-                                    widget.onClientSelected(client);
-                                    Get.back();
-                                  },
+                                  ],
                                 ),
-                              );
-                            },
-                          ),
+                                onTap: () {
+                                  widget.onClientSelected(client);
+                                  Get.back();
+                                },
+                              ),
+                            );
+                          },
+                        ),
               ),
             ),
           ],

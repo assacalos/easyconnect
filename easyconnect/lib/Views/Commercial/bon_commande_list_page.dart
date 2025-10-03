@@ -6,11 +6,14 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
 class BonCommandeListPage extends StatelessWidget {
-  final BonCommandeController controller = Get.put(BonCommandeController());
+  final BonCommandeController controller = Get.find<BonCommandeController>();
   BonCommandeListPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadBonCommandes();
+    });
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bons de commande'),
@@ -21,11 +24,18 @@ class BonCommandeListPage extends StatelessWidget {
           ),
         ],
       ),
-      body: Obx(
-        () =>
-            controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : _buildBonCommandeList(),
+      body: Column(
+        children: [
+          _buildStatusTabs(),
+          Expanded(
+            child: Obx(
+              () =>
+                  controller.isLoading.value
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildBonCommandeList(),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed('/bon-commandes/new'),
@@ -35,33 +45,111 @@ class BonCommandeListPage extends StatelessWidget {
     );
   }
 
-  Widget _buildBonCommandeList() {
-    if (controller.bonCommandes.isEmpty) {
-      return const Center(child: Text('Aucun bon de commande trouvé'));
-    }
-
-    return ListView.builder(
-      itemCount: controller.bonCommandes.length,
-      padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final bonCommande = controller.bonCommandes[index];
-        return _buildBonCommandeCard(bonCommande);
-      },
+  Widget _buildStatusTabs() {
+    return Obx(
+      () => Container(
+        color: Colors.grey[100],
+        child: TabBar(
+          controller: controller.tabController,
+          isScrollable: true,
+          indicatorColor: Colors.blue,
+          labelColor: Colors.blue,
+          unselectedLabelColor: Colors.grey[600],
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.all_inclusive, size: 16),
+                  const SizedBox(width: 4),
+                  Text('Tous (${controller.bonCommandes.length})'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.pending, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'En attente (${controller.bonCommandes.where((bc) => bc.status == 1).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Validés (${controller.bonCommandes.where((bc) => bc.status == 2).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cancel, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Rejetés (${controller.bonCommandes.where((bc) => bc.status == 3).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.local_shipping, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Livrés (${controller.bonCommandes.where((bc) => bc.status == 4).length})',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
+  Widget _buildBonCommandeList() {
+    return Obx(() {
+      final filteredBonCommandes = controller.getFilteredBonCommandes();
+
+      if (filteredBonCommandes.isEmpty) {
+        return const Center(child: Text('Aucun bon de commande trouvé'));
+      }
+
+      return ListView.builder(
+        itemCount: filteredBonCommandes.length,
+        padding: const EdgeInsets.all(8),
+        itemBuilder: (context, index) {
+          final bonCommande = filteredBonCommandes[index];
+          return _buildBonCommandeCard(bonCommande);
+        },
+      );
+    });
+  }
+
   Widget _buildBonCommandeCard(BonCommande bonCommande) {
-    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final formatCurrency = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: 'fcfa',
+    );
     final formatDate = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
     IconData statusIcon;
 
     switch (bonCommande.status) {
-      case 0: // Brouillon
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        break;
       case 1: // En attente
         statusColor = Colors.orange;
         statusIcon = Icons.pending;
@@ -188,13 +276,6 @@ class BonCommandeListPage extends StatelessWidget {
                   onTap: () {
                     Get.back();
                     controller.loadBonCommandes();
-                  },
-                ),
-                ListTile(
-                  title: const Text('Brouillons'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonCommandes(status: 0);
                   },
                 ),
                 ListTile(

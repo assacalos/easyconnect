@@ -190,7 +190,7 @@ class BonDeCommandeController extends Controller
      * Valider un bon de commande
      * Accessible par Comptable, Patron et Admin
      */
-    public function validate($id)
+    public function validateBon($id)
     {
         $bon = BonDeCommande::findOrFail($id);
         
@@ -466,7 +466,7 @@ class BonDeCommandeController extends Controller
                     'montant_moyen' => $bons->count() > 0 ? $bons->avg('montant_total') : 0
                 ],
                 'par_mois' => $bons->groupBy(function($bon) {
-                    return $bon->date_commande->format('Y-m');
+                    return $bon->date_commande?->format('Y-m');
                 })->map(function($group, $mois) {
                     return [
                         'mois' => $mois,
@@ -625,7 +625,7 @@ class BonDeCommandeController extends Controller
             $exportData = $bons->map(function($bon) {
                 return [
                     'Numéro' => $bon->numero_commande,
-                    'Date commande' => $bon->date_commande->format('d/m/Y'),
+                    'Date commande' => $bon->date_commande?->format('d/m/Y'),
                     'Client' => $bon->client->nom . ' ' . $bon->client->prenom,
                     'Fournisseur' => $bon->fournisseur->nom,
                     'Montant' => $bon->montant_total,

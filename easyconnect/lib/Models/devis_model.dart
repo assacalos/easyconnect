@@ -35,12 +35,22 @@ class DevisItem {
 
   factory DevisItem.fromJson(Map<String, dynamic> json) {
     return DevisItem(
-      id: json['id'],
+      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
       designation: json['designation'],
-      quantite: json['quantite'],
-      prixUnitaire: json['prix_unitaire'].toDouble(),
-      remise: json['remise']?.toDouble(),
+      quantite:
+          json['quantite'] is String
+              ? int.tryParse(json['quantite']) ?? 0
+              : json['quantite'],
+      prixUnitaire: _parseDouble(json['prix_unitaire']),
+      remise: json['remise'] != null ? _parseDouble(json['remise']) : null,
     );
+  }
+
+  static double _parseDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.parse(value);
+    return 0.0;
   }
 }
 
@@ -51,13 +61,17 @@ class Devis {
   final DateTime dateCreation;
   final DateTime? dateValidite;
   final String? notes;
-  final int status; // 0: brouillon, 1: envoyé, 2: accepté, 3: refusé
+  final int status; // 1: envoyé, 2: accepté, 3: refusé
   final List<DevisItem> items;
   final double? remiseGlobale;
   final double? tva;
   final String? conditions;
   final String? commentaire;
   final int commercialId;
+  final String? submittedBy; // Nom de l'utilisateur qui a soumis
+  final String? rejectionComment; // Commentaire de rejet du patron
+  final DateTime? submittedAt; // Date de soumission
+  final DateTime? validatedAt; // Date de validation
 
   Devis({
     this.id,
@@ -66,13 +80,17 @@ class Devis {
     required this.dateCreation,
     this.dateValidite,
     this.notes,
-    this.status = 0,
+    this.status = 1,
     required this.items,
     this.remiseGlobale,
     this.tva,
     this.conditions,
     this.commentaire,
     required this.commercialId,
+    this.submittedBy,
+    this.rejectionComment,
+    this.submittedAt,
+    this.validatedAt,
   });
 
   double get sousTotal {
@@ -104,13 +122,13 @@ class Devis {
   String get statusText {
     switch (status) {
       case 1:
-        return "Envoyé";
+        return "En attente";
       case 2:
-        return "Accepté";
+        return "Validé";
       case 3:
-        return "Refusé";
+        return "Rejeté";
       default:
-        return "Brouillon";
+        return "Inconnu";
     }
   }
 
@@ -130,13 +148,13 @@ class Devis {
   IconData get statusIcon {
     switch (status) {
       case 1:
-        return Icons.send;
+        return Icons.access_time;
       case 2:
         return Icons.check_circle;
       case 3:
         return Icons.cancel;
       default:
-        return Icons.edit;
+        return Icons.help;
     }
   }
 
@@ -155,13 +173,23 @@ class Devis {
       'conditions': conditions,
       'commentaire': commentaire,
       'user_id': commercialId,
+      'submitted_by': submittedBy,
+      'rejection_comment': rejectionComment,
+      'submitted_at': submittedAt?.toIso8601String(),
+      'validated_at': validatedAt?.toIso8601String(),
     };
   }
 
   factory Devis.fromJson(Map<String, dynamic> json) {
     return Devis(
-      id: json['id'],
-      clientId: json['client_id'],
+      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
+      clientId:
+          (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
+                  is String
+              ? int.tryParse(
+                json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
+              )
+              : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
       reference: json['reference'],
       dateCreation: DateTime.parse(json['date_creation']),
       dateValidite:
@@ -169,16 +197,39 @@ class Devis {
               ? DateTime.parse(json['date_validite'])
               : null,
       notes: json['notes'],
-      status: json['status'],
+      status:
+          json['status'] is String
+              ? int.tryParse(json['status']) ?? 0
+              : json['status'],
       items:
           (json['items'] as List)
               .map((item) => DevisItem.fromJson(item))
               .toList(),
-      remiseGlobale: json['remise_globale']?.toDouble(),
-      tva: json['tva']?.toDouble(),
+      remiseGlobale:
+          json['remise_globale'] != null
+              ? _parseDouble(json['remise_globale'])
+              : null,
+      tva: json['tva'] != null ? _parseDouble(json['tva']) : null,
       conditions: json['conditions'],
       commentaire: json['commentaire'],
       commercialId: json['user_id'],
+      submittedBy: json['submitted_by'],
+      rejectionComment: json['rejection_comment'],
+      submittedAt:
+          json['submitted_at'] != null
+              ? DateTime.parse(json['submitted_at'])
+              : null,
+      validatedAt:
+          json['validated_at'] != null
+              ? DateTime.parse(json['validated_at'])
+              : null,
     );
+  }
+
+  static double _parseDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.parse(value);
+    return 0.0;
   }
 }

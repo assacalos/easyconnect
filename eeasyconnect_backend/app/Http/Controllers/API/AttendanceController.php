@@ -4,214 +4,265 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
-use App\Models\AttendanceSettings;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class AttendanceController extends Controller
 {
     /**
-     * Afficher la liste des pointages
+     * Enregistrer un pointage (arrivée ou départ)
      */
-    public function index(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        try {
-            $user = $request->user();
-            $query = Attendance::with(['user']);
+        $validator = Validator::make($request->all(), [
+            'type' => 'required|in:check_in,check_out',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'address' => 'nullable|string|max:255',
+            'accuracy' => 'nullable|numeric|min:0',
+            'photo' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'notes' => 'nullable|string|max:1000',
+        ]);
 
-            // Filtrage par utilisateur
-            if ($request->has('user_id')) {
-                $query->where('user_id', $request->user_id);
-            }
-
-            // Filtrage par date
-            if ($request->has('date_debut')) {
-                $query->where('check_in_time', '>=', $request->date_debut);
-            }
-
-            if ($request->has('date_fin')) {
-                $query->where('check_in_time', '<=', $request->date_fin);
-            }
-
-            // Filtrage par statut
-            if ($request->has('status')) {
-                $query->where('status', $request->status);
-            }
-
-            // Si commercial/comptable/technicien → filtre ses propres pointages
-            if (in_array($user->role, [2, 3, 5])) {
-                $query->where('user_id', $user->id);
-            }
-
-            // Pagination
-            $perPage = $request->get('per_page', 15);
-            $attendances = $query->orderBy('check_in_time', 'desc')->paginate($perPage);
-
-            // Ajouter les informations utilisateur
-            $attendances->getCollection()->transform(function ($attendance) {
-                return [
-                    'id' => $attendance->id,
-                    'user_id' => $attendance->user_id,
-                    'user_name' => $attendance->user_name,
-                    'user_role' => $attendance->user_role,
-                    'check_in_time' => $attendance->check_in_time->format('Y-m-d H:i:s'),
-                    'check_out_time' => $attendance->check_out_time?->format('Y-m-d H:i:s'),
-                    'status' => $attendance->status,
-                    'location' => $attendance->location_info,
-                    'photo_path' => $attendance->photo_path,
-                    'notes' => $attendance->notes,
-                    'work_duration_hours' => $attendance->getWorkDurationInHours(),
-                    'is_late' => $attendance->isLate(),
-                    'late_minutes' => $attendance->getLateMinutes(),
-                    'created_at' => $attendance->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $attendance->updated_at->format('Y-m-d H:i:s'),
-                ];
-            });
-
-            return response()->json([
-                'success' => true,
-                'data' => $attendances,
-                'message' => 'Liste des pointages récupérée avec succès'
-            ]);
-
-        } catch (\Exception $e) {
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des pointages: ' . $e->getMessage()
-            ], 500);
+                'message' => 'Données invalides',
+                'errors' => $validator->errors()
+            ], 422);
         }
-    }
 
-    /**
-     * Pointer l'arrivée
-     */
-    public function checkIn(Request $request)
-    {
+        $user = $request->user();
+
+        // Vérifier si l'utilisateur peut pointer
+        if (!$this->canUserPunch($user, $request->type)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vous ne pouvez pas pointer maintenant'
+            ], 400);
+        }
+
         try {
-            $user = $request->user();
-            
-            // Vérifier si l'utilisateur peut pointer
-            if (!Attendance::canCheckIn($user->id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Vous avez déjà pointé aujourd\'hui'
-                ], 400);
-            }
+            // Upload de la photo
+            $photoPath = $this->uploadPhoto($request->file('photo'), $user->id);
 
-            $validated = $request->validate([
-                'location' => 'required|array',
-                'location.latitude' => 'required|numeric',
-                'location.longitude' => 'required|numeric',
-                'location.address' => 'nullable|string',
-                'location.accuracy' => 'nullable|numeric',
-                'photo_path' => 'nullable|string',
-                'notes' => 'nullable|string'
-            ]);
-
-            $checkInTime = now();
-            $settings = AttendanceSettings::getActiveSettings();
-            
-            // Vérifier la géolocalisation
-            if ($settings->require_location) {
-                if (!$settings->isLocationAllowed(
-                    $validated['location']['latitude'],
-                    $validated['location']['longitude']
-                )) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Vous n\'êtes pas dans une zone autorisée pour pointer'
-                    ], 400);
-                }
-            }
-
-            // Déterminer le statut
-            $status = 'present';
-            if ($settings->isLate($checkInTime)) {
-                $status = 'late';
-            }
-
+            // Créer le pointage
             $attendance = Attendance::create([
                 'user_id' => $user->id,
-                'check_in_time' => $checkInTime,
-                'status' => $status,
-                'location' => $validated['location'],
-                'photo_path' => $validated['photo_path'] ?? null,
-                'notes' => $validated['notes'] ?? null
+                'type' => $request->type,
+                'timestamp' => now(),
+                'latitude' => $request->latitude,
+                'longitude' => $request->longitude,
+                'address' => $request->address,
+                'accuracy' => $request->accuracy,
+                'photo_path' => $photoPath,
+                'notes' => $request->notes,
+                'status' => 'pending',
             ]);
 
             return response()->json([
                 'success' => true,
-                'data' => $attendance->load(['user']),
-                'message' => 'Pointage d\'arrivée enregistré avec succès'
+                'message' => 'Pointage enregistré avec succès',
+                'data' => $attendance->load('user')
             ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du pointage d\'arrivée: ' . $e->getMessage()
+                'message' => 'Erreur lors de l\'enregistrement du pointage',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Pointer le départ
+     * Lister tous les pointages (pour le patron)
      */
-    public function checkOut(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        try {
-            $user = $request->user();
-            
-            // Vérifier si l'utilisateur peut pointer
-            if (!Attendance::canCheckOut($user->id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Vous devez d\'abord pointer votre arrivée'
-                ], 400);
-            }
+        $query = Attendance::with(['user', 'approver']);
 
-            $validated = $request->validate([
-                'notes' => 'nullable|string'
-            ]);
+        // Filtres
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
 
-            $checkOutTime = now();
-            $settings = AttendanceSettings::getActiveSettings();
-            
-            // Récupérer le pointage d'aujourd'hui
-            $attendance = Attendance::where('user_id', $user->id)
-                ->whereDate('check_in_time', today())
-                ->whereNull('check_out_time')
-                ->first();
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
 
-            if (!$attendance) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Aucun pointage d\'arrivée trouvé pour aujourd\'hui'
-                ], 400);
-            }
+        if ($request->has('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
 
-            // Vérifier si départ anticipé
-            if ($settings->isEarlyLeave($checkOutTime)) {
-                $attendance->status = 'early_leave';
-            }
+        if ($request->has('date_from')) {
+            $query->whereDate('timestamp', '>=', $request->date_from);
+        }
 
-            $attendance->update([
-                'check_out_time' => $checkOutTime,
-                'notes' => $validated['notes'] ?? $attendance->notes
-            ]);
+        if ($request->has('date_to')) {
+            $query->whereDate('timestamp', '<=', $request->date_to);
+        }
 
-            return response()->json([
-                'success' => true,
-                'data' => $attendance->load(['user']),
-                'message' => 'Pointage de départ enregistré avec succès'
-            ]);
+        $attendances = $query->orderBy('timestamp', 'desc')->paginate(20);
 
-        } catch (\Exception $e) {
+        return response()->json([
+            'success' => true,
+            'data' => $attendances
+        ]);
+    }
+
+    /**
+     * Afficher un pointage spécifique
+     */
+    public function show(Attendance $attendance): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $attendance->load(['user', 'approver'])
+        ]);
+    }
+
+    /**
+     * Approuver un pointage
+     */
+    public function approve(Request $request, Attendance $attendance): JsonResponse
+    {
+        $user = $request->user();
+
+        // Vérifier que l'utilisateur peut approuver
+        if (!$this->canApprove($user)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du pointage de départ: ' . $e->getMessage()
-            ], 500);
+                'message' => 'Vous n\'avez pas l\'autorisation d\'approuver'
+            ], 403);
         }
+
+        if ($attendance->approve($user)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Pointage approuvé avec succès',
+                'data' => $attendance->fresh(['user', 'approver'])
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible d\'approuver ce pointage'
+        ], 400);
+    }
+
+    /**
+     * Rejeter un pointage
+     */
+    public function reject(Request $request, Attendance $attendance): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|string|max:500'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Raison de rejet requise',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = $request->user();
+
+        // Vérifier que l'utilisateur peut rejeter
+        if (!$this->canApprove($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vous n\'avez pas l\'autorisation de rejeter'
+            ], 403);
+        }
+
+        if ($attendance->reject($user, $request->reason)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Pointage rejeté avec succès',
+                'data' => $attendance->fresh(['user', 'approver'])
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Impossible de rejeter ce pointage'
+        ], 400);
+    }
+
+    /**
+     * Pointages en attente de validation
+     */
+    public function pending(): JsonResponse
+    {
+        $attendances = Attendance::with(['user'])
+            ->pending()
+            ->orderBy('timestamp', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $attendances
+        ]);
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut pointer
+     */
+    public function canPunch(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $type = $request->query('type', 'check_in');
+
+        $canPunch = $this->canUserPunch($user, $type);
+
+        return response()->json([
+            'success' => true,
+            'can_punch' => $canPunch,
+            'message' => $canPunch ? 'Vous pouvez pointer' : 'Vous ne pouvez pas pointer maintenant'
+        ]);
+    }
+
+    /**
+     * Upload de photo
+     */
+    private function uploadPhoto($photo, int $userId): string
+    {
+        $filename = Str::uuid() . '.' . $photo->getClientOriginalExtension();
+        $path = "attendances/{$userId}/{$filename}";
+        
+        Storage::disk('public')->put($path, file_get_contents($photo));
+        
+        return $path;
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut pointer
+     */
+    private function canUserPunch(User $user, string $type): bool
+    {
+        $lastAttendance = Attendance::where('user_id', $user->id)
+            ->orderBy('timestamp', 'desc')
+            ->first();
+
+        if (!$lastAttendance) {
+            return $type === 'check_in';
+        }
+
+        return $lastAttendance->type !== $type;
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut approuver
+     */
+    private function canApprove(User $user): bool
+    {
+        return in_array($user->role, ['admin', 'patron', 'rh']);
     }
 }

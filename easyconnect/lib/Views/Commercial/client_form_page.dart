@@ -119,9 +119,8 @@ class ClientFormPage extends StatelessWidget {
                       // TODO: appeler update API (si tu veux gérer update côté Laravel)
                       Get.snackbar("Succès", "Client modifié avec succès");
                     } else {
-                      await controller.createClient(data);
+                      await controller.createClientFromMap(data);
                       Get.back(); // retour à la liste
-                      Get.snackbar("Succès", "Client ajouté avec succès");
                     }
                   }
                 },

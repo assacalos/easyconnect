@@ -29,18 +29,36 @@ class ReportingModel {
 
   factory ReportingModel.fromJson(Map<String, dynamic> json) {
     return ReportingModel(
-      id: json['id'],
-      userId: json['user_id'],
-      userName: json['user_name'],
-      userRole: json['user_role'],
+      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
+      userId:
+          json['user_id'] is String
+              ? int.tryParse(json['user_id'])
+              : json['user_id'],
+      userName: json['user_name'] ?? '',
+      userRole: json['user_role'] ?? '',
       reportDate: DateTime.parse(json['report_date']),
-      metrics: Map<String, dynamic>.from(json['metrics']),
-      status: json['status'],
-      submittedAt: json['submitted_at'] != null ? DateTime.parse(json['submitted_at']) : null,
-      approvedAt: json['approved_at'] != null ? DateTime.parse(json['approved_at']) : null,
+      metrics:
+          json['metrics'] != null
+              ? Map<String, dynamic>.from(json['metrics'])
+              : {},
+      status: json['status'] ?? 'draft',
+      submittedAt:
+          json['submitted_at'] != null
+              ? DateTime.parse(json['submitted_at'])
+              : null,
+      approvedAt:
+          json['approved_at'] != null
+              ? DateTime.parse(json['approved_at'])
+              : null,
       comments: json['comments'],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      createdAt:
+          json['created_at'] != null
+              ? DateTime.parse(json['created_at'])
+              : DateTime.now(),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.parse(json['updated_at'])
+              : DateTime.now(),
     );
   }
 
@@ -75,6 +93,17 @@ class CommercialMetrics {
   final int emailsEnvoyes;
   final int visitesRealisees;
 
+  // Champs de notes pour chaque métrique
+  final String? noteClientsProspectes;
+  final String? noteRdvObtenus;
+  final String? noteDevisCrees;
+  final String? noteDevisAcceptes;
+  final String? noteChiffreAffaires;
+  final String? noteNouveauxClients;
+  final String? noteAppelsEffectues;
+  final String? noteEmailsEnvoyes;
+  final String? noteVisitesRealisees;
+
   CommercialMetrics({
     required this.clientsProspectes,
     required this.rdvObtenus,
@@ -86,15 +115,26 @@ class CommercialMetrics {
     required this.appelsEffectues,
     required this.emailsEnvoyes,
     required this.visitesRealisees,
+    this.noteClientsProspectes,
+    this.noteRdvObtenus,
+    this.noteDevisCrees,
+    this.noteDevisAcceptes,
+    this.noteChiffreAffaires,
+    this.noteNouveauxClients,
+    this.noteAppelsEffectues,
+    this.noteEmailsEnvoyes,
+    this.noteVisitesRealisees,
   });
 
   factory CommercialMetrics.fromJson(Map<String, dynamic> json) {
     return CommercialMetrics(
       clientsProspectes: json['clients_prospectes'] ?? 0,
       rdvObtenus: json['rdv_obtenus'] ?? 0,
-      rdvList: (json['rdv_list'] as List<dynamic>?)
-          ?.map((e) => RdvInfo.fromJson(e))
-          .toList() ?? [],
+      rdvList:
+          (json['rdv_list'] as List<dynamic>?)
+              ?.map((e) => RdvInfo.fromJson(e))
+              .toList() ??
+          [],
       devisCrees: json['devis_crees'] ?? 0,
       devisAcceptes: json['devis_acceptes'] ?? 0,
       chiffreAffaires: (json['chiffre_affaires'] ?? 0).toDouble(),
@@ -102,6 +142,15 @@ class CommercialMetrics {
       appelsEffectues: json['appels_effectues'] ?? 0,
       emailsEnvoyes: json['emails_envoyes'] ?? 0,
       visitesRealisees: json['visites_realisees'] ?? 0,
+      noteClientsProspectes: json['note_clients_prospectes'],
+      noteRdvObtenus: json['note_rdv_obtenus'],
+      noteDevisCrees: json['note_devis_crees'],
+      noteDevisAcceptes: json['note_devis_acceptes'],
+      noteChiffreAffaires: json['note_chiffre_affaires'],
+      noteNouveauxClients: json['note_nouveaux_clients'],
+      noteAppelsEffectues: json['note_appels_effectues'],
+      noteEmailsEnvoyes: json['note_emails_envoyes'],
+      noteVisitesRealisees: json['note_visites_realisees'],
     );
   }
 
@@ -117,6 +166,15 @@ class CommercialMetrics {
       'appels_effectues': appelsEffectues,
       'emails_envoyes': emailsEnvoyes,
       'visites_realisees': visitesRealisees,
+      'note_clients_prospectes': noteClientsProspectes,
+      'note_rdv_obtenus': noteRdvObtenus,
+      'note_devis_crees': noteDevisCrees,
+      'note_devis_acceptes': noteDevisAcceptes,
+      'note_chiffre_affaires': noteChiffreAffaires,
+      'note_nouveaux_clients': noteNouveauxClients,
+      'note_appels_effectues': noteAppelsEffectues,
+      'note_emails_envoyes': noteEmailsEnvoyes,
+      'note_visites_realisees': noteVisitesRealisees,
     };
   }
 }
@@ -173,6 +231,18 @@ class ComptableMetrics {
   final int relancesEffectuees;
   final double encaissements;
 
+  // Champs de notes pour chaque métrique
+  final String? noteFacturesEmises;
+  final String? noteFacturesPayees;
+  final String? noteMontantFacture;
+  final String? noteMontantEncaissement;
+  final String? noteBordereauxTraites;
+  final String? noteBonsCommandeTraites;
+  final String? noteChiffreAffaires;
+  final String? noteClientsFactures;
+  final String? noteRelancesEffectuees;
+  final String? noteEncaissements;
+
   ComptableMetrics({
     required this.facturesEmises,
     required this.facturesPayees,
@@ -184,6 +254,16 @@ class ComptableMetrics {
     required this.clientsFactures,
     required this.relancesEffectuees,
     required this.encaissements,
+    this.noteFacturesEmises,
+    this.noteFacturesPayees,
+    this.noteMontantFacture,
+    this.noteMontantEncaissement,
+    this.noteBordereauxTraites,
+    this.noteBonsCommandeTraites,
+    this.noteChiffreAffaires,
+    this.noteClientsFactures,
+    this.noteRelancesEffectuees,
+    this.noteEncaissements,
   });
 
   factory ComptableMetrics.fromJson(Map<String, dynamic> json) {
@@ -198,6 +278,16 @@ class ComptableMetrics {
       clientsFactures: json['clients_factures'] ?? 0,
       relancesEffectuees: json['relances_effectuees'] ?? 0,
       encaissements: (json['encaissements'] ?? 0).toDouble(),
+      noteFacturesEmises: json['note_factures_emises'],
+      noteFacturesPayees: json['note_factures_payees'],
+      noteMontantFacture: json['note_montant_facture'],
+      noteMontantEncaissement: json['note_montant_encaissement'],
+      noteBordereauxTraites: json['note_bordereaux_traites'],
+      noteBonsCommandeTraites: json['note_bons_commande_traites'],
+      noteChiffreAffaires: json['note_chiffre_affaires'],
+      noteClientsFactures: json['note_clients_factures'],
+      noteRelancesEffectuees: json['note_relances_effectuees'],
+      noteEncaissements: json['note_encaissements'],
     );
   }
 
@@ -213,6 +303,16 @@ class ComptableMetrics {
       'clients_factures': clientsFactures,
       'relances_effectuees': relancesEffectuees,
       'encaissements': encaissements,
+      'note_factures_emises': noteFacturesEmises,
+      'note_factures_payees': noteFacturesPayees,
+      'note_montant_facture': noteMontantFacture,
+      'note_montant_encaissement': noteMontantEncaissement,
+      'note_bordereaux_traites': noteBordereauxTraites,
+      'note_bons_commande_traites': noteBonsCommandeTraites,
+      'note_chiffre_affaires': noteChiffreAffaires,
+      'note_clients_factures': noteClientsFactures,
+      'note_relances_effectuees': noteRelancesEffectuees,
+      'note_encaissements': noteEncaissements,
     };
   }
 }
@@ -229,6 +329,16 @@ class TechnicienMetrics {
   final int deplacements;
   final String? notesTechniques;
 
+  // Champs de notes pour chaque métrique
+  final String? noteInterventionsPlanifiees;
+  final String? noteInterventionsRealisees;
+  final String? noteInterventionsAnnulees;
+  final String? noteClientsVisites;
+  final String? noteProblemesResolus;
+  final String? noteProblemesEnCours;
+  final String? noteTempsTravail;
+  final String? noteDeplacements;
+
   TechnicienMetrics({
     required this.interventionsPlanifiees,
     required this.interventionsRealisees,
@@ -240,6 +350,14 @@ class TechnicienMetrics {
     required this.tempsTravail,
     required this.deplacements,
     this.notesTechniques,
+    this.noteInterventionsPlanifiees,
+    this.noteInterventionsRealisees,
+    this.noteInterventionsAnnulees,
+    this.noteClientsVisites,
+    this.noteProblemesResolus,
+    this.noteProblemesEnCours,
+    this.noteTempsTravail,
+    this.noteDeplacements,
   });
 
   factory TechnicienMetrics.fromJson(Map<String, dynamic> json) {
@@ -247,15 +365,25 @@ class TechnicienMetrics {
       interventionsPlanifiees: json['interventions_planifiees'] ?? 0,
       interventionsRealisees: json['interventions_realisees'] ?? 0,
       interventionsAnnulees: json['interventions_annulees'] ?? 0,
-      interventionsList: (json['interventions_list'] as List<dynamic>?)
-          ?.map((e) => InterventionInfo.fromJson(e))
-          .toList() ?? [],
+      interventionsList:
+          (json['interventions_list'] as List<dynamic>?)
+              ?.map((e) => InterventionInfo.fromJson(e))
+              .toList() ??
+          [],
       clientsVisites: json['clients_visites'] ?? 0,
       problemesResolus: json['problemes_resolus'] ?? 0,
       problemesEnCours: json['problemes_en_cours'] ?? 0,
       tempsTravail: (json['temps_travail'] ?? 0).toDouble(),
       deplacements: json['deplacements'] ?? 0,
       notesTechniques: json['notes_techniques'],
+      noteInterventionsPlanifiees: json['note_interventions_planifiees'],
+      noteInterventionsRealisees: json['note_interventions_realisees'],
+      noteInterventionsAnnulees: json['note_interventions_annulees'],
+      noteClientsVisites: json['note_clients_visites'],
+      noteProblemesResolus: json['note_problemes_resolus'],
+      noteProblemesEnCours: json['note_problemes_en_cours'],
+      noteTempsTravail: json['note_temps_travail'],
+      noteDeplacements: json['note_deplacements'],
     );
   }
 
@@ -271,6 +399,14 @@ class TechnicienMetrics {
       'temps_travail': tempsTravail,
       'deplacements': deplacements,
       'notes_techniques': notesTechniques,
+      'note_interventions_planifiees': noteInterventionsPlanifiees,
+      'note_interventions_realisees': noteInterventionsRealisees,
+      'note_interventions_annulees': noteInterventionsAnnulees,
+      'note_clients_visites': noteClientsVisites,
+      'note_problemes_resolus': noteProblemesResolus,
+      'note_problemes_en_cours': noteProblemesEnCours,
+      'note_temps_travail': noteTempsTravail,
+      'note_deplacements': noteDeplacements,
     };
   }
 }

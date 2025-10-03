@@ -112,7 +112,36 @@ abstract class BaseDashboard<T extends BaseDashboardController>
         icon: const Icon(Icons.refresh),
         onPressed: () => controller.loadInitialData(),
       ),
+      IconButton(
+        icon: const Icon(Icons.logout),
+        onPressed: () => _showLogoutDialog(),
+        tooltip: 'Déconnexion',
+      ),
     ];
+  }
+
+  void _showLogoutDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () {
+              Get.back();
+              final authController = Get.find<AuthController>();
+              authController.logout();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Déconnexion'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget? buildFloatingActionButton() => null;

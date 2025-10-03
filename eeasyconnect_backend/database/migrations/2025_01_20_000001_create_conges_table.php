@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('conges', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('user_id');
             $table->string('type_conge'); // annuel, maladie, maternite, paternite, formation, etc.
             $table->date('date_debut');
             $table->date('date_fin');
@@ -21,12 +21,15 @@ return new class extends Migration
             $table->text('motif');
             $table->string('statut')->default('en_attente'); // en_attente, approuve, rejete
             $table->text('commentaire_rh')->nullable();
-            $table->foreignId('approuve_par')->nullable()->constrained('users');
+            $table->unsignedBigInteger('approuve_par')->nullable();
             $table->timestamp('date_approbation')->nullable();
             $table->text('raison_rejet')->nullable();
             $table->boolean('urgent')->default(false);
             $table->string('piece_jointe')->nullable();
             $table->timestamps();
+
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('approuve_par')->references('id')->on('users')->onDelete('set null');
         });
     }
 

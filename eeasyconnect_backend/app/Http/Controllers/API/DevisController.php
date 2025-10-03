@@ -97,7 +97,7 @@ class DevisController extends Controller
                 'date_creation' => now()->toDateString(),
                 'date_validite' => $validated['date_validite'],
                 'notes' => $validated['notes'],
-                'status' => 0, // Brouillon
+                'status' => 1, // Brouillon
                 'remise_globale' => $validated['remise_globale'] ?? 0,
                 'tva' => $validated['tva'] ?? 0,
                 'conditions' => $validated['conditions'],
@@ -291,30 +291,34 @@ class DevisController extends Controller
     /**
      * Accepter un devis
      */
-    public function accept($id)
-    {
+    
+    /**
+     * Valider un devis (méthode pour les patrons)
+     */
+    public function accept($id) {
         try {
             $devis = Devis::findOrFail($id);
-
+            
+            // Vérifier que le devis est envoyé (status = 1)
             if ($devis->status != 1) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Devis non envoyé'
+                    'message' => 'Seuls les devis envoyés peuvent être validés'
                 ], 403);
             }
 
-            $devis->update(['status' => 2]); // Accepté
-
+            $devis->status = 2; // Validé par le patron
+            $devis->save();
+            
             return response()->json([
                 'success' => true,
-                'message' => 'Devis accepté avec succès',
-                'data' => $devis
+                'message' => 'Devis validé avec succès par le patron',
+                'data' => $devis->load(['client', 'commercial', 'items'])
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'acceptation du devis: ' . $e->getMessage()
+                'message' => 'Erreur lors de la validation: ' . $e->getMessage()
             ], 500);
         }
     }
