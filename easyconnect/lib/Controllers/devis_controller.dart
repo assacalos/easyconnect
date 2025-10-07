@@ -1,7 +1,9 @@
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/services/devis_service.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 
@@ -245,23 +247,6 @@ class DevisController extends GetxController {
     }
   }
 
-  Future<void> generatePDF(int devisId) async {
-    try {
-      isLoading.value = true;
-      await _devisService.generatePDF(devisId);
-      // Ouvrir le PDF ou le télécharger
-      // TODO: Implémenter l'ouverture ou le téléchargement du PDF
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de générer le PDF',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
   // Gestion des items
   void addItem(DevisItem item) {
     items.add(item);
@@ -314,5 +299,68 @@ class DevisController extends GetxController {
   void clearForm() {
     selectedClient.value = null;
     items.clear();
+  }
+
+  /// Générer un PDF pour un devis
+  Future<void> generatePDF(int devisId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver le devis
+      final selectedDevis = devis.firstWhere((d) => d.id == devisId);
+
+      // Charger les données nécessaires
+      final clients = await _clientService.getClients();
+      final client = clients.firstWhere((c) => c.id == selectedDevis.clientId);
+      final items =
+          selectedDevis.items
+              .map(
+                (item) => {
+                  'designation': item.designation,
+                  'unite': 'unité',
+                  'quantite': item.quantite,
+                  'prix_unitaire': item.prixUnitaire,
+                  'montant_total': item.total,
+                },
+              )
+              .toList();
+
+      // Générer le PDF
+      await PdfService().generateDevisPdf(
+        devis: {
+          'reference': selectedDevis.reference,
+          'date_creation': selectedDevis.dateCreation,
+          'montant_ht': selectedDevis.totalHT,
+          'tva': selectedDevis.tva,
+          'total_ttc': selectedDevis.totalTTC,
+        },
+        items: items,
+        client: {
+          'nom': client?.nom ?? '',
+          'prenom': client?.prenom ?? '',
+          'nom_entreprise': client?.nomEntreprise,
+          'email': client?.email,
+          'contact': client?.contact,
+          'adresse': client?.adresse,
+        },
+        commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

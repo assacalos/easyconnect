@@ -19,30 +19,35 @@ class AuthMiddleware extends GetMiddleware {
       final userRole = authController.userAuth.value?.role;
       if (userRole == null) return const RouteSettings(name: '/login');
 
+      // L'ADMIN peut accéder à toutes les pages
+      if (userRole == Roles.ADMIN) {
+        return null;
+      }
+
       // Définir les permissions requises pour chaque route
       switch (route) {
         case '/rh':
-          if (![Roles.ADMIN, Roles.RH].contains(userRole)) {
+          if (userRole != Roles.RH) {
             return const RouteSettings(name: '/unauthorized');
           }
           break;
         case '/commercial':
-          if (![Roles.ADMIN, Roles.COMMERCIAL].contains(userRole)) {
+          if (userRole != Roles.COMMERCIAL) {
             return const RouteSettings(name: '/unauthorized');
           }
           break;
         case '/comptable':
-          if (![Roles.ADMIN, Roles.COMPTABLE].contains(userRole)) {
+          if (userRole != Roles.COMPTABLE) {
             return const RouteSettings(name: '/unauthorized');
           }
           break;
         case '/patron':
-          if (![Roles.ADMIN, Roles.PATRON].contains(userRole)) {
+          if (userRole != Roles.PATRON) {
             return const RouteSettings(name: '/unauthorized');
           }
           break;
         case '/technicien':
-          if (![Roles.ADMIN, Roles.TECHNICIEN].contains(userRole)) {
+          if (userRole != Roles.TECHNICIEN) {
             return const RouteSettings(name: '/unauthorized');
           }
           break;

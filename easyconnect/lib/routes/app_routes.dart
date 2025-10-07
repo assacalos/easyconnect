@@ -21,6 +21,10 @@ import 'package:easyconnect/Views/Patron/pointage_validation_page.dart';
 import 'package:easyconnect/Views/Patron/taxe_validation_page.dart';
 import 'package:easyconnect/Views/Patron/reporting_validation_page.dart';
 import 'package:easyconnect/Views/Patron/patron_dashboard_v2.dart';
+import 'package:easyconnect/Views/Admin/admin_dashboard.dart';
+import 'package:easyconnect/Views/Admin/user_management_page.dart';
+import 'package:easyconnect/Views/Admin/user_form_page.dart';
+import 'package:easyconnect/Views/Admin/app_settings_page.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Views/Auth/login_page.dart';
 import 'package:easyconnect/Views/Auth/unauthorized_page.dart';
@@ -35,6 +39,8 @@ import 'package:easyconnect/bindings/patron_binding.dart';
 import 'package:easyconnect/bindings/comptable_binding.dart';
 import 'package:easyconnect/bindings/rh_binding.dart';
 import 'package:easyconnect/bindings/technicien_binding.dart';
+import 'package:easyconnect/bindings/admin_binding.dart';
+import 'package:easyconnect/bindings/user_management_binding.dart';
 import 'package:easyconnect/Views/Components/reporting_list.dart';
 import 'package:easyconnect/Views/Components/reporting_form.dart';
 import 'package:easyconnect/Views/Components/attendance_punch_page.dart';
@@ -111,6 +117,40 @@ class AppRoutes {
       name: '/technicien',
       page: () => TechnicienDashboard(),
       binding: TechnicienBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    // Routes pour l'administrateur
+    GetPage(
+      name: '/admin',
+      page: () => const AdminDashboard(),
+      binding: AdminBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/admin/users',
+      page: () => const UserManagementPage(),
+      binding: UserManagementBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/admin/users/new',
+      page: () => const UserFormPage(),
+      binding: UserManagementBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/admin/users/:id/edit',
+      page:
+          () => UserFormPage(
+            isEditing: true,
+            userId: int.parse(Get.parameters['id'] ?? '0'),
+          ),
+      binding: UserManagementBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/admin/settings',
+      page: () => const AppSettingsPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -551,16 +591,16 @@ class AppRoutes {
     // Rediriger vers la page appropriée selon le rôle
     switch (userRole) {
       case 1: // Admin
-        return '/admin'; // Admin va vers le dashboard patron
+        return '/admin'; // Admin va vers le dashboard admin
       case 2: // Commercial
         return '/commercial';
       case 3: // Comptable
         return '/comptable';
-      case 5: // RH
+      case 4: // RH
         return '/rh';
-      case 6: // Technicien
+      case 5: // Technicien
         return '/technicien';
-      case 4: // Patron
+      case 6: // Patron
         return '/patron';
       default:
         return '/login';

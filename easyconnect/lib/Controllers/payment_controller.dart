@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/services/payment_service.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class PaymentController extends GetxController {
@@ -690,5 +691,50 @@ class PaymentController extends GetxController {
     clientEmailController.dispose();
     clientAddressController.dispose();
     super.onClose();
+  }
+
+  /// Générer un PDF pour un paiement
+  Future<void> generatePDF(int paymentId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver le paiement
+      final payment = payments.firstWhere((p) => p.id == paymentId);
+
+      // Générer le PDF
+      await PdfService().generatePaiementPdf(
+        paiement: {
+          'reference': payment.reference,
+          'montant': payment.amount,
+          'mode_paiement': payment.paymentMethod,
+          'date_paiement': payment.paymentDate,
+        },
+        facture: {'reference': payment.paymentNumber ?? 'N/A'},
+        client: {
+          'nom': payment.clientName,
+          'prenom': '',
+          'nom_entreprise': payment.clientName,
+          'email': payment.clientEmail,
+          'contact': '',
+          'adresse': payment.clientAddress,
+        },
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

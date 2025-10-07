@@ -338,6 +338,24 @@ class PaymentList extends StatelessWidget {
               ),
             ],
 
+            // Bouton PDF pour tous les paiements
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => controller.generatePDF(payment.id),
+                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    label: const Text('Générer PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
             if (payment.isApproved) ...[
               const SizedBox(height: 8),
               Row(

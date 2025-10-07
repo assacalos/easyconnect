@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../Models/invoice_model.dart';
 import '../../services/invoice_service.dart';
 import '../../Controllers/auth_controller.dart';
+import '../../Controllers/invoice_controller.dart';
 
 class InvoiceListPage extends StatefulWidget {
   const InvoiceListPage({super.key});
@@ -218,28 +219,44 @@ class _InvoiceListPageState extends State<InvoiceListPage>
             Text('Date: ${_formatDate(invoice.invoiceDate)}'),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _getStatusColor(invoice.status).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _getStatusLabel(invoice.status),
-                style: TextStyle(
-                  color: _getStatusColor(invoice.status),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: () => _generatePDF(invoice),
+              tooltip: 'Générer PDF',
             ),
-            const SizedBox(height: 4),
-            Text(
-              '${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(invoice.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _getStatusLabel(invoice.status),
+                    style: TextStyle(
+                      color: _getStatusColor(invoice.status),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -421,6 +438,15 @@ class _InvoiceListPageState extends State<InvoiceListPage>
       } catch (e) {
         Get.snackbar('Erreur', 'Impossible de rejeter la facture');
       }
+    }
+  }
+
+  void _generatePDF(InvoiceModel invoice) async {
+    try {
+      final controller = Get.find<InvoiceController>();
+      await controller.generatePDF(invoice.id);
+    } catch (e) {
+      Get.snackbar('Erreur', 'Impossible de générer le PDF');
     }
   }
 }

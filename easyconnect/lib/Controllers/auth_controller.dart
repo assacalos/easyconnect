@@ -58,23 +58,34 @@ class AuthController extends GetxController {
         );
 
         /// Redirection selon le rôle
+        print("Rôle utilisateur: ${userAuth.value?.role}");
         switch (userAuth.value?.role) {
+          case Roles.ADMIN:
+            print("Redirection ADMIN vers /admin");
+            Get.offAllNamed('/admin');
+            break;
           case Roles.COMMERCIAL:
+            print("Redirection COMMERCIAL vers /commercial");
             Get.offAllNamed('/commercial');
             break;
           case Roles.COMPTABLE:
+            print("Redirection COMPTABLE vers /comptable");
             Get.offAllNamed('/comptable');
             break;
           case Roles.PATRON:
+            print("Redirection PATRON vers /patron");
             Get.offAllNamed('/patron');
             break;
           case Roles.RH:
+            print("Redirection RH vers /rh");
             Get.offAllNamed('/rh');
             break;
           case Roles.TECHNICIEN:
+            print("Redirection TECHNICIEN vers /technicien");
             Get.offAllNamed('/technicien');
             break;
           default:
+            print("Rôle non reconnu, redirection vers /login");
             Get.offAllNamed('/login');
         }
 
@@ -101,8 +112,13 @@ class AuthController extends GetxController {
   /// --- Charger utilisateur depuis le stockage local (auto-login)
   void loadUserFromStorage() {
     try {
+      print("=== CHARGEMENT DE LA SESSION DEPUIS LE STOCKAGE ===");
       final savedUser = storage.read("user");
       final savedToken = storage.read("token");
+
+      print(
+        "Données sauvegardées - User: $savedUser, Token: ${savedToken != null ? 'présent' : 'absent'}",
+      );
 
       if (savedUser != null && savedToken != null) {
         userAuth.value = UserModel.fromJson(
@@ -114,7 +130,7 @@ class AuthController extends GetxController {
         storage.write("userRole", userAuth.value?.role);
 
         print(
-          "Session restaurée - ID: ${userAuth.value?.id}, Role: ${userAuth.value?.role}",
+          "Session restaurée - ID: ${userAuth.value?.id}, Role: ${userAuth.value?.role}, Nom: ${userAuth.value?.nom}",
         );
       } else {
         print("Aucune session sauvegardée trouvée");

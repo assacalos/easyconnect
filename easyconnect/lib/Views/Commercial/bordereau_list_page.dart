@@ -151,7 +151,17 @@ class BordereauListPage extends StatelessWidget {
             ),
           ],
         ),
-        trailing: _buildActionButton(bordereau),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: () => controller.generatePDF(bordereau.id!),
+              tooltip: 'Générer PDF',
+            ),
+            _buildActionButton(bordereau),
+          ],
+        ),
         onTap: () => Get.toNamed('/bordereaux/${bordereau.id}'),
       ),
     );

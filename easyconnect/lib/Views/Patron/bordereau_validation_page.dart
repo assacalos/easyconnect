@@ -410,90 +410,132 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     // Afficher les boutons selon le statut
     switch (bordereau.status) {
       case 1: // En attente - Afficher boutons Valider/Rejeter
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        return Column(
           children: [
-            ElevatedButton.icon(
-              onPressed: () => _showApproveConfirmation(bordereau),
-              icon: const Icon(Icons.check),
-              label: const Text('Valider'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _showApproveConfirmation(bordereau),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Valider'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => _showRejectDialog(bordereau),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Rejeter'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
             ElevatedButton.icon(
-              onPressed: () => _showRejectDialog(bordereau),
-              icon: const Icon(Icons.close),
-              label: const Text('Rejeter'),
+              onPressed: () => controller.generatePDF(bordereau.id!),
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Générer PDF'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
               ),
             ),
           ],
         );
       case 2: // Validé - Afficher seulement info
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green),
-              const SizedBox(width: 8),
-              Text(
-                'Bordereau validé',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                ),
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
               ),
-            ],
-          ),
-        );
-      case 3: // Rejeté - Afficher motif du rejet
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.red),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.cancel, color: Colors.red),
+                  const Icon(Icons.check_circle, color: Colors.green),
                   const SizedBox(width: 8),
                   Text(
-                    'Bordereau rejeté',
+                    'Bordereau validé',
                     style: TextStyle(
-                      color: Colors.red[700],
+                      color: Colors.green[700],
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
-              if (bordereau.commentaireRejet != null &&
-                  bordereau.commentaireRejet!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Motif: ${bordereau.commentaireRejet}',
-                  style: TextStyle(
-                    color: Colors.red[600],
-                    fontStyle: FontStyle.italic,
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => controller.generatePDF(bordereau.id!),
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Générer PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      case 3: // Rejeté - Afficher motif du rejet
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.cancel, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Bordereau rejeté',
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ],
-          ),
+                  if (bordereau.commentaireRejet != null &&
+                      bordereau.commentaireRejet!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Motif: ${bordereau.commentaireRejet}',
+                      style: TextStyle(
+                        color: Colors.red[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () => controller.generatePDF(bordereau.id!),
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Générer PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         );
       default: // Autres statuts
         return Container(

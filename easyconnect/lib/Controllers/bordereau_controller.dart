@@ -7,6 +7,7 @@ import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/services/devis_service.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 
 class BordereauxController extends GetxController {
   late int userId;
@@ -417,6 +418,69 @@ class BordereauxController extends GetxController {
       availableDevis.clear();
       selectedDevis.value = null;
       items.clear();
+    }
+  }
+
+  /// Générer un PDF pour un bordereau
+  Future<void> generatePDF(int bordereauId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver le bordereau
+      final bordereau = bordereaux.firstWhere((b) => b.id == bordereauId);
+
+      // Charger les données nécessaires
+      final clients = await _clientService.getClients();
+      final client = clients.firstWhere((c) => c.id == bordereau.clientId);
+      final items =
+          bordereau.items
+              .map(
+                (item) => {
+                  'designation': item.designation,
+                  'unite': item.unite,
+                  'quantite': item.quantite,
+                  'prix_unitaire': item.prixUnitaire,
+                  'montant_total': item.montantTotal,
+                },
+              )
+              .toList();
+
+      // Générer le PDF
+      await PdfService().generateBordereauPdf(
+        bordereau: {
+          'reference': bordereau.reference,
+          'date_creation': bordereau.dateCreation,
+          'montant_ht': bordereau.montantHT,
+          'tva': bordereau.tva,
+          'total_ttc': bordereau.montantTTC,
+        },
+        items: items,
+        client: {
+          'nom': client?.nom ?? '',
+          'prenom': client?.prenom ?? '',
+          'nom_entreprise': client?.nomEntreprise,
+          'email': client?.email,
+          'contact': client?.contact,
+          'adresse': client?.adresse,
+        },
+        commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 }

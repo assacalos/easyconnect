@@ -5,6 +5,7 @@ import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 
 class InvoiceController extends GetxController {
   final InvoiceService _invoiceService = InvoiceService.to;
@@ -544,5 +545,66 @@ class InvoiceController extends GetxController {
     invoiceItems.clear();
     notes.value = '';
     terms.value = '';
+  }
+
+  /// Générer un PDF pour une facture
+  Future<void> generatePDF(int invoiceId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver la facture
+      final invoice = invoices.firstWhere((i) => i.id == invoiceId);
+
+      // Charger les données nécessaires
+      final items =
+          invoice.items
+              .map(
+                (item) => {
+                  'designation': item.description,
+                  'unite': 'unité',
+                  'quantite': item.quantity,
+                  'prix_unitaire': item.unitPrice,
+                  'montant_total': item.totalPrice,
+                },
+              )
+              .toList();
+
+      // Générer le PDF
+      await PdfService().generateFacturePdf(
+        facture: {
+          'reference': invoice.invoiceNumber,
+          'date_creation': invoice.createdAt,
+          'montant_ht': invoice.subtotal,
+          'tva': invoice.taxRate,
+          'total_ttc': invoice.totalAmount,
+        },
+        items: items,
+        client: {
+          'nom': invoice.clientName,
+          'prenom': '',
+          'nom_entreprise': invoice.clientName,
+          'email': invoice.clientEmail,
+          'contact': '',
+          'adresse': invoice.clientAddress,
+        },
+        commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

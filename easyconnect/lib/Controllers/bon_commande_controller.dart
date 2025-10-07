@@ -4,6 +4,7 @@ import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class BonCommandeController extends GetxController
@@ -415,5 +416,67 @@ class BonCommandeController extends GetxController
   void clearForm() {
     selectedClient.value = null;
     items.clear();
+  }
+
+  /// Générer un PDF pour un bon de commande
+  Future<void> generatePDF(int bonCommandeId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver le bon de commande
+      final bonCommande = bonCommandes.firstWhere(
+        (bc) => bc.id == bonCommandeId,
+      );
+
+      // Charger les données nécessaires
+      final clients = await _clientService.getClients();
+      final client = clients.firstWhere((c) => c.id == bonCommande.clientId);
+      final items =
+          bonCommande.items
+              .map(
+                (item) => {
+                  'designation': item.designation,
+                  'unite': item.unite,
+                  'quantite': item.quantite,
+                  'prix_unitaire': item.prixUnitaire,
+                  'montant_total': item.montantTotal,
+                },
+              )
+              .toList();
+
+      // Générer le PDF
+      await PdfService().generateBonCommandePdf(
+        bonCommande: {
+          'reference': bonCommande.reference,
+          'date_creation': bonCommande.dateCreation,
+          'montant_ht': bonCommande.montantHT,
+          'tva': bonCommande.tva,
+          'total_ttc': bonCommande.montantTTC,
+        },
+        items: items,
+        fournisseur: {
+          'nom': client?.nom ?? '',
+          'email': client?.email,
+          'contact': client?.contact,
+          'adresse': client?.adresse,
+        },
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

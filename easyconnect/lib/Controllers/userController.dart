@@ -57,7 +57,7 @@ class UserController extends GetxController {
   void deleteUser(String id) async {
     try {
       isLoading.value = true;
-      await service.deleteUser(id);
+      await service.deleteUser(int.parse(id));
       users.removeWhere((u) => u.id == id);
       Get.snackbar("Succès", "Utilisateur supprimé");
     } catch (e) {

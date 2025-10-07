@@ -207,6 +207,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
     
     // Routes pour le patron (role: 6) et admin (role: 1)
     Route::middleware(['role:1,6'])->group(function () {
+        // Routes pour la gestion des utilisateurs (Admin uniquement)
+        Route::get('/users-list', [UserController::class, 'index']);
+        Route::get('/users-show/{id}', [UserController::class, 'show']);
+        Route::post('/users-create', [UserController::class, 'store']);
+        Route::put('/users-update/{id}', [UserController::class, 'update']);
+        Route::delete('/users-destroy/{id}', [UserController::class, 'destroy']);
+        Route::post('/users-activate/{id}', [UserController::class, 'activate']);
+        Route::post('/users-deactivate/{id}', [UserController::class, 'deactivate']);
+        Route::get('/users-statistics', [UserController::class, 'statistics']);
+        
         // Routes pour les clients
         Route::post('/client-validate/{id}', [ClientController::class, 'approve']);
         Route::post('/client-reject/{id}', [ClientController::class, 'reject']);
