@@ -218,8 +218,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/users-statistics', [UserController::class, 'statistics']);
         
         // Routes pour les clients
-        Route::post('/client-validate/{id}', [ClientController::class, 'approve']);
-        Route::post('/client-reject/{id}', [ClientController::class, 'reject']);
+        Route::post('/clients-validate/{id}', [ClientController::class, 'approve']);
+        Route::post('/clients-reject/{id}', [ClientController::class, 'reject']);
 
         // Routes pour les devis
         Route::post('/devis-validate/{id}', [DevisController::class, 'accept']);

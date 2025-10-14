@@ -24,11 +24,20 @@ class ApiService {
       print("Headers: ${headers()}");
       print("Body: ${jsonEncode({"email": email, "password": password})}");
 
-      final response = await CustomHttpClient.postLong(
-        Uri.parse("$baseUrl/login"),
-        headers: headers(),
-        body: jsonEncode({"email": email, "password": password}),
-      );
+      final response = await http
+          .post(
+            Uri.parse("$baseUrl/login"),
+            headers: headers(),
+            body: jsonEncode({"email": email, "password": password}),
+          )
+          .timeout(
+            const Duration(seconds: 30), // Timeout plus long
+            onTimeout: () {
+              throw Exception(
+                'Timeout: Le serveur ne répond pas dans les 30 secondes',
+              );
+            },
+          );
 
       print("Response status code: ${response.statusCode}");
       print("Response body: ${response.body}");

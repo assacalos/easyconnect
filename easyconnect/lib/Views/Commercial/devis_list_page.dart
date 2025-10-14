@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
-import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
@@ -189,23 +188,14 @@ class DevisListPage extends StatelessWidget {
                 ButtonBar(
                   alignment: MainAxisAlignment.end,
                   children: [
-                    if (status == 1) ...[
-                      TextButton.icon(
-                        icon: const Icon(Icons.check),
-                        label: const Text('Accepter'),
-                        onPressed: () => controller.acceptDevis(devis.id!),
-                      ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.close),
-                        label: const Text('Rejeter'),
-                        onPressed: () => _showRejectDialog(devis),
+                    // Bouton PDF seulement pour les devis validés
+                    if (status == 2) ...[
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf),
+                        onPressed: () => controller.generatePDF(devis.id!),
+                        tooltip: 'Générer PDF',
                       ),
                     ],
-                    IconButton(
-                      icon: const Icon(Icons.picture_as_pdf),
-                      onPressed: () => controller.generatePDF(devis.id!),
-                      tooltip: 'Générer PDF',
-                    ),
                   ],
                 ),
               ],
@@ -214,50 +204,5 @@ class DevisListPage extends StatelessWidget {
         },
       );
     });
-  }
-
-  void _showRejectDialog(Devis devis) {
-    final commentController = TextEditingController();
-    final DevisController controller = Get.put(DevisController());
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le devis'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Êtes-vous sûr de vouloir rejeter ce devis ? Cette action nécessite un commentaire explicatif.',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: commentController,
-              decoration: const InputDecoration(
-                labelText: 'Motif du rejet',
-                border: OutlineInputBorder(),
-                hintText: 'Expliquez la raison du rejet...',
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (commentController.text.isNotEmpty) {
-                controller.rejectDevis(devis.id!, commentController.text);
-                Get.back();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
   }
 }
