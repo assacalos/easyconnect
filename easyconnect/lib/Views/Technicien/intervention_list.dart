@@ -37,30 +37,23 @@ class InterventionList extends StatelessWidget {
             ],
           ),
         ),
-        body: Stack(
+        body: TabBarView(
           children: [
-            TabBarView(
-              children: [
-                _buildInterventionTab(controller, 'pending'),
-                _buildInterventionTab(controller, 'approved'),
-                _buildInterventionTab(controller, 'rejected'),
-              ],
-            ),
-            // Bouton flottant pour créer une nouvelle intervention
-            if (controller.canManageInterventions)
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: FloatingActionButton.extended(
-                  onPressed: () => Get.to(() => const InterventionForm()),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Nouvelle Intervention'),
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
-                ),
-              ),
+            _buildInterventionTab(controller, 'pending'),
+            _buildInterventionTab(controller, 'approved'),
+            _buildInterventionTab(controller, 'rejected'),
           ],
         ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => Get.to(() => const InterventionForm()),
+          icon: const Icon(Icons.add),
+          label: const Text('Nouvelle Intervention'),
+          backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white,
+          elevation: 8,
+          tooltip: 'Créer une nouvelle intervention',
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
   }
@@ -244,6 +237,26 @@ class InterventionList extends StatelessWidget {
               ),
 
               const SizedBox(height: 8),
+
+              // Raison du rejet
+              if (intervention.status == 'rejected' &&
+                  (intervention.rejectionReason != null &&
+                      intervention.rejectionReason!.isNotEmpty)) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.report, size: 16, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison du rejet: ${intervention.rejectionReason}',
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
 
               // Informations de planification
               Row(

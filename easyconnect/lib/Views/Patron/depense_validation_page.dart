@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/reporting_controller.dart';
-import 'package:easyconnect/Models/reporting_model.dart';
+import 'package:easyconnect/Controllers/expense_controller.dart';
+import 'package:easyconnect/Models/expense_model.dart';
 import 'package:intl/intl.dart';
 
-class ReportingValidationPage extends StatefulWidget {
-  const ReportingValidationPage({super.key});
+class DepenseValidationPage extends StatefulWidget {
+  const DepenseValidationPage({super.key});
 
   @override
-  State<ReportingValidationPage> createState() =>
-      _ReportingValidationPageState();
+  State<DepenseValidationPage> createState() => _DepenseValidationPageState();
 }
 
-class _ReportingValidationPageState extends State<ReportingValidationPage>
+class _DepenseValidationPageState extends State<DepenseValidationPage>
     with SingleTickerProviderStateMixin {
-  final ReportingController controller = Get.find<ReportingController>();
+  final ExpenseController controller = Get.find<ExpenseController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -26,7 +25,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     _tabController.addListener(() {
       _onTabChanged();
     });
-    _loadReports();
+    _loadExpenses();
   }
 
   @override
@@ -38,26 +37,43 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) {
-      _loadReports();
+      _loadExpenses();
     }
   }
 
-  Future<void> _loadReports() async {
-    await controller.loadReports();
+  Future<void> _loadExpenses() async {
+    String? status;
+    switch (_tabController.index) {
+      case 0: // Tous
+        status = null;
+        break;
+      case 1: // En attente
+        status = 'pending';
+        break;
+      case 2: // Validés
+        status = 'approved';
+        break;
+      case 3: // Rejetés
+        status = 'rejected';
+        break;
+    }
+
+    controller.selectedStatus.value = status ?? 'all';
+    await controller.loadExpenses();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Validation des Rapports'),
+        title: const Text('Validation des Dépenses'),
         backgroundColor: Colors.blueGrey.shade900,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              _loadReports();
+              _loadExpenses();
             },
             tooltip: 'Actualiser',
           ),
@@ -80,7 +96,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Rechercher par utilisateur...',
+                hintText: 'Rechercher par titre, catégorie...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon:
                     _searchQuery.isNotEmpty
@@ -109,7 +125,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
               () =>
                   controller.isLoading.value
                       ? const Center(child: CircularProgressIndicator())
-                      : _buildReportList(),
+                      : _buildExpenseList(),
             ),
           ),
         ],
@@ -117,63 +133,34 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     );
   }
 
-  Widget _buildReportList() {
-    // Filtrer les rapports selon l'onglet et la recherche
-    List<ReportingModel> filteredReports;
-
-    switch (_tabController.index) {
-      case 0: // Tous
-        filteredReports = controller.reports;
-        break;
-      case 1: // En attente
-        filteredReports =
-            controller.reports
-                .where((report) => report.status == 'submitted')
+  Widget _buildExpenseList() {
+    // Filtrer les dépenses selon la recherche
+    final filteredExpenses =
+        _searchQuery.isEmpty
+            ? controller.expenses
+            : controller.expenses
+                .where(
+                  (depense) =>
+                      depense.title.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ) ||
+                      depense.category.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ),
+                )
                 .toList();
-        break;
-      case 2: // Validés
-        filteredReports =
-            controller.reports
-                .where((report) => report.status == 'approved')
-                .toList();
-        break;
-      case 3: // Rejetés
-        filteredReports =
-            controller.reports
-                .where((report) => report.status == 'rejected')
-                .toList();
-        break;
-      default:
-        filteredReports = controller.reports;
-    }
 
-    // Appliquer la recherche
-    if (_searchQuery.isNotEmpty) {
-      filteredReports =
-          filteredReports
-              .where(
-                (report) =>
-                    report.userName.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    report.userRole.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
-
-    if (filteredReports.isEmpty) {
+    if (filteredExpenses.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.analytics, size: 64, color: Colors.grey[400]),
+            Icon(Icons.receipt, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               _searchQuery.isEmpty
-                  ? 'Aucun rapport trouvé'
-                  : 'Aucun rapport correspondant à "$_searchQuery"',
+                  ? 'Aucune dépense trouvée'
+                  : 'Aucune dépense correspondant à "$_searchQuery"',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             if (_searchQuery.isNotEmpty) ...[
@@ -195,20 +182,24 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     }
 
     return ListView.builder(
-      itemCount: filteredReports.length,
+      itemCount: filteredExpenses.length,
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
-        final report = filteredReports[index];
-        return _buildReportCard(context, report);
+        final depense = filteredExpenses[index];
+        return _buildDepenseCard(context, depense);
       },
     );
   }
 
-  Widget _buildReportCard(BuildContext context, ReportingModel report) {
+  Widget _buildDepenseCard(BuildContext context, Expense depense) {
     final formatDate = DateFormat('dd/MM/yyyy');
-    final statusColor = _getStatusColor(report.status);
-    final statusIcon = _getStatusIcon(report.status);
-    final statusText = _getStatusText(report.status);
+    final formatCurrency = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: 'FCFA',
+    );
+    final statusColor = depense.statusColor;
+    final statusIcon = depense.statusIcon;
+    final statusText = depense.statusText;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -218,16 +209,16 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          'Rapport - ${formatDate.format(report.reportDate)}',
+          depense.title,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Utilisateur: ${report.userName}'),
-            Text('Rôle: ${report.userRole}'),
-            Text('Date: ${formatDate.format(report.reportDate)}'),
+            Text('Catégorie: ${depense.category}'),
+            Text('Date: ${formatDate.format(depense.expenseDate)}'),
+            Text('Montant: ${formatCurrency.format(depense.amount)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -253,9 +244,9 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations utilisateur
+                // Informations générales
                 const Text(
-                  'Informations utilisateur',
+                  'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -269,22 +260,17 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Utilisateur: ${report.userName}'),
-                      Text('Rôle: ${report.userRole}'),
-                      Text(
-                        'Date du rapport: ${formatDate.format(report.reportDate)}',
-                      ),
-                      if (report.submittedAt != null)
-                        Text(
-                          'Soumis le: ${formatDate.format(report.submittedAt!)}',
-                        ),
+                      Text('Titre: ${depense.title}'),
+                      Text('Catégorie: ${depense.category}'),
+                      Text('Montant: ${formatCurrency.format(depense.amount)}'),
+                      Text('Date: ${formatDate.format(depense.expenseDate)}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Métriques
+                // Détails de la dépense
                 const Text(
-                  'Métriques',
+                  'Détails de la dépense',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -296,48 +282,57 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
                     border: Border.all(color: Colors.grey),
                   ),
                   child: Column(
-                    children:
-                        report.metrics.entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(entry.key),
-                                Text(
-                                  entry.value.toString(),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                    children: [
+                      if (depense.description.isNotEmpty)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Description:',
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                          );
-                        }).toList(),
+                            const SizedBox(height: 4),
+                            Text(depense.description),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Montant HT:'),
+                          Text(formatCurrency.format(depense.amount)),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('TVA:'),
+                          Text(formatCurrency.format(depense.amount * 0.19)),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Montant TTC:'),
+                          Text(
+                            formatCurrency.format(depense.amount),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      if (depense.notes != null && depense.notes!.isNotEmpty)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Mode de paiement:'),
+                            Text(depense.notes!),
+                          ],
+                        ),
+                    ],
                   ),
                 ),
-                if (report.comments != null && report.comments!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Commentaires',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      report.comments!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 16),
-                _buildActionButtons(report, statusColor),
+                _buildActionButtons(depense, statusColor),
               ],
             ),
           ),
@@ -346,8 +341,8 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     );
   }
 
-  Widget _buildActionButtons(ReportingModel report, Color statusColor) {
-    if (report.status == 'submitted') {
+  Widget _buildActionButtons(Expense depense, Color statusColor) {
+    if (depense.status == 'pending') {
       // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
@@ -355,7 +350,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(report),
+                onPressed: () => _showApproveConfirmation(depense),
                 icon: const Icon(Icons.check),
                 label: const Text('Valider'),
                 style: ElevatedButton.styleFrom(
@@ -364,7 +359,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(report),
+                onPressed: () => _showRejectDialog(depense),
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
                 style: ElevatedButton.styleFrom(
@@ -376,7 +371,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
           ),
         ],
       );
-    } else if (report.status == 'approved') {
+    } else if (depense.status == 'approved') {
       // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
@@ -391,7 +386,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             const Icon(Icons.check_circle, color: Colors.green),
             const SizedBox(width: 8),
             Text(
-              'Rapport validé',
+              'Dépense validée',
               style: TextStyle(
                 color: Colors.green[700],
                 fontWeight: FontWeight.bold,
@@ -400,7 +395,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
           ],
         ),
       );
-    } else if (report.status == 'rejected') {
+    } else if (depense.status == 'rejected') {
       // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
@@ -415,7 +410,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             const Icon(Icons.cancel, color: Colors.red),
             const SizedBox(width: 8),
             Text(
-              'Rapport rejeté',
+              'Dépense rejetée',
               style: TextStyle(
                 color: Colors.red[700],
                 fontWeight: FontWeight.bold,
@@ -439,7 +434,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             Icon(Icons.help, color: Colors.grey[600]),
             const SizedBox(width: 8),
             Text(
-              'Statut: ${report.status}',
+              'Statut: ${depense.status}',
               style: TextStyle(
                 color: Colors.grey[600],
                 fontWeight: FontWeight.bold,
@@ -451,71 +446,26 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'draft':
-        return Colors.grey;
-      case 'submitted':
-        return Colors.orange;
-      case 'approved':
-        return Colors.green;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'draft':
-        return Icons.edit;
-      case 'submitted':
-        return Icons.pending;
-      case 'approved':
-        return Icons.check_circle;
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.help;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'draft':
-        return 'Brouillon';
-      case 'submitted':
-        return 'Soumis';
-      case 'approved':
-        return 'Approuvé';
-      case 'rejected':
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
-    }
-  }
-
-  void _showApproveConfirmation(ReportingModel report) {
+  void _showApproveConfirmation(Expense depense) {
     Get.defaultDialog(
       title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce rapport ?',
+      middleText: 'Voulez-vous valider cette dépense ?',
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.approveReport(report.id);
-        _loadReports();
+        controller.approveExpense(depense);
+        _loadExpenses();
       },
     );
   }
 
-  void _showRejectDialog(ReportingModel report) {
+  void _showRejectDialog(Expense depense) {
     final commentController = TextEditingController();
 
     Get.defaultDialog(
-      title: 'Rejeter le rapport',
+      title: 'Rejeter la dépense',
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -542,8 +492,8 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
           return;
         }
         Get.back();
-        controller.rejectReport(report.id, reason: commentController.text);
-        _loadReports();
+        controller.rejectExpense(depense, commentController.text);
+        _loadExpenses();
       },
     );
   }

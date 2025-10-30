@@ -224,10 +224,12 @@ class InvoiceController extends GetxController {
       }
 
       final result = await _invoiceService.createInvoice(
-        clientId: selectedClientId.value,
-        clientName: selectedClientName.value,
-        clientEmail: selectedClientEmail.value,
-        clientAddress: selectedClientAddress.value,
+        clientId: selectedClient.value!.id!,
+        clientName:
+            '${selectedClient.value!.nom ?? ''} ${selectedClient.value!.prenom ?? ''}'
+                .trim(),
+        clientEmail: selectedClient.value!.email ?? '',
+        clientAddress: selectedClient.value!.adresse ?? '',
         commercialId: user.id,
         commercialName: user.nom ?? 'Comptable',
         invoiceDate: invoiceDate.value,
@@ -528,6 +530,11 @@ class InvoiceController extends GetxController {
         '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
     selectedClientEmail.value = client.email ?? '';
     selectedClientAddress.value = client.adresse ?? '';
+
+    // Mettre à jour les contrôleurs de formulaire pour l'affichage
+    clientNameController.text = selectedClientName.value;
+    clientEmailController.text = selectedClientEmail.value;
+    clientAddressController.text = selectedClientAddress.value;
   }
 
   // Effacer la sélection du client
@@ -537,6 +544,11 @@ class InvoiceController extends GetxController {
     selectedClientName.value = '';
     selectedClientEmail.value = '';
     selectedClientAddress.value = '';
+
+    // Effacer les contrôleurs de formulaire
+    clientNameController.clear();
+    clientEmailController.clear();
+    clientAddressController.clear();
   }
 
   /// Effacer toutes les données du formulaire

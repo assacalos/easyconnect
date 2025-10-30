@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../services/attendance_punch_service.dart';
 import '../../services/location_service.dart';
 import '../../services/camera_service.dart';
-import '../../Models/attendance_punch_model.dart';
 
 class AttendancePunchPage extends StatefulWidget {
   const AttendancePunchPage({super.key});
@@ -38,12 +36,34 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
     setState(() => _isLoading = true);
 
     try {
+      print('🔍 Vérification du statut de pointage pour type: $_punchType');
       final result = await _punchService.canPunch(type: _punchType);
+      print('📊 Résultat canPunch: $result');
+
       setState(() {
         _canPunch = result['can_punch'] ?? false;
       });
+
+      if (!_canPunch) {
+        final message =
+            result['message'] ?? 'Vous ne pouvez pas pointer maintenant';
+        print('❌ Pointage non autorisé: $message');
+        Get.snackbar(
+          'Pointage non autorisé',
+          message,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      } else {
+        print('✅ Pointage autorisé');
+      }
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de vérifier le statut de pointage');
+      print('❌ Erreur lors de la vérification: $e');
+      Get.snackbar(
+        'Erreur',
+        'Impossible de vérifier le statut de pointage: $e',
+      );
     } finally {
       setState(() => _isLoading = false);
     }

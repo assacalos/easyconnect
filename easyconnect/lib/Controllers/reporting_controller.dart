@@ -124,8 +124,8 @@ class ReportingController extends GetxController {
       Get.snackbar('Succès', 'Rapport créé avec succès');
       loadReports();
       clearForm();
-      // Navigation automatique vers la page précédente
-      Get.back();
+      // Navigation automatique vers la page de liste des reportings
+      Get.offNamed('/reporting');
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création du rapport: $e');
     } finally {
@@ -161,6 +161,24 @@ class ReportingController extends GetxController {
       loadReports();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'approbation du rapport: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Rejeter un rapport (patron seulement)
+  Future<void> rejectReport(int reportId, {String? reason}) async {
+    try {
+      isLoading.value = true;
+
+      await _reportingService.rejectReport(
+        reportId,
+        comments: reason ?? commentsController.text,
+      );
+      Get.snackbar('Succès', 'Rapport rejeté avec succès');
+      loadReports();
+    } catch (e) {
+      Get.snackbar('Erreur', 'Erreur lors du rejet du rapport: $e');
     } finally {
       isLoading.value = false;
     }

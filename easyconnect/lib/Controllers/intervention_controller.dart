@@ -32,10 +32,13 @@ class InterventionController extends GetxController {
   final TextEditingController problemController = TextEditingController();
   final TextEditingController solutionController = TextEditingController();
   final TextEditingController notesController = TextEditingController();
-  final TextEditingController completionNotesController = TextEditingController();
+  final TextEditingController completionNotesController =
+      TextEditingController();
   final TextEditingController costController = TextEditingController();
-  final TextEditingController estimatedDurationController = TextEditingController();
-  final TextEditingController actualDurationController = TextEditingController();
+  final TextEditingController estimatedDurationController =
+      TextEditingController();
+  final TextEditingController actualDurationController =
+      TextEditingController();
 
   // Variables de sélection
   final RxString selectedTypeForm = 'external'.obs;
@@ -79,7 +82,8 @@ class InterventionController extends GetxController {
       final loadedInterventions = await _interventionService.getInterventions(
         status: selectedStatus.value == 'all' ? null : selectedStatus.value,
         type: selectedType.value == 'all' ? null : selectedType.value,
-        priority: selectedPriority.value == 'all' ? null : selectedPriority.value,
+        priority:
+            selectedPriority.value == 'all' ? null : selectedPriority.value,
         search: searchQuery.value.isEmpty ? null : searchQuery.value,
       );
       interventions.assignAll(loadedInterventions);
@@ -124,14 +128,37 @@ class InterventionController extends GetxController {
         description: descriptionController.text.trim(),
         type: selectedTypeForm.value,
         priority: selectedPriorityForm.value,
-        scheduledDate: selectedScheduledDate.value ?? DateTime.now(),
-        location: locationController.text.trim().isEmpty ? null : locationController.text.trim(),
-        clientName: clientNameController.text.trim().isEmpty ? null : clientNameController.text.trim(),
-        clientPhone: clientPhoneController.text.trim().isEmpty ? null : clientPhoneController.text.trim(),
-        clientEmail: clientEmailController.text.trim().isEmpty ? null : clientEmailController.text.trim(),
-        equipment: equipmentController.text.trim().isEmpty ? null : equipmentController.text.trim(),
-        problemDescription: problemController.text.trim().isEmpty ? null : problemController.text.trim(),
-        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        scheduledDate:
+            selectedScheduledDate.value ??
+            DateTime.now().add(const Duration(days: 1)),
+        location:
+            locationController.text.trim().isEmpty
+                ? null
+                : locationController.text.trim(),
+        clientName:
+            clientNameController.text.trim().isEmpty
+                ? null
+                : clientNameController.text.trim(),
+        clientPhone:
+            clientPhoneController.text.trim().isEmpty
+                ? null
+                : clientPhoneController.text.trim(),
+        clientEmail:
+            clientEmailController.text.trim().isEmpty
+                ? null
+                : clientEmailController.text.trim(),
+        equipment:
+            equipmentController.text.trim().isEmpty
+                ? null
+                : equipmentController.text.trim(),
+        problemDescription:
+            problemController.text.trim().isEmpty
+                ? null
+                : problemController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
         estimatedDuration: double.tryParse(estimatedDurationController.text),
         cost: double.tryParse(costController.text),
         attachments: selectedAttachments.isEmpty ? null : selectedAttachments,
@@ -139,22 +166,33 @@ class InterventionController extends GetxController {
         updatedAt: DateTime.now(),
       );
 
-      await _interventionService.createIntervention(intervention);
+      print('🔄 Création d\'intervention: ${intervention.title}');
+      final createdIntervention = await _interventionService.createIntervention(
+        intervention,
+      );
+      print('✅ Intervention créée avec ID: ${createdIntervention.id}');
+
       await loadInterventions();
       await loadInterventionStats();
 
       Get.snackbar(
         'Succès',
         'Intervention créée avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );
 
       clearForm();
     } catch (e) {
+      print('❌ Erreur lors de la création: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de créer l\'intervention',
+        'Impossible de créer l\'intervention: ${e.toString()}',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -173,18 +211,46 @@ class InterventionController extends GetxController {
         type: selectedTypeForm.value,
         priority: selectedPriorityForm.value,
         status: intervention.status,
-        scheduledDate: selectedScheduledDate.value ?? intervention.scheduledDate,
+        scheduledDate:
+            selectedScheduledDate.value ?? intervention.scheduledDate,
         startDate: selectedStartDate.value ?? intervention.startDate,
         endDate: selectedEndDate.value ?? intervention.endDate,
-        location: locationController.text.trim().isEmpty ? null : locationController.text.trim(),
-        clientName: clientNameController.text.trim().isEmpty ? null : clientNameController.text.trim(),
-        clientPhone: clientPhoneController.text.trim().isEmpty ? null : clientPhoneController.text.trim(),
-        clientEmail: clientEmailController.text.trim().isEmpty ? null : clientEmailController.text.trim(),
-        equipment: equipmentController.text.trim().isEmpty ? null : equipmentController.text.trim(),
-        problemDescription: problemController.text.trim().isEmpty ? null : problemController.text.trim(),
-        solution: solutionController.text.trim().isEmpty ? null : solutionController.text.trim(),
-        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-        completionNotes: completionNotesController.text.trim().isEmpty ? null : completionNotesController.text.trim(),
+        location:
+            locationController.text.trim().isEmpty
+                ? null
+                : locationController.text.trim(),
+        clientName:
+            clientNameController.text.trim().isEmpty
+                ? null
+                : clientNameController.text.trim(),
+        clientPhone:
+            clientPhoneController.text.trim().isEmpty
+                ? null
+                : clientPhoneController.text.trim(),
+        clientEmail:
+            clientEmailController.text.trim().isEmpty
+                ? null
+                : clientEmailController.text.trim(),
+        equipment:
+            equipmentController.text.trim().isEmpty
+                ? null
+                : equipmentController.text.trim(),
+        problemDescription:
+            problemController.text.trim().isEmpty
+                ? null
+                : problemController.text.trim(),
+        solution:
+            solutionController.text.trim().isEmpty
+                ? null
+                : solutionController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
+        completionNotes:
+            completionNotesController.text.trim().isEmpty
+                ? null
+                : completionNotesController.text.trim(),
         estimatedDuration: double.tryParse(estimatedDurationController.text),
         actualDuration: double.tryParse(actualDurationController.text),
         cost: double.tryParse(costController.text),
@@ -226,9 +292,10 @@ class InterventionController extends GetxController {
 
       final success = await _interventionService.approveIntervention(
         intervention.id!,
-        notes: notesController.text.trim().isEmpty
-            ? null
-            : notesController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
       );
 
       if (success) {
@@ -256,7 +323,10 @@ class InterventionController extends GetxController {
   }
 
   // Rejeter une intervention
-  Future<void> rejectIntervention(Intervention intervention, String reason) async {
+  Future<void> rejectIntervention(
+    Intervention intervention,
+    String reason,
+  ) async {
     try {
       isLoading.value = true;
 
@@ -296,9 +366,10 @@ class InterventionController extends GetxController {
 
       final success = await _interventionService.startIntervention(
         intervention.id!,
-        notes: notesController.text.trim().isEmpty
-            ? null
-            : notesController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
       );
 
       if (success) {
@@ -332,9 +403,10 @@ class InterventionController extends GetxController {
       final success = await _interventionService.completeIntervention(
         intervention.id!,
         solution: solutionController.text.trim(),
-        completionNotes: completionNotesController.text.trim().isEmpty
-            ? null
-            : completionNotesController.text.trim(),
+        completionNotes:
+            completionNotesController.text.trim().isEmpty
+                ? null
+                : completionNotesController.text.trim(),
         actualDuration: double.tryParse(actualDurationController.text),
         cost: double.tryParse(costController.text),
       );
@@ -367,7 +439,9 @@ class InterventionController extends GetxController {
     try {
       isLoading.value = true;
 
-      final success = await _interventionService.deleteIntervention(intervention.id!);
+      final success = await _interventionService.deleteIntervention(
+        intervention.id!,
+      );
       if (success) {
         interventions.removeWhere((i) => i.id == intervention.id);
         await loadInterventionStats();
@@ -410,8 +484,10 @@ class InterventionController extends GetxController {
     notesController.text = intervention.notes ?? '';
     completionNotesController.text = intervention.completionNotes ?? '';
     costController.text = intervention.cost?.toString() ?? '';
-    estimatedDurationController.text = intervention.estimatedDuration?.toString() ?? '';
-    actualDurationController.text = intervention.actualDuration?.toString() ?? '';
+    estimatedDurationController.text =
+        intervention.estimatedDuration?.toString() ?? '';
+    actualDurationController.text =
+        intervention.actualDuration?.toString() ?? '';
     selectedAttachments.assignAll(intervention.attachments ?? []);
     selectedIntervention.value = intervention;
   }
@@ -492,8 +568,18 @@ class InterventionController extends GetxController {
 
   // Obtenir les types d'intervention
   List<Map<String, dynamic>> get interventionTypes => [
-    {'value': 'external', 'label': 'Externe', 'icon': Icons.location_on, 'color': Colors.blue},
-    {'value': 'on_site', 'label': 'Sur place', 'icon': Icons.home, 'color': Colors.green},
+    {
+      'value': 'external',
+      'label': 'Externe',
+      'icon': Icons.location_on,
+      'color': Colors.blue,
+    },
+    {
+      'value': 'on_site',
+      'label': 'Sur place',
+      'icon': Icons.home,
+      'color': Colors.green,
+    },
   ];
 
   // Obtenir les priorités
@@ -550,38 +636,48 @@ class InterventionController extends GetxController {
     List<Intervention> filtered = interventions;
 
     if (selectedStatus.value != 'all') {
-      filtered = filtered
-          .where((intervention) => intervention.status == selectedStatus.value)
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (intervention) => intervention.status == selectedStatus.value,
+              )
+              .toList();
     }
 
     if (selectedType.value != 'all') {
-      filtered = filtered
-          .where((intervention) => intervention.type == selectedType.value)
-          .toList();
+      filtered =
+          filtered
+              .where((intervention) => intervention.type == selectedType.value)
+              .toList();
     }
 
     if (selectedPriority.value != 'all') {
-      filtered = filtered
-          .where((intervention) => intervention.priority == selectedPriority.value)
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (intervention) =>
+                    intervention.priority == selectedPriority.value,
+              )
+              .toList();
     }
 
     if (searchQuery.value.isNotEmpty) {
-      filtered = filtered
-          .where(
-            (intervention) =>
-                intervention.title.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                intervention.description.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                (intervention.clientName?.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ?? false),
-          )
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (intervention) =>
+                    intervention.title.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ) ||
+                    intervention.description.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ) ||
+                    (intervention.clientName?.toLowerCase().contains(
+                          searchQuery.value.toLowerCase(),
+                        ) ??
+                        false),
+              )
+              .toList();
     }
 
     return filtered;

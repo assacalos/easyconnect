@@ -431,13 +431,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::middleware(['role:1,5, 6'])->group(function () {
         
         // Routes pour les interventions
-        Route::get('/interventions', [InterventionController::class, 'index']);
-        Route::get('/interventions/{id}', [InterventionController::class, 'show']);
-        Route::post('/interventions', [InterventionController::class, 'store']);
+        Route::get('/interventions-list', [InterventionController::class, 'index']);
+        Route::get('/interventions-show/{id}', [InterventionController::class, 'show']);
+        Route::post('/interventions-create', [InterventionController::class, 'store']);
         Route::put('/interventions/{id}', [InterventionController::class, 'update']);
-        Route::delete('/interventions/{id}', [InterventionController::class, 'destroy']);
-        Route::post('/interventions/{id}/approve', [InterventionController::class, 'approve']);
-        Route::post('/interventions/{id}/reject', [InterventionController::class, 'reject']);
+        Route::delete('/interventions-destroy/{id}', [InterventionController::class, 'destroy']);
+        Route::post('/interventions-approve/{id}', [InterventionController::class, 'approve']);
+        Route::post('/interventions-reject/{id}', [InterventionController::class, 'reject']);
         Route::post('/interventions/{id}/start', [InterventionController::class, 'start']);
         Route::post('/interventions/{id}/complete', [InterventionController::class, 'complete']);
         Route::get('/interventions-statistics', [InterventionController::class, 'statistics']);
@@ -447,11 +447,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/equipment', [InterventionController::class, 'equipment']);
         
         // Routes pour les équipements
-        Route::get('/equipment', [EquipmentController::class, 'index']);
+            Route::get('/equipment-list', [EquipmentController::class, 'index']);
         Route::get('/equipment/{id}', [EquipmentController::class, 'show']);
-        Route::post('/equipment', [EquipmentController::class, 'store']);
-        Route::put('/equipment/{id}', [EquipmentController::class, 'update']);
-        Route::delete('/equipment/{id}', [EquipmentController::class, 'destroy']);
+        Route::post('/equipment-create', [EquipmentController::class, 'store']);
+        Route::put('/equipment-update/{id}', [EquipmentController::class, 'update']);
+        Route::delete('/equipment-destroy/{id}', [EquipmentController::class, 'destroy']);
         Route::post('/equipment/{id}/assign', [EquipmentController::class, 'assign']);
         Route::post('/equipment/{id}/return', [EquipmentController::class, 'return']);
         Route::post('/equipment/{id}/schedule-maintenance', [EquipmentController::class, 'scheduleMaintenance']);

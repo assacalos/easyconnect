@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
-import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
 class InterventionForm extends StatelessWidget {
@@ -30,8 +29,9 @@ class InterventionForm extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: () => _saveIntervention(controller),
+            icon: const Icon(Icons.close),
+            onPressed: () => Get.back(),
+            tooltip: 'Fermer',
           ),
         ],
       ),
@@ -310,11 +310,24 @@ class InterventionForm extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // Boutons d'action uniformes
-              UniformFormButtons(
-                onCancel: () => Get.back(),
-                onSubmit: () => _saveIntervention(controller),
-                submitText: 'Soumettre',
+              // Bouton d'enregistrement unique
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _saveIntervention(controller),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Enregistrer l\'intervention',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
             ],
           ),
@@ -340,8 +353,10 @@ class InterventionForm extends StatelessWidget {
   ) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: controller.selectedScheduledDate.value ?? DateTime.now(),
-      firstDate: DateTime.now(),
+      initialDate:
+          controller.selectedScheduledDate.value ??
+          DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now().add(const Duration(days: 1)), // Minimum demain
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) {

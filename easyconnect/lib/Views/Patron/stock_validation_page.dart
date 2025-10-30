@@ -1,224 +1,386 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Controllers/stock_controller.dart';
 import 'package:easyconnect/Models/stock_model.dart';
-import 'package:easyconnect/services/stock_service.dart';
-import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:intl/intl.dart';
 
 class StockValidationPage extends StatefulWidget {
-  const StockValidationPage({Key? key}) : super(key: key);
+  const StockValidationPage({super.key});
 
   @override
   State<StockValidationPage> createState() => _StockValidationPageState();
 }
 
-class _StockValidationPageState extends State<StockValidationPage> {
-  final StockService _stockService = StockService();
-  List<Stock> _stockList = [];
-  bool _isLoading = true;
+class _StockValidationPageState extends State<StockValidationPage>
+    with SingleTickerProviderStateMixin {
+  final StockController controller = Get.find<StockController>();
+  late TabController _tabController;
   String _searchQuery = '';
-  String _selectedStatus = 'pending'; // pending, approved, rejected
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      _onTabChanged();
+    });
     _loadStocks();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) {
+      _loadStocks();
+    }
+  }
+
   Future<void> _loadStocks() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      print('🔍 StockValidationPage._loadStocks - Début');
-      print('📊 Paramètres: status=$_selectedStatus');
-
-      final stocks = await _stockService.getStocks(status: _selectedStatus);
-
-      print(
-        '📊 StockValidationPage._loadStocks - ${stocks.length} stocks chargés',
-      );
-      for (final stock in stocks) {
-        print('📋 Stock: ${stock.id} - Status: ${stock.status}');
-      }
-
-      setState(() {
-        _stockList = stocks;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('❌ StockValidationPage._loadStocks - Erreur: $e');
-      setState(() {
-        _isLoading = false;
-      });
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors du chargement du stock: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+    String? status;
+    switch (_tabController.index) {
+      case 0: // Tous
+        status = null;
+        break;
+      case 1: // En attente
+        status = 'pending';
+        break;
+      case 2: // Validés
+        status = 'approved';
+        break;
+      case 3: // Rejetés
+        status = 'rejected';
+        break;
     }
+
+    controller.selectedStatus.value = status ?? 'all';
+    await controller.loadStocks();
   }
 
-  Future<void> _validateStock(Stock stock) async {
-    try {
-      final success = await _stockService.approveStock(stock.id!);
-      if (success['success'] == true) {
-        Get.snackbar(
-          'Succès',
-          'Stock validé avec succès',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
-        _loadStocks();
-      }
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la validation: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    }
-  }
-
-  Future<void> _rejectStock(Stock stock, String comment) async {
-    try {
-      final success = await _stockService.rejectStock(stock.id!, comment);
-      if (success['success'] == true) {
-        Get.snackbar(
-          'Succès',
-          'Stock rejeté avec succès',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
-        _loadStocks();
-      }
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors du rejet: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    }
-  }
-
-  void _showValidationDialog(Stock stock) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Valider le stock'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Produit: ${stock.name ?? ''}'),
-            const SizedBox(height: 8),
-            Text('Quantité: ${stock.quantity}'),
-            const SizedBox(height: 8),
-            Text('Prix unitaire: ${stock.unitPrice.toStringAsFixed(2)} FCFA'),
-            const SizedBox(height: 8),
-            Text('Valeur totale: ${stock.totalValue.toStringAsFixed(2)} FCFA'),
-            const SizedBox(height: 8),
-            Text('Soumis par: ${stock.user?.name ?? ''}'),
-            const SizedBox(height: 16),
-            const Text('Êtes-vous sûr de vouloir valider ce stock ?'),
-          ],
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Validation du Stock'),
+        backgroundColor: Colors.blueGrey.shade900,
+        foregroundColor: Colors.white,
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
+          IconButton(
+            icon: const Icon(Icons.refresh),
             onPressed: () {
-              Get.back();
-              _validateStock(stock);
+              _loadStocks();
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Valider'),
+            tooltip: 'Actualiser',
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Tous', icon: Icon(Icons.list)),
+            Tab(text: 'En attente', icon: Icon(Icons.pending)),
+            Tab(text: 'Validés', icon: Icon(Icons.check_circle)),
+            Tab(text: 'Rejetés', icon: Icon(Icons.cancel)),
+          ],
+        ),
       ),
-    );
-  }
-
-  void _showRejectionDialog(Stock stock) {
-    final TextEditingController commentController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le stock'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Produit: ${stock.name ?? ''}'),
-            const SizedBox(height: 8),
-            Text('Quantité: ${stock.quantity}'),
-            const SizedBox(height: 8),
-            Text('Valeur totale: ${stock.totalValue.toStringAsFixed(2)} FCFA'),
-            const SizedBox(height: 8),
-            Text('Soumis par: ${stock.user?.name ?? ''}'),
-            const SizedBox(height: 16),
-            const Text('Motif du rejet (obligatoire):'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: commentController,
-              decoration: const InputDecoration(
-                hintText: 'Saisissez le motif du rejet...',
-                border: OutlineInputBorder(),
+      body: Column(
+        children: [
+          // Barre de recherche
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Rechercher par nom, catégorie...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon:
+                    _searchQuery.isNotEmpty
+                        ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                        )
+                        : null,
+                border: const OutlineInputBorder(),
               ),
-              maxLines: 3,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (commentController.text.trim().isEmpty) {
-                Get.snackbar(
-                  'Erreur',
-                  'Veuillez saisir un motif de rejet',
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
-                return;
-              }
-              Get.back();
-              _rejectStock(stock, commentController.text.trim());
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+          ),
+          // Contenu des onglets
+          Expanded(
+            child: Obx(
+              () =>
+                  controller.isLoading.value
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildStockList(),
             ),
-            child: const Text('Rejeter'),
           ),
         ],
       ),
     );
   }
 
-  List<Stock> get _filteredStocks {
-    if (_searchQuery.isEmpty) {
-      return _stockList;
+  Widget _buildStockList() {
+    // Filtrer les stocks selon la recherche
+    final filteredStocks =
+        _searchQuery.isEmpty
+            ? controller.stocks
+            : controller.stocks
+                .where(
+                  (stock) =>
+                      stock.name.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ) ||
+                      stock.category.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ),
+                )
+                .toList();
+
+    if (filteredStocks.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isEmpty
+                  ? 'Aucun article trouvé'
+                  : 'Aucun article correspondant à "$_searchQuery"',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            if (_searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                  });
+                },
+                icon: const Icon(Icons.clear),
+                label: const Text('Effacer la recherche'),
+              ),
+            ],
+          ],
+        ),
+      );
     }
-    return _stockList
-        .where(
-          (stock) =>
-              stock.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              stock.category.toLowerCase().contains(
-                _searchQuery.toLowerCase(),
-              ) ||
-              stock.quantity.toString().contains(_searchQuery.toLowerCase()),
-        )
-        .toList();
+
+    return ListView.builder(
+      itemCount: filteredStocks.length,
+      padding: const EdgeInsets.all(8),
+      itemBuilder: (context, index) {
+        final stock = filteredStocks[index];
+        return _buildStockCard(context, stock);
+      },
+    );
+  }
+
+  Widget _buildStockCard(BuildContext context, Stock stock) {
+    final formatDate = DateFormat('dd/MM/yyyy');
+    final statusColor = _getStatusColor(stock.status);
+    final statusIcon = _getStatusIcon(stock.status);
+    final statusText = _getStatusText(stock.status);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: statusColor.withOpacity(0.1),
+          child: Icon(statusIcon, color: statusColor),
+        ),
+        title: Text(
+          stock.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text('Catégorie: ${stock.category}'),
+            Text('Quantité: ${stock.quantity}'),
+            Text('Date: ${formatDate.format(stock.createdAt)}'),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: statusColor),
+              ),
+              child: Text(
+                statusText,
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Informations générales
+                const Text(
+                  'Informations générales',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Nom: ${stock.name}'),
+                      Text('Catégorie: ${stock.category}'),
+                      Text('Quantité: ${stock.quantity}'),
+                      Text('Prix unitaire: ${stock.unitPrice}'),
+                      Text('Date: ${formatDate.format(stock.createdAt)}'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildActionButtons(stock, statusColor),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(Stock stock, Color statusColor) {
+    if (stock.status == 'pending') {
+      // En attente - Afficher boutons Valider/Rejeter
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _showApproveConfirmation(stock),
+                icon: const Icon(Icons.check),
+                label: const Text('Valider'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showRejectDialog(stock),
+                icon: const Icon(Icons.close),
+                label: const Text('Rejeter'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    } else if (stock.status == 'approved') {
+      // Validé - Afficher seulement info
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(
+              'Article validé',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (stock.status == 'rejected') {
+      // Rejeté - Afficher motif du rejet
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cancel, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(
+              'Article rejeté',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Autres statuts
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.help, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Text(
+              'Statut: ${stock.status}',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'pending':
         return Colors.orange;
       case 'approved':
@@ -230,23 +392,10 @@ class _StockValidationPageState extends State<StockValidationPage> {
     }
   }
 
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'pending':
-        return 'En attente';
-      case 'approved':
-        return 'Validé';
-      case 'rejected':
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
-    }
-  }
-
   IconData _getStatusIcon(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'pending':
-        return Icons.access_time;
+        return Icons.pending;
       case 'approved':
         return Icons.check_circle;
       case 'rejected':
@@ -256,289 +405,68 @@ class _StockValidationPageState extends State<StockValidationPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Validation du Stock'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadStocks),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Filtres
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Barre de recherche
-                TextField(
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Rechercher par produit, catégorie ou quantité...',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Filtres de statut
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilterChip(
-                        label: const Text('En attente'),
-                        selected: _selectedStatus == 'pending',
-                        onSelected: (selected) {
-                          setState(() {
-                            _selectedStatus = 'pending';
-                          });
-                          _loadStocks();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilterChip(
-                        label: const Text('Validés'),
-                        selected: _selectedStatus == 'approved',
-                        onSelected: (selected) {
-                          setState(() {
-                            _selectedStatus = 'approved';
-                          });
-                          _loadStocks();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilterChip(
-                        label: const Text('Rejetés'),
-                        selected: _selectedStatus == 'rejected',
-                        onSelected: (selected) {
-                          setState(() {
-                            _selectedStatus = 'rejected';
-                          });
-                          _loadStocks();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Liste du stock
-          Expanded(
-            child:
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _filteredStocks.isEmpty
-                    ? const Center(
-                      child: Text(
-                        'Aucun stock trouvé',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    )
-                    : ListView.builder(
-                      itemCount: _filteredStocks.length,
-                      itemBuilder: (context, index) {
-                        final stock = _filteredStocks[index];
-                        return _buildStockCard(stock);
-                      },
-                    ),
-          ),
-        ],
-      ),
+  String _getStatusText(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'En attente';
+      case 'approved':
+        return 'Approuvé';
+      case 'rejected':
+        return 'Rejeté';
+      default:
+        return 'Inconnu';
+    }
+  }
+
+  void _showApproveConfirmation(Stock stock) {
+    Get.defaultDialog(
+      title: 'Confirmation',
+      middleText: 'Voulez-vous valider cet article ?',
+      textConfirm: 'Valider',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        Get.back();
+        controller.approveStock(stock);
+        _loadStocks();
+      },
     );
   }
 
-  Widget _buildStockCard(Stock stock) {
-    final statusColor = _getStatusColor(stock.status);
-    final statusText = _getStatusText(stock.status ?? '');
-    final statusIcon = _getStatusIcon(stock.status ?? '');
+  void _showRejectDialog(Stock stock) {
+    final commentController = TextEditingController();
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        stock.name ?? '',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Catégorie: ${stock.category}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Quantité: ${stock.quantity}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Prix unitaire: ${stock.unitPrice.toStringAsFixed(2)} FCFA',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Valeur totale: ${stock.totalValue.toStringAsFixed(2)} FCFA',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Soumis par: ${stock.user?.name ?? ''}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: statusColor),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(statusIcon, size: 16, color: statusColor),
-                          const SizedBox(width: 4),
-                          Text(
-                            statusText,
-                            style: TextStyle(
-                              color: statusColor,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (stock.status == 'pending') // En attente
-                      const SizedBox(height: 8),
-                  ],
-                ),
-              ],
+    Get.defaultDialog(
+      title: 'Rejeter l\'article',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: commentController,
+            decoration: const InputDecoration(
+              labelText: 'Motif du rejet',
+              hintText: 'Entrez le motif du rejet',
             ),
-            if (stock.description != null && stock.description!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Description: ${stock.description}',
-                style: const TextStyle(fontSize: 14),
-              ),
-            ],
-            if (stock.status ==
-                'pending') // En attente - Afficher les boutons d'action
-              RoleBasedWidget(
-                allowedRoles: [Roles.ADMIN, Roles.PATRON],
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showValidationDialog(stock),
-                          icon: const Icon(Icons.check, size: 16),
-                          label: const Text('Valider'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showRejectionDialog(stock),
-                          icon: const Icon(Icons.close, size: 16),
-                          label: const Text('Rejeter'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (stock.status == 'rejected' &&
-                stock.comments != null &&
-                stock.comments?.isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Motif du rejet:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      stock.comments ?? '',
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
+            maxLines: 3,
+          ),
+        ],
       ),
+      textConfirm: 'Rejeter',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        if (commentController.text.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Veuillez entrer un motif de rejet',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return;
+        }
+        Get.back();
+        controller.rejectStock(stock);
+        _loadStocks();
+      },
     );
   }
 }

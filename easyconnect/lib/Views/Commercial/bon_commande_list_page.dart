@@ -196,6 +196,24 @@ class BonCommandeListPage extends StatelessWidget {
               'Status: ${bonCommande.statusText}',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
             ),
+            if (bonCommande.status == 3 &&
+                (bonCommande.commentaireRejet != null &&
+                    bonCommande.commentaireRejet!.isNotEmpty)) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${bonCommande.commentaireRejet}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         trailing: Row(

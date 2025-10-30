@@ -304,6 +304,25 @@ class PaymentList extends StatelessWidget {
               ],
             ),
 
+            // Raison du rejet pour les paiements rejetés (utilise notes si fourni)
+            if (payment.isRejected &&
+                (payment.notes != null && payment.notes!.isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 16, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${payment.notes}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
             // Actions selon le statut d'approbation
             if (payment.isPending && controller.canApprovePayments) ...[
               const SizedBox(height: 8),

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Intervention;
-use App\Models\InterventionType;
 use App\Models\Equipment;
 use App\Models\InterventionReport;
 use Illuminate\Http\Request;
@@ -569,7 +568,20 @@ class InterventionController extends Controller
     public function types()
     {
         try {
-            $types = InterventionType::getActiveTypes();
+            $types = [
+                [
+                    'value' => 'external',
+                    'label' => 'Externe',
+                    'icon' => 'location_on',
+                    'color' => '#3B82F6'
+                ],
+                [
+                    'value' => 'on_site',
+                    'label' => 'Sur place',
+                    'icon' => 'home',
+                    'color' => '#10B981'
+                ]
+            ];
 
             return response()->json([
                 'success' => true,

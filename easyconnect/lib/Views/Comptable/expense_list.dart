@@ -354,6 +354,26 @@ class _ExpenseListState extends State<ExpenseList>
                 const SizedBox(height: 8),
               ],
 
+              // Raison du rejet
+              if (expense.status == 'rejected' &&
+                  (expense.rejectionReason != null &&
+                      expense.rejectionReason!.isNotEmpty)) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.report, size: 16, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison du rejet: ${expense.rejectionReason}',
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
               // Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,

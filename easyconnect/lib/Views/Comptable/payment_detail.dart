@@ -63,6 +63,42 @@ class PaymentDetail extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildPaymentCard(controller, payment),
                 const SizedBox(height: 16),
+                if (payment.status == 'rejected' &&
+                    payment.notes != null &&
+                    payment.notes!.isNotEmpty) ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Motif du rejet',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.report, color: Colors.red),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  payment.notes!,
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 if (payment.type == 'monthly' && payment.schedule != null) ...[
                   _buildScheduleCard(controller, payment),
                   const SizedBox(height: 16),

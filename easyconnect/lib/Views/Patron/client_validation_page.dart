@@ -12,26 +12,52 @@ class ClientValidationPage extends StatefulWidget {
 
 class _ClientValidationPageState extends State<ClientValidationPage>
     with SingleTickerProviderStateMixin {
-  final ClientController controller = Get.put(ClientController());
+  final ClientController controller = Get.find<ClientController>();
   late TabController _tabController;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        final status = _tabController.index;
-        print('🔄 Changement d\'onglet vers: $status');
-        controller.loadClients(status: status);
-      }
+      _onTabChanged();
     });
+    _loadClients();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) {
+      _loadClients();
+    }
+  }
+
+  Future<void> _loadClients() async {
+    int? status;
+    switch (_tabController.index) {
+      case 0: // Tous
+        status = null;
+        break;
+      case 1: // En attente
+        status = 0;
+        break;
+      case 2: // Validés
+        status = 1;
+        break;
+      case 3: // Rejetés
+        status = 2;
+        break;
+    }
+
+    await controller.loadClients(status: status);
   }
 
   @override
@@ -39,268 +65,407 @@ class _ClientValidationPageState extends State<ClientValidationPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Validation des Clients'),
+        backgroundColor: Colors.blueGrey.shade900,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _loadClients();
+            },
+            tooltip: 'Actualiser',
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'En attente'),
-            Tab(text: 'Validés'),
-            Tab(text: 'Rejetés'),
+            Tab(text: 'Tous', icon: Icon(Icons.list)),
+            Tab(text: 'En attente', icon: Icon(Icons.pending)),
+            Tab(text: 'Validés', icon: Icon(Icons.check_circle)),
+            Tab(text: 'Rejetés', icon: Icon(Icons.cancel)),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          _buildClientList(0), // En attente
-          _buildClientList(1), // Validés
-          _buildClientList(2), // Rejetés
+          // Barre de recherche
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Rechercher par nom, email...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon:
+                    _searchQuery.isNotEmpty
+                        ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                        )
+                        : null,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
+          // Contenu des onglets
+          Expanded(
+            child: Obx(
+              () =>
+                  controller.isLoading.value
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildClientList(),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildClientList(int status) {
-    return Obx(() {
-      if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
-      }
+  Widget _buildClientList() {
+    // Filtrer les clients selon la recherche
+    final filteredClients =
+        _searchQuery.isEmpty
+            ? controller.clients
+            : controller.clients
+                .where(
+                  (client) =>
+                      '${client.nom ?? ''} ${client.prenom ?? ''}'
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase()) ||
+                      (client.email ?? '').toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ) ||
+                      (client.contact ?? '').contains(_searchQuery),
+                )
+                .toList();
 
-      final clients =
-          controller.clients.where((c) => c.status == status).toList();
+    if (filteredClients.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isEmpty
+                  ? 'Aucun client trouvé'
+                  : 'Aucun client correspondant à "$_searchQuery"',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            if (_searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                  });
+                },
+                icon: const Icon(Icons.clear),
+                label: const Text('Effacer la recherche'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
 
-      if (clients.isEmpty) {
-        return Center(
-          child: Column(
+    return ListView.builder(
+      itemCount: filteredClients.length,
+      padding: const EdgeInsets.all(8),
+      itemBuilder: (context, index) {
+        final client = filteredClients[index];
+        return _buildClientCard(context, client);
+      },
+    );
+  }
+
+  Widget _buildClientCard(BuildContext context, Client client) {
+    final statusColor = _getStatusColor(client.status ?? 0);
+    final statusIcon = _getStatusIcon(client.status ?? 0);
+    final statusText = _getStatusText(client.status ?? 0);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: statusColor.withOpacity(0.1),
+          child: Icon(statusIcon, color: statusColor),
+        ),
+        title: Text(
+          '${client.nom ?? ''} ${client.prenom ?? ''}'.trim(),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text('Email: ${client.email ?? ''}'),
+            Text('Téléphone: ${client.contact ?? ''}'),
+            Text('Date création: ${client.createdAt ?? 'N/A'}'),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: statusColor),
+              ),
+              child: Text(
+                statusText,
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Informations détaillées
+                const Text(
+                  'Informations détaillées',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Nom: ${client.nom ?? ''}'),
+                      Text('Prénom: ${client.prenom ?? ''}'),
+                      Text('Email: ${client.email ?? ''}'),
+                      Text('Téléphone: ${client.contact ?? ''}'),
+                      if (client.adresse != null)
+                        Text('Adresse: ${client.adresse}'),
+                      if (client.nomEntreprise != null)
+                        Text('Entreprise: ${client.nomEntreprise}'),
+                      Text('Statut: $statusText'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildActionButtons(client, statusColor),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(Client client, Color statusColor) {
+    switch (client.status ?? 0) {
+      case 0: // En attente - Afficher boutons Valider/Rejeter
+        return Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _showApproveConfirmation(client),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Valider'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => _showRejectDialog(client),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Rejeter'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      case 1: // Validé - Afficher seulement info
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green),
+          ),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                status == 0
-                    ? Icons.pending
-                    : status == 1
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                size: 64,
-                color: Colors.grey.shade400,
-              ),
-              const SizedBox(height: 16),
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 8),
               Text(
-                status == 0
-                    ? "Aucun client en attente"
-                    : status == 1
-                    ? "Aucun client validé"
-                    : "Aucun client rejeté",
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
+                'Client validé',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
         );
-      }
-
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: clients.length,
-        itemBuilder: (context, index) {
-          final client = clients[index];
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                ListTile(
-                  title: Text(
-                    '${client.nomEntreprise}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Ajouté le ${client.createdAt?.substring(0, 10)}',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                  trailing: _buildStatusChip(client),
+      case 2: // Rejeté - Afficher motif du rejet
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.red),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.cancel, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(
+                'Client rejeté',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontWeight: FontWeight.bold,
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow(
-                        'Contact',
-                        '${client.prenom} ${client.nom}',
-                      ),
-                      _buildInfoRow('Email', client.email ?? ''),
-                      _buildInfoRow('Téléphone', client.contact ?? ''),
-                      _buildInfoRow('Adresse', client.adresse ?? ''),
-                      _buildInfoRow(
-                        'Situation',
-                        client.situationGeographique ?? '',
-                      ),
-                      if (client.status == 2 && client.commentaire != null)
-                        _buildInfoRow(
-                          'Motif du rejet',
-                          client.commentaire ?? '',
-                          color: Colors.red.shade700,
-                        ),
-                    ],
-                  ),
+              ),
+            ],
+          ),
+        );
+      default: // Autres statuts
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.help, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                'Statut: ${client.status ?? 'Inconnu'}',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.bold,
                 ),
-                if (status == 0)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.close, color: Colors.red),
-                          label: const Text('Rejeter'),
-                          onPressed: () => _showRejectDialog(client),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.check, color: Colors.white),
-                          label: const Text('Valider'),
-                          onPressed: () => _showApproveDialog(client),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          );
-        },
-      );
-    });
+              ),
+            ],
+          ),
+        );
+    }
   }
 
-  Widget _buildStatusChip(Client client) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: client.statusColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: client.statusColor.withOpacity(0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(client.statusIcon, size: 16, color: client.statusColor),
-          const SizedBox(width: 4),
-          Text(
-            client.statusText,
-            style: TextStyle(
-              color: client.statusColor,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
+  Color _getStatusColor(int status) {
+    switch (status) {
+      case 0:
+        return Colors.orange;
+      case 1:
+        return Colors.green;
+      case 2:
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
-  Widget _buildInfoRow(String label, String value, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: color ?? Colors.black87,
-                fontWeight: color != null ? FontWeight.w500 : FontWeight.normal,
-              ),
-            ),
-          ),
-        ],
-      ),
+  IconData _getStatusIcon(int status) {
+    switch (status) {
+      case 0:
+        return Icons.pending;
+      case 1:
+        return Icons.check_circle;
+      case 2:
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
+
+  String _getStatusText(int status) {
+    switch (status) {
+      case 0:
+        return 'En attente';
+      case 1:
+        return 'Validé';
+      case 2:
+        return 'Rejeté';
+      default:
+        return 'Inconnu';
+    }
+  }
+
+  void _showApproveConfirmation(Client client) {
+    Get.defaultDialog(
+      title: 'Confirmation',
+      middleText: 'Voulez-vous valider ce client ?',
+      textConfirm: 'Valider',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        Get.back();
+        controller.approveClient(client.id!);
+        _loadClients();
+      },
     );
   }
 
   void _showRejectDialog(Client client) {
     final commentController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le client'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Êtes-vous sûr de vouloir rejeter ce client ? Cette action nécessite un commentaire explicatif.',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: commentController,
-              decoration: const InputDecoration(
-                labelText: 'Motif du rejet',
-                border: OutlineInputBorder(),
-                hintText: 'Expliquez la raison du rejet...',
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (commentController.text.isNotEmpty) {
-                controller.rejectClient(client.id ?? 0, commentController.text);
-                Get.back();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  void _showApproveDialog(Client client) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Valider le client'),
-        content: const Text(
-          'Êtes-vous sûr de vouloir valider ce client ? Cette action permettra au commercial de commencer à travailler avec ce client.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.approveClient(client.id ?? 0);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+    Get.defaultDialog(
+      title: 'Rejeter le client',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: commentController,
+            decoration: const InputDecoration(
+              labelText: 'Motif du rejet',
+              hintText: 'Entrez le motif du rejet',
             ),
-            child: const Text('Valider'),
+            maxLines: 3,
           ),
         ],
       ),
+      textConfirm: 'Rejeter',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        if (commentController.text.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Veuillez entrer un motif de rejet',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return;
+        }
+        Get.back();
+        controller.rejectClient(client.id!, commentController.text);
+        _loadClients();
+      },
     );
   }
 }

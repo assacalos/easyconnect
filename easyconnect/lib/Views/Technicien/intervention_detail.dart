@@ -22,10 +22,14 @@ class InterventionDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageInterventions && intervention.status == 'pending')
+          if (controller.canManageInterventions &&
+              intervention.status == 'pending')
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => InterventionForm(intervention: intervention)),
+              onPressed:
+                  () => Get.to(
+                    () => InterventionForm(intervention: intervention),
+                  ),
             ),
           IconButton(
             icon: const Icon(Icons.share),
@@ -46,8 +50,16 @@ class InterventionDetail extends StatelessWidget {
             _buildInfoCard('Informations de base', [
               _buildInfoRow(Icons.title, 'Titre', intervention.title),
               _buildInfoRow(Icons.category, 'Type', intervention.typeText),
-              _buildInfoRow(Icons.priority_high, 'Priorité', intervention.priorityText),
-              _buildInfoRow(Icons.description, 'Description', intervention.description),
+              _buildInfoRow(
+                Icons.priority_high,
+                'Priorité',
+                intervention.priorityText,
+              ),
+              _buildInfoRow(
+                Icons.description,
+                'Description',
+                intervention.description,
+              ),
             ]),
 
             // Informations de planification
@@ -85,30 +97,56 @@ class InterventionDetail extends StatelessWidget {
             ]),
 
             // Informations client
-            if (intervention.clientName != null || intervention.location != null) ...[
+            if (intervention.clientName != null ||
+                intervention.location != null) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Informations client', [
                 if (intervention.clientName != null)
                   _buildInfoRow(Icons.person, 'Nom', intervention.clientName!),
                 if (intervention.clientPhone != null)
-                  _buildInfoRow(Icons.phone, 'Téléphone', intervention.clientPhone!),
+                  _buildInfoRow(
+                    Icons.phone,
+                    'Téléphone',
+                    intervention.clientPhone!,
+                  ),
                 if (intervention.clientEmail != null)
-                  _buildInfoRow(Icons.email, 'Email', intervention.clientEmail!),
+                  _buildInfoRow(
+                    Icons.email,
+                    'Email',
+                    intervention.clientEmail!,
+                  ),
                 if (intervention.location != null)
-                  _buildInfoRow(Icons.location_on, 'Localisation', intervention.location!),
+                  _buildInfoRow(
+                    Icons.location_on,
+                    'Localisation',
+                    intervention.location!,
+                  ),
               ]),
             ],
 
             // Informations techniques
-            if (intervention.equipment != null || intervention.problemDescription != null) ...[
+            if (intervention.equipment != null ||
+                intervention.problemDescription != null) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Informations techniques', [
                 if (intervention.equipment != null)
-                  _buildInfoRow(Icons.build, 'Équipement', intervention.equipment!),
+                  _buildInfoRow(
+                    Icons.build,
+                    'Équipement',
+                    intervention.equipment!,
+                  ),
                 if (intervention.problemDescription != null)
-                  _buildInfoRow(Icons.warning, 'Problème', intervention.problemDescription!),
+                  _buildInfoRow(
+                    Icons.warning,
+                    'Problème',
+                    intervention.problemDescription!,
+                  ),
                 if (intervention.solution != null)
-                  _buildInfoRow(Icons.check_circle, 'Solution', intervention.solution!),
+                  _buildInfoRow(
+                    Icons.check_circle,
+                    'Solution',
+                    intervention.solution!,
+                  ),
               ]),
             ],
 
@@ -125,23 +163,51 @@ class InterventionDetail extends StatelessWidget {
             ],
 
             // Notes
-            if (intervention.notes != null && intervention.notes!.isNotEmpty) ...[
+            if (intervention.notes != null &&
+                intervention.notes!.isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Notes', [
                 _buildInfoRow(Icons.note, 'Notes', intervention.notes!),
               ]),
             ],
 
+            // Motif du rejet
+            if (intervention.status == 'rejected' &&
+                intervention.rejectionReason != null &&
+                intervention.rejectionReason!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildInfoCard('Motif du rejet', [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Text(
+                    intervention.rejectionReason!,
+                    style: TextStyle(color: Colors.red.shade900),
+                  ),
+                ),
+              ]),
+            ],
+
             // Notes de fin
-            if (intervention.completionNotes != null && intervention.completionNotes!.isNotEmpty) ...[
+            if (intervention.completionNotes != null &&
+                intervention.completionNotes!.isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Notes de fin', [
-                _buildInfoRow(Icons.done_all, 'Notes de fin', intervention.completionNotes!),
+                _buildInfoRow(
+                  Icons.done_all,
+                  'Notes de fin',
+                  intervention.completionNotes!,
+                ),
               ]),
             ],
 
             // Pièces jointes
-            if (intervention.attachments != null && intervention.attachments!.isNotEmpty) ...[
+            if (intervention.attachments != null &&
+                intervention.attachments!.isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Pièces jointes', [
                 for (String attachment in intervention.attachments!)
@@ -252,7 +318,11 @@ class InterventionDetail extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(intervention.statusIcon, size: 16, color: intervention.statusColor),
+          Icon(
+            intervention.statusIcon,
+            size: 16,
+            color: intervention.statusColor,
+          ),
           const SizedBox(width: 4),
           Text(
             intervention.statusText,
@@ -350,11 +420,14 @@ class InterventionDetail extends StatelessWidget {
               DateFormat('dd/MM/yyyy à HH:mm').format(intervention.createdAt),
               Colors.blue,
             ),
-            if (intervention.status == 'approved' && intervention.approvedAt != null)
+            if (intervention.status == 'approved' &&
+                intervention.approvedAt != null)
               _buildHistoryItem(
                 Icons.check_circle,
                 'Approuvée',
-                DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.parse(intervention.approvedAt!)),
+                DateFormat(
+                  'dd/MM/yyyy à HH:mm',
+                ).format(DateTime.parse(intervention.approvedAt!)),
                 Colors.green,
               ),
             if (intervention.status == 'rejected')
@@ -364,14 +437,18 @@ class InterventionDetail extends StatelessWidget {
                 DateFormat('dd/MM/yyyy à HH:mm').format(intervention.updatedAt),
                 Colors.red,
               ),
-            if (intervention.status == 'in_progress' && intervention.startDate != null)
+            if (intervention.status == 'in_progress' &&
+                intervention.startDate != null)
               _buildHistoryItem(
                 Icons.play_arrow,
                 'Démarrée',
-                DateFormat('dd/MM/yyyy à HH:mm').format(intervention.startDate!),
+                DateFormat(
+                  'dd/MM/yyyy à HH:mm',
+                ).format(intervention.startDate!),
                 Colors.purple,
               ),
-            if (intervention.status == 'completed' && intervention.endDate != null)
+            if (intervention.status == 'completed' &&
+                intervention.endDate != null)
               _buildHistoryItem(
                 Icons.done_all,
                 'Terminée',
@@ -439,12 +516,16 @@ class InterventionDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (intervention.status == 'pending' && controller.canManageInterventions) ...[
+                if (intervention.status == 'pending' &&
+                    controller.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => InterventionForm(intervention: intervention)),
+                      onPressed:
+                          () => Get.to(
+                            () => InterventionForm(intervention: intervention),
+                          ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -453,7 +534,8 @@ class InterventionDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (intervention.status == 'approved' && controller.canManageInterventions) ...[
+                if (intervention.status == 'approved' &&
+                    controller.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.play_arrow),
@@ -467,7 +549,8 @@ class InterventionDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (intervention.status == 'in_progress' && controller.canManageInterventions) ...[
+                if (intervention.status == 'in_progress' &&
+                    controller.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.stop),
@@ -481,7 +564,8 @@ class InterventionDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (intervention.status == 'pending' && controller.canApproveInterventions) ...[
+                if (intervention.status == 'pending' &&
+                    controller.canApproveInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
@@ -545,7 +629,9 @@ class InterventionDetail extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Êtes-vous sûr de vouloir démarrer cette intervention ?'),
+            const Text(
+              'Êtes-vous sûr de vouloir démarrer cette intervention ?',
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: notesController,
@@ -629,8 +715,10 @@ class InterventionDetail extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               controller.solutionController.text = solutionController.text;
-              controller.completionNotesController.text = completionNotesController.text;
-              controller.actualDurationController.text = actualDurationController.text;
+              controller.completionNotesController.text =
+                  completionNotesController.text;
+              controller.actualDurationController.text =
+                  actualDurationController.text;
               controller.costController.text = costController.text;
               controller.completeIntervention(intervention);
               Get.back();
@@ -652,7 +740,9 @@ class InterventionDetail extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Êtes-vous sûr de vouloir approuver cette intervention ?'),
+            const Text(
+              'Êtes-vous sûr de vouloir approuver cette intervention ?',
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: notesController,
@@ -706,7 +796,10 @@ class InterventionDetail extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectIntervention(intervention, reasonController.text.trim());
+                controller.rejectIntervention(
+                  intervention,
+                  reasonController.text.trim(),
+                );
                 Get.back();
               } else {
                 Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');

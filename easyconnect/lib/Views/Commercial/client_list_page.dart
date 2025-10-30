@@ -223,6 +223,26 @@ class ClientsPage extends StatelessWidget {
               ],
             ),
 
+            // Raison du rejet
+            if (status == 2 &&
+                (client.commentaire != null &&
+                    client.commentaire!.isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 16, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${client.commentaire}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
             // Actions selon le statut et le rôle
             if (status == 0) ...[
               const SizedBox(height: 8),

@@ -30,6 +30,8 @@ abstract class BaseDashboard<T extends BaseDashboardController>
       appBar: AppBar(
         title: Text(title),
         backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: buildAppBarActions(),
       ),
       drawer: buildDrawer(context),
@@ -41,28 +43,6 @@ abstract class BaseDashboard<T extends BaseDashboardController>
         children: [
           // Profil utilisateur
           UserProfileCard(showPermissions: false),
-
-          // Barre de favoris
-          FavoritesBar(items: favoriteItems),
-
-          // Filtres
-          FilterBar(
-            filters: availableFilters,
-            activeFilters: controller.activeFilters,
-            onFilterChanged: controller.onFilterChanged,
-          ),
-
-          // Statistiques
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Obx(
-              () => StatsGrid(
-                stats: statsCards,
-                isLoading: controller.isLoading.value,
-                crossAxisCount: Get.width > 1200 ? 3 : 2,
-              ),
-            ),
-          ),
 
           // Graphiques
           Padding(
@@ -96,6 +76,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           buildCustomContent(context),
         ],
       ),
+      bottomNavigationBar: buildBottomNavigationBar(),
       floatingActionButton: buildFloatingActionButton(),
     );
   }
@@ -103,44 +84,54 @@ abstract class BaseDashboard<T extends BaseDashboardController>
   List<Widget> buildAppBarActions() {
     return [
       IconButton(
-        icon: const Icon(Icons.notifications),
+        icon: const Icon(Icons.notifications, color: Colors.white),
         onPressed: () {
           // Afficher les notifications
         },
       ),
       IconButton(
-        icon: const Icon(Icons.refresh),
+        icon: const Icon(Icons.refresh, color: Colors.white),
         onPressed: () => controller.loadInitialData(),
-      ),
-      IconButton(
-        icon: const Icon(Icons.logout),
-        onPressed: () => _showLogoutDialog(),
-        tooltip: 'Déconnexion',
       ),
     ];
   }
 
-  void _showLogoutDialog() {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Déconnexion'),
-        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              Get.back();
-              final authController = Get.find<AuthController>();
-              authController.logout();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Déconnexion'),
-          ),
-        ],
-      ),
+  Widget? buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: primaryColor,
+      unselectedItemColor: Colors.grey,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Accueil'),
+        BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Rechercher'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.notifications),
+          label: 'Notifications',
+        ),
+        BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chat'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+      ],
+      onTap: (index) {
+        // Navigation basée sur l'index
+        switch (index) {
+          case 0:
+            // Accueil - déjà sur le dashboard
+            break;
+          case 1:
+            // Rechercher
+            break;
+          case 2:
+            // Notifications
+            break;
+          case 3:
+            // Chat
+            break;
+          case 4:
+            // Profil
+            break;
+        }
+      },
     );
   }
 
@@ -148,33 +139,74 @@ abstract class BaseDashboard<T extends BaseDashboardController>
 
   Widget buildDrawer(BuildContext context) {
     return Drawer(
-      child: ListView(
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(color: primaryColor),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+      child: Container(
+        color: Colors.grey.shade900,
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: primaryColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Obx(
-                  () => Text(
-                    "Rôle: ${Roles.getRoleName(Get.find<AuthController>().userAuth.value?.role)}",
-                    style: const TextStyle(color: Colors.white70),
+                  const SizedBox(height: 8),
+                  Obx(
+                    () => Text(
+                      "Rôle: ${Roles.getRoleName(Get.find<AuthController>().userAuth.value?.role)}",
+                      style: const TextStyle(color: Colors.white70),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          ...buildDrawerItems(),
-        ],
+            ...buildDrawerItems(),
+
+            // Séparateur
+            const Divider(color: Colors.white54),
+
+            // Boutons communs
+            ListTile(
+              leading: const Icon(Icons.access_time, color: Colors.white70),
+              title: const Text(
+                'Pointage',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Get.toNamed('/attendance-punch');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.analytics, color: Colors.white70),
+              title: const Text(
+                'Reporting',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Get.toNamed('/reporting');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings, color: Colors.white70),
+              title: const Text(
+                'Paramètres',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Ajouter la route des paramètres
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

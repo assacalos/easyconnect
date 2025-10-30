@@ -95,30 +95,57 @@ class InvoiceForm extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: controller.clientNameController,
-              decoration: const InputDecoration(
-                labelText: 'Nom du client',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller.clientEmailController,
-              decoration: const InputDecoration(
-                labelText: 'Email du client',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller.clientAddressController,
-              decoration: const InputDecoration(
-                labelText: 'Adresse du client',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-            ),
+            Obx(() {
+              final selectedClient = controller.selectedClient.value;
+              if (selectedClient != null) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                          .trim(),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (selectedClient.nomEntreprise != null) ...[
+                      Text('Entreprise: ${selectedClient.nomEntreprise}'),
+                      const SizedBox(height: 4),
+                    ],
+                    if (selectedClient.email != null) ...[
+                      Text('Email: ${selectedClient.email}'),
+                      const SizedBox(height: 4),
+                    ],
+                    if (selectedClient.contact != null) ...[
+                      Text('Contact: ${selectedClient.contact}'),
+                      const SizedBox(height: 4),
+                    ],
+                    if (selectedClient.adresse != null) ...[
+                      Text('Adresse: ${selectedClient.adresse}'),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      'Statut: ${selectedClient.statusText}',
+                      style: TextStyle(
+                        color: selectedClient.statusColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: controller.clearSelectedClient,
+                      child: const Text('Changer de client'),
+                    ),
+                  ],
+                );
+              }
+              return const Text(
+                'Aucun client sélectionné',
+                style: TextStyle(color: Colors.grey),
+              );
+            }),
           ],
         ),
       ),
@@ -489,6 +516,11 @@ class InvoiceForm extends StatelessWidget {
   }
 
   void _showClientSelectionDialog(InvoiceController controller) {
+    // Charger les clients validés si pas encore fait
+    if (controller.availableClients.isEmpty) {
+      controller.loadValidatedClients();
+    }
+
     showDialog(
       context: Get.context!,
       builder:

@@ -390,6 +390,30 @@ class BordereauFormPage extends StatelessWidget {
               return;
             }
 
+            // Vérifier qu'un devis validé est sélectionné
+            if (controller.selectedDevis.value == null) {
+              Get.snackbar(
+                'Erreur',
+                'Veuillez sélectionner un devis validé',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
+            // Vérifier que le devis sélectionné est bien validé (status = 2)
+            if (controller.selectedDevis.value!.status != 2) {
+              Get.snackbar(
+                'Erreur',
+                'Seuls les devis validés peuvent être utilisés',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
             final data = {
               'reference': referenceController.text,
               'notes': notesController.text,

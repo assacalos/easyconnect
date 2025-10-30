@@ -217,6 +217,23 @@ class _InvoiceListPageState extends State<InvoiceListPage>
               'Montant: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
             ),
             Text('Date: ${_formatDate(invoice.invoiceDate)}'),
+            if ((invoice.status == 'rejected' || invoice.status == 'rejete') &&
+                (invoice.notes != null && invoice.notes!.isNotEmpty)) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${invoice.notes}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         trailing: Row(

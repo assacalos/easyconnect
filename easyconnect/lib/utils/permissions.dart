@@ -106,6 +106,19 @@ class Permissions {
   static const VIEW_ATTENDANCE = Permission(
     code: 'view_attendance',
     description: 'Voir les présences',
+    allowedRoles: [
+      Roles.ADMIN,
+      Roles.RH,
+      Roles.PATRON,
+      Roles.COMPTABLE,
+      Roles.COMMERCIAL,
+      Roles.TECHNICIEN,
+    ],
+  );
+
+  static const MANAGE_ATTENDANCE = Permission(
+    code: 'Gerer_attendance',
+    description: 'Gerer les présences',
     allowedRoles: [Roles.ADMIN, Roles.RH, Roles.PATRON],
   );
 
@@ -385,6 +398,21 @@ class Permissions {
     description: 'Supprimer les devis',
     allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL],
   );
+  static const MANAGE_DEVIS = Permission(
+    code: 'manage_devis',
+    description: 'Gérer le devis',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+  static const MANAGE_BORDEREAUX = Permission(
+    code: 'manage_bordereaux',
+    description: 'Gérer les bordereaux',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+  static const MANAGE_BON_COMMANDES = Permission(
+    code: 'manage_bon_commandes',
+    description: 'Gérer les bons de commande',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
   static const VIEW_STATS = Permission(
     code: 'view_stats',
     description: 'Voir les statistiques',
@@ -428,12 +456,16 @@ class Permissions {
       CREATE_CLIENTS,
       UPDATE_CLIENTS,
       DELETE_CLIENTS,
+      MANAGE_DEVIS,
+      MANAGE_BORDEREAUX,
+      MANAGE_BON_COMMANDES,
       VIEW_SALES,
       MANAGE_INVOICES,
       VIEW_FINANCES,
       MANAGE_EXPENSES,
       MANAGE_EMPLOYEES,
       MANAGE_LEAVES,
+      MANAGE_ATTENDANCE,
       VIEW_ATTENDANCE,
       MANAGE_INVOICES,
       VIEW_INVOICES,

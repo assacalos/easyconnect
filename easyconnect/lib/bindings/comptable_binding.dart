@@ -4,6 +4,7 @@ import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/tax_service.dart';
+import 'package:easyconnect/services/comptable_dashboard_service.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/comptable_dashboard_controller.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
@@ -23,6 +24,7 @@ class ComptableBinding extends Bindings {
     Get.put(SupplierService(), permanent: true);
     Get.put(TaxService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
+    Get.put(ComptableDashboardService(), permanent: true);
 
     // Contrôleurs ensuite
     Get.put(ComptableDashboardController(), permanent: true);

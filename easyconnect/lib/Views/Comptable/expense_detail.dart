@@ -17,7 +17,7 @@ class ExpenseDetail extends StatelessWidget {
       locale: 'fr_FR',
       symbol: 'fcfa',
     );
-    final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
+    // final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
     return Scaffold(
       appBar: AppBar(
@@ -79,6 +79,27 @@ class ExpenseDetail extends StatelessWidget {
               const SizedBox(height: 16),
               _buildInfoCard('Notes', [
                 _buildInfoRow(Icons.note, 'Notes', expense.notes!),
+              ]),
+            ],
+
+            // Raison du rejet si rejetée
+            if (expense.status == 'rejected' &&
+                expense.rejectionReason != null &&
+                expense.rejectionReason!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildInfoCard('Motif du rejet', [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Text(
+                    expense.rejectionReason!,
+                    style: TextStyle(color: Colors.red.shade900),
+                  ),
+                ),
               ]),
             ],
 

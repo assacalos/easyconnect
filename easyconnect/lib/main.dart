@@ -7,7 +7,8 @@ import 'package:get_storage/get_storage.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   print('=== DÉMARRAGE DE L\'APPLICATION ===');
-  GetStorage.init();
+  // Assurer l'initialisation du stockage avant de lancer l'app
+  await GetStorage.init();
 
   runApp(const MyApp());
 }

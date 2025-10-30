@@ -11,37 +11,53 @@ class Intervention extends Model
     use HasFactory;
 
     protected $fillable = [
-        'type_id',
-        'client_id',
-        'user_id',
+        'type',
         'title',
         'description',
         'scheduled_date',
-        'completed_date',
+        'start_date',
+        'end_date',
         'status',
-        'cost'
+        'priority',
+        'location',
+        'client_name',
+        'client_phone',
+        'client_email',
+        'equipment',
+        'problem_description',
+        'solution',
+        'notes',
+        'attachments',
+        'estimated_duration',
+        'actual_duration',
+        'cost',
+        'created_by',
+        'approved_by',
+        'approved_at',
+        'rejection_reason',
+        'completion_notes'
     ];
 
     protected $casts = [
-        'scheduled_date' => 'date',
-        'completed_date' => 'date',
+        'scheduled_date' => 'datetime',
+        'start_date' => 'datetime',
+        'end_date' => 'datetime',
+        'approved_at' => 'datetime',
+        'attachments' => 'array',
+        'estimated_duration' => 'decimal:2',
+        'actual_duration' => 'decimal:2',
         'cost' => 'decimal:2'
     ];
 
     // Relations
-    public function type()
+    public function creator()
     {
-        return $this->belongsTo(InterventionType::class, 'type_id');
+        return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function client()
+    public function approver()
     {
-        return $this->belongsTo(Client::class);
-    }
-
-    public function user()
-    {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     public function reports()
@@ -50,46 +66,80 @@ class Intervention extends Model
     }
 
     // Scopes
-    public function scopeEnAttente($query)
+    public function scopePending($query)
     {
-        return $query->where('status', 'en_attente');
+        return $query->where('status', 'pending');
     }
 
-    public function scopeValide($query)
+    public function scopeApproved($query)
     {
-        return $query->where('status', 'valide');
+        return $query->where('status', 'approved');
     }
 
-    public function scopeRejete($query)
+    public function scopeInProgress($query)
     {
-        return $query->where('status', 'rejete');
+        return $query->where('status', 'in_progress');
     }
 
-    public function scopeByType($query, $typeId)
+    public function scopeCompleted($query)
     {
-        return $query->where('type_id', $typeId);
+        return $query->where('status', 'completed');
     }
 
-    public function scopeByClient($query, $clientId)
+    public function scopeRejected($query)
     {
-        return $query->where('client_id', $clientId);
+        return $query->where('status', 'rejected');
     }
 
-    public function scopeByUser($query, $userId)
+    public function scopeByType($query, $type)
     {
-        return $query->where('user_id', $userId);
+        return $query->where('type', $type);
+    }
+
+    public function scopeByPriority($query, $priority)
+    {
+        return $query->where('priority', $priority);
+    }
+
+    public function scopeByCreator($query, $userId)
+    {
+        return $query->where('created_by', $userId);
     }
 
     // Accesseurs
     public function getStatusLibelleAttribute()
     {
         $statuses = [
-            'en_attente' => 'En attente',
-            'valide' => 'Validé',
-            'rejete' => 'Rejeté'
+            'pending' => 'En attente',
+            'approved' => 'Approuvée',
+            'in_progress' => 'En cours',
+            'completed' => 'Terminée',
+            'rejected' => 'Rejetée'
         ];
 
         return $statuses[$this->status] ?? $this->status;
+    }
+
+    public function getTypeLibelleAttribute()
+    {
+        $types = [
+            'external' => 'Externe',
+            'on_site' => 'Sur place'
+        ];
+
+        return $types[$this->type] ?? $this->type;
+    }
+
+    public function getPriorityLibelleAttribute()
+    {
+        $priorities = [
+            'low' => 'Faible',
+            'medium' => 'Moyenne',
+            'high' => 'Élevée',
+            'urgent' => 'Urgente'
+        ];
+
+        return $priorities[$this->priority] ?? $this->priority;
     }
 
     public function getFormattedCostAttribute()
@@ -97,34 +147,119 @@ class Intervention extends Model
         return $this->cost ? number_format($this->cost, 2, ',', ' ') . ' €' : 'N/A';
     }
 
-    // Méthodes utilitaires
-    public function canBeValidated()
+    public function getFormattedEstimatedDurationAttribute()
     {
-        return $this->status === 'en_attente';
+        return $this->estimated_duration ? $this->estimated_duration . 'h' : 'N/A';
+    }
+
+    public function getFormattedActualDurationAttribute()
+    {
+        return $this->actual_duration ? $this->actual_duration . 'h' : 'N/A';
+    }
+
+    public function getCreatorNameAttribute()
+    {
+        return $this->creator ? $this->creator->prenom . ' ' . $this->creator->nom : 'N/A';
+    }
+
+    public function getApproverNameAttribute()
+    {
+        return $this->approver ? $this->approver->prenom . ' ' . $this->approver->nom : 'N/A';
+    }
+
+    public function getCalculatedDurationAttribute()
+    {
+        if ($this->start_date && $this->end_date) {
+            return $this->start_date->diffInHours($this->end_date);
+        }
+        return $this->actual_duration;
+    }
+
+    public function getIsOverdueAttribute()
+    {
+        if ($this->status === 'completed') return false;
+        return now()->isAfter($this->scheduled_date);
+    }
+
+    public function getIsDueSoonAttribute()
+    {
+        if ($this->status === 'completed') return false;
+        $dueDate = $this->scheduled_date->subHours(2);
+        return now()->isAfter($dueDate) && !$this->is_overdue;
+    }
+
+    // Méthodes utilitaires
+    public function canBeEdited()
+    {
+        return in_array($this->status, ['pending', 'rejected']);
+    }
+
+    public function canBeApproved()
+    {
+        return $this->status === 'pending';
     }
 
     public function canBeRejected()
     {
-        return $this->status === 'en_attente';
+        return $this->status === 'pending';
     }
 
-    public function validate($comment = null, $userId = null)
+    public function canBeStarted()
     {
-        if ($this->canBeValidated()) {
+        return $this->status === 'approved';
+    }
+
+    public function canBeCompleted()
+    {
+        return $this->status === 'in_progress';
+    }
+
+    public function approve($userId, $notes = null)
+    {
+        if ($this->canBeApproved()) {
             $this->update([
-                'status' => 'valide',
-                'completed_date' => now()->toDateString()
+                'status' => 'approved',
+                'approved_by' => $userId,
+                'approved_at' => now()
             ]);
             return true;
         }
         return false;
     }
 
-    public function reject($reason, $comment = null, $userId = null)
+    public function reject($reason)
     {
         if ($this->canBeRejected()) {
             $this->update([
-                'status' => 'rejete'
+                'status' => 'rejected',
+                'rejection_reason' => $reason
+            ]);
+            return true;
+        }
+        return false;
+    }
+
+    public function start()
+    {
+        if ($this->canBeStarted()) {
+            $this->update([
+                'status' => 'in_progress',
+                'start_date' => now()
+            ]);
+            return true;
+        }
+        return false;
+    }
+
+    public function complete($completionNotes = null, $actualDuration = null, $cost = null)
+    {
+        if ($this->canBeCompleted()) {
+            $this->update([
+                'status' => 'completed',
+                'end_date' => now(),
+                'completion_notes' => $completionNotes,
+                'actual_duration' => $actualDuration,
+                'cost' => $cost
             ]);
             return true;
         }
@@ -144,23 +279,47 @@ class Intervention extends Model
         
         return [
             'total_interventions' => $interventions->count(),
-            'en_attente_interventions' => $interventions->where('status', 'en_attente')->count(),
-            'valide_interventions' => $interventions->where('status', 'valide')->count(),
-            'rejete_interventions' => $interventions->where('status', 'rejete')->count(),
+            'pending_interventions' => $interventions->where('status', 'pending')->count(),
+            'approved_interventions' => $interventions->where('status', 'approved')->count(),
+            'in_progress_interventions' => $interventions->where('status', 'in_progress')->count(),
+            'completed_interventions' => $interventions->where('status', 'completed')->count(),
+            'rejected_interventions' => $interventions->where('status', 'rejected')->count(),
+            'external_interventions' => $interventions->where('type', 'external')->count(),
+            'on_site_interventions' => $interventions->where('type', 'on_site')->count(),
+            'average_duration' => $interventions->where('actual_duration', '!=', null)->avg('actual_duration') ?? 0,
             'total_cost' => $interventions->sum('cost'),
             'interventions_by_month' => $interventions->groupBy(function ($intervention) {
                 return $intervention->created_at->format('Y-m');
-            })->map->count()
+            })->map->count(),
+            'interventions_by_priority' => $interventions->groupBy('priority')->map->count()
         ];
     }
 
     public static function getInterventionsByStatus($status)
     {
-        return self::where('status', $status)->with(['type', 'client', 'user'])->get();
+        return self::where('status', $status)->with(['creator', 'approver'])->get();
     }
 
-    public static function getInterventionsByType($typeId)
+    public static function getInterventionsByType($type)
     {
-        return self::where('type_id', $typeId)->with(['type', 'client', 'user'])->get();
+        return self::where('type', $type)->with(['creator', 'approver'])->get();
+    }
+
+    public static function getOverdueInterventions()
+    {
+        return self::where('status', '!=', 'completed')
+            ->where('scheduled_date', '<', now())
+            ->with(['creator', 'approver'])
+            ->get();
+    }
+
+    public static function getDueSoonInterventions()
+    {
+        $dueDate = now()->addHours(2);
+        return self::where('status', '!=', 'completed')
+            ->where('scheduled_date', '<=', $dueDate)
+            ->where('scheduled_date', '>', now())
+            ->with(['creator', 'approver'])
+            ->get();
     }
 }

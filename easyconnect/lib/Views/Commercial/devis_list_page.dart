@@ -174,6 +174,31 @@ class DevisListPage extends StatelessWidget {
                           ],
                         ],
                       ),
+                      if (status == 3 &&
+                          (devis.rejectionComment != null &&
+                              devis.rejectionComment!.isNotEmpty)) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.report,
+                              size: 14,
+                              color: Colors.red,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Raison du rejet: ${devis.rejectionComment}',
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                   trailing: Text(

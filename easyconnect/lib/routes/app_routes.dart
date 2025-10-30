@@ -13,14 +13,15 @@ import 'package:easyconnect/Views/Patron/bon_commande_validation_page.dart';
 import 'package:easyconnect/Views/Patron/devis_validation_page.dart';
 import 'package:easyconnect/Views/Patron/facture_validation_page.dart';
 import 'package:easyconnect/Views/Patron/paiement_validation_page.dart';
+import 'package:easyconnect/Views/Patron/depense_validation_page.dart';
+import 'package:easyconnect/Views/Patron/salaire_validation_page.dart';
+import 'package:easyconnect/Views/Patron/pointage_validation_page.dart';
 import 'package:easyconnect/Views/Patron/stock_validation_page.dart';
 import 'package:easyconnect/Views/Patron/intervention_validation_page.dart';
-import 'package:easyconnect/Views/Patron/salaire_validation_page.dart';
 import 'package:easyconnect/Views/Patron/recruitment_validation_page.dart';
-import 'package:easyconnect/Views/Patron/pointage_validation_page.dart';
 import 'package:easyconnect/Views/Patron/taxe_validation_page.dart';
 import 'package:easyconnect/Views/Patron/reporting_validation_page.dart';
-import 'package:easyconnect/Views/Patron/patron_dashboard_v2.dart';
+import 'package:easyconnect/Views/Patron/patron_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Admin/admin_dashboard.dart';
 import 'package:easyconnect/Views/Admin/user_management_page.dart';
 import 'package:easyconnect/Views/Admin/user_form_page.dart';
@@ -28,10 +29,10 @@ import 'package:easyconnect/Views/Admin/app_settings_page.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Views/Auth/login_page.dart';
 import 'package:easyconnect/Views/Auth/unauthorized_page.dart';
-import 'package:easyconnect/Views/Commercial/commercial_dashboard.dart';
-import 'package:easyconnect/Views/Comptable/comptable_dashboard.dart';
-import 'package:easyconnect/Views/Rh/rh_dashboard.dart';
-import 'package:easyconnect/Views/Technicien/technicien_dashboard.dart';
+import 'package:easyconnect/Views/Commercial/commercial_dashboard_enhanced.dart';
+import 'package:easyconnect/Views/Comptable/comptable_dashboard_enhanced.dart';
+import 'package:easyconnect/Views/Rh/rh_dashboard_enhanced.dart';
+import 'package:easyconnect/Views/Technicien/technicien_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Components/splash_screen.dart';
 import 'package:easyconnect/middleware/auth_middleware.dart';
 import 'package:easyconnect/bindings/commercial_binding.dart';
@@ -65,6 +66,9 @@ import 'package:easyconnect/Views/Comptable/salary_detail.dart';
 import 'package:easyconnect/Views/Technicien/intervention_list.dart';
 import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
+import 'package:easyconnect/Views/Commercial/devis_detail_page.dart';
+import 'package:easyconnect/Views/Commercial/bordereau_detail_page.dart';
+import 'package:easyconnect/Views/Commercial/bon_commande_detail_page.dart';
 import 'package:easyconnect/Views/Technicien/equipment_list.dart';
 import 'package:easyconnect/Views/Technicien/equipment_form.dart';
 import 'package:easyconnect/Views/Technicien/equipment_detail.dart';
@@ -91,31 +95,31 @@ class AppRoutes {
     GetPage(name: '/unauthorized', page: () => UnauthorizedPage()),
     GetPage(
       name: '/commercial',
-      page: () => CommercialDashboard(),
+      page: () => CommercialDashboardEnhanced(),
       binding: CommercialBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/comptable',
-      page: () => ComptableDashboard(),
+      page: () => ComptableDashboardEnhanced(),
       binding: ComptableBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/patron',
-      page: () => PatronDashboard(),
+      page: () => PatronDashboardEnhanced(),
       binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/rh',
-      page: () => RhDashboard(),
+      page: () => RhDashboardEnhanced(),
       binding: RhBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/technicien',
-      page: () => TechnicienDashboard(),
+      page: () => TechnicienDashboardEnhanced(),
       binding: TechnicienBinding(),
       middlewares: [AuthMiddleware()],
     ),
@@ -196,6 +200,14 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/devis/:id',
+      page:
+          () =>
+              DevisDetailPage(devisId: int.parse(Get.parameters['id'] ?? '0')),
+      binding: CommercialBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/devis/validation',
       page: () => DevisValidationPage(),
       middlewares: [AuthMiddleware()],
@@ -217,6 +229,15 @@ class AppRoutes {
             isEditing: true,
             bordereauId: int.parse(Get.parameters['id'] ?? '0'),
           ),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/bordereaux/:id',
+      page:
+          () => BordereauDetailPage(
+            bordereauId: int.parse(Get.parameters['id'] ?? '0'),
+          ),
+      binding: CommercialBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -244,6 +265,15 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/bon-commandes/:id',
+      page:
+          () => BonCommandeDetailPage(
+            bonCommandeId: int.parse(Get.parameters['id'] ?? '0'),
+          ),
+      binding: CommercialBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/bon-commandes/validation',
       page: () => BonCommandeValidationPage(),
       middlewares: [AuthMiddleware()],
@@ -257,6 +287,11 @@ class AppRoutes {
     GetPage(
       name: '/paiements/validation',
       page: () => const PaiementValidationPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/depenses/validation',
+      page: () => const DepenseValidationPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -345,6 +380,13 @@ class AppRoutes {
       name: '/suppliers',
       page: () => const SupplierList(),
       middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/suppliers/validation',
+      page: () => const SupplierList(),
+      binding: ComptableBinding(),
+      middlewares: [AuthMiddleware()],
+      arguments: 'pending',
     ),
     GetPage(
       name: '/suppliers/new',

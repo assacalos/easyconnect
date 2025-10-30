@@ -11,6 +11,13 @@ class SupplierList extends StatelessWidget {
     print('🏗️ SupplierList: build() appelé');
 
     final SupplierController controller = Get.find<SupplierController>();
+    // Appliquer un statut initial si fourni via la navigation (ex: 'pending')
+    final dynamic initialStatusArg = Get.arguments;
+    if (initialStatusArg is String && initialStatusArg.isNotEmpty) {
+      if (controller.selectedStatus.value != initialStatusArg) {
+        controller.filterByStatus(initialStatusArg);
+      }
+    }
     print('✅ SupplierList: SupplierController trouvé');
     print(
       '📊 SupplierList: Nombre de fournisseurs: ${controller.suppliers.length}',
