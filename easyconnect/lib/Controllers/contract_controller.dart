@@ -94,7 +94,6 @@ class ContractController extends GetxController {
       final emp = await _contractService.getAvailableEmployees();
       employees.value = emp;
     } catch (e) {
-      print('Erreur lors du chargement des employés: $e');
     }
   }
 
@@ -104,7 +103,6 @@ class ContractController extends GetxController {
       final templates = await _contractService.getContractTemplates();
       contractTemplates.value = templates;
     } catch (e) {
-      print('Erreur lors du chargement des modèles: $e');
     }
   }
 
@@ -114,7 +112,6 @@ class ContractController extends GetxController {
       final number = await _contractService.generateContractNumber();
       contractNumberController.text = number;
     } catch (e) {
-      print('Erreur lors de la génération du numéro: $e');
     }
   }
 
@@ -136,7 +133,6 @@ class ContractController extends GetxController {
       contracts.value = contractsList;
       applyFilters();
     } catch (e) {
-      print('Erreur lors du chargement des contrats: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de charger les contrats',
@@ -162,7 +158,6 @@ class ContractController extends GetxController {
       );
       contractStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -284,7 +279,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création du contrat: $e');
-      print('Erreur createContract: $e');
     }
   }
 
@@ -305,7 +299,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
-      print('Erreur submitContract: $e');
     }
   }
 
@@ -329,7 +322,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
-      print('Erreur approveContract: $e');
     }
   }
 
@@ -350,7 +342,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
-      print('Erreur rejectContract: $e');
     }
   }
 
@@ -383,7 +374,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la résiliation: $e');
-      print('Erreur terminateContract: $e');
     }
   }
 
@@ -407,7 +397,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'annulation: $e');
-      print('Erreur cancelContract: $e');
     }
   }
 
@@ -428,7 +417,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la suppression: $e');
-      print('Erreur deleteContract: $e');
     }
   }
 
@@ -714,7 +702,6 @@ class ContractController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la mise à jour du contrat: $e');
-      print('Erreur updateContract: $e');
     }
   }
 }

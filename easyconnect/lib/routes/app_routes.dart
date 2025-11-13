@@ -7,9 +7,13 @@ import 'package:easyconnect/Views/Commercial/bordereau_list_page.dart';
 import 'package:easyconnect/Views/Commercial/bordereau_form_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_commande_list_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_commande_form_page.dart';
+import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_list_page.dart';
+import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_form_page.dart';
+import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_detail_page.dart';
 import 'package:easyconnect/Views/Patron/client_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bordereau_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bon_commande_validation_page.dart';
+import 'package:easyconnect/Views/Patron/bon_de_commande_fournisseur_validation_page.dart';
 import 'package:easyconnect/Views/Patron/devis_validation_page.dart';
 import 'package:easyconnect/Views/Patron/facture_validation_page.dart';
 import 'package:easyconnect/Views/Patron/paiement_validation_page.dart';
@@ -87,6 +91,8 @@ import 'package:easyconnect/Views/Rh/recruitment_detail.dart';
 import 'package:easyconnect/Views/Rh/contract_list.dart';
 import 'package:easyconnect/Views/Rh/contract_form.dart';
 import 'package:easyconnect/Views/Rh/contract_detail.dart';
+import 'package:easyconnect/Views/Patron/finances_page.dart';
+import 'package:easyconnect/Views/Patron/patron_reports_page.dart';
 
 class AppRoutes {
   static final routes = [
@@ -109,6 +115,17 @@ class AppRoutes {
       name: '/patron',
       page: () => PatronDashboardEnhanced(),
       binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/patron/finances',
+      page: () => const FinancesPage(),
+      binding: ComptableBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/patron/reports',
+      page: () => const PatronReportsPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -147,7 +164,7 @@ class AppRoutes {
       page:
           () => UserFormPage(
             isEditing: true,
-            userId: int.parse(Get.parameters['id'] ?? '0'),
+            userId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       binding: UserManagementBinding(),
       middlewares: [AuthMiddleware()],
@@ -176,7 +193,7 @@ class AppRoutes {
       name: '/clients/:id',
       page:
           () => ClientDetailsPage(
-            clientId: int.parse(Get.parameters['id'] ?? '0'),
+            clientId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       middlewares: [AuthMiddleware()],
     ),
@@ -191,25 +208,27 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/devis/validation',
+      page: () => const DevisValidationPage(),
+      binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/devis/:id/edit',
       page:
           () => DevisFormPage(
             isEditing: true,
-            devisId: int.parse(Get.parameters['id'] ?? '0'),
+            devisId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/devis/:id',
       page:
-          () =>
-              DevisDetailPage(devisId: int.parse(Get.parameters['id'] ?? '0')),
+          () => DevisDetailPage(
+            devisId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
+          ),
       binding: CommercialBinding(),
-      middlewares: [AuthMiddleware()],
-    ),
-    GetPage(
-      name: '/devis/validation',
-      page: () => DevisValidationPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -223,11 +242,17 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/bordereaux/validation',
+      page: () => const BordereauValidationPage(),
+      binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/bordereaux/:id/edit',
       page:
           () => BordereauFormPage(
             isEditing: true,
-            bordereauId: int.parse(Get.parameters['id'] ?? '0'),
+            bordereauId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       middlewares: [AuthMiddleware()],
     ),
@@ -235,14 +260,9 @@ class AppRoutes {
       name: '/bordereaux/:id',
       page:
           () => BordereauDetailPage(
-            bordereauId: int.parse(Get.parameters['id'] ?? '0'),
+            bordereauId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       binding: CommercialBinding(),
-      middlewares: [AuthMiddleware()],
-    ),
-    GetPage(
-      name: '/bordereaux/validation',
-      page: () => BordereauValidationPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -256,11 +276,17 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/bon-commandes/validation',
+      page: () => const BonCommandeValidationPage(),
+      binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/bon-commandes/:id/edit',
       page:
           () => BonCommandeFormPage(
             isEditing: true,
-            bonCommandeId: int.parse(Get.parameters['id'] ?? '0'),
+            bonCommandeId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       middlewares: [AuthMiddleware()],
     ),
@@ -268,25 +294,56 @@ class AppRoutes {
       name: '/bon-commandes/:id',
       page:
           () => BonCommandeDetailPage(
-            bonCommandeId: int.parse(Get.parameters['id'] ?? '0'),
+            bonCommandeId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
       binding: CommercialBinding(),
       middlewares: [AuthMiddleware()],
     ),
+    // Routes pour les bons de commande fournisseur
     GetPage(
-      name: '/bon-commandes/validation',
-      page: () => BonCommandeValidationPage(),
+      name: '/bons-de-commande-fournisseur',
+      page: () => BonDeCommandeFournisseurListPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/bons-de-commande-fournisseur/new',
+      page: () => BonDeCommandeFournisseurFormPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/bons-de-commande-fournisseur/validation',
+      page: () => const BonDeCommandeFournisseurValidationPage(),
+      binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/bons-de-commande-fournisseur/:id/edit',
+      page:
+          () => BonDeCommandeFournisseurFormPage(
+            isEditing: true,
+            bonDeCommandeId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
+          ),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/bons-de-commande-fournisseur/:id',
+      page:
+          () => BonDeCommandeFournisseurDetailPage(
+            bonDeCommandeId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
+          ),
       middlewares: [AuthMiddleware()],
     ),
     // Routes de validation pour le patron
     GetPage(
       name: '/factures/validation',
       page: () => const FactureValidationPage(),
+      binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: '/paiements/validation',
       page: () => const PaiementValidationPage(),
+      binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -373,6 +430,11 @@ class AppRoutes {
     GetPage(
       name: '/payments/detail',
       page: () => PaymentDetail(paymentId: Get.arguments),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/payments/edit',
+      page: () => PaymentForm(paymentId: Get.arguments),
       middlewares: [AuthMiddleware()],
     ),
     // Routes pour les fournisseurs

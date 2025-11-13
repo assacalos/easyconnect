@@ -41,7 +41,6 @@ class CameraService {
       }
       return null;
     } catch (e) {
-      print('Erreur lors de la prise de photo: $e');
       return null;
     }
   }
@@ -66,7 +65,6 @@ class CameraService {
       }
       return null;
     } catch (e) {
-      print('Erreur lors de la sélection d\'image: $e');
       return null;
     }
   }

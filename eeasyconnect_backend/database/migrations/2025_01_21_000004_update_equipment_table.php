@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Vérifier si la table existe avant de la modifier
+        if (!Schema::hasTable('equipment_new')) {
+            return; // La table n'existe pas, on ne fait rien
+        }
+
         Schema::table('equipment_new', function (Blueprint $table) {
             // Ajouter les colonnes manquantes
             if (!Schema::hasColumn('equipment_new', 'department')) {
@@ -36,15 +41,38 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('equipment_new', function (Blueprint $table) {
-            $table->dropColumn([
-                'department',
-                'assigned_to', 
-                'current_value',
-                'supplier',
-                'attachments'
-            ]);
-        });
+        // Vérifier si la table existe avant de la modifier
+        if (!Schema::hasTable('equipment_new')) {
+            return; // La table n'existe pas, on ne fait rien
+        }
+
+        if (Schema::hasColumn('equipment_new', 'department') ||
+            Schema::hasColumn('equipment_new', 'assigned_to') ||
+            Schema::hasColumn('equipment_new', 'current_value') ||
+            Schema::hasColumn('equipment_new', 'supplier') ||
+            Schema::hasColumn('equipment_new', 'attachments')) {
+            Schema::table('equipment_new', function (Blueprint $table) {
+                $columnsToDrop = [];
+                if (Schema::hasColumn('equipment_new', 'department')) {
+                    $columnsToDrop[] = 'department';
+                }
+                if (Schema::hasColumn('equipment_new', 'assigned_to')) {
+                    $columnsToDrop[] = 'assigned_to';
+                }
+                if (Schema::hasColumn('equipment_new', 'current_value')) {
+                    $columnsToDrop[] = 'current_value';
+                }
+                if (Schema::hasColumn('equipment_new', 'supplier')) {
+                    $columnsToDrop[] = 'supplier';
+                }
+                if (Schema::hasColumn('equipment_new', 'attachments')) {
+                    $columnsToDrop[] = 'attachments';
+                }
+                if (!empty($columnsToDrop)) {
+                    $table->dropColumn($columnsToDrop);
+                }
+            });
+        }
     }
 };
 

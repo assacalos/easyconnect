@@ -13,7 +13,7 @@ class RecruitmentRequest {
   final String salaryRange;
   final String location;
   final DateTime applicationDeadline;
-  final String status; // 'draft', 'published', 'closed', 'cancelled'
+  final String status; // , 'pending', 'validated', 'rejected',
   final String? rejectionReason;
   final DateTime? publishedAt;
   final int? publishedBy;

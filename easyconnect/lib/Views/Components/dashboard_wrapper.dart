@@ -99,7 +99,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/tickets');
         break;
       case 2:
-        Get.toNamed('/maintenance');
+        Get.toNamed('/interventions');
         break;
       case 3:
         Get.toNamed('/attendance-punch');

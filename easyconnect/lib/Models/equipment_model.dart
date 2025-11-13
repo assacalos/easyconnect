@@ -5,7 +5,8 @@ class Equipment {
   final String name;
   final String description;
   final String category;
-  final String status; // 'active', 'inactive', 'maintenance', 'broken', 'retired'
+  final String
+  status; // 'active', 'inactive', 'maintenance', 'broken', 'retired'
   final String condition; // 'excellent', 'good', 'fair', 'poor', 'critical'
   final String? serialNumber;
   final String? model;
@@ -56,12 +57,55 @@ class Equipment {
   });
 
   factory Equipment.fromJson(Map<String, dynamic> json) {
+    // Helper function pour parser les dates de manière sécurisée
+    DateTime? _parseDate(dynamic dateValue) {
+      if (dateValue == null) return null;
+      try {
+        if (dateValue is String) {
+          return DateTime.parse(dateValue);
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Helper function pour normaliser le statut
+    String _normalizeStatus(dynamic statusValue) {
+      if (statusValue == null) return 'active';
+      final statusStr = statusValue.toString().toLowerCase().trim();
+      // Mapper les libellés français vers les valeurs anglaises
+      final statusMap = {
+        'actif': 'active',
+        'inactif': 'inactive',
+        'en maintenance': 'maintenance',
+        'hors service': 'broken',
+        'retiré': 'retired',
+        'retire': 'retired',
+      };
+      // Vérifier si c'est un libellé français
+      if (statusMap.containsKey(statusStr)) {
+        return statusMap[statusStr]!;
+      }
+      // Vérifier si c'est déjà une valeur valide
+      if ([
+        'active',
+        'inactive',
+        'maintenance',
+        'broken',
+        'retired',
+      ].contains(statusStr)) {
+        return statusStr;
+      }
+      return 'active'; // Valeur par défaut
+    }
+
     return Equipment(
       id: json['id'],
-      name: json['name'],
-      description: json['description'],
-      category: json['category'],
-      status: json['status'] ?? 'active',
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      category: json['category'] ?? '',
+      status: _normalizeStatus(json['status']),
       condition: json['condition'] ?? 'good',
       serialNumber: json['serial_number'],
       model: json['model'],
@@ -69,17 +113,26 @@ class Equipment {
       location: json['location'],
       department: json['department'],
       assignedTo: json['assigned_to'],
-      purchaseDate: json['purchase_date'] != null ? DateTime.parse(json['purchase_date']) : null,
-      warrantyExpiry: json['warranty_expiry'] != null ? DateTime.parse(json['warranty_expiry']) : null,
-      lastMaintenance: json['last_maintenance'] != null ? DateTime.parse(json['last_maintenance']) : null,
-      nextMaintenance: json['next_maintenance'] != null ? DateTime.parse(json['next_maintenance']) : null,
-      purchasePrice: json['purchase_price']?.toDouble(),
-      currentValue: json['current_value']?.toDouble(),
+      purchaseDate: _parseDate(json['purchase_date']),
+      warrantyExpiry: _parseDate(json['warranty_expiry']),
+      lastMaintenance: _parseDate(json['last_maintenance']),
+      nextMaintenance: _parseDate(json['next_maintenance']),
+      purchasePrice:
+          json['purchase_price'] != null
+              ? double.tryParse(json['purchase_price'].toString())
+              : null,
+      currentValue:
+          json['current_value'] != null
+              ? double.tryParse(json['current_value'].toString())
+              : null,
       supplier: json['supplier'],
       notes: json['notes'],
-      attachments: json['attachments'] != null ? List<String>.from(json['attachments']) : null,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      attachments:
+          json['attachments'] != null
+              ? List<String>.from(json['attachments'])
+              : null,
+      createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
+      updatedAt: _parseDate(json['updated_at']) ?? DateTime.now(),
       createdBy: json['created_by'],
       updatedBy: json['updated_by'],
     );
@@ -275,15 +328,28 @@ class EquipmentCategory {
   });
 
   factory EquipmentCategory.fromJson(Map<String, dynamic> json) {
+    // Helper function pour parser les dates de manière sécurisée
+    DateTime? _parseDate(dynamic dateValue) {
+      if (dateValue == null) return null;
+      try {
+        if (dateValue is String) {
+          return DateTime.parse(dateValue);
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
     return EquipmentCategory(
       id: json['id'],
-      name: json['name'],
-      description: json['description'],
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
       icon: json['icon'],
       color: json['color'] != null ? Color(json['color']) : null,
       isActive: json['is_active'] ?? true,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
+      updatedAt: _parseDate(json['updated_at']) ?? DateTime.now(),
     );
   }
 
@@ -362,9 +428,15 @@ class EquipmentStats {
       warrantyExpiringSoon: json['warranty_expiring_soon'] ?? 0,
       totalValue: (json['total_value'] ?? 0.0).toDouble(),
       averageAge: (json['average_age'] ?? 0.0).toDouble(),
-      equipmentByCategory: Map<String, int>.from(json['equipment_by_category'] ?? {}),
-      equipmentByStatus: Map<String, int>.from(json['equipment_by_status'] ?? {}),
-      equipmentByCondition: Map<String, int>.from(json['equipment_by_condition'] ?? {}),
+      equipmentByCategory: Map<String, int>.from(
+        json['equipment_by_category'] ?? {},
+      ),
+      equipmentByStatus: Map<String, int>.from(
+        json['equipment_by_status'] ?? {},
+      ),
+      equipmentByCondition: Map<String, int>.from(
+        json['equipment_by_condition'] ?? {},
+      ),
     );
   }
 }
@@ -405,21 +477,37 @@ class EquipmentMaintenance {
   });
 
   factory EquipmentMaintenance.fromJson(Map<String, dynamic> json) {
+    // Helper function pour parser les dates de manière sécurisée
+    DateTime? _parseDate(dynamic dateValue) {
+      if (dateValue == null) return null;
+      try {
+        if (dateValue is String) {
+          return DateTime.parse(dateValue);
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
     return EquipmentMaintenance(
       id: json['id'],
-      equipmentId: json['equipment_id'],
-      type: json['type'],
+      equipmentId: json['equipment_id'] ?? 0,
+      type: json['type'] ?? 'preventive',
       status: json['status'] ?? 'scheduled',
-      description: json['description'],
+      description: json['description'] ?? '',
       notes: json['notes'],
-      scheduledDate: DateTime.parse(json['scheduled_date']),
-      startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
-      endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
+      scheduledDate: _parseDate(json['scheduled_date']) ?? DateTime.now(),
+      startDate: _parseDate(json['start_date']),
+      endDate: _parseDate(json['end_date']),
       technician: json['technician'],
       cost: json['cost']?.toDouble(),
-      attachments: json['attachments'] != null ? List<String>.from(json['attachments']) : null,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      attachments:
+          json['attachments'] != null
+              ? List<String>.from(json['attachments'])
+              : null,
+      createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
+      updatedAt: _parseDate(json['updated_at']) ?? DateTime.now(),
       createdBy: json['created_by'],
     );
   }

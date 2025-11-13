@@ -64,7 +64,6 @@ class DevisController extends GetxController {
       tauxConversion.value = stats['taux_conversion'] ?? 0.0;
       montantTotal.value = stats['montant_total'] ?? 0.0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -283,7 +282,6 @@ class DevisController extends GetxController {
         clients.value = validatedClients;
       }
     } catch (e) {
-      print('Erreur lors de la recherche des clients: $e');
     }
   }
 

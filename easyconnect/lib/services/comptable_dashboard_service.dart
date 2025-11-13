@@ -34,7 +34,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur factures: $e');
       }
 
       // Récupérer les paiements en attente
@@ -60,7 +59,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur paiements: $e');
       }
 
       // Récupérer les dépenses en attente
@@ -82,7 +80,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur dépenses: $e');
       }
 
       // Récupérer les salaires en attente
@@ -104,7 +101,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur salaires: $e');
       }
 
       return {
@@ -114,7 +110,6 @@ class ComptableDashboardService {
         'salaires': pendingSalaires,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'factures': 0, 'paiements': 0, 'depenses': 0, 'salaires': 0};
     }
   }
@@ -151,7 +146,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur factures validées: $e');
       }
 
       // Récupérer les paiements validés
@@ -177,7 +171,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur paiements validés: $e');
       }
 
       // Récupérer les dépenses validées
@@ -199,7 +192,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur dépenses validées: $e');
       }
 
       // Récupérer les salaires validés
@@ -225,7 +217,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur salaires validés: $e');
       }
 
       return {
@@ -235,7 +226,6 @@ class ComptableDashboardService {
         'salaires': validatedSalaires,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'factures': 0, 'paiements': 0, 'depenses': 0, 'salaires': 0};
     }
   }
@@ -274,7 +264,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul CA: $e');
       }
 
       // Calculer le total des paiements
@@ -300,7 +289,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul paiements: $e');
       }
 
       // Calculer le total des dépenses
@@ -325,7 +313,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul dépenses: $e');
       }
 
       // Calculer le total des salaires
@@ -351,7 +338,6 @@ class ComptableDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul salaires: $e');
       }
 
       double netProfit = totalRevenue - totalExpenses - totalSalaries;
@@ -364,7 +350,6 @@ class ComptableDashboardService {
         'net_profit': netProfit,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {
         'total_revenue': 0.0,
         'total_payments': 0.0,
@@ -395,7 +380,6 @@ class ComptableDashboardService {
         'Erreur lors de la récupération des données du dashboard: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       return {
         'pending_entities': {
           'factures': 0,

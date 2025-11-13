@@ -259,10 +259,24 @@ class BonCommandeListPage extends StatelessWidget {
           },
         );
       }
-      if (bonCommande.status == 2 && !bonCommande.estLivre) {
-        return IconButton(
-          icon: const Icon(Icons.local_shipping),
-          onPressed: () => _showDeliveryConfirmation(bonCommande),
+      // Bouton Modifier pour les bons de commande validés ou rejetés
+      if (bonCommande.status == 2 || bonCommande.status == 3) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed:
+                  () => Get.toNamed('/bon-commandes/${bonCommande.id}/edit'),
+              tooltip: 'Modifier',
+            ),
+            if (bonCommande.status == 2 && !bonCommande.estLivre)
+              IconButton(
+                icon: const Icon(Icons.local_shipping),
+                onPressed: () => _showDeliveryConfirmation(bonCommande),
+                tooltip: 'Marquer comme livré',
+              ),
+          ],
         );
       }
     }

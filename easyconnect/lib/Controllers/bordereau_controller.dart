@@ -72,12 +72,19 @@ class BordereauxController extends GetxController {
       bordereauRefuses.value = stats['refuses'] ?? 0;
       montantTotal.value = stats['montant_total'] ?? 0.0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
   Future<void> createBordereau(Map<String, dynamic> data) async {
     try {
+      // Vérifications
+      if (selectedClient.value == null) {
+        throw Exception('Aucun client sélectionné');
+      }
+      if (items.isEmpty) {
+        throw Exception('Aucun article ajouté au bordereau');
+      }
+
       isLoading.value = true;
 
       final newBordereau = Bordereau(
@@ -87,16 +94,20 @@ class BordereauxController extends GetxController {
         dateCreation: DateTime.now(),
         notes: data['notes'],
         status: 1, // Forcer le statut à 1 (En attente)
-        items: items,
-        remiseGlobale: data['remise_globale'],
-        tva: data['tva'],
+        items: items.toList(), // Convertir en liste
+        remiseGlobale:
+            data['remise_globale'] != null
+                ? double.tryParse(data['remise_globale'].toString())
+                : null,
+        tva:
+            data['tva'] != null
+                ? double.tryParse(data['tva'].toString()) ?? 20.0
+                : 20.0,
         conditions: data['conditions'],
         commercialId: userId,
       );
 
-      final createdBordereau = await _bordereauService.createBordereau(
-        newBordereau,
-      );
+      await _bordereauService.createBordereau(newBordereau);
 
       // Effacer le formulaire
       clearForm();
@@ -115,10 +126,22 @@ class BordereauxController extends GetxController {
         duration: const Duration(seconds: 3),
       );
     } catch (e) {
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de créer le bordereau',
+        errorMessage,
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 8),
+        maxWidth: 400,
+        isDismissible: true,
+        shouldIconPulse: true,
       );
     } finally {
       isLoading.value = false;
@@ -220,16 +243,10 @@ class BordereauxController extends GetxController {
 
   Future<void> approveBordereau(int bordereauId) async {
     try {
-      print('🔍 BordereauxController.approveBordereau - Début');
-      print('📊 Paramètres: bordereauId=$bordereauId');
-
       isLoading.value = true;
       final success = await _bordereauService.approveBordereau(bordereauId);
 
-      print('📊 Résultat service: $success');
-
       if (success) {
-        print('✅ Approbation réussie, rechargement des bordereaux');
         await loadBordereaux();
         Get.snackbar(
           'Succès',
@@ -239,11 +256,9 @@ class BordereauxController extends GetxController {
           colorText: Colors.white,
         );
       } else {
-        print('❌ Échec de l\'approbation');
         throw Exception('Erreur lors de l\'approbation');
       }
     } catch (e) {
-      print('❌ Erreur détaillée: $e');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bordereau: $e',
@@ -258,21 +273,13 @@ class BordereauxController extends GetxController {
 
   Future<void> rejectBordereau(int bordereauId, String commentaire) async {
     try {
-      print('🔍 BordereauxController.rejectBordereau - Début');
-      print(
-        '📊 Paramètres: bordereauId=$bordereauId, commentaire=$commentaire',
-      );
-
       isLoading.value = true;
       final success = await _bordereauService.rejectBordereau(
         bordereauId,
         commentaire,
       );
 
-      print('📊 Résultat service: $success');
-
       if (success) {
-        print('✅ Rejet réussi, rechargement des bordereaux');
         await loadBordereaux();
         Get.snackbar(
           'Succès',
@@ -282,11 +289,9 @@ class BordereauxController extends GetxController {
           colorText: Colors.white,
         );
       } else {
-        print('❌ Échec du rejet');
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
-      print('❌ Erreur détaillée: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bordereau: $e',
@@ -343,7 +348,6 @@ class BordereauxController extends GetxController {
       }
       // La recherche sera implémentée dans l'interface utilisateur
     } catch (e) {
-      print('Erreur lors de la recherche des clients: $e');
     }
   }
 
@@ -456,12 +460,12 @@ class BordereauxController extends GetxController {
         },
         items: items,
         client: {
-          'nom': client?.nom ?? '',
-          'prenom': client?.prenom ?? '',
-          'nom_entreprise': client?.nomEntreprise,
-          'email': client?.email,
-          'contact': client?.contact,
-          'adresse': client?.adresse,
+          'nom': client.nom ?? '',
+          'prenom': client.prenom ?? '',
+          'nom_entreprise': client.nomEntreprise,
+          'email': client.email,
+          'contact': client.contact,
+          'adresse': client.adresse,
         },
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
+import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'package:intl/intl.dart';
 
 class InterventionForm extends StatelessWidget {
@@ -174,16 +175,97 @@ class InterventionForm extends StatelessWidget {
               _buildSectionTitle('Informations client'),
               const SizedBox(height: 16),
 
-              TextFormField(
-                controller: controller.clientNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom du client',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
+              // Bouton de sélection de client
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: controller.clientNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nom du client',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                        hintText:
+                            'Sélectionner un client ou saisir manuellement',
+                      ),
+                      readOnly: false,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _showClientSelectionDialog(controller),
+                    icon: const Icon(Icons.search, size: 16),
+                    label: const Text('Sélectionner'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 16),
+
+              // Affichage des informations du client sélectionné
+              Obx(() {
+                final selectedClient = controller.selectedClient.value;
+                if (selectedClient != null) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                        .trim(),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  onPressed:
+                                      () => controller.clearSelectedClient(),
+                                  tooltip: 'Désélectionner le client',
+                                ),
+                              ],
+                            ),
+                            if (selectedClient.nomEntreprise != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Entreprise: ${selectedClient.nomEntreprise}',
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
 
               Row(
                 children: [
@@ -371,5 +453,23 @@ class InterventionForm extends StatelessWidget {
       await controller.updateIntervention(intervention!);
     }
     Get.back(); // Retour automatique à la liste
+  }
+
+  void _showClientSelectionDialog(InterventionController controller) {
+    // Charger les clients validés si pas encore fait
+    if (controller.availableClients.isEmpty) {
+      controller.loadValidatedClients();
+    }
+
+    showDialog(
+      context: Get.context!,
+      builder:
+          (context) => ClientSelectionDialog(
+            onClientSelected: (client) {
+              controller.selectClientForIntervention(client);
+              // Ne pas appeler Get.back() ici car le dialog le fait déjà
+            },
+          ),
+    );
   }
 }

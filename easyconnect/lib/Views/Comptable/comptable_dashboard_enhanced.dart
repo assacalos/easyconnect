@@ -58,25 +58,25 @@ class ComptableDashboardEnhanced
 
   @override
   Widget buildCustomContent(BuildContext context) {
-    return Obx(
-      () => SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Première partie - Entités en attente
-            _buildPendingSection(),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Première partie - Entités en attente
+          _buildPendingSection(),
 
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-            // Deuxième partie - Entités validées
-            _buildValidatedSection(),
+          // Deuxième partie - Entités validées
+          _buildValidatedSection(),
 
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-            // Troisième partie - Statistiques montants
-            _buildStatisticsSection(),
-          ],
-        ),
+          // Troisième partie - Statistiques montants
+          _buildStatisticsSection(),
+        ],
       ),
     );
   }
@@ -107,43 +107,49 @@ class ComptableDashboardEnhanced
             ],
           ),
           const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: Get.width > 800 ? 4 : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.1,
-            children: [
-              _buildPendingCard(
-                title: 'Factures',
-                count: controller.pendingFactures.value,
-                icon: Icons.receipt,
-                color: Colors.red,
-                onTap: () => Get.toNamed('/factures'),
-              ),
-              _buildPendingCard(
-                title: 'Paiements',
-                count: controller.pendingPaiements.value,
-                icon: Icons.payment,
-                color: Colors.teal,
-                onTap: () => Get.toNamed('/paiements'),
-              ),
-              _buildPendingCard(
-                title: 'Dépenses',
-                count: controller.pendingDepenses.value,
-                icon: Icons.money_off,
-                color: Colors.orange,
-                onTap: () => Get.toNamed('/depenses'),
-              ),
-              _buildPendingCard(
-                title: 'Salaires',
-                count: controller.pendingSalaires.value,
-                icon: Icons.account_balance_wallet,
-                color: Colors.purple,
-                onTap: () => Get.toNamed('/salaires'),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Obx(
+                () => GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: Get.width > 800 ? 4 : 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.95,
+                  children: [
+                    _buildPendingCard(
+                      title: 'Factures',
+                      count: controller.pendingFactures.value,
+                      icon: Icons.receipt,
+                      color: Colors.red,
+                      onTap: () => Get.toNamed('/invoices'),
+                    ),
+                    _buildPendingCard(
+                      title: 'Paiements',
+                      count: controller.pendingPaiements.value,
+                      icon: Icons.payment,
+                      color: Colors.teal,
+                      onTap: () => Get.toNamed('/payments'),
+                    ),
+                    _buildPendingCard(
+                      title: 'Dépenses',
+                      count: controller.pendingDepenses.value,
+                      icon: Icons.money_off,
+                      color: Colors.orange,
+                      onTap: () => Get.toNamed('/expenses'),
+                    ),
+                    _buildPendingCard(
+                      title: 'Salaires',
+                      count: controller.pendingSalaires.value,
+                      icon: Icons.account_balance_wallet,
+                      color: Colors.purple,
+                      onTap: () => Get.toNamed('/salaries'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -176,43 +182,49 @@ class ComptableDashboardEnhanced
             ],
           ),
           const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: Get.width > 800 ? 4 : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.1,
-            children: [
-              _buildValidatedCard(
-                title: 'Factures Validées',
-                count: controller.validatedFactures.value,
-                icon: Icons.receipt,
-                color: Colors.red,
-                subtitle: 'Factures traitées',
-              ),
-              _buildValidatedCard(
-                title: 'Paiements Validés',
-                count: controller.validatedPaiements.value,
-                icon: Icons.payment,
-                color: Colors.teal,
-                subtitle: 'Paiements confirmés',
-              ),
-              _buildValidatedCard(
-                title: 'Dépenses Validées',
-                count: controller.validatedDepenses.value,
-                icon: Icons.money_off,
-                color: Colors.orange,
-                subtitle: 'Dépenses approuvées',
-              ),
-              _buildValidatedCard(
-                title: 'Salaires Validés',
-                count: controller.validatedSalaires.value,
-                icon: Icons.account_balance_wallet,
-                color: Colors.purple,
-                subtitle: 'Salaires payés',
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Obx(
+                () => GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: Get.width > 800 ? 4 : 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.85,
+                  children: [
+                    _buildValidatedCard(
+                      title: 'Factures Validées',
+                      count: controller.validatedFactures.value,
+                      icon: Icons.receipt,
+                      color: Colors.red,
+                      subtitle: 'Factures traitées',
+                    ),
+                    _buildValidatedCard(
+                      title: 'Paiements Validés',
+                      count: controller.validatedPaiements.value,
+                      icon: Icons.payment,
+                      color: Colors.teal,
+                      subtitle: 'Paiements confirmés',
+                    ),
+                    _buildValidatedCard(
+                      title: 'Dépenses Validées',
+                      count: controller.validatedDepenses.value,
+                      icon: Icons.money_off,
+                      color: Colors.orange,
+                      subtitle: 'Dépenses approuvées',
+                    ),
+                    _buildValidatedCard(
+                      title: 'Salaires Validés',
+                      count: controller.validatedSalaires.value,
+                      icon: Icons.account_balance_wallet,
+                      color: Colors.purple,
+                      subtitle: 'Salaires payés',
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -245,54 +257,61 @@ class ComptableDashboardEnhanced
             ],
           ),
           const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: Get.width > 800 ? 3 : 1,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 2.2,
-            children: [
-              _buildStatisticCard(
-                title: 'Chiffre d\'Affaires',
-                value:
-                    '${controller.totalRevenue.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.euro,
-                color: Colors.green,
-                subtitle: 'Montant total des factures',
-              ),
-              _buildStatisticCard(
-                title: 'Paiements Reçus',
-                value:
-                    '${controller.totalPayments.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.payment,
-                color: Colors.blue,
-                subtitle: 'Montant des paiements reçus',
-              ),
-              _buildStatisticCard(
-                title: 'Dépenses Total',
-                value:
-                    '${controller.totalExpenses.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.money_off,
-                color: Colors.red,
-                subtitle: 'Montant total des dépenses',
-              ),
-              _buildStatisticCard(
-                title: 'Salaires Payés',
-                value:
-                    '${controller.totalSalaries.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.account_balance_wallet,
-                color: Colors.purple,
-                subtitle: 'Montant des salaires payés',
-              ),
-              _buildStatisticCard(
-                title: 'Bénéfice Net',
-                value: '${controller.netProfit.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.trending_up,
-                color: Colors.green,
-                subtitle: 'Bénéfice après dépenses',
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Obx(
+                () => GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: Get.width > 800 ? 3 : 1,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 2.2,
+                  children: [
+                    _buildStatisticCard(
+                      title: 'Chiffre d\'Affaires',
+                      value:
+                          '${controller.totalRevenue.value.toStringAsFixed(0)} FCFA',
+                      icon: Icons.euro,
+                      color: Colors.green,
+                      subtitle: 'Montant total des factures',
+                    ),
+                    _buildStatisticCard(
+                      title: 'Paiements Reçus',
+                      value:
+                          '${controller.totalPayments.value.toStringAsFixed(0)} FCFA',
+                      icon: Icons.payment,
+                      color: Colors.blue,
+                      subtitle: 'Montant des paiements reçus',
+                    ),
+                    _buildStatisticCard(
+                      title: 'Dépenses Total',
+                      value:
+                          '${controller.totalExpenses.value.toStringAsFixed(0)} FCFA',
+                      icon: Icons.money_off,
+                      color: Colors.red,
+                      subtitle: 'Montant total des dépenses',
+                    ),
+                    _buildStatisticCard(
+                      title: 'Salaires Payés',
+                      value:
+                          '${controller.totalSalaries.value.toStringAsFixed(0)} FCFA',
+                      icon: Icons.account_balance_wallet,
+                      color: Colors.purple,
+                      subtitle: 'Montant des salaires payés',
+                    ),
+                    _buildStatisticCard(
+                      title: 'Bénéfice Net',
+                      value:
+                          '${controller.netProfit.value.toStringAsFixed(0)} FCFA',
+                      icon: Icons.trending_up,
+                      color: Colors.green,
+                      subtitle: 'Bénéfice après dépenses',
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -313,7 +332,7 @@ class ComptableDashboardEnhanced
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
@@ -324,30 +343,33 @@ class ComptableDashboardEnhanced
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 32, color: color),
+                child: Icon(icon, size: 28, color: color),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey.shade800,
                 ),
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                  horizontal: 10,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.red,
@@ -358,7 +380,7 @@ class ComptableDashboardEnhanced
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 16,
                   ),
                 ),
               ),
@@ -380,7 +402,7 @@ class ComptableDashboardEnhanced
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
@@ -391,28 +413,31 @@ class ComptableDashboardEnhanced
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 32, color: color),
+              child: Icon(icon, size: 28, color: color),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
                 color: Colors.grey.shade800,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.green,
                 borderRadius: BorderRadius.circular(20),
@@ -422,15 +447,17 @@ class ComptableDashboardEnhanced
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: 16,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -506,30 +533,31 @@ class ComptableDashboardEnhanced
   }
 
   @override
-  List<Widget> buildDrawerItems() {
+  List<Widget> buildDrawerItems(BuildContext context) {
     return [
-      ListTile(
-        leading: const Icon(Icons.dashboard, color: Colors.white70),
-        title: const Text(
-          'Tableau de bord',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () {},
-      ),
       ListTile(
         leading: const Icon(Icons.receipt, color: Colors.white70),
         title: const Text('Factures', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/factures'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/invoices');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.payment, color: Colors.white70),
         title: const Text('Paiements', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/paiements'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/payments');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.money_off, color: Colors.white70),
         title: const Text('Dépenses', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/depenses'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/expenses');
+        },
       ),
       ListTile(
         leading: const Icon(
@@ -537,7 +565,40 @@ class ComptableDashboardEnhanced
           color: Colors.white70,
         ),
         title: const Text('Salaires', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/salaires'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/salaries');
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.account_balance, color: Colors.white70),
+        title: const Text(
+          'Impôts et Taxes',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/taxes');
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.inventory, color: Colors.white70),
+        title: const Text('Stock', style: TextStyle(color: Colors.white70)),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/stocks');
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.business, color: Colors.white70),
+        title: const Text(
+          'Fournisseurs',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/suppliers');
+        },
       ),
     ];
   }
@@ -545,7 +606,7 @@ class ComptableDashboardEnhanced
   @override
   Widget? buildFloatingActionButton() {
     return FloatingActionButton(
-      onPressed: () => Get.toNamed('/factures/create'),
+      onPressed: () => Get.toNamed('/invoices/new'),
       child: const Icon(Icons.add),
     );
   }

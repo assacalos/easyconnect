@@ -67,7 +67,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.createContract: $e');
       rethrow;
     }
   }
@@ -116,7 +115,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getAllContracts: $e');
       rethrow;
     }
   }
@@ -138,7 +136,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getContract: $e');
       rethrow;
     }
   }
@@ -157,7 +154,6 @@ class ContractService extends GetxService {
         throw Exception('Erreur lors de la soumission: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur ContractService.submitContract: $e');
       rethrow;
     }
   }
@@ -179,7 +175,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.approveContract: $e');
       rethrow;
     }
   }
@@ -202,7 +197,6 @@ class ContractService extends GetxService {
         throw Exception('Erreur lors du rejet: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur ContractService.rejectContract: $e');
       rethrow;
     }
   }
@@ -267,7 +261,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.updateContract: $e');
       rethrow;
     }
   }
@@ -298,7 +291,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.terminateContract: $e');
       rethrow;
     }
   }
@@ -318,7 +310,6 @@ class ContractService extends GetxService {
         throw Exception('Erreur lors de l\'annulation: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur ContractService.cancelContract: $e');
       rethrow;
     }
   }
@@ -339,7 +330,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.deleteContract: $e');
       rethrow;
     }
   }
@@ -363,7 +353,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getContractClauses: $e');
       rethrow;
     }
   }
@@ -398,7 +387,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.addContractClause: $e');
       rethrow;
     }
   }
@@ -424,7 +412,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getContractAttachments: $e');
       rethrow;
     }
   }
@@ -461,7 +448,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.addContractAttachment: $e');
       rethrow;
     }
   }
@@ -502,7 +488,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getContractTemplates: $e');
       rethrow;
     }
   }
@@ -549,7 +534,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getContractStats: $e');
       rethrow;
     }
   }
@@ -573,7 +557,6 @@ class ContractService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur ContractService.getExpiringContracts: $e');
       rethrow;
     }
   }
@@ -613,7 +596,6 @@ class ContractService extends GetxService {
         ];
       }
     } catch (e) {
-      print('Erreur ContractService.getAvailableEmployees: $e');
       return [
         {
           'id': 1,
@@ -654,7 +636,6 @@ class ContractService extends GetxService {
         return 'CTR-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.millisecondsSinceEpoch.toString().substring(8)}';
       }
     } catch (e) {
-      print('Erreur ContractService.generateContractNumber: $e');
       final now = DateTime.now();
       return 'CTR-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.millisecondsSinceEpoch.toString().substring(8)}';
     }

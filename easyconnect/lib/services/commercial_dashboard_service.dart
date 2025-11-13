@@ -26,7 +26,6 @@ class CommercialDashboardService {
         );
         if (clientsResponse.statusCode == 200) {
           final clientsData = json.decode(clientsResponse.body);
-          print('📊 Clients data: $clientsData');
           // Gérer différents formats de réponse
           List clientsList = [];
           if (clientsData is List) {
@@ -43,10 +42,8 @@ class CommercialDashboardService {
                         client['status'] == 0 || client['status'] == null,
                   )
                   .length; // 0 = en attente pour clients
-          print('📊 Pending clients: $pendingClients');
         }
       } catch (e) {
-        print('Erreur clients: $e');
       }
 
       // Récupérer les devis en attente
@@ -60,7 +57,6 @@ class CommercialDashboardService {
         );
         if (devisResponse.statusCode == 200) {
           final devisData = json.decode(devisResponse.body);
-          print('📊 Devis data: $devisData');
           // Gérer différents formats de réponse
           List devisList = [];
           if (devisData is List) {
@@ -74,10 +70,8 @@ class CommercialDashboardService {
               devisList
                   .where((devis) => devis['status'] == 1)
                   .length; // 1 = en attente
-          print('📊 Pending devis: $pendingDevis');
         }
       } catch (e) {
-        print('Erreur devis: $e');
       }
 
       // Récupérer les bordereaux en attente
@@ -91,7 +85,6 @@ class CommercialDashboardService {
         );
         if (bordereauxResponse.statusCode == 200) {
           final bordereauxData = json.decode(bordereauxResponse.body);
-          print('📊 Bordereaux data: $bordereauxData');
           // Gérer différents formats de réponse
           List bordereauxList = [];
           if (bordereauxData is List) {
@@ -105,10 +98,8 @@ class CommercialDashboardService {
               bordereauxList
                   .where((bordereau) => bordereau['status'] == 1)
                   .length; // 1 = en attente
-          print('📊 Pending bordereaux: $pendingBordereaux');
         }
       } catch (e) {
-        print('Erreur bordereaux: $e');
       }
 
       // Récupérer les bons de commande en attente
@@ -131,7 +122,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur bons de commande: $e');
       }
 
       return {
@@ -141,7 +131,6 @@ class CommercialDashboardService {
         'bon_commandes': pendingBonCommandes,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'clients': 0, 'devis': 0, 'bordereaux': 0, 'bon_commandes': 0};
     }
   }
@@ -172,7 +161,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur clients validés: $e');
       }
 
       // Récupérer les devis validés
@@ -194,7 +182,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur devis validés: $e');
       }
 
       // Récupérer les bordereaux validés
@@ -216,7 +203,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur bordereaux validés: $e');
       }
 
       // Récupérer les bons de commande validés
@@ -239,7 +225,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur bons de commande validés: $e');
       }
 
       return {
@@ -249,7 +234,6 @@ class CommercialDashboardService {
         'bon_commandes': validatedBonCommandes,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'clients': 0, 'devis': 0, 'bordereaux': 0, 'bon_commandes': 0};
     }
   }
@@ -294,7 +278,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul CA: $e');
       }
 
       // Calculer le montant des devis en attente
@@ -329,7 +312,6 @@ class CommercialDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul devis en attente: $e');
       }
 
       // Le montant des bordereaux payés est déjà calculé dans totalRevenue
@@ -341,7 +323,6 @@ class CommercialDashboardService {
         'paid_bordereaux_amount': paidBordereauxAmount,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {
         'total_revenue': 0.0,
         'pending_devis_amount': 0.0,
@@ -370,7 +351,6 @@ class CommercialDashboardService {
         'Erreur lors de la récupération des données du dashboard: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       return {
         'pending_entities': {
           'clients': 0,

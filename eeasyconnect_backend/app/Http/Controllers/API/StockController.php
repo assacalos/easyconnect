@@ -4,7 +4,6 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Stock;
-use App\Models\StockCategory;
 use App\Models\StockMovement;
 use App\Models\StockAlert;
 use App\Models\StockOrder;
@@ -21,7 +20,9 @@ class StockController extends Controller
     {
         try {
             $user = $request->user();
-            $query = Stock::with(['creator', 'updater', 'movements', 'alerts']);
+            // Ne charger que les relations qui existent (movements, alerts)
+            // Retirer creator et updater car created_by/updated_by n'existent pas dans la migration
+            $query = Stock::with(['movements', 'alerts']);
 
             // Filtrage par statut
             if ($request->has('status')) {
@@ -33,29 +34,11 @@ class StockController extends Controller
                 $query->where('category', $request->category);
             }
 
-            // Filtrage par fournisseur
-            if ($request->has('supplier')) {
-                $query->where('supplier', $request->supplier);
-            }
-
-            // Filtrage par localisation
-            if ($request->has('location')) {
-                $query->where('location', 'like', '%' . $request->location . '%');
-            }
-
-            // Filtrage par marque
-            if ($request->has('brand')) {
-                $query->where('brand', $request->brand);
-            }
+            // Retirer les filtres sur des colonnes qui n'existent pas : supplier, location, brand, barcode
 
             // Filtrage par SKU
             if ($request->has('sku')) {
                 $query->where('sku', 'like', '%' . $request->sku . '%');
-            }
-
-            // Filtrage par code-barres
-            if ($request->has('barcode')) {
-                $query->where('barcode', 'like', '%' . $request->barcode . '%');
             }
 
             // Filtrage par stock faible
@@ -90,7 +73,7 @@ class StockController extends Controller
             $perPage = $request->get('per_page', 15);
             $stocks = $query->orderBy('name')->paginate($perPage);
 
-            // Transformer les données
+            // Transformer les données avec uniquement les champs qui existent
             $stocks->getCollection()->transform(function ($stock) {
                 return [
                     'id' => $stock->id,
@@ -98,35 +81,24 @@ class StockController extends Controller
                     'description' => $stock->description,
                     'category' => $stock->category,
                     'sku' => $stock->sku,
-                    'barcode' => $stock->barcode,
-                    'brand' => $stock->brand,
-                    'model' => $stock->model,
-                    'unit' => $stock->unit,
+                    'quantity' => $stock->quantity ?? $stock->current_quantity, // Utiliser les accesseurs
                     'current_quantity' => $stock->current_quantity,
                     'minimum_quantity' => $stock->minimum_quantity,
                     'maximum_quantity' => $stock->maximum_quantity,
                     'reorder_point' => $stock->reorder_point,
+                    'unit_price' => $stock->unit_price ?? $stock->unit_cost, // Utiliser les accesseurs
                     'unit_cost' => $stock->unit_cost,
-                    'selling_price' => $stock->selling_price,
-                    'supplier' => $stock->supplier,
-                    'location' => $stock->location,
+                    'commentaire' => $stock->commentaire ?? $stock->notes, // Utiliser les accesseurs
+                    'notes' => $stock->notes,
                     'status' => $stock->status,
                     'status_libelle' => $stock->status_libelle,
-                    'notes' => $stock->notes,
-                    'specifications' => $stock->specifications,
-                    'attachments' => $stock->attachments,
-                    'created_by' => $stock->created_by,
-                    'creator_name' => $stock->creator_name,
-                    'updated_by' => $stock->updated_by,
-                    'updater_name' => $stock->updater_name,
-                    'formatted_current_quantity' => $stock->formatted_current_quantity,
-                    'formatted_minimum_quantity' => $stock->formatted_minimum_quantity,
-                    'formatted_maximum_quantity' => $stock->formatted_maximum_quantity,
-                    'formatted_reorder_point' => $stock->formatted_reorder_point,
-                    'formatted_unit_cost' => $stock->formatted_unit_cost,
-                    'formatted_selling_price' => $stock->formatted_selling_price,
+                    'formatted_current_quantity' => $this->formatQuantity($stock->current_quantity),
+                    'formatted_minimum_quantity' => $this->formatQuantity($stock->minimum_quantity),
+                    'formatted_maximum_quantity' => $stock->maximum_quantity ? $this->formatQuantity($stock->maximum_quantity) : 'N/A',
+                    'formatted_reorder_point' => $this->formatQuantity($stock->reorder_point),
+                    'formatted_unit_cost' => $this->formatCost($stock->unit_cost),
                     'stock_value' => $stock->stock_value,
-                    'formatted_stock_value' => $stock->formatted_stock_value,
+                    'formatted_stock_value' => $this->formatCost($stock->stock_value),
                     'is_low_stock' => $stock->is_low_stock,
                     'is_out_of_stock' => $stock->is_out_of_stock,
                     'is_overstock' => $stock->is_overstock,
@@ -135,20 +107,9 @@ class StockController extends Controller
                         return [
                             'id' => $movement->id,
                             'type' => $movement->type,
-                            'type_libelle' => $movement->type_libelle,
-                            'reason' => $movement->reason,
-                            'reason_libelle' => $movement->reason_libelle,
                             'quantity' => $movement->quantity,
-                            'formatted_quantity' => $movement->formatted_quantity,
-                            'unit_cost' => $movement->unit_cost,
-                            'formatted_unit_cost' => $movement->formatted_unit_cost,
-                            'total_cost' => $movement->total_cost,
-                            'formatted_total_cost' => $movement->formatted_total_cost,
-                            'reference' => $movement->reference,
-                            'location_from' => $movement->location_from,
-                            'location_to' => $movement->location_to,
-                            'notes' => $movement->notes,
-                            'creator_name' => $movement->creator_name,
+                            'reason' => $movement->reason,
+                            'status' => $movement->status ?? 'en_attente',
                             'created_at' => $movement->created_at->format('Y-m-d H:i:s')
                         ];
                     }),
@@ -156,25 +117,9 @@ class StockController extends Controller
                         return [
                             'id' => $alert->id,
                             'type' => $alert->type,
-                            'type_libelle' => $alert->type_libelle,
-                            'priority' => $alert->priority,
-                            'priority_libelle' => $alert->priority_libelle,
                             'status' => $alert->status,
-                            'status_libelle' => $alert->status_libelle,
                             'message' => $alert->message,
-                            'notes' => $alert->notes,
-                            'triggered_at' => $alert->triggered_at->format('Y-m-d H:i:s'),
-                            'acknowledged_at' => $alert->acknowledged_at?->format('Y-m-d H:i:s'),
-                            'resolved_at' => $alert->resolved_at?->format('Y-m-d H:i:s'),
-                            'acknowledged_by' => $alert->acknowledged_by,
-                            'acknowledged_by_name' => $alert->acknowledged_by_name,
-                            'resolved_by' => $alert->resolved_by,
-                            'resolved_by_name' => $alert->resolved_by_name,
-                            'duration' => $alert->duration,
-                            'is_active' => $alert->is_active,
-                            'is_acknowledged' => $alert->is_acknowledged,
-                            'is_resolved' => $alert->is_resolved,
-                            'is_dismissed' => $alert->is_dismissed
+                            'created_at' => $alert->created_at->format('Y-m-d H:i:s')
                         ];
                     }),
                     'created_at' => $stock->created_at->format('Y-m-d H:i:s'),
@@ -189,6 +134,9 @@ class StockController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Erreur StockController@index: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des stocks: ' . $e->getMessage()
@@ -202,7 +150,8 @@ class StockController extends Controller
     public function show($id)
     {
         try {
-            $stock = Stock::with(['creator', 'updater', 'movements', 'alerts'])->find($id);
+            // Ne charger que les relations qui existent
+            $stock = Stock::with(['movements', 'alerts'])->find($id);
 
             if (!$stock) {
                 return response()->json([
@@ -211,13 +160,68 @@ class StockController extends Controller
                 ], 404);
             }
 
+            // Transformer les données comme dans index()
+            $data = [
+                'id' => $stock->id,
+                'name' => $stock->name,
+                'description' => $stock->description,
+                'category' => $stock->category,
+                'sku' => $stock->sku,
+                'quantity' => $stock->quantity ?? $stock->current_quantity,
+                'current_quantity' => $stock->current_quantity,
+                'minimum_quantity' => $stock->minimum_quantity,
+                'maximum_quantity' => $stock->maximum_quantity,
+                'reorder_point' => $stock->reorder_point,
+                'unit_price' => $stock->unit_price ?? $stock->unit_cost,
+                'unit_cost' => $stock->unit_cost,
+                'commentaire' => $stock->commentaire ?? $stock->notes,
+                'notes' => $stock->notes,
+                'status' => $stock->status,
+                'status_libelle' => $stock->status_libelle,
+                'formatted_current_quantity' => $this->formatQuantity($stock->current_quantity),
+                'formatted_minimum_quantity' => $this->formatQuantity($stock->minimum_quantity),
+                'formatted_maximum_quantity' => $stock->maximum_quantity ? $this->formatQuantity($stock->maximum_quantity) : 'N/A',
+                'formatted_reorder_point' => $this->formatQuantity($stock->reorder_point),
+                'formatted_unit_cost' => $this->formatCost($stock->unit_cost),
+                'stock_value' => $stock->stock_value,
+                'formatted_stock_value' => $this->formatCost($stock->stock_value),
+                'is_low_stock' => $stock->is_low_stock,
+                'is_out_of_stock' => $stock->is_out_of_stock,
+                'is_overstock' => $stock->is_overstock,
+                'needs_reorder' => $stock->needs_reorder,
+                'movements' => $stock->movements->map(function ($movement) {
+                    return [
+                        'id' => $movement->id,
+                        'type' => $movement->type,
+                        'quantity' => $movement->quantity,
+                        'reason' => $movement->reason,
+                        'status' => $movement->status ?? 'en_attente',
+                        'created_at' => $movement->created_at->format('Y-m-d H:i:s')
+                    ];
+                }),
+                'alerts' => $stock->alerts->map(function ($alert) {
+                    return [
+                        'id' => $alert->id,
+                        'type' => $alert->type,
+                        'status' => $alert->status,
+                        'message' => $alert->message,
+                        'created_at' => $alert->created_at->format('Y-m-d H:i:s')
+                    ];
+                }),
+                'created_at' => $stock->created_at->format('Y-m-d H:i:s'),
+                'updated_at' => $stock->updated_at->format('Y-m-d H:i:s')
+            ];
+
             return response()->json([
                 'success' => true,
-                'data' => $stock,
+                'data' => $data,
                 'message' => 'Stock récupéré avec succès'
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Erreur StockController@show: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération du stock: ' . $e->getMessage()
@@ -231,54 +235,57 @@ class StockController extends Controller
     public function store(Request $request)
     {
         try {
+            // Validation adaptée aux champs envoyés par Flutter
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
-                'description' => 'required|string',
+                'description' => 'nullable|string', // Optionnel comme dans Flutter
                 'category' => 'required|string|max:255',
                 'sku' => 'required|string|max:255|unique:stocks,sku',
-                'barcode' => 'nullable|string|max:255|unique:stocks,barcode',
-                'brand' => 'nullable|string|max:255',
-                'model' => 'nullable|string|max:255',
-                'unit' => 'required|string|max:50',
-                'current_quantity' => 'required|numeric|min:0',
-                'minimum_quantity' => 'required|numeric|min:0',
+                // Supporte les deux formats de Flutter: quantity et current_quantity
+                'quantity' => 'nullable|numeric|min:0',
+                'current_quantity' => 'nullable|numeric|min:0',
+                // Supporte les deux formats de Flutter: min_quantity et minimum_quantity
+                'min_quantity' => 'nullable|numeric|min:0',
+                'minimum_quantity' => 'nullable|numeric|min:0',
+                // Supporte les deux formats de Flutter: max_quantity et maximum_quantity
+                'max_quantity' => 'nullable|numeric|min:0',
                 'maximum_quantity' => 'nullable|numeric|min:0',
-                'reorder_point' => 'required|numeric|min:0',
-                'unit_cost' => 'required|numeric|min:0',
-                'selling_price' => 'nullable|numeric|min:0',
-                'supplier' => 'nullable|string|max:255',
-                'location' => 'nullable|string|max:255',
-                'status' => 'required|in:active,inactive,discontinued',
+                // Supporte les deux formats de Flutter: unit_price et unit_cost
+                'unit_price' => 'nullable|numeric|min:0',
+                'unit_cost' => 'nullable|numeric|min:0',
+                // Supporte les deux formats de Flutter: commentaire et notes
+                'commentaire' => 'nullable|string',
                 'notes' => 'nullable|string',
-                'specifications' => 'nullable|array',
-                'attachments' => 'nullable|array'
+                'status' => 'required|in:en_attente,valide,rejete', // Statuts de la migration
             ]);
 
             DB::beginTransaction();
 
-            $stock = Stock::create([
+            // Mapper les champs Flutter vers les noms de la DB/migration
+            $quantity = $validated['current_quantity'] ?? $validated['quantity'] ?? 0;
+            $minQuantity = $validated['minimum_quantity'] ?? $validated['min_quantity'] ?? 0;
+            $maxQuantity = $validated['maximum_quantity'] ?? $validated['max_quantity'] ?? 0;
+            $unitPrice = $validated['unit_cost'] ?? $validated['unit_price'] ?? 0;
+            $commentaire = $validated['commentaire'] ?? $validated['notes'] ?? null;
+
+            // Insérer directement avec les noms de colonnes de la migration
+            $stockId = DB::table('stocks')->insertGetId([
                 'name' => $validated['name'],
-                'description' => $validated['description'],
+                'description' => $validated['description'] ?? null,
                 'category' => $validated['category'],
                 'sku' => $validated['sku'],
-                'barcode' => $validated['barcode'] ?? null,
-                'brand' => $validated['brand'] ?? null,
-                'model' => $validated['model'] ?? null,
-                'unit' => $validated['unit'],
-                'current_quantity' => $validated['current_quantity'],
-                'minimum_quantity' => $validated['minimum_quantity'],
-                'maximum_quantity' => $validated['maximum_quantity'] ?? null,
-                'reorder_point' => $validated['reorder_point'],
-                'unit_cost' => $validated['unit_cost'],
-                'selling_price' => $validated['selling_price'] ?? null,
-                'supplier' => $validated['supplier'] ?? null,
-                'location' => $validated['location'] ?? null,
+                'quantity' => $quantity,
+                'min_quantity' => $minQuantity,
+                'max_quantity' => $maxQuantity,
+                'unit_price' => $unitPrice,
+                'commentaire' => $commentaire,
                 'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? null,
-                'specifications' => $validated['specifications'] ?? null,
-                'attachments' => $validated['attachments'] ?? null,
-                'created_by' => $request->user()->id
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
+
+            // Charger le modèle pour utiliser les méthodes
+            $stock = Stock::find($stockId);
 
             // Vérifier les alertes
             $stock->checkAlerts();
@@ -315,31 +322,55 @@ class StockController extends Controller
                 ], 404);
             }
 
+            // Validation adaptée aux champs envoyés par Flutter (même que store)
             $validated = $request->validate([
                 'name' => 'sometimes|string|max:255',
-                'description' => 'sometimes|string',
+                'description' => 'nullable|string',
                 'category' => 'sometimes|string|max:255',
                 'sku' => 'sometimes|string|max:255|unique:stocks,sku,' . $id,
-                'barcode' => 'nullable|string|max:255|unique:stocks,barcode,' . $id,
-                'brand' => 'nullable|string|max:255',
-                'model' => 'nullable|string|max:255',
-                'unit' => 'sometimes|string|max:50',
-                'minimum_quantity' => 'sometimes|numeric|min:0',
+                // Supporte les deux formats de Flutter
+                'quantity' => 'nullable|numeric|min:0',
+                'current_quantity' => 'nullable|numeric|min:0',
+                'min_quantity' => 'nullable|numeric|min:0',
+                'minimum_quantity' => 'nullable|numeric|min:0',
+                'max_quantity' => 'nullable|numeric|min:0',
                 'maximum_quantity' => 'nullable|numeric|min:0',
-                'reorder_point' => 'sometimes|numeric|min:0',
-                'unit_cost' => 'sometimes|numeric|min:0',
-                'selling_price' => 'nullable|numeric|min:0',
-                'supplier' => 'nullable|string|max:255',
-                'location' => 'nullable|string|max:255',
-                'status' => 'sometimes|in:active,inactive,discontinued',
+                'unit_price' => 'nullable|numeric|min:0',
+                'unit_cost' => 'nullable|numeric|min:0',
+                'commentaire' => 'nullable|string',
                 'notes' => 'nullable|string',
-                'specifications' => 'nullable|array',
-                'attachments' => 'nullable|array'
+                'status' => 'sometimes|in:en_attente,valide,rejete',
             ]);
 
-            $stock->update(array_merge($validated, [
-                'updated_by' => $request->user()->id
-            ]));
+            // Mapper les champs Flutter vers les noms de la DB/migration
+            $updateData = [];
+            if (isset($validated['name'])) $updateData['name'] = $validated['name'];
+            if (isset($validated['description'])) $updateData['description'] = $validated['description'];
+            if (isset($validated['category'])) $updateData['category'] = $validated['category'];
+            if (isset($validated['sku'])) $updateData['sku'] = $validated['sku'];
+            if (isset($validated['quantity']) || isset($validated['current_quantity'])) {
+                $updateData['quantity'] = $validated['current_quantity'] ?? $validated['quantity'];
+            }
+            if (isset($validated['min_quantity']) || isset($validated['minimum_quantity'])) {
+                $updateData['min_quantity'] = $validated['minimum_quantity'] ?? $validated['min_quantity'];
+            }
+            if (isset($validated['max_quantity']) || isset($validated['maximum_quantity'])) {
+                $updateData['max_quantity'] = $validated['maximum_quantity'] ?? $validated['max_quantity'];
+            }
+            if (isset($validated['unit_price']) || isset($validated['unit_cost'])) {
+                $updateData['unit_price'] = $validated['unit_cost'] ?? $validated['unit_price'];
+            }
+            if (isset($validated['commentaire']) || isset($validated['notes'])) {
+                $updateData['commentaire'] = $validated['commentaire'] ?? $validated['notes'];
+            }
+            if (isset($validated['status'])) $updateData['status'] = $validated['status'];
+
+            // Utiliser DB::table() pour mettre à jour avec les noms de colonnes de la migration
+            if (!empty($updateData)) {
+                $updateData['updated_at'] = now();
+                DB::table('stocks')->where('id', $id)->update($updateData);
+                $stock = Stock::find($id); // Recharger le modèle
+            }
 
             // Vérifier les alertes
             $stock->checkAlerts();
@@ -585,12 +616,25 @@ class StockController extends Controller
     }
 
     /**
-     * Récupérer les catégories de stocks
+     * Récupérer les catégories de stocks (liste des catégories utilisées)
      */
     public function categories()
     {
         try {
-            $categories = StockCategory::getActiveCategories();
+            // Récupérer toutes les catégories distinctes depuis les stocks
+            $categories = Stock::select('category')
+                ->distinct()
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->orderBy('category')
+                ->pluck('category')
+                ->map(function ($categoryName) {
+                    return [
+                        'name' => $categoryName,
+                        'value' => $categoryName,
+                    ];
+                })
+                ->values();
 
             return response()->json([
                 'success' => true,
@@ -695,6 +739,49 @@ class StockController extends Controller
     }
 
     /**
+     * Formater une quantité
+     */
+    private function formatQuantity($quantity)
+    {
+        return number_format($quantity ?? 0, 3, ',', ' ');
+    }
+
+    /**
+     * Formater un coût
+     */
+    private function formatCost($cost)
+    {
+        return $cost ? number_format($cost, 2, ',', ' ') . ' FCFA' : 'N/A';
+    }
+
+    /**
+     * Transformer un stock au format Flutter
+     */
+    private function transformStockForFlutter($stock)
+    {
+        return [
+            'id' => $stock->id,
+            'name' => $stock->name,
+            'description' => $stock->description,
+            'category' => $stock->category,
+            'sku' => $stock->sku,
+            'quantity' => $stock->quantity ?? $stock->current_quantity,
+            'current_quantity' => $stock->current_quantity,
+            'minimum_quantity' => $stock->minimum_quantity,
+            'maximum_quantity' => $stock->maximum_quantity,
+            'reorder_point' => $stock->reorder_point,
+            'unit_price' => $stock->unit_price ?? $stock->unit_cost,
+            'unit_cost' => $stock->unit_cost,
+            'commentaire' => $stock->commentaire ?? $stock->notes,
+            'notes' => $stock->notes,
+            'status' => $stock->status,
+            'status_libelle' => $stock->status_libelle,
+            'created_at' => $stock->created_at->format('Y-m-d H:i:s'),
+            'updated_at' => $stock->updated_at->format('Y-m-d H:i:s')
+        ];
+    }
+
+    /**
      * Rejeter un stock avec commentaire
      */
     public function rejeter(Request $request, $id)
@@ -716,17 +803,21 @@ class StockController extends Controller
             DB::beginTransaction();
 
             // Mettre à jour le statut du stock à 'rejete'
-            $stock->update([
+            // Utiliser DB::table() car updated_by n'existe pas dans la migration
+            DB::table('stocks')->where('id', $id)->update([
                 'status' => 'rejete',
                 'commentaire' => $validated['commentaire'],
-                'updated_by' => $request->user()->id
+                'updated_at' => now()
             ]);
 
             DB::commit();
 
+            // Recharger le stock
+            $stock = Stock::find($id);
+
             return response()->json([
                 'success' => true,
-                'data' => $stock->load(['creator', 'updater']),
+                'data' => $this->transformStockForFlutter($stock),
                 'message' => 'Stock rejeté avec succès'
             ]);
 

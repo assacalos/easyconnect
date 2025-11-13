@@ -51,15 +51,17 @@ class InvoiceService extends GetxService {
         }),
       );
 
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body);
+      final responseBody = jsonDecode(response.body);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        // Le backend retourne {'success': true, 'data': {...}, 'message': '...'}
+        return responseBody;
       } else {
         throw Exception(
-          'Erreur lors de la création de la facture: ${response.statusCode}',
+          'Erreur lors de la création de la facture: ${response.statusCode} - ${responseBody['message'] ?? response.body}',
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.createInvoice: $e');
       rethrow;
     }
   }
@@ -72,9 +74,6 @@ class InvoiceService extends GetxService {
     String? status,
   }) async {
     try {
-      print('🔍 InvoiceService.getCommercialInvoices - Début');
-      print('📊 Paramètres: commercialId=$commercialId, status=$status');
-
       String url = '$baseUrl/factures-list';
       List<String> params = [];
 
@@ -93,37 +92,36 @@ class InvoiceService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      print('🌐 URL de requête: $url');
-
       final response = await http.get(
         Uri.parse(url),
         headers: ApiService.headers(),
       );
 
-      print('📡 Réponse reçue: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> invoiceList = data['data'] ?? [];
-        print('📋 Nombre de factures reçues: ${invoiceList.length}');
-        return invoiceList.map((json) => InvoiceModel.fromJson(json)).toList();
+        if (invoiceList.isEmpty) {
+          return [];
+        }
+
+        final invoices = <InvoiceModel>[];
+        for (var json in invoiceList) {
+          try {
+            final invoice = InvoiceModel.fromJson(json);
+            invoices.add(invoice);
+          } catch (e, stackTrace) {
+          }
+        }
+        return invoices;
       } else {
-        // Si l'API n'est pas disponible, retourner des données mockées
-        print(
-          '⚠️ API non disponible (${response.statusCode}), utilisation de données mockées',
+        throw Exception(
+          'Erreur lors de la récupération des factures commerciales: ${response.statusCode}',
         );
-        final mockInvoices = getMockInvoices();
-        print('🎭 Données mockées générées: ${mockInvoices.length} factures');
-        return mockInvoices;
       }
-    } catch (e) {
-      print('❌ Erreur InvoiceService.getCommercialInvoices: $e');
-      // En cas d'erreur, retourner des données mockées
-      final mockInvoices = getMockInvoices();
-      print(
-        '🎭 Données mockées générées après erreur: ${mockInvoices.length} factures',
+    } catch (e, stackTrace) {
+      throw Exception(
+        'Erreur lors de la récupération des factures commerciales: $e',
       );
-      return mockInvoices;
     }
   }
 
@@ -136,11 +134,6 @@ class InvoiceService extends GetxService {
     int? clientId,
   }) async {
     try {
-      print('🔍 InvoiceService.getAllInvoices - Début');
-      print(
-        '📊 Paramètres: startDate=$startDate, endDate=$endDate, status=$status',
-      );
-
       String url = '$baseUrl/factures-list';
       List<String> params = [];
 
@@ -164,37 +157,34 @@ class InvoiceService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      print('🌐 URL de requête: $url');
-
       final response = await http.get(
         Uri.parse(url),
         headers: ApiService.headers(),
       );
 
-      print('📡 Réponse reçue: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> invoiceList = data['data'] ?? [];
-        print('📋 Nombre de factures reçues: ${invoiceList.length}');
-        return invoiceList.map((json) => InvoiceModel.fromJson(json)).toList();
+        if (invoiceList.isEmpty) {
+          return [];
+        }
+
+        final invoices = <InvoiceModel>[];
+        for (var json in invoiceList) {
+          try {
+            final invoice = InvoiceModel.fromJson(json);
+            invoices.add(invoice);
+          } catch (e, stackTrace) {
+          }
+        }
+        return invoices;
       } else {
-        // Si l'API n'est pas disponible, retourner des données mockées
-        print(
-          '⚠️ API non disponible (${response.statusCode}), utilisation de données mockées',
+        throw Exception(
+          'Erreur lors de la récupération des factures: ${response.statusCode}',
         );
-        final mockInvoices = getMockInvoices();
-        print('🎭 Données mockées générées: ${mockInvoices.length} factures');
-        return mockInvoices;
       }
-    } catch (e) {
-      print('❌ Erreur InvoiceService.getAllInvoices: $e');
-      // En cas d'erreur, retourner des données mockées
-      final mockInvoices = getMockInvoices();
-      print(
-        '🎭 Données mockées générées après erreur: ${mockInvoices.length} factures',
-      );
-      return mockInvoices;
+    } catch (e, stackTrace) {
+      throw Exception('Erreur lors de la récupération des factures: $e');
     }
   }
 
@@ -215,7 +205,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.getInvoiceById: $e');
       rethrow;
     }
   }
@@ -240,7 +229,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.updateInvoice: $e');
       rethrow;
     }
   }
@@ -262,7 +250,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.submitInvoiceToPatron: $e');
       rethrow;
     }
   }
@@ -287,7 +274,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.approveInvoice: $e');
       rethrow;
     }
   }
@@ -312,7 +298,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.rejectInvoice: $e');
       rethrow;
     }
   }
@@ -339,7 +324,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.sendInvoiceByEmail: $e');
       rethrow;
     }
   }
@@ -364,7 +348,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.markInvoiceAsPaid: $e');
       rethrow;
     }
   }
@@ -386,7 +369,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.deleteInvoice: $e');
       rethrow;
     }
   }
@@ -429,7 +411,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.getInvoiceStats: $e');
       rethrow;
     }
   }
@@ -452,7 +433,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.getPendingInvoices: $e');
       rethrow;
     }
   }
@@ -475,7 +455,6 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.generateInvoiceNumber: $e');
       rethrow;
     }
   }
@@ -501,14 +480,14 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur InvoiceService.getInvoiceTemplates: $e');
       rethrow;
     }
   }
 
-  // Méthode pour générer des données mockées
+  // Méthode pour générer des données mockées (DÉSACTIVÉE - utilisez les vraies données de l'API)
+  // Cette méthode n'est plus utilisée et peut être supprimée
+  @Deprecated('Utilisez getAllInvoices() ou getCommercialInvoices() à la place')
   List<InvoiceModel> getMockInvoices() {
-    print('🎭 _getMockInvoices - Génération des données mockées');
     return [
       InvoiceModel(
         id: 1,

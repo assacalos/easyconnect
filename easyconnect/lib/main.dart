@@ -21,6 +21,16 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       title: 'EasyConnect',
       debugShowCheckedModeBanner: false,
+      // Optimisations de performance
+      builder: (context, child) {
+        return MediaQuery(
+          // Désactiver l'accessibilité pour améliorer les performances
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(1.0)),
+          child: child!,
+        );
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,

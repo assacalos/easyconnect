@@ -13,12 +13,7 @@ class StockService extends GetxService {
   // Tester la connectivité à l'API
   Future<bool> testConnection() async {
     try {
-      print('🧪 StockService: Test de connectivité à l\'API...');
-      print('🌐 StockService: URL de base: $baseUrl');
-
       final token = storage.read('token');
-      print('🔑 StockService: Token disponible: ${token != null ? "✅" : "❌"}');
-
       final response = await http
           .get(
             Uri.parse('$baseUrl/stocks'),
@@ -28,15 +23,8 @@ class StockService extends GetxService {
             },
           )
           .timeout(const Duration(seconds: 10));
-
-      print(
-        '📡 StockService: Test de connectivité - Status: ${response.statusCode}',
-      );
-      print('📄 StockService: Test de connectivité - Body: ${response.body}');
-
       return response.statusCode == 200;
     } catch (e) {
-      print('❌ StockService: Erreur de connectivité: $e');
       return false;
     }
   }
@@ -50,14 +38,7 @@ class StockService extends GetxService {
     int? limit,
   }) async {
     try {
-      print('🌐 StockService: getStocks() appelé');
-      print(
-        '📊 StockService: search=$search, category=$category, status=$status',
-      );
-
       final token = storage.read('token');
-      print('🔑 StockService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       String url = '$baseUrl/stocks';
       List<String> params = [];
 
@@ -80,12 +61,6 @@ class StockService extends GetxService {
       if (params.isNotEmpty) {
         url += '?${params.join('&')}';
       }
-
-      print('🔗 StockService: URL appelée: $url');
-      print(
-        '🔑 StockService: Headers: Accept: application/json, Authorization: Bearer $token',
-      );
-
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -93,16 +68,10 @@ class StockService extends GetxService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('📡 StockService: Réponse reçue - Status: ${response.statusCode}');
-      print('📄 StockService: Body length: ${response.body.length}');
-
+      // Gérer les réponses avec différents codes de statut
       if (response.statusCode == 200) {
         try {
           final responseData = jsonDecode(response.body);
-          print('📊 StockService: Response data keys: ${responseData.keys}');
-          print('📄 StockService: Response data content: $responseData');
-
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
 
@@ -127,43 +96,36 @@ class StockService extends GetxService {
               data = responseData['stocks'];
             }
           }
-
-          print('📦 StockService: ${data.length} stocks trouvés dans l\'API');
-
+          // Si la réponse est directement une liste
+          else if (responseData is List) {
+            data = responseData;
+          }
           if (data.isEmpty) {
-            print('⚠️ StockService: Aucun stock trouvé dans l\'API');
-            print(
-              '📄 StockService: Structure de réponse: ${responseData.runtimeType}',
-            );
-            print('📄 StockService: Contenu complet: $responseData');
             return [];
           }
 
           try {
             return data.map((json) {
-              print('🔍 StockService: Parsing stock JSON: $json');
               return Stock.fromJson(json);
             }).toList();
           } catch (e) {
-            print('❌ StockService: Erreur lors du parsing des stocks: $e');
-            print('📄 StockService: Données problématiques: $data');
             rethrow;
           }
         } catch (e) {
-          print('❌ StockService: Erreur de parsing JSON: $e');
-          print('📄 StockService: Body content: ${response.body}');
           throw Exception('Erreur de format des données: $e');
         }
       } else {
-        print(
-          '❌ StockService: Erreur API ${response.statusCode}: ${response.body}',
-        );
+        // Pour les erreurs 500, retourner une liste vide plutôt que de planter
+        // Cela permet à l'application de continuer à fonctionner
+        if (response.statusCode == 500) {
+          return [];
+        }
+
         throw Exception(
           'Erreur lors de la récupération des stocks: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print('❌ StockService: Erreur lors du chargement: $e');
       rethrow;
     }
   }
@@ -190,106 +152,82 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.getStock: $e');
       rethrow;
     }
   }
 
   // Créer un nouveau stock
-  Future<Map<String, dynamic>> createStock({
-    required String name,
-    required String description,
-    required String category,
-    required String sku,
-    required double quantity,
-    required double minQuantity,
-    required double maxQuantity,
-    required double unitPrice,
-    required String unit,
-    String? location,
-    String? supplier,
-    String? barcode,
-    String? image,
-  }) async {
+  Future<Stock> createStock(Stock stock) async {
     try {
+      // Validation des champs requis
+      if (stock.name.isEmpty) {
+        throw Exception('Le nom du produit est requis');
+      }
+      if (stock.category.isEmpty) {
+        throw Exception('La catégorie est requise');
+      }
+      if (stock.sku.isEmpty) {
+        throw Exception('Le SKU est requis');
+      }
+      // Note: 'unit' n'est pas requis car il n'existe pas dans le backend
+      if (stock.quantity < 0) {
+        throw Exception('La quantité doit être >= 0');
+      }
+      if (stock.minQuantity < 0) {
+        throw Exception('La quantité minimale doit être >= 0');
+      }
+      if (stock.maxQuantity < 0) {
+        throw Exception('La quantité maximale doit être >= 0');
+      }
+      if (stock.unitPrice < 0) {
+        throw Exception('Le prix unitaire doit être >= 0');
+      }
+
+      final stockData = stock.toJson();
       final response = await http.post(
         Uri.parse('$baseUrl/stocks'),
         headers: ApiService.headers(),
-        body: jsonEncode({
-          'name': name,
-          'description': description,
-          'category': category,
-          'sku': sku,
-          'quantity': quantity,
-          'min_quantity': minQuantity,
-          'max_quantity': maxQuantity,
-          'unit_price': unitPrice,
-          'unit': unit,
-          'location': location,
-          'supplier': supplier,
-          'barcode': barcode,
-          'image': image,
-        }),
+        body: jsonEncode(stockData),
       );
-
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-          'Erreur lors de la création du stock: ${response.statusCode}',
-        );
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
       }
+
+      // Afficher les détails de l'erreur
+      final errorBody = response.body;
+      throw Exception(
+        'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
+      );
     } catch (e) {
-      print('Erreur StockService.createStock: $e');
       rethrow;
     }
   }
 
   // Mettre à jour un stock
-  Future<Map<String, dynamic>> updateStock({
-    required int id,
-    required String name,
-    required String description,
-    required String category,
-    required String sku,
-    required double minQuantity,
-    required double maxQuantity,
-    required double unitPrice,
-    required String unit,
-    String? location,
-    String? supplier,
-    String? barcode,
-    String? image,
-  }) async {
+  Future<Stock> updateStock(Stock stock) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/stocks/$id'),
-        headers: ApiService.headers(),
-        body: jsonEncode({
-          'name': name,
-          'description': description,
-          'category': category,
-          'sku': sku,
-          'min_quantity': minQuantity,
-          'max_quantity': maxQuantity,
-          'unit_price': unitPrice,
-          'unit': unit,
-          'location': location,
-          'supplier': supplier,
-          'barcode': barcode,
-          'image': image,
-        }),
-      );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-          'Erreur lors de la mise à jour du stock: ${response.statusCode}',
-        );
+      if (stock.id == null) {
+        throw Exception('L\'ID du stock est requis pour la mise à jour');
       }
+
+      final stockData = stock.toJson();
+      final response = await http.put(
+        Uri.parse('$baseUrl/stocks/${stock.id}'),
+        headers: ApiService.headers(),
+        body: jsonEncode(stockData),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      final errorBody = response.body;
+      throw Exception(
+        'Erreur lors de la mise à jour du stock: ${response.statusCode} - $errorBody',
+      );
     } catch (e) {
-      print('Erreur StockService.updateStock: $e');
       rethrow;
     }
   }
@@ -310,12 +248,142 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.deleteStock: $e');
       rethrow;
     }
   }
 
-  // Ajouter un mouvement de stock
+  // Ajouter du stock (entrée)
+  Future<Stock> addStock({
+    required int stockId,
+    required double quantity,
+    double? unitCost,
+    String reason = 'purchase',
+    String? reference,
+    String? notes,
+  }) async {
+    try {
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/stocks/$stockId/add-stock'),
+        headers: ApiService.headers(),
+        body: jsonEncode({
+          'quantity': quantity,
+          if (unitCost != null) 'unit_cost': unitCost,
+          'reason': reason,
+          if (reference != null && reference.isNotEmpty) 'reference': reference,
+          if (notes != null && notes.isNotEmpty) 'notes': notes,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      throw Exception(
+        'Erreur lors de l\'ajout du stock: ${response.statusCode} - ${response.body}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Retirer du stock (sortie)
+  Future<Stock> removeStock({
+    required int stockId,
+    required double quantity,
+    String reason = 'sale',
+    String? reference,
+    String? notes,
+  }) async {
+    try {
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/stocks/$stockId/remove-stock'),
+        headers: ApiService.headers(),
+        body: jsonEncode({
+          'quantity': quantity,
+          'reason': reason,
+          if (reference != null && reference.isNotEmpty) 'reference': reference,
+          if (notes != null && notes.isNotEmpty) 'notes': notes,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      throw Exception(
+        'Erreur lors du retrait du stock: ${response.statusCode} - ${response.body}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Ajuster le stock (inventaire)
+  Future<Stock> adjustStock({
+    required int stockId,
+    required double newQuantity,
+    String reason = 'adjustment',
+    String? notes,
+  }) async {
+    try {
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/stocks/$stockId/adjust-stock'),
+        headers: ApiService.headers(),
+        body: jsonEncode({
+          'new_quantity': newQuantity,
+          'reason': reason,
+          if (notes != null && notes.isNotEmpty) 'notes': notes,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      throw Exception(
+        'Erreur lors de l\'ajustement du stock: ${response.statusCode} - ${response.body}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Transférer du stock
+  Future<Stock> transferStock({
+    required int stockId,
+    required double quantity,
+    required String locationTo,
+    String? notes,
+  }) async {
+    try {
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/stocks/$stockId/transfer-stock'),
+        headers: ApiService.headers(),
+        body: jsonEncode({
+          'quantity': quantity,
+          'location_to': locationTo,
+          if (notes != null && notes.isNotEmpty) 'notes': notes,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      throw Exception(
+        'Erreur lors du transfert du stock: ${response.statusCode} - ${response.body}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Ajouter un mouvement de stock (ancienne méthode pour compatibilité)
+  @Deprecated('Utilisez addStock, removeStock, adjustStock ou transferStock')
   Future<Map<String, dynamic>> addStockMovement({
     required int stockId,
     required String type,
@@ -345,7 +413,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.addStockMovement: $e');
       rethrow;
     }
   }
@@ -399,7 +466,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.getStockMovements: $e');
       rethrow;
     }
   }
@@ -410,7 +476,7 @@ class StockService extends GetxService {
     DateTime? endDate,
   }) async {
     try {
-      String url = '$baseUrl/stocks/stats';
+      String url = '$baseUrl/stocks-statistics';
       List<String> params = [];
 
       if (startDate != null) {
@@ -431,14 +497,13 @@ class StockService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return StockStats.fromJson(data['data']);
+        return StockStats.fromJson(data['data'] ?? data);
       } else {
         throw Exception(
           'Erreur lors de la récupération des statistiques: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print('Erreur StockService.getStockStats: $e');
       rethrow;
     }
   }
@@ -447,13 +512,13 @@ class StockService extends GetxService {
   Future<List<StockCategory>> getStockCategories() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/stocks/categories'),
+        Uri.parse('$baseUrl/stock-categories'),
         headers: ApiService.headers(),
       );
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['data'] as List)
+        final List<dynamic> categoriesList = data['data'] ?? data;
+        return categoriesList
             .map((json) => StockCategory.fromJson(json))
             .toList();
       } else {
@@ -462,7 +527,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.getStockCategories: $e');
       rethrow;
     }
   }
@@ -475,7 +539,9 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/categories'),
+        Uri.parse(
+          '$baseUrl/stock-categories',
+        ), // Correction: conforme à Laravel
         headers: ApiService.headers(),
         body: jsonEncode({
           'name': name,
@@ -492,7 +558,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.createStockCategory: $e');
       rethrow;
     }
   }
@@ -533,7 +598,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.getStockAlerts: $e');
       rethrow;
     }
   }
@@ -554,7 +618,6 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.markAlertAsRead: $e');
       rethrow;
     }
   }
@@ -578,91 +641,32 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur StockService.searchStockByBarcode: $e');
       rethrow;
     }
   }
 
-  // Ajuster le stock
-  Future<Map<String, dynamic>> adjustStock({
+  // Rejeter un stock (endpoint selon la doc: POST /api/stocks/{id}/rejeter)
+  Future<Stock> rejectStock({
     required int stockId,
-    required double newQuantity,
-    required String reason,
-    String? notes,
+    required String commentaire,
   }) async {
     try {
+
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/adjust'),
+        Uri.parse('$baseUrl/stocks/$stockId/rejeter'),
         headers: ApiService.headers(),
-        body: jsonEncode({
-          'new_quantity': newQuantity,
-          'reason': reason,
-          'notes': notes,
-        }),
+        body: jsonEncode({'commentaire': commentaire}),
       );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(
-          'Erreur lors de l\'ajustement du stock: ${response.statusCode}',
-        );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
       }
+
+      throw Exception(
+        'Erreur lors du rejet du stock: ${response.statusCode} - ${response.body}',
+      );
     } catch (e) {
-      print('Erreur StockService.adjustStock: $e');
       rethrow;
     }
-  }
-
-  // Mettre à jour le statut d'approbation d'un stock
-  Future<Map<String, dynamic>> updateStockStatus(
-    int stockId,
-    String status,
-    String? comments,
-  ) async {
-    try {
-      print('🔄 StockService: updateStockStatus($stockId, $status) appelé');
-
-      final token = storage.read('token');
-      print('🔑 StockService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
-      final response = await http.patch(
-        Uri.parse('$baseUrl/stocks/$stockId/status'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'status': status, 'comments': comments}),
-      );
-
-      print('📡 StockService: Réponse reçue - Status: ${response.statusCode}');
-      print('📄 StockService: Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        print('✅ StockService: Statut mis à jour avec succès');
-        return jsonDecode(response.body);
-      } else {
-        print(
-          '❌ StockService: Erreur API ${response.statusCode}: ${response.body}',
-        );
-        throw Exception(
-          'Erreur lors de la mise à jour du statut: ${response.statusCode}',
-        );
-      }
-    } catch (e) {
-      print('❌ StockService: Erreur lors de la mise à jour du statut: $e');
-      rethrow;
-    }
-  }
-
-  // Valider un stock
-  Future<Map<String, dynamic>> approveStock(int stockId) async {
-    return await updateStockStatus(stockId, 'approved', null);
-  }
-
-  // Rejeter un stock
-  Future<Map<String, dynamic>> rejectStock(int stockId, String reason) async {
-    return await updateStockStatus(stockId, 'rejected', reason);
   }
 }

@@ -166,7 +166,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
                 ],
               ),
             ),
-            ...buildDrawerItems(),
+            ...buildDrawerItems(context),
 
             // Séparateur
             const Divider(color: Colors.white54),
@@ -211,7 +211,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
     );
   }
 
-  List<Widget> buildDrawerItems();
+  List<Widget> buildDrawerItems(BuildContext context);
 }
 
 class ChartConfig {

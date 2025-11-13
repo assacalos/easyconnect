@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../services/attendance_punch_service.dart';
 import '../../services/location_service.dart';
 import '../../services/camera_service.dart';
+import '../../Models/attendance_punch_model.dart';
 
 class AttendancePunchPage extends StatefulWidget {
   const AttendancePunchPage({super.key});
@@ -36,9 +37,7 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
     setState(() => _isLoading = true);
 
     try {
-      print('🔍 Vérification du statut de pointage pour type: $_punchType');
       final result = await _punchService.canPunch(type: _punchType);
-      print('📊 Résultat canPunch: $result');
 
       setState(() {
         _canPunch = result['can_punch'] ?? false;
@@ -47,7 +46,6 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
       if (!_canPunch) {
         final message =
             result['message'] ?? 'Vous ne pouvez pas pointer maintenant';
-        print('❌ Pointage non autorisé: $message');
         Get.snackbar(
           'Pointage non autorisé',
           message,
@@ -55,11 +53,8 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
         );
-      } else {
-        print('✅ Pointage autorisé');
       }
     } catch (e) {
-      print('❌ Erreur lors de la vérification: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de vérifier le statut de pointage: $e',
@@ -108,18 +103,49 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
 
   Future<void> _submitPunch() async {
     if (_selectedImage == null) {
-      Get.snackbar('Erreur', 'Veuillez prendre une photo');
+      Get.snackbar(
+        'Erreur',
+        'Veuillez prendre une photo',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
       return;
     }
 
     if (_locationInfo == null) {
-      Get.snackbar('Erreur', 'Localisation non disponible');
+      Get.snackbar(
+        'Erreur',
+        'Localisation non disponible',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
       return;
     }
 
+    // Vérifier à nouveau si on peut pointer avant de soumettre
     setState(() => _isLoading = true);
 
     try {
+      final canPunchResult = await _punchService.canPunch(type: _punchType);
+      if (canPunchResult['can_punch'] != true) {
+        final message =
+            canPunchResult['message'] ??
+            'Vous ne pouvez pas pointer maintenant';
+        setState(() => _isLoading = false);
+        Get.snackbar(
+          'Pointage non autorisé',
+          message,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 4),
+        );
+        // Re-vérifier le statut pour mettre à jour l'interface
+        await _checkCanPunch();
+        return;
+      }
       final result = await _punchService.punchAttendance(
         type: _punchType,
         photo: _selectedImage!,
@@ -127,25 +153,76 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
       );
 
       if (result['success'] == true) {
+        // Vérifier que le pointage est bien en statut pending (soumis au patron)
+        final attendanceData = result['data'] as AttendancePunchModel?;
+        final status = attendanceData?.status ?? 'pending';
+        final isPending = status == 'pending';
+
+        // Message de succès plus informatif
+        final typeLabel = _punchType == 'check_in' ? 'arrivée' : 'départ';
+        final message =
+            isPending
+                ? 'Votre pointage d\'$typeLabel a été enregistré et soumis au patron pour validation. Vous serez notifié de la décision.'
+                : 'Votre pointage d\'$typeLabel a été enregistré avec succès.';
+
+        // Afficher le message de succès
         Get.snackbar(
-          'Succès',
-          result['message'],
+          '✅ Pointage enregistré',
+          message,
           backgroundColor: Colors.green,
           colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 4),
+          margin: const EdgeInsets.all(16),
+          borderRadius: 8,
+          icon: const Icon(Icons.check_circle, color: Colors.white, size: 28),
+          shouldIconPulse: false,
+          isDismissible: true,
         );
-        Get.back();
+
+        // Attendre un peu pour que l'utilisateur voie le message, puis fermer la page
+        await Future.delayed(const Duration(milliseconds: 1500));
+
+        // Fermer la page automatiquement
+        if (mounted) {
+          Get.back();
+        }
       } else {
+        final errorMessage =
+            result['message'] ?? 'Erreur lors de l\'enregistrement du pointage';
+        final statusCode = result['status_code'] ?? 0;
+
+        // Afficher l'erreur avec un message plus détaillé
         Get.snackbar(
-          'Erreur',
-          result['message'],
+          '❌ Erreur de pointage',
+          errorMessage,
           backgroundColor: Colors.red,
           colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 5),
+          margin: const EdgeInsets.all(16),
+          borderRadius: 8,
+          icon: const Icon(Icons.error_outline, color: Colors.white, size: 28),
         );
+
+        // Si c'est une erreur 400 (ne peut pas pointer), re-vérifier le statut
+        if (statusCode == 400) {
+          await _checkCanPunch();
+        }
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du pointage: $e');
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors du pointage: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

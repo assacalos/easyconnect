@@ -21,7 +21,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
     });
@@ -48,13 +48,16 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
         status = null;
         break;
       case 1: // En attente
-        status = 'pending';
+        status = 'en_attente';
         break;
       case 2: // Validés
-        status = 'validated';
+        status = 'valide';
         break;
       case 3: // Rejetés
-        status = 'rejected';
+        status = 'rejete';
+        break;
+      case 4: // Payés
+        status = 'paid';
         break;
     }
 
@@ -85,6 +88,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
             Tab(text: 'En attente', icon: Icon(Icons.pending)),
             Tab(text: 'Validés', icon: Icon(Icons.check_circle)),
             Tab(text: 'Rejetés', icon: Icon(Icons.cancel)),
+            Tab(text: 'Payés', icon: Icon(Icons.payment)),
           ],
         ),
       ),
@@ -213,8 +217,10 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
           children: [
             const SizedBox(height: 4),
             Text('Montant: ${formatCurrency.format(tax.amount)}'),
-            Text('Date d\'échéance: ${formatDate.format(tax.dueDate)}'),
-            Text('Date création: ${formatDate.format(tax.createdAt)}'),
+            Text('Date d\'échéance: ${formatDate.format(tax.dueDateTime)}'),
+            Text(
+              'Date création: ${tax.createdAt != null ? formatDate.format(tax.createdAt!) : "N/A"}',
+            ),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -259,10 +265,10 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
                       Text('Nom: ${tax.name}'),
                       Text('Montant: ${formatCurrency.format(tax.amount)}'),
                       Text(
-                        'Date d\'échéance: ${formatDate.format(tax.dueDate)}',
+                        'Date d\'échéance: ${formatDate.format(tax.dueDateTime)}',
                       ),
                       Text(
-                        'Date création: ${formatDate.format(tax.createdAt)}',
+                        'Date création: ${tax.createdAt != null ? formatDate.format(tax.createdAt!) : "N/A"}',
                       ),
                       if (tax.description != null)
                         Text('Description: ${tax.description}'),
@@ -280,7 +286,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
   }
 
   Widget _buildActionButtons(Tax tax, Color statusColor) {
-    if (tax.status == 'pending') {
+    if (tax.isPending) {
       // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
@@ -309,7 +315,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
           ),
         ],
       );
-    } else if (tax.status == 'validated') {
+    } else if (tax.isValidated) {
       // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
@@ -333,7 +339,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
           ],
         ),
       );
-    } else if (tax.status == 'rejected') {
+    } else if (tax.isRejected) {
       // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
@@ -385,42 +391,49 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return Colors.orange;
-      case 'validated':
-        return Colors.green;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
+    final statusLower = status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Colors.orange;
     }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Colors.green;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Colors.red;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Colors.blue;
+    }
+    return Colors.grey;
   }
 
   IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return Icons.pending;
-      case 'validated':
-        return Icons.check_circle;
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.help;
+    final statusLower = status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Icons.pending;
     }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Icons.check_circle;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Icons.cancel;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Icons.payment;
+    }
+    return Icons.help;
   }
 
   String _getStatusText(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'En attente';
-      case 'validated':
-        return 'Validée';
-      case 'rejected':
-        return 'Rejetée';
-      default:
-        return 'Inconnu';
-    }
+    return Tax(status: status, baseAmount: 0).statusText;
   }
 
   void _showApproveConfirmation(Tax tax) {

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Paiement;
 use App\Models\Facture;
 use App\Models\Client;
+use App\Models\PaymentSchedule;
 
 class PaiementController extends Controller
 {
@@ -16,48 +17,58 @@ class PaiementController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Paiement::with(['facture.client']);
+        $query = Paiement::with(['client', 'comptable', 'facture', 'schedule']);
         
         // Filtrage par statut si fourni
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
         
-        // Filtrage par type de paiement
+        // Filtrage par type
         if ($request->has('type')) {
             $query->where('type', $request->type);
         }
         
-        // Filtrage par date si fourni
-        if ($request->has('date_debut')) {
-            $query->where('date_paiement', '>=', $request->date_debut);
+        // Filtrage par client_id
+        if ($request->has('client_id')) {
+            $query->where('client_id', $request->client_id);
         }
         
-        if ($request->has('date_fin')) {
-            $query->where('date_paiement', '<=', $request->date_fin);
+        // Filtrage par comptable_id
+        if ($request->has('comptable_id')) {
+            $query->where('comptable_id', $request->comptable_id);
         }
         
-        // Filtrage par montant si fourni
-        if ($request->has('montant_min')) {
-            $query->where('montant', '>=', $request->montant_min);
+        // Filtrage par date (support start_date/end_date du frontend et date_debut/date_fin)
+        if ($request->has('start_date') || $request->has('date_debut')) {
+            $date = $request->start_date ?? $request->date_debut;
+            $query->where('date_paiement', '>=', $date);
         }
         
-        if ($request->has('montant_max')) {
-            $query->where('montant', '<=', $request->montant_max);
+        if ($request->has('end_date') || $request->has('date_fin')) {
+            $date = $request->end_date ?? $request->date_fin;
+            $query->where('date_paiement', '<=', $date);
         }
         
-        // Si commercial → filtre ses propres clients
-        if (auth()->user()->isCommercial()) {
-            $query->whereHas('facture.client', function($q) {
-                $q->where('user_id', auth()->id());
-            });
+        // Si comptable → filtre ses propres paiements
+        if (auth()->user()->isComptable()) {
+            $query->where('comptable_id', auth()->id());
         }
         
         $paiements = $query->orderBy('created_at', 'desc')->paginate($request->get('per_page', 15));
         
+        // Formater pour le frontend
+        $paiements->getCollection()->transform(function ($paiement) {
+            return $this->formatPaymentForFrontend($paiement);
+        });
+        
         return response()->json([
             'success' => true,
-            'paiements' => $paiements,
+            'data' => $paiements->items(),
+            'current_page' => $paiements->currentPage(),
+            'last_page' => $paiements->lastPage(),
+            'per_page' => $paiements->perPage(),
+            'total' => $paiements->total(),
             'message' => 'Liste des paiements récupérée avec succès'
         ]);
     }
@@ -68,10 +79,10 @@ class PaiementController extends Controller
      */
     public function show($id)
     {
-        $paiement = Paiement::with(['facture.client'])->findOrFail($id);
+        $paiement = Paiement::with(['client', 'comptable', 'facture', 'schedule'])->findOrFail($id);
         
-        // Vérification des permissions pour les commerciaux
-        if (auth()->user()->isCommercial() && $paiement->facture->client->user_id !== auth()->id()) {
+        // Vérification des permissions pour les comptables
+        if (auth()->user()->isComptable() && $paiement->comptable_id !== auth()->id()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Accès refusé à ce paiement'
@@ -80,7 +91,7 @@ class PaiementController extends Controller
         
         return response()->json([
             'success' => true,
-            'paiement' => $paiement,
+            'data' => $this->formatPaymentForFrontend($paiement),
             'message' => 'Paiement récupéré avec succès'
         ]);
     }
@@ -88,50 +99,217 @@ class PaiementController extends Controller
     /**
      * Créer un paiement
      * Accessible par Comptable et Admin
+     * Accepte les données du frontend (payment_date, amount, payment_method, etc.)
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'facture_id' => 'required|exists:factures,id',
-            'montant' => 'required|numeric|min:0.01',
-            'date_paiement' => 'required|date',
-            'mode_paiement' => 'required|in:especes,cheque,virement,carte_bancaire',
-            'reference' => 'nullable|string|max:255',
-            'statut' => 'required|in:en_attente,valide,rejete',
-            'commentaire' => 'nullable|string'
-        ]);
+        try {
+            // Accepter les noms de champs du frontend ET du backend pour compatibilité
+            $validated = $request->validate([
+                // Format frontend
+                'client_id' => 'nullable|integer|exists:clients,id',
+                'client_name' => 'required_without:facture_id|string|max:255',
+                'client_email' => 'nullable|email|max:255',
+                'client_address' => 'nullable|string',
+                'comptable_id' => 'required|integer|exists:users,id',
+                'comptable_name' => 'required|string|max:255',
+                'type' => 'required|in:one_time,monthly',
+                'payment_date' => 'required_without:date_paiement|date',
+                'due_date' => 'nullable|date',
+                'amount' => 'required_without:montant|numeric|min:0.01',
+                'payment_method' => 'required_without:type_paiement|in:bank_transfer,check,cash,card,direct_debit,virement,especes,cheque,carte_bancaire,mobile_money',
+                'currency' => 'nullable|string|max:4',
+                'description' => 'nullable|string',
+                'notes' => 'nullable|string',
+                'reference' => 'nullable|string|max:255',
+                'schedule' => 'nullable|array',
+                // Format backend (pour compatibilité)
+                'facture_id' => 'nullable|exists:factures,id',
+                'montant' => 'required_without:amount|numeric|min:0.01',
+                'date_paiement' => 'required_without:payment_date|date',
+                'type_paiement' => 'required_without:payment_method|in:especes,cheque,virement,carte_bancaire,mobile_money',
+                'commentaire' => 'nullable|string'
+            ]);
 
-        // Vérifier que la facture existe et n'est pas déjà payée
-        $facture = Facture::findOrFail($request->facture_id);
-        
-        if ($facture->statut === 'payee') {
+            // Mapper les noms de champs du frontend vers le backend
+            $clientId = $validated['client_id'] ?? null;
+            $clientName = $validated['client_name'] ?? null;
+            $clientEmail = $validated['client_email'] ?? null;
+            $clientAddress = $validated['client_address'] ?? null;
+            
+            // Si client_id est fourni, récupérer les infos du client
+            if ($clientId) {
+                $client = Client::find($clientId);
+                if ($client) {
+                    $clientName = $clientName ?? (trim(($client->nom ?? '') . ' ' . ($client->prenom ?? '')));
+                    $clientEmail = $clientEmail ?? ($client->email ?? '');
+                    $clientAddress = $clientAddress ?? ($client->adresse ?? '');
+                }
+            }
+            
+            // Mapper payment_method du frontend vers type_paiement du backend
+            $paymentMethodMapping = [
+                'bank_transfer' => 'virement',
+                'check' => 'cheque',
+                'cash' => 'especes',
+                'card' => 'carte_bancaire',
+                'direct_debit' => 'virement'
+            ];
+            $typePaiement = $validated['payment_method'] ?? $validated['type_paiement'] ?? 'virement';
+            if (isset($paymentMethodMapping[$typePaiement])) {
+                $typePaiement = $paymentMethodMapping[$typePaiement];
+            }
+
+            // Gérer le comptable_name de manière sécurisée
+            $comptableName = $validated['comptable_name'] ?? null;
+            if (!$comptableName) {
+                $user = auth()->user();
+                $comptableName = trim(($user->nom ?? '') . ' ' . ($user->prenom ?? ''));
+            }
+
+            // Convertir la date si nécessaire (format ISO vers date Laravel)
+            $paymentDate = $validated['payment_date'] ?? $validated['date_paiement'] ?? now();
+            if (is_string($paymentDate)) {
+                try {
+                    $paymentDate = \Carbon\Carbon::parse($paymentDate)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $paymentDate = now()->format('Y-m-d');
+                }
+            }
+
+            $dueDate = $validated['due_date'] ?? null;
+            if ($dueDate && is_string($dueDate)) {
+                try {
+                    $dueDate = \Carbon\Carbon::parse($dueDate)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $dueDate = null;
+                }
+            }
+
+            // Créer le paiement
+            $paiement = Paiement::create([
+                'payment_number' => Paiement::generatePaymentNumber(),
+                'type' => $validated['type'] ?? 'one_time',
+                'facture_id' => $validated['facture_id'] ?? null,
+                'client_id' => $clientId,
+                'client_name' => $clientName,
+                'client_email' => $clientEmail ?? null,
+                'client_address' => $clientAddress ?? null,
+                'comptable_id' => $validated['comptable_id'] ?? auth()->id(),
+                'comptable_name' => $comptableName,
+                'date_paiement' => $paymentDate,
+                'due_date' => $dueDate,
+                'montant' => $validated['amount'] ?? $validated['montant'],
+                'currency' => $validated['currency'] ?? 'FCFA',
+                'type_paiement' => $typePaiement,
+                'status' => 'draft',
+                'description' => $validated['description'] ?? null,
+                'notes' => $validated['notes'] ?? $validated['commentaire'] ?? null,
+                'commentaire' => $validated['commentaire'] ?? null,
+                'reference' => $validated['reference'] ?? null,
+                'user_id' => auth()->id()
+            ]);
+
+            // Si c'est un paiement mensuel avec schedule, créer le schedule
+            if (($validated['type'] ?? 'one_time') === 'monthly' && isset($validated['schedule'])) {
+                $scheduleData = $validated['schedule'];
+                PaymentSchedule::create([
+                    'payment_id' => $paiement->id,
+                    'start_date' => $scheduleData['start_date'] ?? $paiement->date_paiement,
+                    'end_date' => $scheduleData['end_date'] ?? null,
+                    'frequency' => $scheduleData['frequency'] ?? 30,
+                    'total_installments' => $scheduleData['total_installments'] ?? 12,
+                    'paid_installments' => 0,
+                    'installment_amount' => $scheduleData['installment_amount'] ?? ($paiement->montant / ($scheduleData['total_installments'] ?? 12)),
+                    'status' => 'active'
+                ]);
+            }
+
+            // Charger les relations
+            $paiement->load('client', 'comptable', 'schedule');
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->formatPaymentForFrontend($paiement),
+                'message' => 'Paiement créé avec succès'
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cette facture est déjà marquée comme payée'
-            ], 400);
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la création du paiement: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la création du paiement: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Formater un paiement pour le frontend
+     */
+    private function formatPaymentForFrontend($payment)
+    {
+        // Mapper type_paiement du backend vers payment_method du frontend
+        $paymentMethodMapping = [
+            'virement' => 'bank_transfer',
+            'cheque' => 'check',
+            'especes' => 'cash',
+            'carte_bancaire' => 'card',
+            'mobile_money' => 'direct_debit'
+        ];
+        $paymentMethod = $paymentMethodMapping[$payment->type_paiement] ?? $payment->type_paiement;
+
+        $formatted = [
+            'id' => $payment->id,
+            'payment_number' => $payment->payment_number ?? 'N/A',
+            'type' => $payment->type ?? 'one_time',
+            'client_id' => $payment->client_id ?? 0,
+            'client_name' => $payment->client_name ?? ($payment->client ? ($payment->client->nomEntreprise ?? ($payment->client->nom . ' ' . ($payment->client->prenom ?? ''))) : 'Client inconnu'),
+            'client_email' => $payment->client_email ?? ($payment->client ? $payment->client->email : ''),
+            'client_address' => $payment->client_address ?? ($payment->client ? $payment->client->adresse : ''),
+            'comptable_id' => $payment->comptable_id ?? $payment->user_id ?? 0,
+            'comptable_name' => $payment->comptable_name ?? ($payment->comptable ? ($payment->comptable->nom . ' ' . ($payment->comptable->prenom ?? '')) : ($payment->user ? ($payment->user->nom . ' ' . ($payment->user->prenom ?? '')) : 'Comptable inconnu')),
+            'payment_date' => $payment->date_paiement ? $payment->date_paiement->format('Y-m-d') : null,
+            'due_date' => $payment->due_date ? $payment->due_date->format('Y-m-d') : null,
+            'status' => $payment->status ?? 'draft',
+            'amount' => (float)($payment->montant ?? 0),
+            'currency' => $payment->currency ?? 'FCFA',
+            'payment_method' => $paymentMethod,
+            'description' => $payment->description ?? '',
+            'notes' => $payment->notes ?? $payment->commentaire ?? '',
+            'reference' => $payment->reference ?? '',
+            'submitted_at' => $payment->submitted_at ? $payment->submitted_at->format('Y-m-d H:i:s') : null,
+            'approved_at' => $payment->approved_at ? $payment->approved_at->format('Y-m-d H:i:s') : null,
+            'paid_at' => $payment->paid_at ? $payment->paid_at->format('Y-m-d H:i:s') : null,
+            'created_at' => $payment->created_at ? $payment->created_at->format('Y-m-d H:i:s') : null,
+            'updated_at' => $payment->updated_at ? $payment->updated_at->format('Y-m-d H:i:s') : null,
+        ];
+
+        // Ajouter le schedule si existe
+        if ($payment->schedule) {
+            $formatted['schedule'] = [
+                'id' => $payment->schedule->id,
+                'start_date' => $payment->schedule->start_date ? $payment->schedule->start_date->format('Y-m-d') : null,
+                'end_date' => $payment->schedule->end_date ? $payment->schedule->end_date->format('Y-m-d') : null,
+                'frequency' => $payment->schedule->frequency ?? 30,
+                'total_installments' => $payment->schedule->total_installments ?? 12,
+                'paid_installments' => $payment->schedule->paid_installments ?? 0,
+                'installment_amount' => (float)($payment->schedule->installment_amount ?? 0),
+                'status' => $payment->schedule->status ?? 'active',
+                'next_payment_date' => $payment->schedule->next_payment_date ? $payment->schedule->next_payment_date->format('Y-m-d') : null,
+            ];
         }
 
-        $paiement = Paiement::create([
-            'facture_id' => $request->facture_id,
-            'montant' => $request->montant,
-            'date_paiement' => $request->date_paiement,
-            'mode_paiement' => $request->mode_paiement,
-            'reference' => $request->reference,
-            'statut' => $request->statut,
-            'commentaire' => $request->commentaire,
-            'user_id' => auth()->id()
-        ]);
-
-        // Si le paiement est validé, marquer la facture comme payée
-        if ($request->statut === 'valide') {
-            $facture->update(['statut' => 'payee']);
-        }
-
-        return response()->json([
-            'success' => true,
-            'paiement' => $paiement,
-            'message' => 'Paiement créé avec succès'
-        ], 201);
+        return $formatted;
     }
 
     /**
@@ -210,19 +388,42 @@ class PaiementController extends Controller
     public function reject(Request $request, $id)
     {
         $request->validate([
-            'commentaire' => 'required|string'
+            'commentaire' => 'nullable|string',
+            'reason' => 'nullable|string', // Support pour compatibilité Flutter
+            'comment' => 'nullable|string' // Support pour compatibilité Flutter
         ]);
 
         $paiement = Paiement::findOrFail($id);
         
+        // Accepter reason, comment ou commentaire (compatibilité)
+        $reason = $request->reason ?? $request->comment ?? $request->commentaire ?? 'Rejeté';
+        $comment = $request->comment ?? $request->commentaire ?? null;
+
+        // Utiliser la méthode du modèle si disponible
+        if (method_exists($paiement, 'reject')) {
+            if ($paiement->reject(auth()->id(), $reason, $comment)) {
+                $paiement->load('client', 'comptable', 'schedule');
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->formatPaymentForFrontend($paiement),
+                    'message' => 'Paiement rejeté avec succès'
+                ]);
+            }
+        }
+
+        // Fallback pour l'ancienne logique
         $paiement->update([
-            'statut' => 'rejete',
-            'commentaire' => $request->commentaire
+            'status' => 'rejected',
+            'rejection_reason' => $reason,
+            'rejection_comment' => $comment,
+            'rejected_by' => auth()->id(),
+            'rejected_at' => now()
         ]);
 
+        $paiement->load('client', 'comptable', 'schedule');
         return response()->json([
             'success' => true,
-            'paiement' => $paiement,
+            'data' => $this->formatPaymentForFrontend($paiement),
             'message' => 'Paiement rejeté avec succès'
         ]);
     }
@@ -323,10 +524,14 @@ class PaiementController extends Controller
         $paiement = Paiement::findOrFail($id);
 
         $request->validate([
-            'comment' => 'nullable|string'
+            'comment' => 'nullable|string',
+            'comments' => 'nullable|string' // Support pour compatibilité Flutter
         ]);
 
-        if ($paiement->approve(auth()->id(), $request->comment)) {
+        // Accepter comment ou comments (compatibilité)
+        $comment = $request->comment ?? $request->comments;
+
+        if ($paiement->approve(auth()->id(), $comment)) {
             return response()->json([
                 'success' => true,
                 'paiement' => $paiement,
@@ -343,14 +548,36 @@ class PaiementController extends Controller
     /**
      * Marquer comme payé
      */
-    public function markAsPaid($id)
+    public function markAsPaid(Request $request, $id)
     {
         $paiement = Paiement::findOrFail($id);
 
+        // Accepter les paramètres optionnels du service Flutter
+        $request->validate([
+            'payment_reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string'
+        ]);
+
         if ($paiement->pay(auth()->id())) {
+            // Mettre à jour les champs optionnels si fournis
+            $updates = [];
+            if ($request->has('payment_reference')) {
+                $updates['reference'] = $request->payment_reference;
+            }
+            if ($request->has('notes')) {
+                $updates['notes'] = $request->notes;
+            }
+            if (!empty($updates)) {
+                $paiement->update($updates);
+                $paiement->refresh();
+            }
+
+            // Charger les relations pour le formatage
+            $paiement->load('client', 'comptable', 'schedule');
+
             return response()->json([
                 'success' => true,
-                'paiement' => $paiement,
+                'data' => $this->formatPaymentForFrontend($paiement),
                 'message' => 'Paiement marqué comme payé avec succès'
             ]);
         }
@@ -380,6 +607,41 @@ class PaiementController extends Controller
             'success' => false,
             'message' => 'Impossible de marquer ce paiement comme en retard'
         ], 400);
+    }
+
+    /**
+     * Réactiver un paiement rejeté
+     * Remet le paiement en statut draft pour permettre une nouvelle soumission
+     */
+    public function reactivate($id)
+    {
+        $paiement = Paiement::findOrFail($id);
+
+        // Vérifier que le paiement est rejeté
+        if ($paiement->status !== 'rejected' && $paiement->status !== 'rejete') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seuls les paiements rejetés peuvent être réactivés'
+            ], 400);
+        }
+
+        // Réactiver le paiement en le remettant en draft
+        $paiement->update([
+            'status' => 'draft',
+            'rejected_by' => null,
+            'rejected_at' => null,
+            'rejection_reason' => null,
+            'rejection_comment' => null
+        ]);
+
+        // Charger les relations pour le formatage
+        $paiement->load('client', 'comptable', 'schedule');
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->formatPaymentForFrontend($paiement),
+            'message' => 'Paiement réactivé avec succès'
+        ]);
     }
 
     /**

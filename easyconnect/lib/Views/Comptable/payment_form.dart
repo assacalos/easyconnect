@@ -1,42 +1,101 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
-import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
+import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/services/payment_service.dart';
 
-class PaymentForm extends StatelessWidget {
-  const PaymentForm({super.key});
+class PaymentForm extends StatefulWidget {
+  final int? paymentId;
+
+  const PaymentForm({super.key, this.paymentId});
+
+  @override
+  State<PaymentForm> createState() => _PaymentFormState();
+}
+
+class _PaymentFormState extends State<PaymentForm> {
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.paymentId != null) {
+      _loadPaymentForEdit();
+    } else {
+      _isLoading = false;
+    }
+  }
+
+  Future<void> _loadPaymentForEdit() async {
+    try {
+      final payment = await PaymentService.to.getPaymentById(widget.paymentId!);
+      final controller = Get.find<PaymentController>();
+
+      // Remplir les champs avec les données du paiement
+      controller.selectedClientId.value = payment.clientId;
+      controller.selectedClientName.value = payment.clientName;
+      controller.selectedClientEmail.value = payment.clientEmail;
+      controller.selectedClientAddress.value = payment.clientAddress;
+      controller.paymentType.value = payment.type;
+      controller.paymentDate.value = payment.paymentDate;
+      controller.dueDate.value = payment.dueDate;
+      controller.amount.value = payment.amount;
+      controller.paymentMethod.value = payment.paymentMethod;
+      controller.descriptionController.text = payment.description ?? '';
+      controller.notesController.text = payment.notes ?? '';
+      controller.referenceController.text = payment.reference ?? '';
+
+      if (payment.schedule != null) {
+        controller.scheduleStartDate.value = payment.schedule!.startDate;
+        controller.scheduleEndDate.value = payment.schedule!.endDate;
+        controller.frequency.value = payment.schedule!.frequency;
+        controller.totalInstallments.value =
+            payment.schedule!.totalInstallments;
+        controller.installmentAmount.value =
+            payment.schedule!.installmentAmount;
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger le paiement: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final PaymentController controller = Get.put(PaymentController());
 
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Modifier un paiement'),
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Créer un paiement'),
-        backgroundColor: Colors.deepPurple,
+        title: Text(
+          widget.paymentId != null
+              ? 'Modifier un paiement'
+              : 'Créer un paiement',
+        ),
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
-        actions: [
-          Obx(
-            () => TextButton(
-              onPressed:
-                  controller.isCreating.value ? null : controller.createPayment,
-              child:
-                  controller.isCreating.value
-                      ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : const Text(
-                        'Créer',
-                        style: TextStyle(color: Colors.white),
-                      ),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -74,7 +133,52 @@ class PaymentForm extends StatelessWidget {
 
             // Résumé
             _buildSummarySection(controller),
+            const SizedBox(height: 20),
+
+            // Bouton d'enregistrement
+            _buildSaveButton(controller),
+            const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton(PaymentController controller) {
+    return Obx(
+      () => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed:
+                controller.isCreating.value ? null : controller.createPayment,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child:
+                controller.isCreating.value
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                    : const Text(
+                      'Créer le paiement',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+          ),
         ),
       ),
     );
@@ -138,43 +242,102 @@ class PaymentForm extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
-                OutlinedButton.icon(
+                ElevatedButton.icon(
                   onPressed: () => _showClientSelectionDialog(controller),
-                  icon: const Icon(Icons.search),
-                  label: const Text('Sélectionner'),
+                  icon: const Icon(Icons.person_search),
+                  label: const Text('Sélectionner un client'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: controller.clientNameController,
-              decoration: const InputDecoration(
-                labelText: 'Nom du client *',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) => controller.selectedClientName.value = value,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller.clientEmailController,
-              decoration: const InputDecoration(
-                labelText: 'Email du client *',
-                border: OutlineInputBorder(),
-              ),
-              onChanged:
-                  (value) => controller.selectedClientEmail.value = value,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller.clientAddressController,
-              decoration: const InputDecoration(
-                labelText: 'Adresse du client *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-              onChanged:
-                  (value) => controller.selectedClientAddress.value = value,
-            ),
+            Obx(() {
+              final hasSelectedClient = controller.selectedClientId.value > 0;
+              return Column(
+                children: [
+                  if (hasSelectedClient)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Client sélectionné: ${controller.selectedClientName.value}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              controller.selectedClientId.value = 0;
+                              controller.clientNameController.clear();
+                              controller.clientEmailController.clear();
+                              controller.clientAddressController.clear();
+                              controller.selectedClientName.value = '';
+                              controller.selectedClientEmail.value = '';
+                              controller.selectedClientAddress.value = '';
+                            },
+                            child: const Text('Réinitialiser'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (hasSelectedClient) const SizedBox(height: 16),
+                  TextField(
+                    controller: controller.clientNameController,
+                    decoration: InputDecoration(
+                      labelText: 'Nom du client *',
+                      border: const OutlineInputBorder(),
+                      enabled: !hasSelectedClient,
+                      filled: hasSelectedClient,
+                      fillColor: Colors.grey[200],
+                    ),
+                    onChanged:
+                        (value) => controller.selectedClientName.value = value,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller.clientEmailController,
+                    decoration: InputDecoration(
+                      labelText: 'Email du client *',
+                      border: const OutlineInputBorder(),
+                      enabled: !hasSelectedClient,
+                      filled: hasSelectedClient,
+                      fillColor: Colors.grey[200],
+                    ),
+                    onChanged:
+                        (value) => controller.selectedClientEmail.value = value,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller.clientAddressController,
+                    decoration: InputDecoration(
+                      labelText: 'Adresse du client *',
+                      border: const OutlineInputBorder(),
+                      enabled: !hasSelectedClient,
+                      filled: hasSelectedClient,
+                      fillColor: Colors.grey[200],
+                    ),
+                    maxLines: 2,
+                    onChanged:
+                        (value) =>
+                            controller.selectedClientAddress.value = value,
+                  ),
+                ],
+              );
+            }),
           ],
         ),
       ),
@@ -564,16 +727,47 @@ class PaymentForm extends StatelessWidget {
   }
 
   void _showClientSelectionDialog(PaymentController controller) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Sélectionner un client'),
-        content: const Text(
-          'Fonctionnalité de sélection de client à implémenter',
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
-        ],
-      ),
+    showDialog(
+      context: Get.context!,
+      builder:
+          (context) => ClientSelectionDialog(
+            onClientSelected: (Client client) {
+              // Construire le nom complet
+              final displayName =
+                  '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+              final clientName =
+                  displayName.isEmpty
+                      ? (client.nomEntreprise ?? 'Client #${client.id}')
+                      : displayName;
+
+              // Construire l'adresse complète
+              final addressParts = <String>[];
+              if (client.adresse != null && client.adresse!.isNotEmpty) {
+                addressParts.add(client.adresse!);
+              }
+              final clientAddress =
+                  addressParts.isEmpty
+                      ? 'Non spécifiée'
+                      : addressParts.join(', ');
+
+              // Appeler la méthode du contrôleur pour définir le client sélectionné
+              controller.selectClient(
+                clientId: client.id ?? 0,
+                clientName: clientName,
+                clientEmail: client.email ?? '',
+                clientAddress: clientAddress,
+              );
+
+              Get.snackbar(
+                'Client sélectionné',
+                'Les informations du client ont été remplies automatiquement',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.green,
+                colorText: Colors.white,
+                duration: const Duration(seconds: 2),
+              );
+            },
+          ),
     );
   }
 }

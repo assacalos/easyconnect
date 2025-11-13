@@ -13,8 +13,10 @@ class Expense extends Model
     protected $fillable = [
         'expense_category_id',
         'employee_id',
+        'user_id', // Pour compatibilité avec l'ancienne structure
         'comptable_id',
         'expense_number',
+        'title',
         'expense_date',
         'submission_date',
         'amount',

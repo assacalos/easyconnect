@@ -88,13 +88,11 @@ class SupplierList extends StatelessWidget {
               children: [
                 _buildFilterChip('Tous', 'all', controller),
                 const SizedBox(width: 8),
-                _buildFilterChip('En attente', 'pending', controller),
+                _buildFilterChip('En attente', 'en_attente', controller),
                 const SizedBox(width: 8),
-                _buildFilterChip('Approuvés', 'approved', controller),
+                _buildFilterChip('Validés', 'valide', controller),
                 const SizedBox(width: 8),
-                _buildFilterChip('Rejetés', 'rejected', controller),
-                const SizedBox(width: 8),
-                _buildFilterChip('Actifs', 'active', controller),
+                _buildFilterChip('Rejetés', 'rejete', controller),
               ],
             ),
           ),
@@ -160,8 +158,8 @@ class SupplierList extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: _buildStatCard(
-                'Approuvés',
-                stats.approved.toString(),
+                'Validés',
+                stats.validated.toString(),
                 Icons.check_circle,
                 Colors.green,
               ),
@@ -169,10 +167,10 @@ class SupplierList extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: _buildStatCard(
-                'Actifs',
-                stats.active.toString(),
-                Icons.verified,
-                Colors.purple,
+                'Rejetés',
+                stats.rejected.toString(),
+                Icons.cancel,
+                Colors.red,
               ),
             ),
           ],
@@ -376,7 +374,7 @@ class SupplierList extends StatelessWidget {
                       onPressed: () => _showRejectDialog(supplier, controller),
                     ),
                   ],
-                  if (supplier.isApproved) ...[
+                  if (supplier.isValidated) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.star, size: 16),
                       label: const Text('Évaluer'),
@@ -512,10 +510,6 @@ class SupplierList extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Pays'),
           ),
           TextField(
-            controller: controller.contactPrincipalController,
-            decoration: const InputDecoration(labelText: 'Contact Principal'),
-          ),
-          TextField(
             controller: controller.descriptionController,
             decoration: const InputDecoration(labelText: 'Description'),
             maxLines: 2,
@@ -539,7 +533,6 @@ class SupplierList extends StatelessWidget {
               Text('Adresse: ${supplier.adresse}'),
               Text('Ville: ${supplier.ville}'),
               Text('Pays: ${supplier.pays}'),
-              Text('Contact: ${supplier.contactPrincipal}'),
               if (supplier.description != null)
                 Text('Description: ${supplier.description}'),
               if (supplier.noteEvaluation != null)
@@ -582,7 +575,7 @@ class SupplierList extends StatelessWidget {
             onPressed: () {
               controller.approveSupplier(
                 supplier,
-                comments:
+                validationComment:
                     commentsController.text.trim().isEmpty
                         ? null
                         : commentsController.text.trim(),
@@ -598,10 +591,12 @@ class SupplierList extends StatelessWidget {
 
   void _showRejectDialog(Supplier supplier, SupplierController controller) {
     final reasonController = TextEditingController();
+    final commentController = TextEditingController();
     Get.dialog(
       AlertDialog(
         title: const Text('Rejeter le fournisseur'),
-        content: Column(
+        content: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Motif du rejet (obligatoire) :'),
@@ -614,7 +609,19 @@ class SupplierList extends StatelessWidget {
               ),
               maxLines: 3,
             ),
-          ],
+              const SizedBox(height: 16),
+              const Text('Commentaire (optionnel) :'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: commentController,
+                decoration: const InputDecoration(
+                  hintText: 'Commentaire supplémentaire...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
@@ -623,9 +630,21 @@ class SupplierList extends StatelessWidget {
               if (reasonController.text.trim().isNotEmpty) {
                 controller.rejectSupplier(
                   supplier,
-                  reasonController.text.trim(),
+                  rejectionReason: reasonController.text.trim(),
+                  rejectionComment:
+                      commentController.text.trim().isEmpty
+                          ? null
+                          : commentController.text.trim(),
                 );
                 Get.back();
+              } else {
+                Get.snackbar(
+                  'Erreur',
+                  'Le motif du rejet est obligatoire',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
               }
             },
             style: ElevatedButton.styleFrom(

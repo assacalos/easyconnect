@@ -15,22 +15,13 @@ class ClientController extends GetxController {
 
   Future<void> loadClients({int? status}) async {
     try {
-      print('🔍 ClientController.loadClients - Début');
-      print('📊 Paramètres: status=$status');
-
       isLoading.value = true;
       final loadedClients = await _clientService.getClients(status: status);
-
-      print(
-        '📊 ClientController.loadClients - ${loadedClients.length} clients chargés',
-      );
       for (final client in loadedClients) {
-        print('📋 Client: ${client.nomEntreprise} - Status: ${client.status}');
       }
 
       clients.assignAll(loadedClients);
     } catch (e) {
-      print('❌ ClientController.loadClients - Erreur: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de charger les clients',
@@ -104,32 +95,23 @@ class ClientController extends GetxController {
 
   Future<void> approveClient(int clientId) async {
     try {
-      print('🔍 ClientController.approveClient - Début');
-      print('📊 Paramètres: clientId=$clientId');
-
       isLoading.value = true;
       final success = await _clientService.approveClient(clientId);
-
-      print('📊 ClientController.approveClient - Résultat: $success');
-
       if (success) {
-        print(
-          '✅ ClientController.approveClient - Succès, rechargement des clients',
-        );
-        await loadClients(status: 0); // ✅ recharge uniquement en attente
+        await loadClients(
+          status: null,
+        ); // ✅ recharge tous les clients pour mettre à jour le dashboard
         Get.snackbar(
           'Succès',
           'Client validé avec succès',
           snackPosition: SnackPosition.BOTTOM,
         );
       } else {
-        print('❌ ClientController.approveClient - Échec du service');
         throw Exception(
           'Erreur lors de la validation - Service a retourné false',
         );
       }
     } catch (e) {
-      print('❌ ClientController.approveClient - Erreur: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de valider le client: $e',
@@ -142,30 +124,21 @@ class ClientController extends GetxController {
 
   Future<void> rejectClient(int clientId, String comment) async {
     try {
-      print('🔍 ClientController.rejectClient - Début');
-      print('📊 Paramètres: clientId=$clientId, comment=$comment');
-
       isLoading.value = true;
       final success = await _clientService.rejectClient(clientId, comment);
-
-      print('📊 ClientController.rejectClient - Résultat: $success');
-
       if (success) {
-        print(
-          '✅ ClientController.rejectClient - Succès, rechargement des clients',
-        );
-        await loadClients(status: 0); // ✅ recharge uniquement en attente
+        await loadClients(
+          status: null,
+        ); // ✅ recharge tous les clients pour mettre à jour le dashboard
         Get.snackbar(
           'Succès',
           'Client rejeté avec succès',
           snackPosition: SnackPosition.BOTTOM,
         );
       } else {
-        print('❌ ClientController.rejectClient - Échec du service');
         throw Exception('Erreur lors du rejet - Service a retourné false');
       }
     } catch (e) {
-      print('❌ ClientController.rejectClient - Erreur: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le client: $e',

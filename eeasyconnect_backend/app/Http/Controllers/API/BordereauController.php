@@ -34,7 +34,6 @@ class BordereauController extends Controller
             'date_creation' => 'required|date',
             'items' => 'required|array|min:1',
             'items.*.designation' => 'required|string',
-            'items.*.unite' => 'required|string',
             'items.*.quantite' => 'required|integer|min:1',
             'items.*.prix_unitaire' => 'required|numeric|min:0',
         ]);
@@ -60,7 +59,6 @@ class BordereauController extends Controller
             BordereauItem::create([
                 'bordereau_id' => $bordereau->id,
                 'designation' => $item['designation'],
-                'unite' => $item['unite'],
                 'quantite' => $item['quantite'],
                 'prix_unitaire' => $item['prix_unitaire'],
                 'description' => $item['description'] ?? null,
@@ -97,7 +95,6 @@ class BordereauController extends Controller
                 BordereauItem::create([
                     'bordereau_id' => $bordereau->id,
                     'designation' => $item['designation'],
-                    'unite' => $item['unite'],
                     'quantite' => $item['quantite'],
                     'prix_unitaire' => $item['prix_unitaire'],
                     'description' => $item['description'] ?? null,

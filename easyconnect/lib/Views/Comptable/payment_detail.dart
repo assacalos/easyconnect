@@ -19,10 +19,11 @@ class PaymentDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed:
-                () => Get.toNamed('/payments/edit', arguments: paymentId),
+          Builder(
+            builder: (context) {
+              // Cette partie sera gérée dans le body avec FutureBuilder
+              return const SizedBox.shrink();
+            },
           ),
         ],
       ),
@@ -439,15 +440,32 @@ class PaymentDetail extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
+            // Bouton PDF
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed:
-                    () => Get.toNamed('/payments/edit', arguments: payment.id),
-                icon: const Icon(Icons.edit),
-                label: const Text('Modifier'),
+              child: ElevatedButton.icon(
+                onPressed: () => controller.generatePDF(payment.id),
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('Générer PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
+            const SizedBox(height: 8),
+            // Bouton Modifier (seulement si draft ou pending)
+            if (payment.status == 'draft' || payment.status == 'pending')
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      () =>
+                          Get.toNamed('/payments/edit', arguments: payment.id),
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Modifier'),
+                ),
+              ),
           ],
         ),
       ),

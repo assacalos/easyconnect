@@ -5,23 +5,32 @@ import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
-class SalaryForm extends StatelessWidget {
+class SalaryForm extends StatefulWidget {
   final Salary? salary;
 
   const SalaryForm({super.key, this.salary});
+
+  @override
+  State<SalaryForm> createState() => _SalaryFormState();
+}
+
+class _SalaryFormState extends State<SalaryForm> {
+  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
     final SalaryController controller = Get.put(SalaryController());
 
     // Si on édite un salaire existant, remplir le formulaire
-    if (salary != null) {
-      controller.fillForm(salary!);
+    if (widget.salary != null) {
+      controller.fillForm(widget.salary!);
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(salary == null ? 'Nouveau Salaire' : 'Modifier le Salaire'),
+        title: Text(
+          widget.salary == null ? 'Nouveau Salaire' : 'Modifier le Salaire',
+        ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
@@ -34,6 +43,7 @@ class SalaryForm extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
+          key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -42,16 +52,16 @@ class SalaryForm extends StatelessWidget {
               const SizedBox(height: 16),
 
               // Sélection de l'employé
-              Obx(
-                () => InkWell(
-                  onTap: () => _showEmployeeDialog(controller),
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Employé *',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                    child: Text(
+              InkWell(
+                onTap: () => _showEmployeeDialog(controller),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Employé *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  child: Obx(
+                    () => Text(
                       controller.selectedEmployeeName.value.isNotEmpty
                           ? controller.selectedEmployeeName.value
                           : 'Sélectionner un employé',
@@ -146,6 +156,7 @@ class SalaryForm extends StatelessWidget {
                   prefixIcon: Icon(Icons.account_balance_wallet),
                 ),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => controller.updateNetSalary(),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Le salaire de base est obligatoire';
@@ -170,6 +181,7 @@ class SalaryForm extends StatelessWidget {
                   prefixIcon: Icon(Icons.star),
                 ),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => controller.updateNetSalary(),
               ),
 
               const SizedBox(height: 16),
@@ -182,58 +194,49 @@ class SalaryForm extends StatelessWidget {
                   prefixIcon: Icon(Icons.remove_circle),
                 ),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => controller.updateNetSalary(),
               ),
 
               const SizedBox(height: 16),
 
               // Calcul automatique du salaire net
-              Obx(() {
-                final baseSalary =
-                    double.tryParse(controller.baseSalaryController.text) ??
-                    0.0;
-                final bonus =
-                    double.tryParse(controller.bonusController.text) ?? 0.0;
-                final deductions =
-                    double.tryParse(controller.deductionsController.text) ??
-                    0.0;
-                final netSalary = baseSalary + bonus - deductions;
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.calculate, color: Colors.blue, size: 32),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Salaire net calculé',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.calculate, color: Colors.blue, size: 32),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Salaire net calculé',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
+                    ),
+                    const SizedBox(height: 4),
+                    Obx(
+                      () => Text(
                         NumberFormat.currency(
                           locale: 'fr_FR',
                           symbol: 'fcfa',
-                        ).format(netSalary),
+                        ).format(controller.netSalary.value),
                         style: const TextStyle(
                           fontSize: 24,
                           color: Colors.blue,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
-                );
-              }),
+                    ),
+                  ],
+                ),
+              ),
 
               const SizedBox(height: 24),
 
@@ -255,10 +258,13 @@ class SalaryForm extends StatelessWidget {
               const SizedBox(height: 32),
 
               // Boutons d'action uniformes
-              UniformFormButtons(
-                onCancel: () => Get.back(),
-                onSubmit: () => _saveSalary(controller),
-                submitText: 'Soumettre',
+              Obx(
+                () => UniformFormButtons(
+                  onCancel: () => Get.back(),
+                  onSubmit: () => _saveSalary(controller),
+                  submitText: 'Soumettre',
+                  isLoading: controller.isLoading.value,
+                ),
               ),
             ],
           ),
@@ -279,12 +285,58 @@ class SalaryForm extends StatelessWidget {
   }
 
   void _saveSalary(SalaryController controller) async {
-    if (salary == null) {
-      await controller.createSalary();
-    } else {
-      await controller.updateSalary(salary!);
+    // Valider le formulaire avant de soumettre
+    if (!_formKey.currentState!.validate()) {
+      Get.snackbar(
+        'Erreur de validation',
+        'Veuillez remplir tous les champs obligatoires',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
     }
-    Get.back(); // Retour automatique à la liste
+
+    // Vérifier que l'employé est sélectionné
+    if (controller.selectedEmployeeId.value == 0 ||
+        controller.selectedEmployeeName.value.isEmpty) {
+      Get.snackbar(
+        'Erreur',
+        'Veuillez sélectionner un employé',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Vérifier que le mois est sélectionné
+    if (controller.selectedMonthForm.value.isEmpty) {
+      Get.snackbar(
+        'Erreur',
+        'Veuillez sélectionner un mois',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    bool success = false;
+    if (widget.salary == null) {
+      success = await controller.createSalary();
+    } else {
+      success = await controller.updateSalary(widget.salary!);
+    }
+
+    // Fermer la page seulement en cas de succès
+    if (success) {
+      // Attendre un peu pour que le snackbar de succès s'affiche
+      await Future.delayed(const Duration(milliseconds: 300));
+      Get.back();
+      // Note: loadSalaries() est déjà appelé dans createSalary() et updateSalary()
+    }
+    // Si erreur, ne pas fermer pour permettre à l'utilisateur de corriger
   }
 
   void _showEmployeeDialog(SalaryController controller) {

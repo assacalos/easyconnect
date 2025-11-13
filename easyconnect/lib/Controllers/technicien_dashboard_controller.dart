@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
@@ -11,6 +12,8 @@ import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/services/intervention_service.dart';
 import 'package:easyconnect/services/equipment_service.dart';
 import 'package:easyconnect/services/reporting_service.dart';
+import 'package:easyconnect/Controllers/intervention_controller.dart';
+import 'package:easyconnect/Controllers/equipment_controller.dart';
 
 class TechnicienDashboardController extends BaseDashboardController {
   var currentSection = 'dashboard'.obs;
@@ -127,6 +130,94 @@ class TechnicienDashboardController extends BaseDashboardController {
   }
 
   @override
+  void onInit() {
+    super.onInit();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    // Recharger les données quand le dashboard est prêt
+    loadData();
+    // Configurer les listeners après que tout soit initialisé
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _setupListeners();
+    });
+  }
+
+  Timer? _setupTimer;
+  Timer? _refreshTimer;
+
+  void _setupListeners() {
+    // Essayer de configurer les listeners immédiatement
+    _trySetupListeners();
+
+    // Si les contrôleurs ne sont pas encore disponibles, réessayer périodiquement
+    _setupTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!_hasInterventionListener || !_hasEquipmentListener) {
+        _trySetupListeners();
+      } else {
+        // Une fois tous les listeners configurés, annuler le timer
+        _setupTimer?.cancel();
+      }
+    });
+
+    // Ajouter un rafraîchissement périodique automatique toutes les 20 secondes
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      refreshPendingEntities();
+    });
+  }
+
+  void _trySetupListeners() {
+    // Écouter les changements dans InterventionController
+    if (!_hasInterventionListener) {
+      try {
+        if (Get.isRegistered<InterventionController>()) {
+          final interventionController = Get.find<InterventionController>();
+          ever(interventionController.interventions, (_) {
+            // Recharger seulement les entités en attente de manière asynchrone
+            refreshPendingEntities();
+          });
+          _hasInterventionListener = true;
+        }
+      } catch (e) {
+      }
+    }
+
+    // Écouter les changements dans EquipmentController si disponible
+    if (!_hasEquipmentListener) {
+      try {
+        if (Get.isRegistered<EquipmentController>()) {
+          final equipmentController = Get.find<EquipmentController>();
+          ever(equipmentController.equipments, (_) {
+            // Recharger seulement les entités en attente de manière asynchrone
+            refreshPendingEntities();
+          });
+          _hasEquipmentListener = true;
+        }
+      } catch (e) {
+      }
+    }
+  }
+
+  bool _hasInterventionListener = false;
+  bool _hasEquipmentListener = false;
+
+  @override
+  void onClose() {
+    _setupTimer?.cancel();
+    _refreshTimer?.cancel();
+    super.onClose();
+  }
+
+  // Méthode pour recharger uniquement les entités en attente (appelée depuis l'extérieur)
+  Future<void> refreshPendingEntities() async {
+    await _loadPendingEntities();
+    await _loadValidatedEntities();
+    await _loadStatistics();
+  }
+
+  @override
   Future<void> loadData() async {
     if (isLoading.value) return;
     isLoading.value = true;
@@ -178,7 +269,6 @@ class TechnicienDashboardController extends BaseDashboardController {
       updateChartData('equipments', equipmentData);
       updateChartData('reports', reportData);
     } catch (e) {
-      print('Erreur lors du chargement des données: $e');
     } finally {
       isLoading.value = false;
     }
@@ -186,28 +276,41 @@ class TechnicienDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingEntities() async {
     try {
+      // Charger depuis les services directement pour avoir les données les plus récentes
       final interventions = await _interventionService.getInterventions();
-      pendingInterventions.value =
+      final pendingCount =
           interventions
               .where((i) => i.status.toLowerCase() == 'pending')
               .length;
+      pendingInterventions.value = pendingCount;
 
       // Si vous avez une liste de maintenances, adaptez ici; sinon, approx 0
       pendingMaintenance.value = 0;
 
-      final reports = await _reportingService.getAllReports();
-      pendingReports.value =
-          reports
-              .where((r) => r.status == 'pending' || r.status == 'draft')
-              .length;
+      try {
+        final reports = await _reportingService.getAllReports();
+        pendingReports.value =
+            reports
+                .where((r) => r.status == 'pending' || r.status == 'submitted')
+                .length;
+      } catch (e) {
+        pendingReports.value = 0;
+      }
 
-      final equipments = await _equipmentService.getEquipments();
-      pendingEquipments.value =
-          equipments
-              .where((e) => (e.status ?? '').toLowerCase() == 'pending')
-              .length;
+      try {
+        final equipments = await _equipmentService.getEquipments();
+        // Équipements en attente = ceux qui nécessitent une attention (en maintenance, broken, etc.)
+        pendingEquipments.value =
+            equipments.where((e) {
+              final status = e.status.toLowerCase();
+              return status == 'maintenance' ||
+                  status == 'broken' ||
+                  e.needsMaintenance == true;
+            }).length;
+      } catch (e) {
+        pendingEquipments.value = 0;
+      }
     } catch (e) {
-      print('Erreur lors du chargement des entités en attente: $e');
       pendingInterventions.value = 0;
       pendingMaintenance.value = 0;
       pendingReports.value = 0;
@@ -233,11 +336,8 @@ class TechnicienDashboardController extends BaseDashboardController {
 
       final equipments = await _equipmentService.getEquipments();
       operationalEquipments.value =
-          equipments
-              .where((e) => (e.status ?? '').toLowerCase() == 'operational')
-              .length;
+          equipments.where((e) => e.status.toLowerCase() == 'active').length;
     } catch (e) {
-      print('Erreur lors du chargement des entités validées: $e');
       completedInterventions.value = 0;
       completedMaintenance.value = 0;
       validatedReports.value = 0;
@@ -263,7 +363,6 @@ class TechnicienDashboardController extends BaseDashboardController {
       maintenanceCost.value = 0.0;
       savings.value = 0.0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
       interventionCost.value = 0.0;
       maintenanceCost.value = 0.0;
       equipmentValue.value = 0.0;

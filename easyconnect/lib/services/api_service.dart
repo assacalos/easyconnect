@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/services/http_client.dart';
 
 class ApiService {
   // -------------------- HEADERS --------------------
@@ -20,10 +19,6 @@ class ApiService {
     String password,
   ) async {
     try {
-      print("Sending login request to: $baseUrl/login");
-      print("Headers: ${headers()}");
-      print("Body: ${jsonEncode({"email": email, "password": password})}");
-
       final response = await http
           .post(
             Uri.parse("$baseUrl/login"),
@@ -38,15 +33,9 @@ class ApiService {
               );
             },
           );
-
-      print("Response status code: ${response.statusCode}");
-      print("Response body: ${response.body}");
-
       final result = _parse(response);
-      print("Login response: $result"); // Pour le débogage
       return result;
     } catch (e) {
-      print("Login error: $e"); // Pour le débogage
       return {"success": false, "message": e.toString()};
     }
   }
@@ -58,10 +47,8 @@ class ApiService {
         headers: headers(),
       );
       final result = _parse(response);
-      print("Logout response: $result"); // Pour le débogage
       return result;
     } catch (e) {
-      print("Logout error: $e"); // Pour le débogage
       return {"success": false, "message": e.toString()};
     }
   }

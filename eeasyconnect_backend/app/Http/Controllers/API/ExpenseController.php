@@ -9,6 +9,7 @@ use App\Models\ExpenseApproval;
 use App\Models\ExpenseBudget;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ExpenseController extends Controller
 {
@@ -35,9 +36,18 @@ class ExpenseController extends Controller
             $perPage = $request->get('per_page', 15);
             $expenses = $query->orderBy('expense_date', 'desc')->paginate($perPage);
 
+            // Formater les dépenses pour le frontend
+            $expenses->getCollection()->transform(function ($expense) {
+                return $this->formatExpenseForFrontend($expense);
+            });
+
             return response()->json([
                 'success' => true,
-                'data' => $expenses,
+                'data' => $expenses->items(),
+                'current_page' => $expenses->currentPage(),
+                'last_page' => $expenses->lastPage(),
+                'per_page' => $expenses->perPage(),
+                'total' => $expenses->total(),
                 'message' => 'Liste des dépenses récupérée avec succès'
             ]);
 
@@ -51,34 +61,121 @@ class ExpenseController extends Controller
 
     /**
      * Créer une nouvelle dépense
+     * Accepte les formats frontend (camelCase) et backend (snake_case)
      */
     public function store(Request $request)
     {
         try {
             $validated = $request->validate([
-                'expense_category_id' => 'required|exists:expense_categories,id',
-                'expense_date' => 'required|date',
+                // Format backend
+                'expense_category_id' => 'nullable|exists:expense_categories,id',
+                'expense_date' => 'required_without:expenseDate|date',
                 'amount' => 'required|numeric|min:0',
-                'currency' => 'required|string|max:3',
-                'description' => 'required|string|max:1000',
+                'currency' => 'required|string|max:4', // Support FCFA (4 caractères)
+                'description' => 'required_without:title|string|max:1000',
                 'justification' => 'nullable|string|max:1000',
-                'receipt' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240'
+                'receipt' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+                // Format frontend (compatibilité)
+                'category' => 'nullable|string', // String category code (office_supplies, travel, etc.)
+                'expenseDate' => 'required_without:expense_date|date',
+                'title' => 'nullable|string|max:255',
+                'notes' => 'nullable|string|max:1000',
+                'receiptPath' => 'nullable|string'
             ]);
 
             DB::beginTransaction();
 
-            $expense = Expense::create([
-                'expense_category_id' => $validated['expense_category_id'],
-                'employee_id' => $request->user()->id,
+            // Gérer expense_category_id : convertir category (string) en ID si nécessaire
+            $expenseCategoryId = $validated['expense_category_id'] ?? null;
+            if (!$expenseCategoryId && isset($validated['category'])) {
+                // Rechercher la catégorie par nom (la colonne code n'existe peut-être pas encore)
+                $category = null;
+                
+                // Essayer de rechercher par code si la colonne existe
+                if (Schema::hasColumn('expense_categories', 'code')) {
+                    $category = ExpenseCategory::where('code', $validated['category'])->first();
+                }
+                
+                // Sinon, rechercher par nom
+                if (!$category) {
+                    $category = ExpenseCategory::where('name', 'LIKE', '%' . $validated['category'] . '%')
+                        ->orWhere('name', 'LIKE', '%' . ucfirst(str_replace('_', ' ', $validated['category'])) . '%')
+                        ->first();
+                }
+                
+                if ($category) {
+                    $expenseCategoryId = $category->id;
+                } else {
+                    // Créer une catégorie par défaut si elle n'existe pas
+                    $categoryData = [
+                        'name' => ucfirst(str_replace('_', ' ', $validated['category'])),
+                        'description' => 'Catégorie créée automatiquement',
+                    ];
+                    
+                    // Ajouter code seulement si la colonne existe
+                    if (Schema::hasColumn('expense_categories', 'code')) {
+                        $categoryData['code'] = $validated['category'];
+                    }
+                    
+                    // Ajouter is_active seulement si la colonne existe
+                    if (Schema::hasColumn('expense_categories', 'is_active')) {
+                        $categoryData['is_active'] = true;
+                    }
+                    
+                    // Ajouter requires_approval seulement si la colonne existe
+                    if (Schema::hasColumn('expense_categories', 'requires_approval')) {
+                        $categoryData['requires_approval'] = true;
+                    }
+                    
+                    $category = ExpenseCategory::create($categoryData);
+                    $expenseCategoryId = $category->id;
+                }
+            }
+
+            if (!$expenseCategoryId) {
+                throw new \Exception('Catégorie de dépense requise');
+            }
+
+            // Gérer les dates (format frontend ou backend)
+            $expenseDate = $validated['expense_date'] ?? $validated['expenseDate'] ?? null;
+            if (is_string($expenseDate)) {
+                try {
+                    $expenseDate = \Carbon\Carbon::parse($expenseDate)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $expenseDate = now()->format('Y-m-d');
+                }
+            }
+
+            // Gérer description et title
+            $description = $validated['description'] ?? $validated['title'] ?? 'Dépense sans description';
+
+            // Gérer justification et notes (compatibilité frontend/backend)
+            $justification = $validated['justification'] ?? $validated['notes'] ?? null;
+
+            $userId = $request->user()->id;
+            
+            // Préparer les données pour la création
+            $expenseData = [
+                'expense_category_id' => $expenseCategoryId,
+                'employee_id' => $userId,
                 'expense_number' => Expense::generateExpenseNumber(),
-                'expense_date' => $validated['expense_date'],
+                'expense_date' => $expenseDate,
                 'submission_date' => now()->toDateString(),
                 'amount' => $validated['amount'],
-                'currency' => $validated['currency'],
-                'description' => $validated['description'],
-                'justification' => $validated['justification'],
+                'currency' => $validated['currency'] ?? 'FCFA',
+                'title' => $validated['title'] ?? substr($description, 0, 255), // Utiliser title si fourni, sinon description tronquée
+                'description' => $description,
+                'justification' => $justification,
+                'receipt_path' => $validated['receiptPath'] ?? null,
                 'status' => 'draft'
-            ]);
+            ];
+            
+            // Ajouter user_id si la colonne existe (compatibilité avec l'ancienne structure)
+            if (Schema::hasColumn('expenses', 'user_id')) {
+                $expenseData['user_id'] = $userId;
+            }
+            
+            $expense = Expense::create($expenseData);
 
             // Upload du justificatif si fourni
             if ($request->hasFile('receipt')) {
@@ -89,17 +186,75 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $expense->load(['expenseCategory', 'employee']),
+                'data' => $this->formatExpenseForFrontend($expense->load(['expenseCategory', 'employee'])),
                 'message' => 'Dépense créée avec succès'
             ], 201);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollback();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             DB::rollback();
+            \Log::error('Erreur lors de la création de la dépense: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la création de la dépense: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Formater une dépense pour le frontend (camelCase)
+     */
+    private function formatExpenseForFrontend($expense)
+    {
+        // Déterminer le statut pour le frontend
+        $status = $expense->status;
+        if (in_array($status, ['draft', 'submitted', 'under_review'])) {
+            $status = 'pending';
+        }
+
+        // Déterminer la catégorie pour le frontend
+        $category = 'other';
+        if ($expense->expenseCategory) {
+            if ($expense->expenseCategory->code) {
+                $category = $expense->expenseCategory->code;
+            } else {
+                // Convertir le nom en code (minuscules, espaces -> underscores)
+                $category = strtolower(str_replace(' ', '_', $expense->expenseCategory->name));
+            }
+        }
+
+        return [
+            'id' => $expense->id,
+            'title' => $expense->description, // Utiliser description comme title
+            'description' => $expense->description,
+            'amount' => (float)$expense->amount,
+            'category' => $category,
+            'status' => $status,
+            'expense_date' => $expense->expense_date ? $expense->expense_date->format('Y-m-d') : null,
+            'expenseDate' => $expense->expense_date ? $expense->expense_date->format('Y-m-d\TH:i:s.u\Z') : null,
+            'receipt_path' => $expense->receipt_path,
+            'receiptPath' => $expense->receipt_path,
+            'notes' => $expense->justification,
+            'created_at' => $expense->created_at ? $expense->created_at->format('Y-m-d H:i:s') : null,
+            'updated_at' => $expense->updated_at ? $expense->updated_at->format('Y-m-d H:i:s') : null,
+            'created_by' => $expense->employee_id,
+            'approved_by' => $expense->approved_by,
+            'rejection_reason' => $expense->rejection_reason,
+            'rejectionReason' => $expense->rejection_reason,
+            'approved_at' => $expense->approved_at ? $expense->approved_at->format('Y-m-d H:i:s') : null,
+            'approvedAt' => $expense->approved_at ? $expense->approved_at->format('Y-m-d H:i:s') : null,
+            'currency' => $expense->currency,
+            'expense_number' => $expense->expense_number,
+        ];
     }
 
     /**
@@ -119,7 +274,7 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $expense,
+                'data' => $this->formatExpenseForFrontend($expense),
                 'message' => 'Dépense récupérée avec succès'
             ]);
 
@@ -164,7 +319,7 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $expense->load(['expenseCategory', 'employee']),
+                'data' => $this->formatExpenseForFrontend($expense->load(['expenseCategory', 'employee'])),
                 'message' => 'Dépense mise à jour avec succès'
             ]);
 

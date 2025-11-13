@@ -5,12 +5,14 @@ class Intervention {
   final String title;
   final String description;
   final String type; // 'external', 'on_site'
-  final String status; // 'pending', 'approved', 'in_progress', 'completed', 'rejected'
+  final String
+  status; // 'pending', 'approved', 'in_progress', 'completed', 'rejected'
   final String priority; // 'low', 'medium', 'high', 'urgent'
   final DateTime scheduledDate;
   final DateTime? startDate;
   final DateTime? endDate;
   final String? location;
+  final int? clientId;
   final String? clientName;
   final String? clientPhone;
   final String? clientEmail;
@@ -41,6 +43,7 @@ class Intervention {
     this.startDate,
     this.endDate,
     this.location,
+    this.clientId,
     this.clientName,
     this.clientPhone,
     this.clientEmail,
@@ -70,9 +73,14 @@ class Intervention {
       status: json['status'] ?? 'pending',
       priority: json['priority'] ?? 'medium',
       scheduledDate: DateTime.parse(json['scheduled_date']),
-      startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
-      endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
+      startDate:
+          json['start_date'] != null
+              ? DateTime.parse(json['start_date'])
+              : null,
+      endDate:
+          json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       location: json['location'],
+      clientId: json['client_id'],
       clientName: json['client_name'],
       clientPhone: json['client_phone'],
       clientEmail: json['client_email'],
@@ -80,10 +88,28 @@ class Intervention {
       problemDescription: json['problem_description'],
       solution: json['solution'],
       notes: json['notes'],
-      attachments: json['attachments'] != null ? List<String>.from(json['attachments']) : null,
-      estimatedDuration: json['estimated_duration']?.toDouble(),
-      actualDuration: json['actual_duration']?.toDouble(),
-      cost: json['cost']?.toDouble(),
+      attachments:
+          json['attachments'] != null
+              ? List<String>.from(json['attachments'])
+              : null,
+      estimatedDuration:
+          json['estimated_duration'] != null
+              ? (json['estimated_duration'] is String
+                  ? double.tryParse(json['estimated_duration'])
+                  : (json['estimated_duration'] as num?)?.toDouble())
+              : null,
+      actualDuration:
+          json['actual_duration'] != null
+              ? (json['actual_duration'] is String
+                  ? double.tryParse(json['actual_duration'])
+                  : (json['actual_duration'] as num?)?.toDouble())
+              : null,
+      cost:
+          json['cost'] != null
+              ? (json['cost'] is String
+                  ? double.tryParse(json['cost'])
+                  : (json['cost'] as num?)?.toDouble())
+              : null,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
       createdBy: json['created_by'],
@@ -106,6 +132,7 @@ class Intervention {
       'start_date': startDate?.toIso8601String(),
       'end_date': endDate?.toIso8601String(),
       'location': location,
+      if (clientId != null) 'client_id': clientId,
       'client_name': clientName,
       'client_phone': clientPhone,
       'client_email': clientEmail,
@@ -321,8 +348,12 @@ class InterventionStats {
       onSiteInterventions: json['on_site_interventions'] ?? 0,
       averageDuration: (json['average_duration'] ?? 0.0).toDouble(),
       totalCost: (json['total_cost'] ?? 0.0).toDouble(),
-      interventionsByMonth: Map<String, int>.from(json['interventions_by_month'] ?? {}),
-      interventionsByPriority: Map<String, int>.from(json['interventions_by_priority'] ?? {}),
+      interventionsByMonth: Map<String, int>.from(
+        json['interventions_by_month'] ?? {},
+      ),
+      interventionsByPriority: Map<String, int>.from(
+        json['interventions_by_priority'] ?? {},
+      ),
     );
   }
 }

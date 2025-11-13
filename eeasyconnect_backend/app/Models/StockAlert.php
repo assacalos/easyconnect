@@ -12,21 +12,12 @@ class StockAlert extends Model
     protected $fillable = [
         'stock_id',
         'type',
-        'priority',
         'status',
         'message',
-        'notes',
-        'triggered_at',
-        'acknowledged_at',
-        'resolved_at',
-        'acknowledged_by',
-        'resolved_by'
     ];
 
     protected $casts = [
-        'triggered_at' => 'datetime',
-        'acknowledged_at' => 'datetime',
-        'resolved_at' => 'datetime'
+        // Pas de casts nécessaires selon la migration
     ];
 
     // Relations

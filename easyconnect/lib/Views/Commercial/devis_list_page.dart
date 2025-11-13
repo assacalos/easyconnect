@@ -213,6 +213,14 @@ class DevisListPage extends StatelessWidget {
                 ButtonBar(
                   alignment: MainAxisAlignment.end,
                   children: [
+                    // Bouton Modifier pour les devis validés ou rejetés
+                    if (status == 2 || status == 3) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
+                        tooltip: 'Modifier',
+                      ),
+                    ],
                     // Bouton PDF seulement pour les devis validés
                     if (status == 2) ...[
                       IconButton(

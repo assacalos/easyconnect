@@ -29,6 +29,18 @@ class BonCommandeItem {
     'date_livraison': dateLivraison?.toIso8601String(),
   };
 
+  /// Méthode pour créer un JSON uniquement avec les champs nécessaires à la création
+  Map<String, dynamic> toJsonForCreate() => {
+    'designation': designation,
+    'unite': unite,
+    'quantite': quantite,
+    'prix_unitaire': prixUnitaire,
+    if (description != null && description!.isNotEmpty)
+      'description': description,
+    if (dateLivraison != null)
+      'date_livraison': dateLivraison!.toIso8601String(),
+  };
+
   factory BonCommandeItem.fromJson(Map<String, dynamic> json) =>
       BonCommandeItem(
         id: json['id'],
@@ -136,6 +148,23 @@ class BonCommande {
     'numero_facture': numeroFacture,
     'est_facture': estFacture ? 1 : 0,
     'est_livre': estLivre ? 1 : 0,
+  };
+
+  /// Méthode pour créer un JSON uniquement avec les champs nécessaires à la création
+  Map<String, dynamic> toJsonForCreate() => {
+    'reference': reference,
+    'client_id': clientId,
+    'user_id': commercialId,
+    'date_creation': dateCreation.toIso8601String(),
+    if (dateLivraisonPrevue != null)
+      'date_livraison_prevue': dateLivraisonPrevue!.toIso8601String(),
+    if (adresseLivraison != null && adresseLivraison!.isNotEmpty)
+      'adresse_livraison': adresseLivraison,
+    if (notes != null && notes!.isNotEmpty) 'notes': notes,
+    'items': items.map((item) => item.toJsonForCreate()).toList(),
+    if (remiseGlobale != null) 'remise_globale': remiseGlobale,
+    if (tva != null) 'tva': tva,
+    if (conditions != null && conditions!.isNotEmpty) 'conditions': conditions,
   };
 
   factory BonCommande.fromJson(Map<String, dynamic> json) => BonCommande(

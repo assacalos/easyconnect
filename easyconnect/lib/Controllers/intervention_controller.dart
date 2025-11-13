@@ -3,10 +3,14 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/services/intervention_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 
 class InterventionController extends GetxController {
   final InterventionService _interventionService = InterventionService();
   final AuthController _authController = Get.find<AuthController>();
+  final ClientService _clientService = ClientService();
 
   // Variables observables
   final RxList<Intervention> interventions = <Intervention>[].obs;
@@ -47,6 +51,11 @@ class InterventionController extends GetxController {
   final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
   final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
   final RxList<String> selectedAttachments = <String>[].obs;
+
+  // Variables pour la gestion des clients validés
+  final RxList<Client> availableClients = <Client>[].obs;
+  final RxBool isLoadingClients = false.obs;
+  final Rx<Client?> selectedClient = Rx<Client?>(null);
 
   @override
   void onInit() {
@@ -104,7 +113,6 @@ class InterventionController extends GetxController {
       final pending = await _interventionService.getPendingInterventions();
       pendingInterventions.assignAll(pending);
     } catch (e) {
-      print('Erreur lors du chargement des interventions en attente: $e');
     }
   }
 
@@ -114,7 +122,6 @@ class InterventionController extends GetxController {
       final stats = await _interventionService.getInterventionStats();
       interventionStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -135,6 +142,7 @@ class InterventionController extends GetxController {
             locationController.text.trim().isEmpty
                 ? null
                 : locationController.text.trim(),
+        clientId: selectedClient.value?.id,
         clientName:
             clientNameController.text.trim().isEmpty
                 ? null
@@ -165,15 +173,12 @@ class InterventionController extends GetxController {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
-
-      print('🔄 Création d\'intervention: ${intervention.title}');
       final createdIntervention = await _interventionService.createIntervention(
         intervention,
       );
-      print('✅ Intervention créée avec ID: ${createdIntervention.id}');
-
       await loadInterventions();
       await loadInterventionStats();
+      _notifyDashboard();
 
       Get.snackbar(
         'Succès',
@@ -185,7 +190,6 @@ class InterventionController extends GetxController {
 
       clearForm();
     } catch (e) {
-      print('❌ Erreur lors de la création: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de créer l\'intervention: ${e.toString()}',
@@ -219,6 +223,7 @@ class InterventionController extends GetxController {
             locationController.text.trim().isEmpty
                 ? null
                 : locationController.text.trim(),
+        clientId: selectedClient.value?.id ?? intervention.clientId,
         clientName:
             clientNameController.text.trim().isEmpty
                 ? null
@@ -266,6 +271,7 @@ class InterventionController extends GetxController {
       await _interventionService.updateIntervention(updatedIntervention);
       await loadInterventions();
       await loadInterventionStats();
+      _notifyDashboard();
 
       Get.snackbar(
         'Succès',
@@ -302,6 +308,7 @@ class InterventionController extends GetxController {
         await loadInterventions();
         await loadInterventionStats();
         await loadPendingInterventions();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -339,6 +346,7 @@ class InterventionController extends GetxController {
         await loadInterventions();
         await loadInterventionStats();
         await loadPendingInterventions();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -375,6 +383,7 @@ class InterventionController extends GetxController {
       if (success) {
         await loadInterventions();
         await loadInterventionStats();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -414,6 +423,7 @@ class InterventionController extends GetxController {
       if (success) {
         await loadInterventions();
         await loadInterventionStats();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -475,6 +485,11 @@ class InterventionController extends GetxController {
     selectedStartDate.value = intervention.startDate;
     selectedEndDate.value = intervention.endDate;
     locationController.text = intervention.location ?? '';
+    // Si l'intervention a un clientId, charger le client
+    if (intervention.clientId != null) {
+      // On pourrait charger le client ici si nécessaire
+      // Pour l'instant, on garde juste les informations textuelles
+    }
     clientNameController.text = intervention.clientName ?? '';
     clientPhoneController.text = intervention.clientPhone ?? '';
     clientEmailController.text = intervention.clientEmail ?? '';
@@ -490,6 +505,17 @@ class InterventionController extends GetxController {
         intervention.actualDuration?.toString() ?? '';
     selectedAttachments.assignAll(intervention.attachments ?? []);
     selectedIntervention.value = intervention;
+  }
+
+  // Notifier le dashboard technicien d'un changement
+  void _notifyDashboard() {
+    try {
+      if (Get.isRegistered<TechnicienDashboardController>()) {
+        final dashboardController = Get.find<TechnicienDashboardController>();
+        dashboardController.refreshPendingEntities();
+      }
+    } catch (e) {
+    }
   }
 
   // Vider le formulaire
@@ -515,6 +541,7 @@ class InterventionController extends GetxController {
     actualDurationController.clear();
     selectedAttachments.clear();
     selectedIntervention.value = null;
+    clearSelectedClient();
   }
 
   // Rechercher
@@ -598,6 +625,48 @@ class InterventionController extends GetxController {
     {'value': 'completed', 'label': 'Terminée', 'color': Colors.green},
     {'value': 'rejected', 'label': 'Rejetée', 'color': Colors.red},
   ];
+
+  // Charger les clients validés
+  Future<void> loadValidatedClients() async {
+    try {
+      isLoadingClients.value = true;
+      final clients = await _clientService.getClients(
+        status: 1,
+      ); // Status 1 = Validé
+      availableClients.value = clients;
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les clients validés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoadingClients.value = false;
+    }
+  }
+
+  // Sélection d'un client
+  void selectClientForIntervention(Client client) {
+    selectedClient.value = client;
+    // Remplir automatiquement les champs du formulaire
+    final displayName = '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+    clientNameController.text =
+        displayName.isEmpty
+            ? (client.nomEntreprise ?? 'Client #${client.id}')
+            : displayName;
+    clientEmailController.text = client.email ?? '';
+    clientPhoneController.text = client.contact ?? '';
+    // Si le client a une adresse, on peut l'utiliser pour la localisation
+    if (client.adresse != null && locationController.text.isEmpty) {
+      locationController.text = client.adresse!;
+    }
+  }
+
+  // Effacer la sélection du client
+  void clearSelectedClient() {
+    selectedClient.value = null;
+    // Ne pas effacer les champs manuellement remplis
+  }
 
   // Vérifier les permissions
   bool get canManageInterventions {

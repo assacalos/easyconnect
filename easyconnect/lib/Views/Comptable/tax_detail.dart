@@ -43,7 +43,7 @@ class TaxDetail extends StatelessWidget {
               _buildInfoRow(
                 Icons.calendar_today,
                 'Date d\'échéance',
-                DateFormat('dd/MM/yyyy').format(tax.dueDate),
+                DateFormat('dd/MM/yyyy').format(tax.dueDateTime),
               ),
               _buildInfoRow(Icons.flag, 'Statut', tax.statusText),
             ]),
@@ -110,7 +110,9 @@ class TaxDetail extends StatelessWidget {
                   _buildStatusChip(),
                   const SizedBox(height: 8),
                   Text(
-                    'Créé le ${DateFormat('dd/MM/yyyy').format(tax.createdAt)}',
+                    tax.createdAt != null
+                        ? 'Créé le ${DateFormat('dd/MM/yyyy').format(tax.createdAt!)}'
+                        : 'Date de création non disponible',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ],
@@ -225,25 +227,39 @@ class TaxDetail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildHistoryItem(
-              Icons.add,
-              'Créé',
-              DateFormat('dd/MM/yyyy à HH:mm').format(tax.createdAt),
-              Colors.blue,
-            ),
-            if (tax.isValidated)
+            if (tax.createdAt != null)
+              _buildHistoryItem(
+                Icons.add,
+                'Créé',
+                DateFormat('dd/MM/yyyy à HH:mm').format(tax.createdAt!),
+                Colors.blue,
+              ),
+            if (tax.isValidated && tax.validatedAt != null)
               _buildHistoryItem(
                 Icons.check_circle,
                 'Validé',
-                DateFormat('dd/MM/yyyy à HH:mm').format(tax.updatedAt),
+                DateFormat(
+                  'dd/MM/yyyy à HH:mm',
+                ).format(DateTime.parse(tax.validatedAt!)),
                 Colors.green,
               ),
-            if (tax.isRejected)
+            if (tax.isRejected && tax.rejectedAt != null)
               _buildHistoryItem(
                 Icons.cancel,
                 'Rejeté',
-                DateFormat('dd/MM/yyyy à HH:mm').format(tax.updatedAt),
+                DateFormat(
+                  'dd/MM/yyyy à HH:mm',
+                ).format(DateTime.parse(tax.rejectedAt!)),
                 Colors.red,
+              ),
+            if (tax.isPaid && tax.paidAt != null)
+              _buildHistoryItem(
+                Icons.payment,
+                'Payé',
+                DateFormat(
+                  'dd/MM/yyyy à HH:mm',
+                ).format(DateTime.parse(tax.paidAt!)),
+                Colors.blue,
               ),
           ],
         ),
@@ -342,29 +358,45 @@ class TaxDetail extends StatelessWidget {
   }
 
   Color _getStatusColor() {
-    switch (tax.status) {
-      case 'pending':
-        return Colors.orange;
-      case 'validated':
-        return Colors.green;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
+    final statusLower = tax.status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Colors.orange;
     }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Colors.green;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Colors.red;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Colors.blue;
+    }
+    return Colors.grey;
   }
 
   IconData _getStatusIcon() {
-    switch (tax.status) {
-      case 'pending':
-        return Icons.schedule;
-      case 'validated':
-        return Icons.check_circle;
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.help;
+    final statusLower = tax.status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Icons.schedule;
     }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Icons.check_circle;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Icons.cancel;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Icons.payment;
+    }
+    return Icons.help;
   }
 
   void _showDeleteDialog() {

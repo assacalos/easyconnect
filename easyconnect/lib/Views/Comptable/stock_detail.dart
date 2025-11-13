@@ -45,12 +45,12 @@ class StockDetail extends StatelessWidget {
               _buildInfoRow(Icons.inventory, 'Nom', stock.name),
               _buildInfoRow(Icons.qr_code, 'SKU', stock.sku),
               _buildInfoRow(Icons.category, 'Catégorie', stock.category),
-              _buildInfoRow(
-                Icons.description,
-                'Description',
-                stock.description,
-              ),
-              _buildInfoRow(Icons.straighten, 'Unité', stock.unit),
+              if (stock.description != null && stock.description!.isNotEmpty)
+                _buildInfoRow(
+                  Icons.description,
+                  'Description',
+                  stock.description!,
+                ),
               _buildInfoRow(
                 Icons.euro,
                 'Prix unitaire',
@@ -70,12 +70,12 @@ class StockDetail extends StatelessWidget {
               _buildInfoRow(
                 Icons.warning,
                 'Seuil minimum',
-                '${stock.minQuantity.toStringAsFixed(0)} ${stock.unit}',
+                '${stock.minQuantity.toStringAsFixed(0)}',
               ),
               _buildInfoRow(
                 Icons.trending_up,
                 'Seuil maximum',
-                '${stock.maxQuantity.toStringAsFixed(0)} ${stock.unit}',
+                '${stock.maxQuantity.toStringAsFixed(0)}',
               ),
               _buildInfoRow(
                 Icons.account_balance_wallet,
@@ -118,22 +118,11 @@ class StockDetail extends StatelessWidget {
                 ),
             ]),
 
-            // Informations supplémentaires
-            if (stock.location != null ||
-                stock.supplier != null ||
-                stock.barcode != null) ...[
+            // Commentaire si disponible
+            if (stock.commentaire != null && stock.commentaire!.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _buildInfoCard('Informations supplémentaires', [
-                if (stock.location != null)
-                  _buildInfoRow(
-                    Icons.location_on,
-                    'Emplacement',
-                    stock.location!,
-                  ),
-                if (stock.supplier != null)
-                  _buildInfoRow(Icons.business, 'Fournisseur', stock.supplier!),
-                if (stock.barcode != null)
-                  _buildInfoRow(Icons.qr_code, 'Code-barres', stock.barcode!),
+              _buildInfoCard('Commentaire', [
+                _buildInfoRow(Icons.note, 'Commentaire', stock.commentaire!),
               ]),
             ],
 
@@ -359,7 +348,7 @@ class StockDetail extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  '${movement.quantity.toStringAsFixed(0)} ${stock.unit}',
+                  movement.quantity.toStringAsFixed(0),
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 if (movement.reason != null)

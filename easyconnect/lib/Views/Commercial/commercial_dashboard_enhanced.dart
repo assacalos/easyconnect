@@ -48,6 +48,12 @@ class CommercialDashboardEnhanced
       icon: Icons.shopping_cart,
       route: '/bon-commandes',
     ),
+    FavoriteItem(
+      id: 'bon_commandes_fournisseur',
+      label: 'Bons de Commande Fournisseur',
+      icon: Icons.inventory_2,
+      route: '/bons-de-commande-fournisseur',
+    ),
   ];
 
   @override
@@ -146,6 +152,13 @@ class CommercialDashboardEnhanced
                 icon: Icons.shopping_cart,
                 color: Colors.purple,
                 onTap: () => Get.toNamed('/bon-commandes'),
+              ),
+              _buildPendingCard(
+                title: 'Bons de Commande Fournisseur',
+                count: 0, // TODO: Ajouter le compteur dans le contrôleur
+                icon: Icons.inventory_2,
+                color: Colors.indigo,
+                onTap: () => Get.toNamed('/bons-de-commande-fournisseur'),
               ),
             ],
           ),
@@ -504,25 +517,23 @@ class CommercialDashboardEnhanced
   }
 
   @override
-  List<Widget> buildDrawerItems() {
+  List<Widget> buildDrawerItems(BuildContext context) {
     return [
-      ListTile(
-        leading: const Icon(Icons.dashboard, color: Colors.white70),
-        title: const Text(
-          'Tableau de bord',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () {},
-      ),
       ListTile(
         leading: const Icon(Icons.people, color: Colors.white70),
         title: const Text('Clients', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/clients'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/clients');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.description, color: Colors.white70),
         title: const Text('Devis', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/devis'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/devis');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.assignment_turned_in, color: Colors.white70),
@@ -530,7 +541,10 @@ class CommercialDashboardEnhanced
           'Bordereaux',
           style: TextStyle(color: Colors.white70),
         ),
-        onTap: () => Get.toNamed('/bordereaux'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/bordereaux');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.shopping_cart, color: Colors.white70),
@@ -538,7 +552,10 @@ class CommercialDashboardEnhanced
           'Bons de Commande',
           style: TextStyle(color: Colors.white70),
         ),
-        onTap: () => Get.toNamed('/bon-commandes'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/bon-commandes');
+        },
       ),
     ];
   }

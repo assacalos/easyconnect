@@ -35,14 +35,8 @@ class InterventionService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('📊 Réponse getInterventions - Status: ${response.statusCode}');
-      print('📊 Body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        print('📊 Données reçues: $responseData');
-
         // Gérer différents formats de réponse
         List<dynamic> data;
         if (responseData is Map<String, dynamic>) {
@@ -64,7 +58,6 @@ class InterventionService {
         'Erreur lors de la récupération des interventions: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.getInterventions: $e');
       throw Exception('Erreur lors de la récupération des interventions: $e');
     }
   }
@@ -89,7 +82,6 @@ class InterventionService {
         'Erreur lors de la récupération de l\'intervention: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.getInterventionById: $e');
       throw Exception('Erreur lors de la récupération de l\'intervention: $e');
     }
   }
@@ -98,11 +90,6 @@ class InterventionService {
   Future<Intervention> createIntervention(Intervention intervention) async {
     try {
       final token = storage.read('token');
-      print(
-        '🔍 Création d\'intervention - Token: ${token != null ? 'présent' : 'absent'}',
-      );
-      print('🔍 URL: $baseUrl/interventions-create');
-      print('🔍 Données: ${intervention.toJson()}');
 
       final response = await http.post(
         Uri.parse('$baseUrl/interventions-create'),
@@ -113,15 +100,10 @@ class InterventionService {
         },
         body: json.encode(intervention.toJson()),
       );
-
-      print('📊 Réponse - Status: ${response.statusCode}');
-      print('📊 Body: ${response.body}');
-
       if (response.statusCode == 201) {
         return Intervention.fromJson(json.decode(response.body)['data']);
       } else if (response.statusCode == 500) {
         // En cas d'erreur 500, simuler une création locale
-        print('⚠️ Erreur 500 - Simulation de création locale');
         return Intervention(
           id: DateTime.now().millisecondsSinceEpoch,
           title: intervention.title,
@@ -131,6 +113,7 @@ class InterventionService {
           status: 'pending',
           scheduledDate: intervention.scheduledDate,
           location: intervention.location,
+          clientId: intervention.clientId,
           clientName: intervention.clientName,
           clientPhone: intervention.clientPhone,
           clientEmail: intervention.clientEmail,
@@ -149,13 +132,10 @@ class InterventionService {
         'Erreur lors de la création de l\'intervention: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
-      print('❌ Erreur InterventionService.createIntervention: $e');
-
       // En cas d'erreur de connexion, simuler une création locale
       if (e.toString().contains('SocketException') ||
           e.toString().contains('Timeout') ||
           e.toString().contains('Connection')) {
-        print('⚠️ Erreur de connexion - Simulation de création locale');
         return Intervention(
           id: DateTime.now().millisecondsSinceEpoch,
           title: intervention.title,
@@ -165,6 +145,7 @@ class InterventionService {
           status: 'pending',
           scheduledDate: intervention.scheduledDate,
           location: intervention.location,
+          clientId: intervention.clientId,
           clientName: intervention.clientName,
           clientPhone: intervention.clientPhone,
           clientEmail: intervention.clientEmail,
@@ -205,7 +186,6 @@ class InterventionService {
         'Erreur lors de la mise à jour de l\'intervention: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.updateIntervention: $e');
       throw Exception('Erreur lors de la mise à jour de l\'intervention: $e');
     }
   }
@@ -227,7 +207,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.approveIntervention: $e');
       return false;
     }
   }
@@ -252,7 +231,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.rejectIntervention: $e');
       return false;
     }
   }
@@ -274,7 +252,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.startIntervention: $e');
       return false;
     }
   }
@@ -307,7 +284,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.completeIntervention: $e');
       return false;
     }
   }
@@ -327,7 +303,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.deleteIntervention: $e');
       return false;
     }
   }
@@ -344,15 +319,10 @@ class InterventionService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('📊 Réponse getInterventionStats - Status: ${response.statusCode}');
-      print('📊 Body: ${response.body}');
-
       if (response.statusCode == 200) {
         return InterventionStats.fromJson(json.decode(response.body)['data']);
       } else if (response.statusCode == 404) {
         // En cas d'erreur 404, retourner des statistiques vides
-        print('⚠️ Statistiques non trouvées (404) - Retour de données vides');
         return InterventionStats(
           totalInterventions: 0,
           pendingInterventions: 0,
@@ -372,7 +342,6 @@ class InterventionService {
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.getInterventionStats: $e');
       // Retourner des données de test en cas d'erreur
       return InterventionStats(
         totalInterventions: 0,
@@ -412,7 +381,6 @@ class InterventionService {
         'Erreur lors de la récupération des interventions en attente: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.getPendingInterventions: $e');
       throw Exception(
         'Erreur lors de la récupération des interventions en attente: $e',
       );
@@ -442,7 +410,6 @@ class InterventionService {
         'Erreur lors de la récupération des interventions du technicien: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur InterventionService.getTechnicianInterventions: $e');
       throw Exception(
         'Erreur lors de la récupération des interventions du technicien: $e',
       );
@@ -465,7 +432,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.addAttachment: $e');
       return false;
     }
   }
@@ -486,7 +452,6 @@ class InterventionService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur InterventionService.removeAttachment: $e');
       return false;
     }
   }

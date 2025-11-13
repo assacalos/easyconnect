@@ -47,15 +47,15 @@ class ReportingList extends StatelessWidget {
                       'Aucun rapport trouvé',
                       style: TextStyle(fontSize: 18, color: Colors.grey),
                     ),
-                SizedBox(height: 8),
-                Text(
-                  'Créez votre premier rapport',
-                  style: TextStyle(color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text(
+                      'Créez votre premier rapport',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        }
+              );
+            }
 
             return ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -155,24 +155,6 @@ class ReportingList extends StatelessWidget {
             // Actions
             Row(
               children: [
-                if (report.status == 'draft' &&
-                    (userRole == report.userId ||
-                        userRole == Roles.ADMIN ||
-                        userRole == Roles.PATRON)) ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => controller.submitReport(report.id),
-                      icon: const Icon(Icons.send, size: 16),
-                      label: const Text('Soumettre'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.blue,
-                        side: const BorderSide(color: Colors.blue),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-
                 if (report.status == 'submitted' &&
                     (userRole == Roles.ADMIN || userRole == Roles.PATRON)) ...[
                   Expanded(
@@ -213,10 +195,6 @@ class ReportingList extends StatelessWidget {
     String label;
 
     switch (status) {
-      case 'draft':
-        color = Colors.orange;
-        label = 'Brouillon';
-        break;
       case 'submitted':
         color = Colors.blue;
         label = 'Soumis';

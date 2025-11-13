@@ -72,7 +72,6 @@ class LeaveController extends GetxController {
       final types = await _leaveService.getLeaveTypes();
       leaveTypes.value = types;
     } catch (e) {
-      print('Erreur lors du chargement des types de congés: $e');
     }
   }
 
@@ -91,7 +90,6 @@ class LeaveController extends GetxController {
         },
       ];
     } catch (e) {
-      print('Erreur lors du chargement des employés: $e');
     }
   }
 
@@ -123,7 +121,6 @@ class LeaveController extends GetxController {
       leaveRequests.value = requests;
       applyFilters();
     } catch (e) {
-      print('Erreur lors du chargement des demandes: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de charger les demandes de congés',
@@ -143,7 +140,6 @@ class LeaveController extends GetxController {
       );
       leaveStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -254,7 +250,6 @@ class LeaveController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de la demande: $e');
-      print('Erreur createLeaveRequest: $e');
     }
   }
 
@@ -281,7 +276,6 @@ class LeaveController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
-      print('Erreur approveLeaveRequest: $e');
     }
   }
 
@@ -308,7 +302,6 @@ class LeaveController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
-      print('Erreur rejectLeaveRequest: $e');
     }
   }
 
@@ -329,7 +322,6 @@ class LeaveController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'annulation: $e');
-      print('Erreur cancelLeaveRequest: $e');
     }
   }
 
@@ -350,7 +342,6 @@ class LeaveController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la suppression: $e');
-      print('Erreur deleteLeaveRequest: $e');
     }
   }
 
@@ -426,7 +417,6 @@ class LeaveController extends GetxController {
       );
       return result['has_conflicts'] == true;
     } catch (e) {
-      print('Erreur lors de la vérification des conflits: $e');
       return false;
     }
   }

@@ -2,410 +2,456 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/Models/tax_model.dart';
+import 'package:intl/intl.dart';
 
-class TaxList extends StatelessWidget {
+class TaxList extends StatefulWidget {
   const TaxList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    print('🏗️ TaxList: build() appelé');
+  State<TaxList> createState() => _TaxListState();
+}
 
-    final TaxController controller = Get.find<TaxController>();
-    print('✅ TaxList: TaxController trouvé');
+class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
+  final TaxController controller = Get.find<TaxController>();
+  late TabController _tabController;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _updateFilter();
+        });
+      }
+    });
+    controller.loadTaxes();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _updateFilter() {
+    String status;
+    switch (_tabController.index) {
+      case 0: // Tous
+        status = 'all';
+        break;
+      case 1: // En attente
+        status = 'en_attente';
+        break;
+      case 2: // Validés
+        status = 'valide';
+        break;
+      case 3: // Rejetés
+        status = 'rejete';
+        break;
+      case 4: // Payés
+        status = 'paid';
+        break;
+      default:
+        status = 'all';
+    }
+    controller.filterByStatus(status);
+  }
+
+  List<Tax> get _filteredTaxes {
+    List<Tax> filtered = List<Tax>.from(controller.allTaxes);
+
+    // Filtrer par statut selon l'onglet actif (normalisation vers les 4 statuts)
+    switch (_tabController.index) {
+      case 0: // Tous
+        // Ne pas filtrer, garder toutes les taxes
+        break;
+      case 1: // En attente
+        filtered =
+            filtered.where((t) {
+              final statusLower = t.status.toLowerCase();
+              return t.isPending ||
+                  statusLower == 'en_attente' ||
+                  statusLower == 'pending' ||
+                  statusLower == 'draft' ||
+                  statusLower == 'declared';
+            }).toList();
+        break;
+      case 2: // Validés
+        filtered =
+            filtered.where((t) {
+              final statusLower = t.status.toLowerCase();
+              return t.isValidated ||
+                  statusLower == 'valide' ||
+                  statusLower == 'validated';
+            }).toList();
+        break;
+      case 3: // Rejetés
+        filtered =
+            filtered.where((t) {
+              final statusLower = t.status.toLowerCase();
+              return t.isRejected ||
+                  statusLower == 'rejete' ||
+                  statusLower == 'rejected';
+            }).toList();
+        break;
+      case 4: // Payés
+        filtered =
+            filtered.where((t) {
+              final statusLower = t.status.toLowerCase();
+              return t.isPaid || statusLower == 'paye' || statusLower == 'paid';
+            }).toList();
+        break;
+    }
+
+    // Filtrer par recherche
+    if (_searchQuery.isNotEmpty) {
+      filtered =
+          filtered
+              .where(
+                (tax) =>
+                    tax.name.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    (tax.category?.toLowerCase().contains(
+                          _searchQuery.toLowerCase(),
+                        ) ??
+                        false) ||
+                    (tax.description?.toLowerCase().contains(
+                          _searchQuery.toLowerCase(),
+                        ) ??
+                        false),
+              )
+              .toList();
+    }
+
+    return filtered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestion des Taxes et Impôts'),
-        backgroundColor: Colors.deepPurple,
+        title: const Text('Taxes et Impôts'),
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => controller.loadTaxes(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () {
-              print('🐛 DEBUG: État du contrôleur');
-              print('📊 allTaxes.length: ${controller.allTaxes.length}');
-              print('📊 taxes.length: ${controller.taxes.length}');
-              print('📊 selectedStatus: ${controller.selectedStatus.value}');
-              print('📊 searchQuery: "${controller.searchQuery.value}"');
-              print('📊 isLoading: ${controller.isLoading.value}');
-              controller.loadTaxes();
-            },
+            onPressed: controller.loadTaxes,
+            tooltip: 'Actualiser',
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Tous', icon: Icon(Icons.list)),
+            Tab(text: 'En attente', icon: Icon(Icons.pending)),
+            Tab(text: 'Validés', icon: Icon(Icons.check_circle)),
+            Tab(text: 'Rejetés', icon: Icon(Icons.cancel)),
+            Tab(text: 'Payés', icon: Icon(Icons.payment)),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          // Statistiques rapides
-          _buildQuickStats(controller),
-
-          // Onglets de statut
-          _buildStatusTabs(controller),
+          // Barre de recherche
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Rechercher par nom ou description...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon:
+                    _searchQuery.isNotEmpty
+                        ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                        : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onChanged: (value) {
+                setState(() => _searchQuery = value);
+              },
+            ),
+          ),
 
           // Liste des taxes
-          Expanded(child: _buildTaxList(controller)),
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _filteredTaxes.isEmpty
+                  ? const Center(child: Text('Aucune taxe trouvée'))
+                  : ListView.builder(
+                    itemCount: _filteredTaxes.length,
+                    itemBuilder: (context, index) {
+                      final tax = _filteredTaxes[index];
+                      return _buildTaxCard(tax, formatCurrency);
+                    },
+                  );
+            }),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(controller),
-        backgroundColor: Colors.deepPurple,
-        child: const Icon(Icons.add, color: Colors.white),
+        onPressed: () => Get.toNamed('/taxes/new'),
+        tooltip: 'Nouvelle taxe',
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget _buildQuickStats(TaxController controller) {
-    return Obx(() {
-      if (controller.taxStats.value == null) {
-        return const SizedBox.shrink();
-      }
-
-      final stats = controller.taxStats.value!;
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+  Widget _buildTaxCard(Tax tax, NumberFormat formatCurrency) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: _getStatusColor(tax.status),
+          child: Icon(_getStatusIcon(tax.status), color: Colors.white),
+        ),
+        title: Text(
+          tax.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total',
-                stats.total.toString(),
-                Icons.receipt,
-                Colors.blue,
+            Text('Montant: ${formatCurrency.format(tax.amount)}'),
+            Text('Date d\'échéance: ${_formatDate(tax.dueDateTime)}'),
+            if (tax.description != null && tax.description!.isNotEmpty)
+              Text('Description: ${tax.description}'),
+            if (tax.status == 'rejected' &&
+                tax.rejectionReason != null &&
+                tax.rejectionReason!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${tax.rejectionReason}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bouton Détail
+            IconButton(
+              icon: const Icon(Icons.info_outline, color: Colors.blue),
+              onPressed: () => _showTaxDetails(tax),
+              tooltip: 'Voir détails',
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'En attente',
-                stats.pending.toString(),
-                Icons.schedule,
-                Colors.orange,
-              ),
+            // Bouton Modifier
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.orange),
+              onPressed: () => _showEditDialog(tax),
+              tooltip: 'Modifier',
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Validés',
-                stats.validated.toString(),
-                Icons.check_circle,
-                Colors.green,
-              ),
+            // Menu pour actions supplémentaires
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'validate') {
+                  _showValidateDialog(tax);
+                } else if (value == 'reject') {
+                  _showRejectDialog(tax);
+                } else if (value == 'mark_paid') {
+                  _showMarkPaidDialog(tax);
+                } else if (value == 'delete') {
+                  _showDeleteDialog(tax);
+                }
+              },
+              itemBuilder: (context) {
+                final items = <PopupMenuEntry<String>>[];
+                // Afficher les options selon le statut normalisé
+                if (tax.isPending) {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'validate',
+                      child: ListTile(
+                        leading: Icon(Icons.check, color: Colors.green),
+                        title: Text('Valider'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  );
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'reject',
+                      child: ListTile(
+                        leading: Icon(Icons.close, color: Colors.red),
+                        title: Text('Rejeter'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  );
+                }
+                if (tax.isValidated && !tax.isPaid) {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'mark_paid',
+                      child: ListTile(
+                        leading: Icon(Icons.payment, color: Colors.blue),
+                        title: Text('Marquer payé'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  );
+                }
+                items.add(
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: Icon(Icons.delete, color: Colors.red),
+                      title: Text('Supprimer'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                );
+                return items;
+              },
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Rejetés',
-                stats.rejected.toString(),
-                Icons.cancel,
-                Colors.red,
-              ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(tax.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    tax.statusText,
+                    style: TextStyle(
+                      color: _getStatusColor(tax.status),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  formatCurrency.format(tax.amount),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      );
-    });
-  }
-
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          Text(
-            title,
-            style: TextStyle(fontSize: 10, color: color),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        onTap: () => _showTaxDetails(tax),
       ),
     );
   }
 
-  Widget _buildStatusTabs(TaxController controller) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(child: _buildStatusTab('Tous', 'all', controller)),
-          const SizedBox(width: 8),
-          Expanded(child: _buildStatusTab('En attente', 'pending', controller)),
-          const SizedBox(width: 8),
-          Expanded(child: _buildStatusTab('Validés', 'validated', controller)),
-          const SizedBox(width: 8),
-          Expanded(child: _buildStatusTab('Rejetés', 'rejected', controller)),
-        ],
-      ),
-    );
+  Color _getStatusColor(String status) {
+    final statusLower = status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Colors.orange;
+    }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Colors.green;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Colors.red;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Colors.blue;
+    }
+    return Colors.grey;
   }
 
-  Widget _buildStatusTab(
-    String label,
-    String status,
-    TaxController controller,
-  ) {
-    return Obx(() {
-      final isSelected = controller.selectedStatus.value == status;
-      return GestureDetector(
-        onTap: () => controller.filterByStatus(status),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.deepPurple : Colors.grey[200],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? Colors.deepPurple : Colors.grey[300]!,
-            ),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      );
-    });
+  IconData _getStatusIcon(String status) {
+    final statusLower = status.toLowerCase();
+    if (statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'declared' ||
+        statusLower == 'calculated') {
+      return Icons.pending;
+    }
+    if (statusLower == 'valide' || statusLower == 'validated') {
+      return Icons.check_circle;
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return Icons.cancel;
+    }
+    if (statusLower == 'paid' || statusLower == 'paye') {
+      return Icons.payment;
+    }
+    return Icons.help;
   }
 
-  Widget _buildTaxList(TaxController controller) {
-    return Obx(() {
-      print('🔄 TaxList: _buildTaxList() - Obx rebuild');
-      print('⏳ TaxList: isLoading = ${controller.isLoading.value}');
-      print('📊 TaxList: taxes.length = ${controller.taxes.length}');
-
-      if (controller.isLoading.value) {
-        print('⏳ TaxList: Affichage du loading...');
-        return const Center(child: CircularProgressIndicator());
-      }
-
-      if (controller.taxes.isEmpty) {
-        print('📭 TaxList: Aucune taxe trouvée');
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.receipt_outlined, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucune taxe trouvée',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Commencez par ajouter une taxe',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-        );
-      }
-
-      print(
-        '📋 TaxList: Affichage de la liste avec ${controller.taxes.length} taxes',
-      );
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.taxes.length,
-        itemBuilder: (context, index) {
-          final tax = controller.taxes[index];
-          print('💰 TaxList: Affichage de la taxe $index: ${tax.name}');
-          return _buildTaxCard(tax, controller);
-        },
-      );
-    });
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 
-  Widget _buildTaxCard(Tax tax, TaxController controller) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => _showTaxDetails(tax, controller),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+  void _showTaxDetails(Tax tax) {
+    Get.dialog(
+      AlertDialog(
+        title: Text(tax.name),
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // En-tête avec nom et statut
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      tax.name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  _buildStatusChip(tax),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Informations de la taxe
-              Row(
-                children: [
-                  Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Montant: ${tax.amount.toStringAsFixed(2)} €',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 4),
-
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Date: ${tax.dueDate.day}/${tax.dueDate.month}/${tax.dueDate.year}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              ),
-
-              if (tax.description != null) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.description, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        tax.description ?? '',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
-              // Actions
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (tax.status == 'pending') ...[
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Valider'),
-                      onPressed: () => _showValidateDialog(tax, controller),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(tax, controller),
-                    ),
-                  ],
-                  TextButton.icon(
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Modifier'),
-                    onPressed: () => _showEditDialog(tax, controller),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('Supprimer'),
-                    onPressed: () => _showDeleteDialog(tax, controller),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  ),
-                ],
-              ),
+              Text('Montant: ${tax.amount.toStringAsFixed(2)} €'),
+              Text('Date d\'échéance: ${_formatDate(tax.dueDateTime)}'),
+              Text('Statut: ${tax.statusText}'),
+              if (tax.description != null && tax.description!.isNotEmpty)
+                Text('Description: ${tax.description}'),
+              if (tax.rejectionReason != null &&
+                  tax.rejectionReason!.isNotEmpty)
+                Text('Raison du rejet: ${tax.rejectionReason}'),
             ],
           ),
         ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
+        ],
       ),
     );
   }
 
-  Widget _buildStatusChip(Tax tax) {
-    Color color;
-    String statusText;
-
-    switch (tax.status) {
-      case 'pending':
-        color = Colors.orange;
-        statusText = 'En attente';
-        break;
-      case 'validated':
-        color = Colors.green;
-        statusText = 'Validé';
-        break;
-      case 'rejected':
-        color = Colors.red;
-        statusText = 'Rejeté';
-        break;
-      default:
-        color = Colors.grey;
-        statusText = 'Inconnu';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Text(
-        statusText,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
+  void _showEditDialog(Tax tax) {
+    Get.toNamed('/taxes/${tax.id}/edit', arguments: tax);
   }
 
-  // Dialogues
-  void _showCreateDialog(TaxController controller) {
-    Get.toNamed('/taxes/new');
-  }
-
-  void _showTaxDetails(Tax tax, TaxController controller) {
-    Get.toNamed('/taxes/${tax.id}', arguments: tax);
-  }
-
-  void _showValidateDialog(Tax tax, TaxController controller) {
+  void _showValidateDialog(Tax tax) {
     Get.dialog(
       AlertDialog(
         title: const Text('Valider la taxe'),
-        content: const Text('Êtes-vous sûr de vouloir valider cette taxe ?'),
+        content: Text('Valider la taxe "${tax.name}" ?'),
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
@@ -413,6 +459,7 @@ class TaxList extends StatelessWidget {
               controller.validateTax(tax);
               Get.back();
             },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Valider'),
           ),
         ],
@@ -420,20 +467,21 @@ class TaxList extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(Tax tax, TaxController controller) {
+  void _showRejectDialog(Tax tax) {
     final reasonController = TextEditingController();
+
     Get.dialog(
       AlertDialog(
         title: const Text('Rejeter la taxe'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Motif du rejet :'),
-            const SizedBox(height: 8),
+            Text('Rejeter la taxe "${tax.name}" ?'),
+            const SizedBox(height: 16),
             TextField(
               controller: reasonController,
               decoration: const InputDecoration(
-                hintText: 'Expliquez la raison du rejet...',
+                labelText: 'Raison du rejet *',
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
@@ -447,12 +495,11 @@ class TaxList extends StatelessWidget {
               if (reasonController.text.trim().isNotEmpty) {
                 controller.rejectTax(tax, reasonController.text.trim());
                 Get.back();
+              } else {
+                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Rejeter'),
           ),
         ],
@@ -460,15 +507,31 @@ class TaxList extends StatelessWidget {
     );
   }
 
-  void _showEditDialog(Tax tax, TaxController controller) {
-    Get.toNamed('/taxes/${tax.id}/edit', arguments: tax);
+  void _showMarkPaidDialog(Tax tax) {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Marquer comme payé'),
+        content: Text('Marquer la taxe "${tax.name}" comme payée ?'),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () {
+              controller.markTaxAsPaid(tax);
+              Get.back();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            child: const Text('Confirmer'),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _showDeleteDialog(Tax tax, TaxController controller) {
+  void _showDeleteDialog(Tax tax) {
     Get.dialog(
       AlertDialog(
         title: const Text('Supprimer la taxe'),
-        content: Text('Êtes-vous sûr de vouloir supprimer ${tax.name} ?'),
+        content: Text('Supprimer la taxe "${tax.name}" ?'),
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
@@ -476,10 +539,7 @@ class TaxList extends StatelessWidget {
               controller.deleteTax(tax);
               Get.back();
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Supprimer'),
           ),
         ],

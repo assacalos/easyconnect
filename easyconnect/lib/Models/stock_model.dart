@@ -1,46 +1,36 @@
 class Stock {
   final int? id;
+  final String category; // Catégorie (string directement dans la table)
   final String name;
-  final String description;
-  final String category;
-  final String sku; // Stock Keeping Unit
-  final double quantity;
+  final String? description; // Nullable selon la DB
+  final String sku; // Stock Keeping Unit (unique)
+  final String unit; // Unité de mesure (requis par le backend)
+  final double quantity; // Quantité actuelle
   final double minQuantity; // Seuil minimum
   final double maxQuantity; // Seuil maximum
-  final double unitPrice;
-  final String unit; // Unité de mesure (pièce, kg, litre, etc.)
-  final String? location; // Emplacement dans l'entrepôt
-  final String? supplier; // Fournisseur principal
-  final String? barcode; // Code-barres
-  final String? image; // Image du produit
-  final bool isActive;
-  final String status; // 'pending', 'approved', 'rejected'
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? comments;
+  final double unitPrice; // Prix unitaire
+  final String? commentaire; // Commentaires (nullable)
+  final String status; // 'en_attente', 'valide', 'rejete'
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final List<StockMovement>? movements;
 
-  const Stock({
+  Stock({
     this.id,
-    required this.name,
-    required this.description,
     required this.category,
+    required this.name,
+    this.description,
     required this.sku,
+    required this.unit,
     required this.quantity,
     required this.minQuantity,
     required this.maxQuantity,
     required this.unitPrice,
-    required this.unit,
-    this.location,
-    this.supplier,
-    this.barcode,
-    this.image,
-    this.isActive = true,
-    this.status = 'pending',
-    required this.createdAt,
-    required this.updatedAt,
+    this.commentaire,
+    this.status = 'en_attente',
+    this.createdAt,
+    this.updatedAt,
     this.movements,
-    this.comments,
   });
 
   // Méthode utilitaire pour parser les doubles de manière sécurisée
@@ -68,65 +58,106 @@ class Stock {
     return DateTime.now();
   }
 
-  factory Stock.fromJson(Map<String, dynamic> json) {
-    return Stock(
-      id: json['id'],
-      name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      category: json['category'] ?? '',
-      sku: json['sku'] ?? '',
-      quantity: Stock._parseDouble(json['quantity']),
-      minQuantity: _parseDouble(json['min_quantity']),
-      maxQuantity: _parseDouble(json['max_quantity']),
-      unitPrice: _parseDouble(json['unit_price']),
-      unit: json['unit'] ?? 'pièce',
-      location: json['location'],
-      supplier: json['supplier'],
-      barcode: json['barcode'],
-      image: json['image'],
-      isActive: json['is_active'] ?? true,
-      status: json['status'] ?? 'pending',
-      createdAt: Stock._parseDateTime(json['created_at']),
-      updatedAt: _parseDateTime(json['updated_at']),
-      movements:
-          json['movements'] != null
-              ? (json['movements'] as List)
-                  .map((m) => StockMovement.fromJson(m))
-                  .toList()
-              : null,
-      comments: json['commentaire'],
-    );
+  factory Stock.fromJson(Map<String, dynamic> jsonData) {
+    try {
+      final stock = Stock(
+        id:
+            jsonData['id'] != null
+                ? int.tryParse(jsonData['id'].toString())
+                : null,
+        category: jsonData['category']?.toString() ?? '',
+        name: jsonData['name']?.toString() ?? '',
+        description: jsonData['description']?.toString(),
+        sku: jsonData['sku']?.toString() ?? '',
+        unit: jsonData['unit']?.toString() ?? 'pièce',
+        // Supporte les deux formats : modèle Laravel (current_quantity) et migration (quantity)
+        quantity: Stock._parseDouble(
+          jsonData['current_quantity'] ?? jsonData['quantity'] ?? 0,
+        ),
+        // Supporte les deux formats : modèle Laravel (minimum_quantity) et migration (min_quantity)
+        minQuantity: Stock._parseDouble(
+          jsonData['minimum_quantity'] ??
+              jsonData['min_quantity'] ??
+              jsonData['minQuantity'] ??
+              0,
+        ),
+        // Supporte les deux formats : modèle Laravel (maximum_quantity) et migration (max_quantity)
+        maxQuantity: Stock._parseDouble(
+          jsonData['maximum_quantity'] ??
+              jsonData['max_quantity'] ??
+              jsonData['maxQuantity'] ??
+              0,
+        ),
+        // Supporte les deux formats : modèle Laravel (unit_cost) et migration (unit_price)
+        unitPrice: Stock._parseDouble(
+          jsonData['unit_cost'] ??
+              jsonData['unit_price'] ??
+              jsonData['unitPrice'] ??
+              0,
+        ),
+        // Supporte les deux formats : modèle Laravel (notes) et migration (commentaire)
+        commentaire:
+            jsonData['notes']?.toString() ??
+            jsonData['commentaire']?.toString() ??
+            jsonData['comments']?.toString(),
+        status: jsonData['status']?.toString() ?? 'en_attente',
+        createdAt: Stock._parseDateTime(jsonData['created_at']),
+        updatedAt: Stock._parseDateTime(jsonData['updated_at']),
+        movements:
+            jsonData['movements'] != null
+                ? (jsonData['movements'] as List)
+                    .map((m) => StockMovement.fromJson(m))
+                    .toList()
+                : null,
+      );
+      // Stocker le JSON original pour accéder aux champs calculés du backend
+      stock.json = jsonData;
+      return stock;
+    } catch (e) {
+      rethrow;
+    }
   }
 
+  // Sérialisation JSON pour création/mise à jour
+  // Utilise les noms exacts du modèle Laravel ($fillable)
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+    final jsonData = <String, dynamic>{
+      if (id != null) 'id': id,
       'name': name,
-      'description': description,
+      if (description != null && description!.isNotEmpty)
+        'description': description,
       'category': category,
       'sku': sku,
-      'quantity': quantity,
-      'min_quantity': minQuantity,
-      'max_quantity': maxQuantity,
-      'unit_price': unitPrice,
-      'unit': unit,
-      'location': location,
-      'supplier': supplier,
-      'barcode': barcode,
-      'image': image,
-      'is_active': isActive,
+      'quantity': quantity, // Migration DB: quantity (requis par validation)
+      'current_quantity': quantity, // Modèle Laravel: current_quantity
+      'min_quantity': minQuantity, // Migration DB: min_quantity (au cas où)
+      'minimum_quantity': minQuantity, // Modèle Laravel: minimum_quantity
+      'max_quantity': maxQuantity, // Migration DB: max_quantity (au cas où)
+      'maximum_quantity': maxQuantity, // Modèle Laravel: maximum_quantity
+      'unit_price': unitPrice, // Migration DB: unit_price (au cas où)
+      'unit_cost': unitPrice, // Modèle Laravel: unit_cost
+      if (commentaire != null && commentaire!.isNotEmpty)
+        'commentaire': commentaire, // Migration DB: commentaire (au cas où)
+      if (commentaire != null && commentaire!.isNotEmpty)
+        'notes': commentaire, // Modèle Laravel: notes
       'status': status,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-      'movements': movements?.map((m) => m.toJson()).toList(),
-      'commentaire': comments,
+      // Tous les champs requis sont toujours envoyés, même s'ils sont à 0
     };
+    // Note: 'unit' n'est pas envoyé car il n'existe pas dans le backend
+    return jsonData;
   }
 
   // Propriétés calculées
   bool get isLowStock => quantity <= minQuantity;
   bool get isOutOfStock => quantity <= 0;
-  bool get isOverstocked => quantity >= maxQuantity;
+  bool get isOverstocked => maxQuantity > 0 && quantity >= maxQuantity;
+
+  // Pour compatibilité avec l'ancien code
+  double get currentQuantity => quantity;
+  double get minimumQuantity => minQuantity;
+  double get maximumQuantity => maxQuantity;
+  double get unitCost => unitPrice;
+  String get notes => commentaire ?? '';
 
   String get stockStatus {
     if (isOutOfStock) return 'Rupture';
@@ -174,17 +205,20 @@ class Stock {
     }
   }
 
-  // Méthodes pour gérer le statut d'approbation
-  bool get isPending => status == 'pending';
-  bool get isApproved => status == 'approved';
-  bool get isRejected => status == 'rejected';
+  // Méthodes pour gérer le statut (en_attente, valide, rejete)
+  bool get isPending => status == 'en_attente' || status == 'pending';
+  bool get isValidated => status == 'valide' || status == 'approved';
+  bool get isRejected => status == 'rejete' || status == 'rejected';
 
-  String get approvalStatusText {
-    switch (status) {
+  String get statusText {
+    switch (status.toLowerCase()) {
+      case 'en_attente':
       case 'pending':
         return 'En attente';
+      case 'valide':
       case 'approved':
-        return 'Approuvé';
+        return 'Validé';
+      case 'rejete':
       case 'rejected':
         return 'Rejeté';
       default:
@@ -192,12 +226,15 @@ class Stock {
     }
   }
 
-  String get approvalStatusIcon {
-    switch (status) {
+  String get statusIcon {
+    switch (status.toLowerCase()) {
+      case 'en_attente':
       case 'pending':
-        return 'pending';
+        return 'schedule';
+      case 'valide':
       case 'approved':
         return 'check_circle';
+      case 'rejete':
       case 'rejected':
         return 'cancel';
       default:
@@ -205,12 +242,15 @@ class Stock {
     }
   }
 
-  String get approvalStatusColor {
-    switch (status) {
+  String get statusColor {
+    switch (status.toLowerCase()) {
+      case 'en_attente':
       case 'pending':
         return 'orange';
+      case 'valide':
       case 'approved':
         return 'green';
+      case 'rejete':
       case 'rejected':
         return 'red';
       default:
@@ -218,11 +258,56 @@ class Stock {
     }
   }
 
+  // Pour compatibilité avec l'ancien code
+  bool get isActive => isValidated;
+  bool get isInactive => isPending;
+  bool get isDiscontinued => isRejected;
+
   double get totalValue => quantity * unitPrice;
 
-  String get formattedQuantity => '${quantity.toStringAsFixed(0)} $unit';
-  String get formattedUnitPrice => '${unitPrice.toStringAsFixed(2)} fcfa';
-  String get formattedTotalValue => '${totalValue.toStringAsFixed(2)} fcfa';
+  String get formattedQuantity => '${quantity.toStringAsFixed(2)}';
+  String get formattedUnitPrice => '${unitPrice.toStringAsFixed(2)} FCFA';
+  String get formattedTotalValue => '${totalValue.toStringAsFixed(2)} FCFA';
+
+  // Stocker le JSON original pour accéder aux champs calculés du backend
+  Map<String, dynamic>? json;
+
+  // Méthode de copie
+  Stock copyWith({
+    int? id,
+    String? category,
+    String? name,
+    String? description,
+    String? sku,
+    String? unit,
+    double? quantity,
+    double? minQuantity,
+    double? maxQuantity,
+    double? unitPrice,
+    String? commentaire,
+    String? status,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    List<StockMovement>? movements,
+  }) {
+    return Stock(
+      id: id ?? this.id,
+      category: category ?? this.category,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      sku: sku ?? this.sku,
+      unit: unit ?? this.unit,
+      quantity: quantity ?? this.quantity,
+      minQuantity: minQuantity ?? this.minQuantity,
+      maxQuantity: maxQuantity ?? this.maxQuantity,
+      unitPrice: unitPrice ?? this.unitPrice,
+      commentaire: commentaire ?? this.commentaire,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      movements: movements ?? this.movements,
+    )..json = this.json;
+  }
 
   get user => null;
 }

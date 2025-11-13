@@ -131,12 +131,14 @@ class InvoiceController extends GetxController {
 
       // Charger les statistiques
       await loadInvoiceStats();
-    } catch (e) {
-      print('Erreur lors du chargement des factures: $e');
+    } catch (e, stackTrace) {
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les factures',
+        'Impossible de charger les factures: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
       );
     } finally {
       isLoading.value = false;
@@ -152,7 +154,6 @@ class InvoiceController extends GetxController {
       final pendingList = await _invoiceService.getPendingInvoices();
       pendingInvoices.value = pendingList;
     } catch (e) {
-      print('Erreur lors du chargement des factures en attente: $e');
     }
   }
 
@@ -169,7 +170,6 @@ class InvoiceController extends GetxController {
       );
       invoiceStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -179,7 +179,6 @@ class InvoiceController extends GetxController {
       final templatesList = await _invoiceService.getInvoiceTemplates();
       templates.value = templatesList;
     } catch (e) {
-      print('Erreur lors du chargement des modèles: $e');
     }
   }
 
@@ -245,33 +244,43 @@ class InvoiceController extends GetxController {
                 ? null
                 : termsController.text.trim(),
       );
+      // Vérifier si la réponse contient success == true
+      final isSuccess = result['success'] == true || result['success'] == 1;
 
-      if (result['success'] == true) {
-        // Effacer le formulaire
-        clearForm();
-
-        // Recharger les factures
-        await loadInvoices();
-
-        // Fermer le formulaire et afficher le message de succès
-        Get.back();
+      if (isSuccess) {
+        // Afficher le message de succès d'abord
         Get.snackbar(
           'Succès',
-          'Facture créée avec succès',
+          result['message'] ?? 'Facture créée avec succès',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 2),
         );
+
+        // Effacer le formulaire
+        clearForm();
+
+        // Fermer le formulaire
+        if (Get.isDialogOpen ?? false || Navigator.canPop(Get.context!)) {
+          Get.back();
+        }
+
+        // Recharger les factures après un court délai
+        await Future.delayed(const Duration(milliseconds: 300));
+        await loadInvoices();
       } else {
         Get.snackbar(
           'Erreur',
-          result['message'] ?? 'Erreur lors de la création',
+          result['message'] ?? 'Erreur lors de la création de la facture',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
         );
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de la facture: $e');
-      print('Erreur createInvoice: $e');
     } finally {
       isCreating.value = false;
     }
@@ -296,7 +305,6 @@ class InvoiceController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
-      print('Erreur submitInvoiceToPatron: $e');
     } finally {
       isSubmitting.value = false;
     }
@@ -322,7 +330,6 @@ class InvoiceController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
-      print('Erreur approveInvoice: $e');
     }
   }
 
@@ -343,7 +350,6 @@ class InvoiceController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
-      print('Erreur rejectInvoice: $e');
     }
   }
 
@@ -564,8 +570,21 @@ class InvoiceController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Trouver la facture
-      final invoice = invoices.firstWhere((i) => i.id == invoiceId);
+      // Récupérer la facture depuis la liste ou depuis l'API si pas trouvée
+      InvoiceModel invoice;
+      try {
+        invoice = invoices.firstWhere((i) => i.id == invoiceId);
+      } catch (e) {
+        // Si pas trouvée dans la liste, la charger depuis l'API
+        invoice = await _invoiceService.getInvoiceById(invoiceId);
+      }
+
+      // Vérifier que la facture a des items
+      if (invoice.items.isEmpty) {
+        throw Exception(
+          'Impossible de générer le PDF: la facture n\'a pas d\'articles',
+        );
+      }
 
       // Charger les données nécessaires
       final items =
@@ -573,7 +592,7 @@ class InvoiceController extends GetxController {
               .map(
                 (item) => {
                   'designation': item.description,
-                  'unite': 'unité',
+                  'unite': item.unit ?? 'unité',
                   'quantite': item.quantity,
                   'prix_unitaire': item.unitPrice,
                   'montant_total': item.totalPrice,
@@ -585,21 +604,33 @@ class InvoiceController extends GetxController {
       await PdfService().generateFacturePdf(
         facture: {
           'reference': invoice.invoiceNumber,
-          'date_creation': invoice.createdAt,
+          'date_creation': invoice.invoiceDate,
+          'date_echeance': invoice.dueDate,
           'montant_ht': invoice.subtotal,
           'tva': invoice.taxRate,
+          'montant_tva': invoice.taxAmount,
           'total_ttc': invoice.totalAmount,
         },
         items: items,
         client: {
-          'nom': invoice.clientName,
-          'prenom': '',
+          'nom': invoice.clientName.split(' ').firstOrNull ?? '',
+          'prenom':
+              invoice.clientName.split(' ').length > 1
+                  ? invoice.clientName.split(' ').sublist(1).join(' ')
+                  : '',
           'nom_entreprise': invoice.clientName,
           'email': invoice.clientEmail,
           'contact': '',
           'adresse': invoice.clientAddress,
         },
-        commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
+        commercial: {
+          'nom': invoice.commercialName.split(' ').firstOrNull ?? 'Commercial',
+          'prenom':
+              invoice.commercialName.split(' ').length > 1
+                  ? invoice.commercialName.split(' ').sublist(1).join(' ')
+                  : '',
+          'email': '',
+        },
       );
 
       Get.snackbar(
@@ -607,16 +638,116 @@ class InvoiceController extends GetxController {
         'PDF généré avec succès',
         backgroundColor: Colors.green,
         colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
+    } catch (e, stackTrace) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de générer le PDF: ${e.toString()}',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+      rethrow;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Charger une facture pour modification
+  Future<void> loadInvoiceForEdit(int invoiceId) async {
+    try {
+      isLoading.value = true;
+      final invoice = await _invoiceService.getInvoiceById(invoiceId);
+
+      // Remplir le formulaire avec les données de la facture
+      selectedClientId.value = invoice.clientId;
+      selectedClientName.value = invoice.clientName;
+      selectedClientEmail.value = invoice.clientEmail;
+      selectedClientAddress.value = invoice.clientAddress;
+      invoiceDate.value = invoice.invoiceDate;
+      dueDate.value = invoice.dueDate;
+      taxRate.value = invoice.taxRate;
+      invoiceItems.value = invoice.items;
+      notes.value = invoice.notes ?? '';
+      terms.value = invoice.terms ?? '';
+
+      notesController.text = invoice.notes ?? '';
+      termsController.text = invoice.terms ?? '';
+    } catch (e) {
+      Get.snackbar('Erreur', 'Impossible de charger la facture: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Modifier une facture
+  Future<void> updateInvoice(int invoiceId) async {
+    try {
+      if (invoiceItems.isEmpty) {
+        Get.snackbar('Erreur', 'Veuillez ajouter au moins un article');
+        return;
+      }
+
+      isCreating.value = true;
+
+      final user = _authController.userAuth.value;
+      if (user == null) return;
+
+      final subtotal = invoiceItems.fold(
+        0.0,
+        (sum, item) => sum + item.totalPrice,
+      );
+      final taxAmount = subtotal * (taxRate.value / 100);
+      final totalAmount = subtotal + taxAmount;
+
+      final result = await _invoiceService.updateInvoice(
+        invoiceId: invoiceId,
+        data: {
+          'date_facture': invoiceDate.value.toIso8601String().split('T')[0],
+          'date_echeance': dueDate.value.toIso8601String().split('T')[0],
+          'subtotal': subtotal,
+          'tax_rate': taxRate.value,
+          'tax_amount': taxAmount,
+          'total_amount': totalAmount,
+          'notes':
+              notesController.text.trim().isEmpty
+                  ? null
+                  : notesController.text.trim(),
+          'terms':
+              termsController.text.trim().isEmpty
+                  ? null
+                  : termsController.text.trim(),
+          'items': invoiceItems.map((item) => item.toJson()).toList(),
+        },
+      );
+
+      if (result['success'] == true) {
+        Get.snackbar(
+          'Succès',
+          'Facture modifiée avec succès',
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+
+        if (Navigator.canPop(Get.context!)) {
+          Get.back();
+        }
+
+        await loadInvoices();
+      } else {
+        Get.snackbar(
+          'Erreur',
+          result['message'] ?? 'Erreur lors de la modification',
+        );
+      }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Erreur lors de la génération du PDF: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        'Erreur lors de la modification de la facture: $e',
       );
     } finally {
-      isLoading.value = false;
+      isCreating.value = false;
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
+import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
@@ -45,7 +46,21 @@ class InterventionList extends StatelessWidget {
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => Get.to(() => const InterventionForm()),
+          onPressed: () async {
+            await Get.to(() => const InterventionForm());
+            // Recharger les données après retour du formulaire
+            controller.loadInterventions();
+            // Notifier le dashboard technicien pour qu'il se mette à jour
+            if (Get.isRegistered<TechnicienDashboardController>()) {
+              try {
+                final dashboardController =
+                    Get.find<TechnicienDashboardController>();
+                dashboardController.refreshPendingEntities();
+              } catch (e) {
+                print('⚠️ DashboardController non disponible: $e');
+              }
+            }
+          },
           icon: const Icon(Icons.add),
           label: const Text('Nouvelle Intervention'),
           backgroundColor: Colors.deepPurple,
@@ -165,8 +180,21 @@ class InterventionList extends StatelessWidget {
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap:
-            () => Get.to(() => InterventionDetail(intervention: intervention)),
+        onTap: () async {
+          await Get.to(() => InterventionDetail(intervention: intervention));
+          // Recharger les données après retour de la page de détails
+          controller.loadInterventions();
+          // Notifier le dashboard technicien pour qu'il se mette à jour
+          if (Get.isRegistered<TechnicienDashboardController>()) {
+            try {
+              final dashboardController =
+                  Get.find<TechnicienDashboardController>();
+              dashboardController.refreshPendingEntities();
+            } catch (e) {
+              print('⚠️ DashboardController non disponible: $e');
+            }
+          }
+        },
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),

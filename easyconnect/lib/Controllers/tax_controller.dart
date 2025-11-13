@@ -19,15 +19,10 @@ class TaxController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    print('🔧 TaxController: onInit() appelé');
 
     try {
       _taxService = Get.find<TaxService>();
-      print('✅ TaxController: TaxService trouvé');
     } catch (e) {
-      print(
-        '❌ TaxController: Erreur lors de la récupération du TaxService: $e',
-      );
     }
 
     loadTaxes();
@@ -36,16 +31,10 @@ class TaxController extends GetxController {
 
   // Charger toutes les taxes
   Future<void> loadTaxes() async {
-    print('🔄 TaxController: loadTaxes() appelé');
     try {
       isLoading.value = true;
-      print('⏳ TaxController: Chargement en cours...');
-
       // Tester la connectivité d'abord
-      print('🧪 TaxController: Test de connectivité...');
       final isConnected = await _taxService.testTaxConnection();
-      print('🔗 TaxController: Connectivité: ${isConnected ? "✅" : "❌"}');
-
       if (!isConnected) {
         throw Exception('Impossible de se connecter à l\'API Laravel');
       }
@@ -55,17 +44,9 @@ class TaxController extends GetxController {
         status: null, // Toujours charger toutes les taxes
         search: null, // Pas de recherche côté serveur
       );
-
-      print('📦 TaxController: ${loadedTaxes.length} taxes reçues du service');
-
       // Stocker toutes les taxes
       allTaxes.assignAll(loadedTaxes);
       applyFilters();
-
-      print(
-        '✅ TaxController: Liste mise à jour avec ${taxes.length} taxes filtrées',
-      );
-
       if (loadedTaxes.isNotEmpty) {
         Get.snackbar(
           'Succès',
@@ -77,8 +58,6 @@ class TaxController extends GetxController {
         );
       }
     } catch (e) {
-      print('❌ TaxController: Erreur lors du chargement: $e');
-
       // Vider la liste des impôts en cas d'erreur
       allTaxes.value = [];
       taxes.value = [];
@@ -116,7 +95,6 @@ class TaxController extends GetxController {
       );
     } finally {
       isLoading.value = false;
-      print('🏁 TaxController: Chargement terminé');
     }
   }
 
@@ -125,58 +103,48 @@ class TaxController extends GetxController {
     try {
       final stats = await _taxService.getTaxStats();
       taxStats.value = stats;
-      print('📊 TaxController: Statistiques chargées depuis l\'API');
     } catch (e) {
-      print('❌ TaxController: Erreur lors du chargement des statistiques: $e');
     }
   }
 
   // Tester la connectivité à l'API
   Future<bool> testTaxConnection() async {
     try {
-      print('🧪 TaxController: Test de connectivité API...');
       return await _taxService.testTaxConnection();
     } catch (e) {
-      print('❌ TaxController: Erreur de test de connectivité: $e');
       return false;
     }
   }
 
   // Appliquer les filtres côté client
   void applyFilters() {
-    print('🔍 TaxController: applyFilters() appelé');
-    print('📊 TaxController: Statut sélectionné: ${selectedStatus.value}');
-    print('🔍 TaxController: Recherche: "${searchQuery.value}"');
-    print('📦 TaxController: Total taxes: ${allTaxes.length}');
-
     List<Tax> filteredTaxes = List.from(allTaxes);
-    print('🔄 TaxController: Liste initiale: ${filteredTaxes.length} taxes');
-
-    // Filtrer par statut
+    // Filtrer par statut (normalisation vers les 4 statuts)
     if (selectedStatus.value != 'all') {
-      print('🔍 TaxController: Filtrage par statut: ${selectedStatus.value}');
       final beforeCount = filteredTaxes.length;
       filteredTaxes =
           filteredTaxes.where((tax) {
-            final matches = tax.status == selectedStatus.value;
+            bool matches = false;
+            final statusLower = selectedStatus.value.toLowerCase();
+            if (statusLower == 'en_attente') {
+              matches = tax.isPending;
+            } else if (statusLower == 'valide') {
+              matches = tax.isValidated;
+            } else if (statusLower == 'rejete') {
+              matches = tax.isRejected;
+            } else if (statusLower == 'paid') {
+              matches = tax.isPaid;
+            }
             if (!matches) {
-              print(
-                '❌ TaxController: Taxe "${tax.name}" rejetée (statut: ${tax.status})',
-              );
             }
             return matches;
           }).toList();
-      print(
-        '📊 TaxController: Après filtrage par statut: $beforeCount → ${filteredTaxes.length}',
-      );
     } else {
-      print('📊 TaxController: Pas de filtrage par statut (all)');
     }
 
     // Filtrer par recherche
     if (searchQuery.value.isNotEmpty) {
       final query = searchQuery.value.toLowerCase();
-      print('🔍 TaxController: Filtrage par recherche: "$query"');
       final beforeCount = filteredTaxes.length;
       filteredTaxes =
           filteredTaxes.where((tax) {
@@ -184,35 +152,17 @@ class TaxController extends GetxController {
                 tax.name.toLowerCase().contains(query) ||
                 (tax.description?.toLowerCase().contains(query) ?? false);
             if (!matches) {
-              print(
-                '❌ TaxController: Taxe "${tax.name}" rejetée par recherche',
-              );
             }
             return matches;
           }).toList();
-      print(
-        '🔍 TaxController: Après filtrage par recherche: $beforeCount → ${filteredTaxes.length}',
-      );
     } else {
-      print('🔍 TaxController: Pas de filtrage par recherche');
     }
 
     taxes.assignAll(filteredTaxes);
-    print(
-      '✅ TaxController: Filtrage terminé - ${taxes.length} taxes affichées',
-    );
-
     // Debug final
     if (taxes.isEmpty) {
-      print('⚠️ TaxController: AUCUNE TAXE AFFICHÉE !');
-      print('📊 TaxController: allTaxes.length = ${allTaxes.length}');
-      print('📊 TaxController: selectedStatus = ${selectedStatus.value}');
-      print('📊 TaxController: searchQuery = "${searchQuery.value}"');
-
       if (allTaxes.isNotEmpty) {
-        print('📋 TaxController: Statuts disponibles:');
         for (final tax in allTaxes) {
-          print('   - ${tax.name}: ${tax.status}');
         }
       }
     }
@@ -220,48 +170,49 @@ class TaxController extends GetxController {
 
   // Rechercher
   void searchTaxes(String query) {
-    print('🔍 TaxController: searchTaxes("$query") appelé');
     searchQuery.value = query;
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    print('🔍 TaxController: filterByStatus($status) appelé');
     selectedStatus.value = status;
-    print('📊 TaxController: Nouveau statut sélectionné: $status');
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Valider une taxe
-  Future<void> validateTax(Tax tax) async {
+  Future<void> validateTax(Tax tax, {String? validationComment}) async {
     try {
       isLoading.value = true;
-      print('✅ TaxController: validateTax(${tax.id}) appelé');
 
-      // Mettre à jour la taxe via l'API
-      final updatedTax = tax.copyWith(
-        status: 'validated',
-        updatedAt: DateTime.now(),
+      // Utiliser l'endpoint dédié pour la validation
+      final success = await _taxService.approveTax(
+        tax.id!,
+        notes: validationComment,
       );
 
-      await _taxService.updateTax(updatedTax);
+      if (success) {
+        // Recharger les données
+        await loadTaxes();
+        await loadTaxStats();
 
-      // Recharger les données
-      await loadTaxes();
-      await loadTaxStats();
-
-      Get.snackbar(
-        'Succès',
-        'Taxe validée avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+        Get.snackbar(
+          'Succès',
+          'Taxe validée avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors de la validation');
+      }
     } catch (e) {
-      print('❌ TaxController: Erreur lors de la validation: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de valider la taxe',
+        'Impossible de valider la taxe: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -269,35 +220,83 @@ class TaxController extends GetxController {
   }
 
   // Rejeter une taxe
-  Future<void> rejectTax(Tax tax, String reason) async {
+  Future<void> rejectTax(
+    Tax tax,
+    String reason, {
+    String? rejectionComment,
+  }) async {
     try {
       isLoading.value = true;
-      print('❌ TaxController: rejectTax(${tax.id}) appelé');
 
-      // Mettre à jour la taxe via l'API
-      final updatedTax = tax.copyWith(
-        status: 'rejected',
-        rejectionReason: reason,
-        updatedAt: DateTime.now(),
+      // Utiliser l'endpoint dédié pour le rejet
+      final success = await _taxService.rejectTax(
+        tax.id!,
+        reason: reason,
+        notes: rejectionComment,
       );
 
-      await _taxService.updateTax(updatedTax);
+      if (success) {
+        // Recharger les données
+        await loadTaxes();
+        await loadTaxStats();
 
-      // Recharger les données
-      await loadTaxes();
-      await loadTaxStats();
-
-      Get.snackbar(
-        'Succès',
-        'Taxe rejetée',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+        Get.snackbar(
+          'Succès',
+          'Taxe rejetée',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors du rejet');
+      }
     } catch (e) {
-      print('❌ TaxController: Erreur lors du rejet: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter la taxe',
+        'Impossible de rejeter la taxe: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Marquer une taxe comme payée
+  Future<void> markTaxAsPaid(Tax tax) async {
+    try {
+      isLoading.value = true;
+
+      // Utiliser le service pour marquer comme payé
+      final success = await _taxService.markTaxAsPaid(
+        tax.id!,
+        paymentMethod: 'manual',
+        notes: 'Marqué comme payé depuis l\'application',
+      );
+
+      if (success) {
+        // Recharger les données
+        await loadTaxes();
+        await loadTaxStats();
+
+        Get.snackbar(
+          'Succès',
+          'Taxe marquée comme payée avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors du marquage comme payé');
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de marquer la taxe comme payée: ${e.toString()}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -308,7 +307,6 @@ class TaxController extends GetxController {
   Future<void> deleteTax(Tax tax) async {
     try {
       isLoading.value = true;
-      print('🗑️ TaxController: deleteTax(${tax.id}) appelé');
 
       // Supprimer via l'API
       final success = await _taxService.deleteTax(tax.id!);
@@ -327,7 +325,6 @@ class TaxController extends GetxController {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      print('❌ TaxController: Erreur lors de la suppression: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de supprimer la taxe',

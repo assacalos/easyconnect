@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:easyconnect/utils/dashboard_filters.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
@@ -5,7 +6,6 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
-import 'package:easyconnect/services/commercial_dashboard_service.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/services/client_service.dart';
@@ -13,6 +13,10 @@ import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
+import 'package:easyconnect/Controllers/client_controller.dart';
+import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:easyconnect/Controllers/bordereau_controller.dart';
+import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 
 class CommercialDashboardController extends BaseDashboardController {
   var currentSection = 'dashboard'.obs;
@@ -20,8 +24,6 @@ class CommercialDashboardController extends BaseDashboardController {
   var selectedDepartment = 'all'.obs;
 
   // Service pour récupérer les données
-  final CommercialDashboardService _dashboardService =
-      CommercialDashboardService();
   final ClientService _clientService = Get.find<ClientService>();
   final DevisService _devisService = Get.find<DevisService>();
   final BordereauService _bordereauService = Get.find<BordereauService>();
@@ -54,6 +56,106 @@ class CommercialDashboardController extends BaseDashboardController {
   final totalRevenue = 0.0.obs;
   final pendingDevisAmount = 0.0.obs;
   final paidBordereauxAmount = 0.0.obs;
+
+  // Timers pour le rafraîchissement automatique
+  Timer? _setupTimer;
+  Timer? _refreshTimer;
+  bool _hasClientListener = false;
+  bool _hasDevisListener = false;
+  bool _hasBordereauListener = false;
+  bool _hasBonCommandeListener = false;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _trySetupListeners();
+
+    // Si les contrôleurs ne sont pas encore disponibles, réessayer périodiquement
+    _setupTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!_hasClientListener ||
+          !_hasDevisListener ||
+          !_hasBordereauListener ||
+          !_hasBonCommandeListener) {
+        _trySetupListeners();
+      } else {
+        // Une fois tous les listeners configurés, annuler le timer
+        _setupTimer?.cancel();
+      }
+    });
+
+    // Ajouter un rafraîchissement périodique automatique toutes les 20 secondes
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      refreshPendingEntities();
+    });
+  }
+
+  void _trySetupListeners() {
+    // Écouter les changements dans ClientController
+    if (!_hasClientListener) {
+      try {
+        if (Get.isRegistered<ClientController>()) {
+          final clientController = Get.find<ClientController>();
+          ever(clientController.clients, (_) {
+            refreshPendingEntities();
+          });
+          _hasClientListener = true;
+        }
+      } catch (e) {}
+    }
+
+    // Écouter les changements dans DevisController
+    if (!_hasDevisListener) {
+      try {
+        if (Get.isRegistered<DevisController>()) {
+          final devisController = Get.find<DevisController>();
+          ever(devisController.devis, (_) {
+            refreshPendingEntities();
+          });
+          _hasDevisListener = true;
+        }
+      } catch (e) {}
+    }
+
+    // Écouter les changements dans BordereauxController
+    if (!_hasBordereauListener) {
+      try {
+        if (Get.isRegistered<BordereauxController>()) {
+          final bordereauController = Get.find<BordereauxController>();
+          ever(bordereauController.bordereaux, (_) {
+            refreshPendingEntities();
+          });
+          _hasBordereauListener = true;
+        }
+      } catch (e) {}
+    }
+
+    // Écouter les changements dans BonCommandeController
+    if (!_hasBonCommandeListener) {
+      try {
+        if (Get.isRegistered<BonCommandeController>()) {
+          final bonCommandeController = Get.find<BonCommandeController>();
+          ever(bonCommandeController.bonCommandes, (_) {
+            refreshPendingEntities();
+          });
+          _hasBonCommandeListener = true;
+        }
+      } catch (e) {}
+    }
+  }
+
+  @override
+  void onClose() {
+    _setupTimer?.cancel();
+    _refreshTimer?.cancel();
+    super.onClose();
+  }
+
+  // Méthode pour recharger uniquement les entités en attente (appelée depuis l'extérieur)
+  Future<void> refreshPendingEntities() async {
+    await _loadPendingEntities();
+    await _loadValidatedEntities();
+    await _loadStatistics();
+  }
 
   // Statistiques originales
   List<StatCard> get stats => [
@@ -182,7 +284,6 @@ class CommercialDashboardController extends BaseDashboardController {
       updateChartData('devis', devisData);
       updateChartData('bordereaux', bordereauData);
     } catch (e) {
-      print('Erreur lors du chargement des données: $e');
     } finally {
       isLoading.value = false;
     }
@@ -203,7 +304,6 @@ class CommercialDashboardController extends BaseDashboardController {
       final bons = await _bonCommandeService.getBonCommandes();
       pendingBonCommandes.value = bons.where((b) => b.status == 0).length;
     } catch (e) {
-      print('Erreur lors du chargement des entités en attente: $e');
       pendingClients.value = 0;
       pendingDevis.value = 0;
       pendingBordereaux.value = 0;
@@ -225,7 +325,6 @@ class CommercialDashboardController extends BaseDashboardController {
       final bons = await _bonCommandeService.getBonCommandes();
       validatedBonCommandes.value = bons.length - pendingBonCommandes.value;
     } catch (e) {
-      print('Erreur lors du chargement des entités validées: $e');
       validatedClients.value = 0;
       validatedDevis.value = 0;
       validatedBordereaux.value = 0;
@@ -250,7 +349,6 @@ class CommercialDashboardController extends BaseDashboardController {
           .where((b) => b.status == 2)
           .fold(0.0, (sum, b) => sum + b.montantTTC);
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
       totalRevenue.value = 0.0;
       pendingDevisAmount.value = 0.0;
       paidBordereauxAmount.value = 0.0;

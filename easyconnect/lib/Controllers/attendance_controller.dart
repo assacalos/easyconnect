@@ -6,6 +6,7 @@ import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/services/location_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/utils/roles.dart';
 
 class AttendanceController extends GetxController {
   final AttendancePunchService _attendanceService = AttendancePunchService();
@@ -48,45 +49,37 @@ class AttendanceController extends GetxController {
   Future<void> loadAttendanceData() async {
     try {
       isLoading.value = true;
-      print('🔄 Début du chargement des données de pointage...');
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        print('❌ Utilisateur non connecté');
         return;
       }
 
-      print('👤 Utilisateur connecté: ${user.nom} (ID: ${user.id})');
+      // Charger l'historique de pointage
 
-      // Charger l'historique de pointage - utiliser getAttendances pour avoir tous les pointages
-      print('📡 Appel de getAttendances...');
-      final history = await _attendanceService.getAttendances(
-        userId: user.id, // Filtrer par utilisateur
-      );
+      // Si c'est un patron, charger tous les pointages, sinon seulement ceux de l'utilisateur
 
-      print('📊 Nombre de pointages récupérés: ${history.length}');
+      final history =
+          user.role == Roles.PATRON
+              ? await _attendanceService
+                  .getAttendances() // Tous les pointages pour le patron
+              : await _attendanceService.getAttendances(
+                userId: user.id,
+              ); // Pointages de l'utilisateur
+
+      if (history.isNotEmpty) {
+      } else {}
+      // Mettre à jour la liste observable (utiliser value pour déclencher la réactivité)
       attendanceHistory.value = history;
-
-      // Charger les statistiques
-      /* print('📈 Chargement des statistiques...');
-      final stats = await _attendanceService.getAttendanceStats(
-        userId: user.id,
-        startDate: DateTime.now().subtract(const Duration(days: 30)),
-        endDate: DateTime.now(),
-      );
-      attendanceStats.value = stats;
-      print('✅ Statistiques chargées'); */
 
       // Vérifier le statut actuel
       await checkCurrentStatus();
-      print('✅ Données de pointage chargées avec succès');
     } catch (e) {
-      print('❌ Erreur lors du chargement des données de pointage: $e');
-      Get.snackbar(
+      /*  Get.snackbar(
         'Erreur',
         'Impossible de charger les données de pointage: $e',
         snackPosition: SnackPosition.BOTTOM,
-      );
+      ); */
     } finally {
       isLoading.value = false;
     }
@@ -104,7 +97,6 @@ class AttendanceController extends GetxController {
       currentStatus.value =
           canPunchData['can_punch'] == true ? 'checked_out' : 'checked_in';
     } catch (e) {
-      print('Erreur lors de la vérification du statut: $e');
       currentStatus.value = 'unknown';
     }
   }
@@ -128,14 +120,14 @@ class AttendanceController extends GetxController {
       currentLocation.value = location;
 
       // Afficher un message de succès
-      Get.snackbar(
+      /*  Get.snackbar(
         'Succès',
         'Position obtenue avec succès',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
-      );
+      ); */
     } catch (e) {
       String errorMessage = 'Impossible d\'obtenir la position';
 
@@ -152,17 +144,16 @@ class AttendanceController extends GetxController {
       }
 
       locationError.value = errorMessage;
-      print('Erreur géolocalisation: $e');
 
       // Afficher l'erreur à l'utilisateur
-      Get.snackbar(
+      /* Get.snackbar(
         'Erreur de géolocalisation',
         errorMessage,
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 4),
-      );
+      ); */
     } finally {
       isLocationLoading.value = false;
     }
@@ -183,7 +174,6 @@ class AttendanceController extends GetxController {
       }
     } catch (e) {
       photoError.value = 'Erreur lors de la prise de photo: $e';
-      print('Erreur photo: $e');
     } finally {
       isPhotoLoading.value = false;
     }
@@ -201,12 +191,9 @@ class AttendanceController extends GetxController {
       }
 
       // Test de connectivité rapide
-      print('🔍 Test de connectivité API...');
-      try {
+      /* try {
         await _attendanceService.canPunch(type: 'check_in');
-        print('✅ Connectivité API confirmée');
       } catch (e) {
-        print('❌ Échec du test de connectivité');
         Get.snackbar(
           'Erreur de connexion',
           'Impossible de se connecter au serveur. Vérifiez votre connexion internet.',
@@ -215,7 +202,7 @@ class AttendanceController extends GetxController {
           snackPosition: SnackPosition.BOTTOM,
         );
         return;
-      }
+      } */
 
       // Vérifier si la géolocalisation est requise (toujours obligatoire dans le nouveau système)
       if (currentLocation.value == null) {
@@ -243,13 +230,13 @@ class AttendanceController extends GetxController {
 
       if (result['success'] == true) {
         currentStatus.value = 'checked_in';
-        Get.snackbar(
+        /* Get.snackbar(
           'Succès',
           'Pointage d\'arrivée enregistré',
           backgroundColor: Colors.green,
           colorText: Colors.white,
           snackPosition: SnackPosition.BOTTOM,
-        );
+        ); */
 
         // Recharger les données
         await loadAttendanceData();
@@ -259,44 +246,26 @@ class AttendanceController extends GetxController {
         notesController.clear();
         notes.value = '';
       } else {
-        String errorMessage = result['message'] ?? 'Erreur lors du pointage';
-        Get.snackbar(
+        // Erreur lors du pointage
+        /*  Get.snackbar(
           'Erreur de pointage',
-          errorMessage,
+          result['message'] ?? 'Erreur lors du pointage',
           backgroundColor: Colors.red,
           colorText: Colors.white,
           snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 5),
-        );
+        ); */
       }
     } catch (e) {
-      String errorMessage = 'Erreur lors du pointage d\'arrivée';
-
-      // Messages d'erreur plus spécifiques
-      if (e.toString().contains('Permission')) {
-        errorMessage = 'Permission de géolocalisation refusée';
-      } else if (e.toString().contains('timeout')) {
-        errorMessage = 'Délai d\'attente dépassé. Vérifiez votre connexion.';
-      } else if (e.toString().contains('404')) {
-        errorMessage =
-            'Service de pointage indisponible. Contactez l\'administrateur.';
-      } else if (e.toString().contains('500')) {
-        errorMessage = 'Erreur serveur. Réessayez plus tard.';
-      } else if (e.toString().contains('401') || e.toString().contains('403')) {
-        errorMessage = 'Session expirée. Veuillez vous reconnecter.';
-      } else {
-        errorMessage = 'Erreur: ${e.toString()}';
-      }
-
-      Get.snackbar(
+      // Erreur lors du pointage d'arrivée
+      /*  Get.snackbar(
         'Erreur de pointage',
-        errorMessage,
+        'Erreur lors du pointage d\'arrivée',
         backgroundColor: Colors.red,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
-      );
-      print('Erreur checkIn: $e');
+      ); */
     } finally {
       isCheckingIn.value = false;
     }
@@ -337,7 +306,6 @@ class AttendanceController extends GetxController {
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors du pointage de départ: $e');
-      print('Erreur checkOut: $e');
     } finally {
       isCheckingOut.value = false;
     }

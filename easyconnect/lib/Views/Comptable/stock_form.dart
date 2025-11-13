@@ -4,23 +4,37 @@ import 'package:easyconnect/Controllers/stock_controller.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 
-class StockForm extends StatelessWidget {
+class StockForm extends StatefulWidget {
   final Stock? stock;
 
   const StockForm({super.key, this.stock});
 
   @override
-  Widget build(BuildContext context) {
-    final StockController controller = Get.put(StockController());
+  State<StockForm> createState() => _StockFormState();
+}
 
+class _StockFormState extends State<StockForm> {
+  final StockController controller = Get.put(StockController());
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
     // Si on édite un stock existant, remplir le formulaire
-    if (stock != null) {
-      controller.fillForm(stock!);
+    if (widget.stock != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.fillForm(widget.stock!);
+      });
     }
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(stock == null ? 'Nouveau Produit' : 'Modifier le Produit'),
+        title: Text(
+          widget.stock == null ? 'Nouveau Produit' : 'Modifier le Produit',
+        ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
@@ -33,6 +47,7 @@ class StockForm extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
+          key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -91,7 +106,11 @@ class StockForm extends StatelessWidget {
                           child: Text(category['label'] as String),
                         );
                       }).toList(),
-                  onChanged: (value) => controller.selectCategory(value!),
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.selectCategory(value);
+                    }
+                  },
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'La catégorie est obligatoire';
@@ -125,61 +144,26 @@ class StockForm extends StatelessWidget {
               _buildSectionTitle('Informations de stock'),
               const SizedBox(height: 16),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: controller.quantityController,
-                      decoration: const InputDecoration(
-                        labelText: 'Quantité initiale *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.numbers),
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'La quantité est obligatoire';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'La quantité doit être un nombre';
-                        }
-                        if (double.parse(value) < 0) {
-                          return 'La quantité ne peut pas être négative';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value: controller.selectedUnit.value,
-                        decoration: const InputDecoration(
-                          labelText: 'Unité *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.straighten),
-                        ),
-                        items:
-                            controller.units.map<DropdownMenuItem<String>>((
-                              unit,
-                            ) {
-                              return DropdownMenuItem<String>(
-                                value: unit['value'] as String,
-                                child: Text(unit['label'] as String),
-                              );
-                            }).toList(),
-                        onChanged: (value) => controller.selectUnit(value!),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'L\'unité est obligatoire';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+              TextFormField(
+                controller: controller.quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Quantité initiale *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'La quantité est obligatoire';
+                  }
+                  if (double.tryParse(value) == null) {
+                    return 'La quantité doit être un nombre';
+                  }
+                  if (double.parse(value) < 0) {
+                    return 'La quantité ne peut pas être négative';
+                  }
+                  return null;
+                },
               ),
 
               const SizedBox(height: 16),
@@ -262,56 +246,17 @@ class StockForm extends StatelessWidget {
                 },
               ),
 
-              const SizedBox(height: 24),
-
-              // Informations supplémentaires
-              _buildSectionTitle('Informations supplémentaires'),
               const SizedBox(height: 16),
 
               TextFormField(
-                controller: controller.locationController,
+                controller: controller.notesController,
                 decoration: const InputDecoration(
-                  labelText: 'Emplacement',
+                  labelText: 'Commentaire',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.location_on),
-                  hintText: 'Emplacement dans l\'entrepôt (optionnel)',
+                  prefixIcon: Icon(Icons.note),
+                  hintText: 'Commentaire optionnel',
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: controller.supplierController,
-                decoration: const InputDecoration(
-                  labelText: 'Fournisseur',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.business),
-                  hintText: 'Fournisseur principal (optionnel)',
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: controller.barcodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Code-barres',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.qr_code_scanner),
-                  hintText: 'Code-barres du produit (optionnel)',
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: controller.imageController,
-                decoration: const InputDecoration(
-                  labelText: 'Image',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.image),
-                  hintText: 'URL de l\'image du produit (optionnel)',
-                ),
+                maxLines: 3,
               ),
 
               const SizedBox(height: 32),
@@ -341,11 +286,18 @@ class StockForm extends StatelessWidget {
   }
 
   void _saveStock(StockController controller) async {
-    if (stock == null) {
-      await controller.createStock();
-    } else {
-      await controller.updateStock(stock!);
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
-    Get.back(); // Retour automatique à la liste
+
+    final success =
+        widget.stock == null
+            ? await controller.createStock()
+            : await controller.updateStock(widget.stock!);
+
+    if (success && mounted) {
+      // Retour automatique à la liste après enregistrement réussi
+      Get.back();
+    }
   }
 }

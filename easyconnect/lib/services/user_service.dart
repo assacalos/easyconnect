@@ -27,7 +27,6 @@ class UserService {
         'Erreur lors de la récupération des utilisateurs: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur UserService.getUsers: $e');
       throw Exception('Erreur lors de la récupération des utilisateurs: $e');
     }
   }
@@ -52,7 +51,6 @@ class UserService {
         'Erreur lors de la récupération de l\'utilisateur: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur UserService.getUserById: $e');
       throw Exception('Erreur lors de la récupération de l\'utilisateur: $e');
     }
   }
@@ -71,8 +69,6 @@ class UserService {
       userData['is_active'] = user.isActive;
 
       // Debug: afficher les données envoyées
-      print('🔍 UserService.createUser - Données envoyées: $userData');
-
       final response = await http.post(
         Uri.parse('$baseUrl/users-create'),
         headers: {
@@ -84,9 +80,6 @@ class UserService {
       );
 
       // Debug: afficher la réponse de l'API
-      print('🔍 UserService.createUser - Status: ${response.statusCode}');
-      print('🔍 UserService.createUser - Body: ${response.body}');
-
       if (response.statusCode == 201) {
         final data = json.decode(response.body)['data'];
         return UserModel.fromJson(data);
@@ -95,7 +88,6 @@ class UserService {
         'Erreur lors de la création de l\'utilisateur: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur UserService.createUser: $e');
       throw Exception('Erreur lors de la création de l\'utilisateur: $e');
     }
   }
@@ -122,7 +114,6 @@ class UserService {
         'Erreur lors de la mise à jour de l\'utilisateur: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur UserService.updateUser: $e');
       throw Exception('Erreur lors de la mise à jour de l\'utilisateur: $e');
     }
   }
@@ -141,7 +132,6 @@ class UserService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur UserService.deleteUser: $e');
       return false;
     }
   }
@@ -162,7 +152,6 @@ class UserService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur UserService.toggleUserStatus: $e');
       return false;
     }
   }
@@ -186,7 +175,6 @@ class UserService {
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur UserService.getUserStats: $e');
       throw Exception('Erreur lors de la récupération des statistiques: $e');
     }
   }

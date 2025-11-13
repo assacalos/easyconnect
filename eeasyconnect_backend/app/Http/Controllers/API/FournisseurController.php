@@ -8,6 +8,8 @@ use Illuminate\Http\JsonResponse;
 use App\Models\Fournisseur;
 use App\Models\BonDeCommande;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class FournisseurController extends Controller
 {
@@ -78,32 +80,34 @@ class FournisseurController extends Controller
     /**
      * Afficher un fournisseur spécifique
      */
-    public function show(Supplier $supplier): JsonResponse
+    public function show($id): JsonResponse
     {
         try {
+            $fournisseur = Fournisseur::findOrFail($id);
+            
             Log::info('API: Récupération du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseur récupéré avec succès',
-                'data' => new SupplierResource($supplier)
+                'data' => $fournisseur
             ]);
 
         } catch (\Exception $e) {
             Log::error('API: Erreur lors de la récupération du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $id,
                 'error' => $e->getMessage(),
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération du fournisseur',
+                'message' => 'Fournisseur non trouvé',
                 'error' => $e->getMessage()
-            ], 500);
+            ], 404);
         }
     }
 
@@ -112,15 +116,31 @@ class FournisseurController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Normaliser les champs camelCase vers snake_case (compatibilité Flutter)
+        $data = $request->all();
+        
+        $normalized = [
+            'nom' => $data['nom'] ?? $data['name'] ?? null,
+            'email' => $data['email'] ?? null,
+            'telephone' => $data['telephone'] ?? $data['phone'] ?? null,
+            'adresse' => $data['adresse'] ?? $data['address'] ?? null,
+            'ville' => $data['ville'] ?? $data['city'] ?? null,
+            'pays' => $data['pays'] ?? $data['country'] ?? null,
+            'description' => $data['description'] ?? null,
+            'note_evaluation' => $data['noteEvaluation'] ?? $data['note_evaluation'] ?? null,
+            'commentaires' => $data['commentaires'] ?? $data['comments'] ?? null,
+        ];
+        
+        $request->merge($normalized);
+
         // Validation
-        $validator = Validator::make($request->all(), [
+        $validator = \Validator::make($request->all(), [
             'nom' => 'required|string|max:255',
-            'email' => 'required|email|unique:suppliers,email',
+            'email' => 'required|email|unique:fournisseurs,email',
             'telephone' => 'required|string|max:20',
             'adresse' => 'required|string|max:500',
             'ville' => 'required|string|max:100',
             'pays' => 'required|string|max:100',
-            'contact_principal' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'statut' => 'nullable|in:pending,approved,rejected,active,inactive',
             'note_evaluation' => 'nullable|numeric|min:0|max:5',
@@ -139,8 +159,6 @@ class FournisseurController extends Controller
             'ville.max' => 'La ville ne peut pas dépasser 100 caractères.',
             'pays.required' => 'Le pays est obligatoire.',
             'pays.max' => 'Le pays ne peut pas dépasser 100 caractères.',
-            'contact_principal.required' => 'Le contact principal est obligatoire.',
-            'contact_principal.max' => 'Le contact principal ne peut pas dépasser 255 caractères.',
             'description.max' => 'La description ne peut pas dépasser 1000 caractères.',
             'statut.in' => 'Le statut doit être l\'un des suivants: pending, approved, rejected, active, inactive.',
             'note_evaluation.numeric' => 'La note d\'évaluation doit être un nombre.',
@@ -165,8 +183,18 @@ class FournisseurController extends Controller
 
             DB::beginTransaction();
 
-            $supplier = Supplier::create([
-                ...$request->all(),
+            $validated = $validator->validated();
+            $fournisseur = Fournisseur::create([
+                'nom' => $validated['nom'],
+                'email' => $validated['email'],
+                'telephone' => $validated['telephone'],
+                'adresse' => $validated['adresse'],
+                'ville' => $validated['ville'],
+                'pays' => $validated['pays'],
+                'description' => $validated['description'] ?? null,
+                'status' => 'en_attente',
+                'note_evaluation' => $validated['note_evaluation'] ?? null,
+                'commentaires' => $validated['commentaires'] ?? null,
                 'created_by' => auth()->id(),
                 'updated_by' => auth()->id(),
             ]);
@@ -174,14 +202,14 @@ class FournisseurController extends Controller
             DB::commit();
 
             Log::info('API: Fournisseur créé avec succès', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseur créé avec succès',
-                'data' => new SupplierResource($supplier)
+                'data' => $fournisseur
             ], 201);
 
         } catch (\Exception $e) {
@@ -213,7 +241,6 @@ class FournisseurController extends Controller
             'adresse' => 'sometimes|required|string|max:500',
             'ville' => 'sometimes|required|string|max:100',
             'pays' => 'sometimes|required|string|max:100',
-            'contact_principal' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'statut' => 'nullable|in:pending,approved,rejected,active,inactive',
             'note_evaluation' => 'nullable|numeric|min:0|max:5',
@@ -232,8 +259,6 @@ class FournisseurController extends Controller
             'ville.max' => 'La ville ne peut pas dépasser 100 caractères.',
             'pays.required' => 'Le pays est obligatoire.',
             'pays.max' => 'Le pays ne peut pas dépasser 100 caractères.',
-            'contact_principal.required' => 'Le contact principal est obligatoire.',
-            'contact_principal.max' => 'Le contact principal ne peut pas dépasser 255 caractères.',
             'description.max' => 'La description ne peut pas dépasser 1000 caractères.',
             'statut.in' => 'Le statut doit être l\'un des suivants: pending, approved, rejected, active, inactive.',
             'note_evaluation.numeric' => 'La note d\'évaluation doit être un nombre.',

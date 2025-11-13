@@ -14,7 +14,7 @@ class BonCommandeValidationPage extends StatefulWidget {
 
 class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     with SingleTickerProviderStateMixin {
-  final BonCommandeController controller = Get.find<BonCommandeController>();
+  late final BonCommandeController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -22,6 +22,12 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
   @override
   void initState() {
     super.initState();
+    // Vérifier et initialiser le contrôleur
+    if (!Get.isRegistered<BonCommandeController>()) {
+      Get.put(BonCommandeController(), permanent: true);
+    }
+    controller = Get.find<BonCommandeController>();
+
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
@@ -49,13 +55,13 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
         status = null;
         break;
       case 1: // En attente
-        status = 0;
-        break;
-      case 2: // Validés
         status = 1;
         break;
-      case 3: // Rejetés
+      case 2: // Validés
         status = 2;
+        break;
+      case 3: // Rejetés
+        status = 3;
         break;
     }
 
@@ -197,6 +203,13 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     final statusIcon = _getStatusIcon(bonCommande.status);
     final statusText = _getStatusText(bonCommande.status);
 
+    // Calculer le total
+    double totalHT = 0;
+    for (final item in bonCommande.items) {
+      totalHT += item.montantTotal;
+    }
+    final totalTTC = totalHT * (1 + (bonCommande.tva ?? 0) / 100);
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ExpansionTile(
@@ -214,7 +227,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             const SizedBox(height: 4),
             Text('Client ID: ${bonCommande.clientId}'),
             Text('Date: ${formatDate.format(bonCommande.dateCreation)}'),
-            Text('Montant: ${formatCurrency.format(bonCommande.montantTTC)}'),
+            Text('Total: ${formatCurrency.format(totalTTC)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -240,9 +253,9 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations client
+                // Informations générales
                 const Text(
-                  'Informations client',
+                  'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -256,12 +269,26 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text('Référence: ${bonCommande.reference}'),
                       Text('Client ID: ${bonCommande.clientId}'),
                       Text('Commercial ID: ${bonCommande.commercialId}'),
+                      Text(
+                        'Date création: ${formatDate.format(bonCommande.dateCreation)}',
+                      ),
+                      if (bonCommande.dateValidation != null)
+                        Text(
+                          'Date validation: ${formatDate.format(bonCommande.dateValidation!)}',
+                        ),
+                      if (bonCommande.dateLivraisonPrevue != null)
+                        Text(
+                          'Date livraison prévue: ${formatDate.format(bonCommande.dateLivraisonPrevue!)}',
+                        ),
                       if (bonCommande.adresseLivraison != null)
                         Text(
                           'Adresse livraison: ${bonCommande.adresseLivraison}',
                         ),
+                      if (bonCommande.notes != null)
+                        Text('Notes: ${bonCommande.notes}'),
                     ],
                   ),
                 ),
@@ -272,7 +299,10 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                ...bonCommande.items.map((item) => _buildItemDetails(item)),
+                if (bonCommande.items.isEmpty)
+                  const Text('Aucun article disponible')
+                else
+                  ...bonCommande.items.map((item) => _buildItemDetails(item)),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -287,20 +317,22 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Sous-total HT:'),
-                          Text(formatCurrency.format(bonCommande.montantHT)),
+                          Text(formatCurrency.format(totalHT)),
                         ],
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('TVA:'),
-                          Text(
-                            formatCurrency.format(
-                              bonCommande.montantTTC - bonCommande.montantHT,
+                      if (bonCommande.tva != null && bonCommande.tva! > 0) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('TVA (${bonCommande.tva}%):'),
+                            Text(
+                              formatCurrency.format(
+                                totalHT * bonCommande.tva! / 100,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                       const Divider(),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -310,7 +342,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           Text(
-                            formatCurrency.format(bonCommande.montantTTC),
+                            formatCurrency.format(totalTTC),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -328,7 +360,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     );
   }
 
-  Widget _buildItemDetails(dynamic item) {
+  Widget _buildItemDetails(BonCommandeItem item) {
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
       symbol: 'FCFA',
@@ -344,21 +376,22 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['designation'] ?? 'Article',
+                  item.designation,
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
+                if (item.description != null)
+                  Text(
+                    item.description!,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
               ],
             ),
           ),
-          Expanded(child: Text('${item['quantite'] ?? 0}')),
-          Expanded(
-            child: Text(formatCurrency.format(item['prix_unitaire'] ?? 0)),
-          ),
+          Expanded(child: Text('${item.quantite} ${item.unite}')),
+          Expanded(child: Text(formatCurrency.format(item.prixUnitaire))),
           Expanded(
             child: Text(
-              formatCurrency.format(
-                (item['quantite'] ?? 0) * (item['prix_unitaire'] ?? 0),
-              ),
+              formatCurrency.format(item.montantTotal),
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
@@ -369,7 +402,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
 
   Widget _buildActionButtons(BonCommande bonCommande, Color statusColor) {
     switch (bonCommande.status) {
-      case 0: // En attente - Afficher boutons Valider/Rejeter
+      case 1: // En attente - Afficher boutons Valider/Rejeter
         return Column(
           children: [
             Row(
@@ -397,7 +430,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             ),
           ],
         );
-      case 1: // Validé - Afficher seulement info
+      case 2: // Validé - Afficher seulement info
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -420,7 +453,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             ],
           ),
         );
-      case 2: // Rejeté - Afficher motif du rejet
+      case 3: // Rejeté - Afficher motif du rejet
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -471,11 +504,11 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
 
   Color _getStatusColor(int status) {
     switch (status) {
-      case 0:
+      case 1: // En attente
         return Colors.orange;
-      case 1:
+      case 2: // Validé
         return Colors.green;
-      case 2:
+      case 3: // Rejeté
         return Colors.red;
       default:
         return Colors.grey;
@@ -484,11 +517,11 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
 
   IconData _getStatusIcon(int status) {
     switch (status) {
-      case 0:
+      case 1: // En attente
         return Icons.pending;
-      case 1:
+      case 2: // Validé
         return Icons.check_circle;
-      case 2:
+      case 3: // Rejeté
         return Icons.cancel;
       default:
         return Icons.help;
@@ -497,11 +530,11 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
 
   String _getStatusText(int status) {
     switch (status) {
-      case 0:
+      case 1: // En attente
         return 'En attente';
-      case 1:
+      case 2: // Validé
         return 'Validé';
-      case 2:
+      case 3: // Rejeté
         return 'Rejeté';
       default:
         return 'Inconnu';

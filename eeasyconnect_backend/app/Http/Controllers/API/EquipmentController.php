@@ -15,6 +15,9 @@ class EquipmentController extends Controller
     /**
      * Afficher la liste des équipements
      */
+
+
+     
     public function index(Request $request)
     {
         try {
@@ -81,9 +84,12 @@ class EquipmentController extends Controller
                 }
             }
 
-            // Si technicien → filtre ses équipements assignés
+            // Si technicien → filtre ses équipements assignés OU créés par lui
             if ($user->role == 5) { // Technicien
-                $query->where('assigned_to', 'like', '%' . $user->prenom . ' ' . $user->nom . '%');
+                $query->where(function($q) use ($user) {
+                    $q->where('assigned_to', 'like', '%' . $user->prenom . ' ' . $user->nom . '%')
+                      ->orWhere('created_by', $user->id);
+                });
             }
 
             // Pagination
@@ -92,81 +98,7 @@ class EquipmentController extends Controller
 
             // Transformer les données
             $equipment->getCollection()->transform(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'description' => $item->description,
-                    'category' => $item->category,
-                    'status' => $item->status,
-                    'status_libelle' => $item->status_libelle,
-                    'condition' => $item->condition,
-                    'condition_libelle' => $item->condition_libelle,
-                    'serial_number' => $item->serial_number,
-                    'model' => $item->model,
-                    'brand' => $item->brand,
-                    'location' => $item->location,
-                    'department' => $item->department,
-                    'assigned_to' => $item->assigned_to,
-                    'purchase_date' => $item->purchase_date?->format('Y-m-d'),
-                    'warranty_expiry' => $item->warranty_expiry?->format('Y-m-d'),
-                    'last_maintenance' => $item->last_maintenance?->format('Y-m-d'),
-                    'next_maintenance' => $item->next_maintenance?->format('Y-m-d'),
-                    'purchase_price' => $item->purchase_price,
-                    'current_value' => $item->current_value,
-                    'formatted_purchase_price' => $item->formatted_purchase_price,
-                    'formatted_current_value' => $item->formatted_current_value,
-                    'supplier' => $item->supplier,
-                    'notes' => $item->notes,
-                    'attachments' => $item->attachments,
-                    'created_by' => $item->created_by,
-                    'creator_name' => $item->creator_name,
-                    'updated_by' => $item->updated_by,
-                    'updater_name' => $item->updater_name,
-                    'is_warranty_expired' => $item->is_warranty_expired,
-                    'is_warranty_expiring_soon' => $item->is_warranty_expiring_soon,
-                    'needs_maintenance' => $item->needs_maintenance,
-                    'age_in_years' => $item->age_in_years,
-                    'depreciation_rate' => $item->depreciation_rate,
-                    'maintenance' => $item->maintenance->map(function ($maintenance) {
-                        return [
-                            'id' => $maintenance->id,
-                            'type' => $maintenance->type,
-                            'type_libelle' => $maintenance->type_libelle,
-                            'status' => $maintenance->status,
-                            'status_libelle' => $maintenance->status_libelle,
-                            'description' => $maintenance->description,
-                            'scheduled_date' => $maintenance->scheduled_date->format('Y-m-d H:i:s'),
-                            'start_date' => $maintenance->start_date?->format('Y-m-d H:i:s'),
-                            'end_date' => $maintenance->end_date?->format('Y-m-d H:i:s'),
-                            'technician' => $maintenance->technician,
-                            'cost' => $maintenance->cost,
-                            'formatted_cost' => $maintenance->formatted_cost,
-                            'duration' => $maintenance->duration,
-                            'is_overdue' => $maintenance->is_overdue,
-                            'created_at' => $maintenance->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'assignments' => $item->assignments->map(function ($assignment) {
-                        return [
-                            'id' => $assignment->id,
-                            'user_id' => $assignment->user_id,
-                            'user_name' => $assignment->user_name,
-                            'assigned_date' => $assignment->assigned_date->format('Y-m-d'),
-                            'return_date' => $assignment->return_date?->format('Y-m-d'),
-                            'status' => $assignment->status,
-                            'status_libelle' => $assignment->status_libelle,
-                            'duration' => $assignment->duration,
-                            'is_active' => $assignment->is_active,
-                            'assigned_by' => $assignment->assigned_by,
-                            'assigned_by_name' => $assignment->assigned_by_name,
-                            'returned_by' => $assignment->returned_by,
-                            'returned_by_name' => $assignment->returned_by_name,
-                            'created_at' => $assignment->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'created_at' => $item->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $item->updated_at->format('Y-m-d H:i:s')
-                ];
+                return $this->transformEquipment($item);
             });
 
             return response()->json([
@@ -198,9 +130,12 @@ class EquipmentController extends Controller
                 ], 404);
             }
 
+            // Transformer les données pour correspondre au format de index()
+            $data = $this->transformEquipment($equipment);
+
             return response()->json([
                 'success' => true,
-                'data' => $equipment,
+                'data' => $data,
                 'message' => 'Équipement récupéré avec succès'
             ]);
 
@@ -269,9 +204,12 @@ class EquipmentController extends Controller
 
             DB::commit();
 
+            $equipment->load(['creator', 'updater']);
+            $data = $this->transformEquipment($equipment);
+
             return response()->json([
                 'success' => true,
-                'data' => $equipment->load(['creator']),
+                'data' => $data,
                 'message' => 'Équipement créé avec succès'
             ], 201);
 
@@ -326,9 +264,12 @@ class EquipmentController extends Controller
                 'updated_by' => $request->user()->id
             ]));
 
+            $equipment->load(['creator', 'updater', 'maintenance', 'assignments']);
+            $data = $this->transformEquipment($equipment);
+
             return response()->json([
                 'success' => true,
-                'data' => $equipment->load(['creator', 'updater']),
+                'data' => $data,
                 'message' => 'Équipement mis à jour avec succès'
             ]);
 
@@ -591,5 +532,87 @@ class EquipmentController extends Controller
                 'message' => 'Erreur lors de la récupération des équipements avec garantie expirant bientôt: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Transformer un équipement en tableau avec dates au format ISO8601
+     */
+    private function transformEquipment($item)
+    {
+        return [
+            'id' => $item->id,
+            'name' => $item->name,
+            'description' => $item->description,
+            'category' => $item->category,
+            'status' => $item->status,
+            'status_libelle' => $item->status_libelle,
+            'condition' => $item->condition,
+            'condition_libelle' => $item->condition_libelle,
+            'serial_number' => $item->serial_number,
+            'model' => $item->model,
+            'brand' => $item->brand,
+            'location' => $item->location,
+            'department' => $item->department,
+            'assigned_to' => $item->assigned_to,
+            'purchase_date' => $item->purchase_date?->toIso8601String(),
+            'warranty_expiry' => $item->warranty_expiry?->toIso8601String(),
+            'last_maintenance' => $item->last_maintenance?->toIso8601String(),
+            'next_maintenance' => $item->next_maintenance?->toIso8601String(),
+            'purchase_price' => $item->purchase_price,
+            'current_value' => $item->current_value,
+            'formatted_purchase_price' => $item->formatted_purchase_price,
+            'formatted_current_value' => $item->formatted_current_value,
+            'supplier' => $item->supplier,
+            'notes' => $item->notes,
+            'attachments' => $item->attachments,
+            'created_by' => $item->created_by,
+            'creator_name' => $item->creator_name,
+            'updated_by' => $item->updated_by,
+            'updater_name' => $item->updater_name,
+            'is_warranty_expired' => $item->is_warranty_expired,
+            'is_warranty_expiring_soon' => $item->is_warranty_expiring_soon,
+            'needs_maintenance' => $item->needs_maintenance,
+            'age_in_years' => $item->age_in_years,
+            'depreciation_rate' => $item->depreciation_rate,
+            'maintenance' => $item->maintenance->map(function ($maintenance) {
+                return [
+                    'id' => $maintenance->id,
+                    'type' => $maintenance->type,
+                    'type_libelle' => $maintenance->type_libelle,
+                    'status' => $maintenance->status,
+                    'status_libelle' => $maintenance->status_libelle,
+                    'description' => $maintenance->description,
+                    'scheduled_date' => $maintenance->scheduled_date->toIso8601String(),
+                    'start_date' => $maintenance->start_date?->toIso8601String(),
+                    'end_date' => $maintenance->end_date?->toIso8601String(),
+                    'technician' => $maintenance->technician,
+                    'cost' => $maintenance->cost,
+                    'formatted_cost' => $maintenance->formatted_cost,
+                    'duration' => $maintenance->duration,
+                    'is_overdue' => $maintenance->is_overdue,
+                    'created_at' => $maintenance->created_at->toIso8601String()
+                ];
+            }),
+            'assignments' => $item->assignments->map(function ($assignment) {
+                return [
+                    'id' => $assignment->id,
+                    'user_id' => $assignment->user_id,
+                    'user_name' => $assignment->user_name,
+                    'assigned_date' => $assignment->assigned_date->toIso8601String(),
+                    'return_date' => $assignment->return_date?->toIso8601String(),
+                    'status' => $assignment->status,
+                    'status_libelle' => $assignment->status_libelle,
+                    'duration' => $assignment->duration,
+                    'is_active' => $assignment->is_active,
+                    'assigned_by' => $assignment->assigned_by,
+                    'assigned_by_name' => $assignment->assigned_by_name,
+                    'returned_by' => $assignment->returned_by,
+                    'returned_by_name' => $assignment->returned_by_name,
+                    'created_at' => $assignment->created_at->toIso8601String()
+                ];
+            }),
+            'created_at' => $item->created_at->toIso8601String(),
+            'updated_at' => $item->updated_at->toIso8601String()
+        ];
     }
 }

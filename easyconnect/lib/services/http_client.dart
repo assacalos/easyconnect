@@ -72,7 +72,6 @@ class CustomHttpClient {
   // Test de connectivité simple
   static Future<bool> testConnection(String baseUrl) async {
     try {
-      print('🔍 Test de connectivité vers: $baseUrl/api/attendance/test');
       final response = await get(
         Uri.parse('$baseUrl/api/attendance/test'),
         headers: {
@@ -81,12 +80,10 @@ class CustomHttpClient {
         },
         timeout: const Duration(seconds: 5),
       );
-      print('📡 Réponse: ${response.statusCode} - ${response.body}');
       return response.statusCode == 200 ||
           response.statusCode ==
               401; // 401 = serveur accessible mais auth requise
     } catch (e) {
-      print('❌ Test de connexion échoué: $e');
       return false;
     }
   }
@@ -96,8 +93,6 @@ class CustomHttpClient {
     String baseUrl,
   ) async {
     try {
-      print('🔍 Test de connectivité détaillé vers: $baseUrl');
-
       // Test 1: Connexion de base
       final response = await get(
         Uri.parse('$baseUrl/api/attendance/test'),
@@ -115,7 +110,6 @@ class CustomHttpClient {
         'message': 'Serveur accessible',
       };
     } catch (e) {
-      print('❌ Erreur de connectivité: $e');
       return {
         'success': false,
         'error': e.toString(),

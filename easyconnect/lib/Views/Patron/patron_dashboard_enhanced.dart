@@ -59,6 +59,12 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
       icon: Icons.camera_alt,
       route: '/attendance-validation',
     ),
+    FavoriteItem(
+      id: 'validation_bon_commandes_fournisseur',
+      label: 'Validation Bons de Commande Fournisseur',
+      icon: Icons.inventory_2,
+      route: '/bons-de-commande-fournisseur/validation',
+    ),
   ];
 
   @override
@@ -146,6 +152,22 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
                 icon: Icons.assignment_turned_in,
                 color: Colors.orange,
                 onTap: () => Get.toNamed('/bordereaux/validation'),
+              ),
+              _buildValidationCard(
+                title: 'Bons de Commande',
+                count: controller.pendingBonCommandes.value,
+                icon: Icons.shopping_cart,
+                color: Colors.purple,
+                onTap: () => Get.toNamed('/bon-commandes/validation'),
+              ),
+              _buildValidationCard(
+                title: 'Bons de Commande Fournisseur',
+                count: 0, // TODO: Ajouter le compteur dans le contrôleur
+                icon: Icons.inventory_2,
+                color: Colors.indigo,
+                onTap:
+                    () =>
+                        Get.toNamed('/bons-de-commande-fournisseur/validation'),
               ),
               _buildValidationCard(
                 title: 'Factures',
@@ -322,13 +344,6 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
                 subtitle: 'Clients actifs',
               ),
               _buildPerformanceCard(
-                title: 'Employés',
-                value: controller.totalEmployees.value.toString(),
-                icon: Icons.people,
-                color: Colors.blue,
-                subtitle: 'Effectif total',
-              ),
-              _buildPerformanceCard(
                 title: 'Fournisseurs',
                 value: controller.totalSuppliers.value.toString(),
                 icon: Icons.business,
@@ -418,7 +433,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
   }
 
   @override
-  List<Widget> buildDrawerItems() {
+  List<Widget> buildDrawerItems(BuildContext context) {
     return [
       /*  ListTile(
         leading: const Icon(Icons.dashboard, color: Colors.white70),
@@ -533,14 +548,6 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
         onTap: () => Get.toNamed('/taxes/validation'),
       ),
       ListTile(
-        leading: const Icon(Icons.person_add, color: Colors.white70),
-        title: const Text(
-          'Validation Recrutement',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/recrutement/validation'),
-      ),
-      ListTile(
         leading: const Icon(Icons.business, color: Colors.white70),
         title: const Text(
           'Validation Fournisseurs',
@@ -588,17 +595,17 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
       ListTile(
         leading: const Icon(Icons.people, color: Colors.white70),
         title: const Text('Employés', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/rh'),
+        onTap: () => Get.toNamed('/admin/users'),
       ),
       ListTile(
         leading: const Icon(Icons.euro, color: Colors.white70),
         title: const Text('Finances', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/comptable'),
+        onTap: () => Get.toNamed('/patron/finances'),
       ),
       ListTile(
         leading: const Icon(Icons.analytics, color: Colors.white70),
         title: const Text('Rapports', style: TextStyle(color: Colors.white70)),
-        onTap: () {},
+        onTap: () => Get.toNamed('/patron/reports'),
       ),
     ];
   }

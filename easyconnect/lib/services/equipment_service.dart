@@ -29,7 +29,7 @@ class EquipmentService {
               : '?${Uri(queryParameters: queryParams).query}';
 
       final response = await http.get(
-        Uri.parse('$baseUrl/equipments$queryString'),
+        Uri.parse('$baseUrl/equipment-list$queryString'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -37,14 +37,79 @@ class EquipmentService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => Equipment.fromJson(json)).toList();
+        final decodedBody = json.decode(response.body);
+
+        // Gérer différents formats de réponse
+        List<dynamic> data = [];
+
+        if (decodedBody is List) {
+          // Si la réponse est directement une liste
+          data = decodedBody;
+        } else if (decodedBody is Map) {
+          // Si la réponse est un objet Map
+          if (decodedBody.containsKey('data')) {
+            final dataValue = decodedBody['data'];
+            if (dataValue is List) {
+              // Si 'data' est une liste
+              data = dataValue;
+            } else if (dataValue is Map) {
+              // Si 'data' est un Map, chercher les équipements dans différentes clés possibles
+              final dataMap = dataValue as Map<String, dynamic>;
+
+              // Gérer la pagination Laravel (structure: { "data": { "data": [...], "current_page": 1, ... } })
+              if (dataMap.containsKey('data') && dataMap['data'] is List) {
+                data = dataMap['data'] as List<dynamic>;
+              } else if (dataMap.containsKey('equipments')) {
+                final equipmentsList = dataMap['equipments'];
+                if (equipmentsList is List) {
+                  data = equipmentsList;
+                }
+              } else if (dataMap.containsKey('equipment')) {
+                final equipmentList = dataMap['equipment'];
+                if (equipmentList is List) {
+                  data = equipmentList;
+                }
+              } else {
+                // Si 'data' est un Map mais ne contient pas de liste, essayer de convertir les valeurs
+                // Peut-être que les équipements sont directement dans les valeurs du Map
+                data =
+                    dataMap.values.whereType<Map<String, dynamic>>().toList();
+              }
+            }
+          } else {
+            // Si pas de clé 'data', chercher d'autres clés possibles
+            if (decodedBody.containsKey('equipments')) {
+              final equipmentsList = decodedBody['equipments'];
+              if (equipmentsList is List) {
+                data = equipmentsList;
+              }
+            } else if (decodedBody.containsKey('equipment')) {
+              final equipmentList = decodedBody['equipment'];
+              if (equipmentList is List) {
+                data = equipmentList;
+              }
+            }
+          }
+        }
+
+        // Parser les équipements
+        final equipments = <Equipment>[];
+        for (var item in data) {
+          try {
+            if (item is Map<String, dynamic>) {
+              equipments.add(Equipment.fromJson(item));
+            }
+          } catch (e) {
+            // Ignorer les éléments invalides mais continuer
+          }
+        }
+
+        return equipments;
       }
       throw Exception(
-        'Erreur lors de la récupération des équipements: ${response.statusCode}',
+        'Erreur lors de la récupération des équipements: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipments: $e');
       throw Exception('Erreur lors de la récupération des équipements: $e');
     }
   }
@@ -55,7 +120,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.get(
-        Uri.parse('$baseUrl/equipments/$id'),
+        Uri.parse('$baseUrl/equipment/$id'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -69,7 +134,6 @@ class EquipmentService {
         'Erreur lors de la récupération de l\'équipement: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentById: $e');
       throw Exception('Erreur lors de la récupération de l\'équipement: $e');
     }
   }
@@ -80,7 +144,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/equipments'),
+        Uri.parse('$baseUrl/equipment-create'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -89,14 +153,28 @@ class EquipmentService {
         body: json.encode(equipment.toJson()),
       );
 
-      if (response.statusCode == 201) {
-        return Equipment.fromJson(json.decode(response.body)['data']);
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final decodedBody = json.decode(response.body);
+
+        // Gérer différents formats de réponse
+        Map<String, dynamic> equipmentData;
+        if (decodedBody is Map && decodedBody.containsKey('data')) {
+          final dataValue = decodedBody['data'];
+          if (dataValue is Map) {
+            equipmentData = dataValue as Map<String, dynamic>;
+          } else {
+            throw Exception('Format de réponse inattendu pour la création');
+          }
+        } else {
+          throw Exception('Format de réponse inattendu pour la création');
+        }
+
+        return Equipment.fromJson(equipmentData);
       }
       throw Exception(
-        'Erreur lors de la création de l\'équipement: ${response.statusCode}',
+        'Erreur lors de la création de l\'équipement: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.createEquipment: $e');
       throw Exception('Erreur lors de la création de l\'équipement: $e');
     }
   }
@@ -107,7 +185,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.put(
-        Uri.parse('$baseUrl/equipments/${equipment.id}'),
+        Uri.parse('$baseUrl/equipment-update/${equipment.id}'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -123,7 +201,6 @@ class EquipmentService {
         'Erreur lors de la mise à jour de l\'équipement: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.updateEquipment: $e');
       throw Exception('Erreur lors de la mise à jour de l\'équipement: $e');
     }
   }
@@ -134,7 +211,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.delete(
-        Uri.parse('$baseUrl/equipments/$equipmentId'),
+        Uri.parse('$baseUrl/equipment-destroy/$equipmentId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -143,7 +220,6 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.deleteEquipment: $e');
       return false;
     }
   }
@@ -154,7 +230,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.get(
-        Uri.parse('$baseUrl/equipments/stats'),
+        Uri.parse('$baseUrl/equipment-statistics'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -168,7 +244,6 @@ class EquipmentService {
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentStats: $e');
       // Retourner des données de test en cas d'erreur
       return EquipmentStats(
         totalEquipment: 0,
@@ -215,7 +290,6 @@ class EquipmentService {
         'Erreur lors de la récupération des catégories: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentCategories: $e');
       throw Exception('Erreur lors de la récupération des catégories: $e');
     }
   }
@@ -226,7 +300,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.get(
-        Uri.parse('$baseUrl/equipments/needing-maintenance'),
+        Uri.parse('$baseUrl/equipment-needs-maintenance'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -241,9 +315,35 @@ class EquipmentService {
         'Erreur lors de la récupération des équipements nécessitant une maintenance: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentsNeedingMaintenance: $e');
       throw Exception(
         'Erreur lors de la récupération des équipements nécessitant une maintenance: $e',
+      );
+    }
+  }
+
+  // Récupérer les équipements avec garantie expirant bientôt
+  Future<List<Equipment>> getEquipmentsWithWarrantyExpiringSoon() async {
+    try {
+      final token = storage.read('token');
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/equipment-warranty-expiring-soon'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body)['data'];
+        return data.map((json) => Equipment.fromJson(json)).toList();
+      }
+      throw Exception(
+        'Erreur lors de la récupération des équipements avec garantie expirant bientôt: ${response.statusCode}',
+      );
+    } catch (e) {
+      throw Exception(
+        'Erreur lors de la récupération des équipements avec garantie expirant bientôt: $e',
       );
     }
   }
@@ -254,7 +354,7 @@ class EquipmentService {
       final token = storage.read('token');
 
       final response = await http.get(
-        Uri.parse('$baseUrl/equipments/expired-warranty'),
+        Uri.parse('$baseUrl/equipment-warranty-expired'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -269,7 +369,6 @@ class EquipmentService {
         'Erreur lors de la récupération des équipements avec garantie expirée: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentsWithExpiredWarranty: $e');
       throw Exception(
         'Erreur lors de la récupération des équipements avec garantie expirée: $e',
       );
@@ -277,7 +376,9 @@ class EquipmentService {
   }
 
   // Récupérer l'historique de maintenance d'un équipement
-  Future<List<EquipmentMaintenance>> getEquipmentMaintenanceHistory(int equipmentId) async {
+  Future<List<EquipmentMaintenance>> getEquipmentMaintenanceHistory(
+    int equipmentId,
+  ) async {
     try {
       final token = storage.read('token');
 
@@ -297,7 +398,6 @@ class EquipmentService {
         'Erreur lors de la récupération de l\'historique de maintenance: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.getEquipmentMaintenanceHistory: $e');
       throw Exception(
         'Erreur lors de la récupération de l\'historique de maintenance: $e',
       );
@@ -305,12 +405,16 @@ class EquipmentService {
   }
 
   // Planifier une maintenance
-  Future<EquipmentMaintenance> scheduleMaintenance(EquipmentMaintenance maintenance) async {
+  Future<EquipmentMaintenance> scheduleMaintenance(
+    EquipmentMaintenance maintenance,
+  ) async {
     try {
       final token = storage.read('token');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/equipments/${maintenance.equipmentId}/maintenance'),
+        Uri.parse(
+          '$baseUrl/equipment/${maintenance.equipmentId}/schedule-maintenance',
+        ),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -320,13 +424,14 @@ class EquipmentService {
       );
 
       if (response.statusCode == 201) {
-        return EquipmentMaintenance.fromJson(json.decode(response.body)['data']);
+        return EquipmentMaintenance.fromJson(
+          json.decode(response.body)['data'],
+        );
       }
       throw Exception(
         'Erreur lors de la planification de la maintenance: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.scheduleMaintenance: $e');
       throw Exception('Erreur lors de la planification de la maintenance: $e');
     }
   }
@@ -348,13 +453,15 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.updateEquipmentStatus: $e');
       return false;
     }
   }
 
   // Mettre à jour l'état d'un équipement
-  Future<bool> updateEquipmentCondition(int equipmentId, String condition) async {
+  Future<bool> updateEquipmentCondition(
+    int equipmentId,
+    String condition,
+  ) async {
     try {
       final token = storage.read('token');
 
@@ -370,7 +477,6 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.updateEquipmentCondition: $e');
       return false;
     }
   }
@@ -380,8 +486,8 @@ class EquipmentService {
     try {
       final token = storage.read('token');
 
-      final response = await http.patch(
-        Uri.parse('$baseUrl/equipments/$equipmentId/assign'),
+      final response = await http.post(
+        Uri.parse('$baseUrl/equipment/$equipmentId/assign'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -392,18 +498,17 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.assignEquipment: $e');
       return false;
     }
   }
 
-  // Désassigner un équipement
-  Future<bool> unassignEquipment(int equipmentId) async {
+  // Retourner un équipement (désassigner)
+  Future<bool> returnEquipment(int equipmentId) async {
     try {
       final token = storage.read('token');
 
-      final response = await http.patch(
-        Uri.parse('$baseUrl/equipments/$equipmentId/unassign'),
+      final response = await http.post(
+        Uri.parse('$baseUrl/equipment/$equipmentId/return'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -412,9 +517,13 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.unassignEquipment: $e');
       return false;
     }
+  }
+
+  // Désassigner un équipement (alias pour compatibilité)
+  Future<bool> unassignEquipment(int equipmentId) async {
+    return returnEquipment(equipmentId);
   }
 
   // Ajouter une pièce jointe
@@ -433,7 +542,6 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.addAttachment: $e');
       return false;
     }
   }
@@ -454,7 +562,6 @@ class EquipmentService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur EquipmentService.removeAttachment: $e');
       return false;
     }
   }
@@ -480,7 +587,6 @@ class EquipmentService {
         'Erreur lors de la recherche d\'équipements: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur EquipmentService.searchEquipments: $e');
       throw Exception('Erreur lors de la recherche d\'équipements: $e');
     }
   }

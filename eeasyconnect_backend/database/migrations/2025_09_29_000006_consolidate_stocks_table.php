@@ -17,20 +17,12 @@ return new class extends Migration
         Schema::dropIfExists('stock_alerts');
         Schema::dropIfExists('stock_movements');
         Schema::dropIfExists('stocks');
-        Schema::dropIfExists('stock_categories');
+        Schema::dropIfExists('stock_categories'); // Supprimer la table des catégories
         
-        // Créer les tables dans l'ordre correct
-        Schema::create('stock_categories', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->text('description')->nullable();
-            $table->enum('status', ['en_attente', 'valide', 'rejete'])->default('en_attente');
-            $table->timestamps();
-        });
-
+        // Créer les tables dans l'ordre correct (sans stock_categories)
         Schema::create('stocks', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('category_id');
+            $table->string('category'); // Champ string au lieu de category_id
             $table->string('name');
             $table->text('description')->nullable();
             $table->string('sku')->unique();
@@ -41,8 +33,6 @@ return new class extends Migration
             $table->text('commentaire')->nullable();
             $table->enum('status', ['en_attente', 'valide', 'rejete'])->default('en_attente');
             $table->timestamps();
-
-            $table->foreign('category_id')->references('id')->on('stock_categories')->onDelete('cascade');
         });
 
         Schema::create('stock_movements', function (Blueprint $table) {

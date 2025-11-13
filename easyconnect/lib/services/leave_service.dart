@@ -41,7 +41,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.createLeaveRequest: $e');
       rethrow;
     }
   }
@@ -87,7 +86,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.getEmployeeLeaveRequests: $e');
       rethrow;
     }
   }
@@ -140,7 +138,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.getAllLeaveRequests: $e');
       rethrow;
     }
   }
@@ -162,7 +159,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.getLeaveRequest: $e');
       rethrow;
     }
   }
@@ -187,7 +183,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.approveLeaveRequest: $e');
       rethrow;
     }
   }
@@ -212,7 +207,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.rejectLeaveRequest: $e');
       rethrow;
     }
   }
@@ -233,7 +227,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.cancelLeaveRequest: $e');
       rethrow;
     }
   }
@@ -270,7 +263,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.updateLeaveRequest: $e');
       rethrow;
     }
   }
@@ -291,7 +283,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.deleteLeaveRequest: $e');
       rethrow;
     }
   }
@@ -313,7 +304,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.getEmployeeLeaveBalance: $e');
       rethrow;
     }
   }
@@ -356,7 +346,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.getLeaveStats: $e');
       rethrow;
     }
   }
@@ -386,7 +375,6 @@ class LeaveService extends GetxService {
         return LeaveType.leaveTypes;
       }
     } catch (e) {
-      print('Erreur LeaveService.getLeaveTypes: $e');
       return LeaveType.leaveTypes;
     }
   }
@@ -418,7 +406,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.checkLeaveConflicts: $e');
       rethrow;
     }
   }
@@ -440,7 +427,6 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur LeaveService.downloadAttachment: $e');
       rethrow;
     }
   }

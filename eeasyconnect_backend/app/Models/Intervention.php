@@ -20,9 +20,10 @@ class Intervention extends Model
         'status',
         'priority',
         'location',
-        'client_name',
-        'client_phone',
-        'client_email',
+        'client_id', // ID du client sélectionné
+        'client_name', // Gardé pour compatibilité et affichage
+        'client_phone', // Gardé pour compatibilité et affichage
+        'client_email', // Gardé pour compatibilité et affichage
         'equipment',
         'problem_description',
         'solution',
@@ -50,6 +51,11 @@ class Intervention extends Model
     ];
 
     // Relations
+    public function client()
+    {
+        return $this->belongsTo(Client::class, 'client_id');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

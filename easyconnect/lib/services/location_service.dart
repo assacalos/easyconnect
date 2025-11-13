@@ -40,7 +40,6 @@ class LocationService {
 
       return position;
     } catch (e) {
-      print('Erreur lors de la récupération de la position: $e');
       return null;
     }
   }
@@ -58,7 +57,6 @@ class LocationService {
       }
       return null;
     } catch (e) {
-      print('Erreur lors de la récupération de l\'adresse: $e');
       return null;
     }
   }
@@ -104,9 +102,6 @@ class LocationService {
         timestamp: DateTime.now(),
       );
     } catch (e) {
-      print(
-        'Erreur lors de la récupération des informations de localisation: $e',
-      );
       return null;
     }
   }

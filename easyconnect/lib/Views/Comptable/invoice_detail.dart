@@ -22,45 +22,28 @@ class InvoiceDetail extends StatelessWidget {
             onSelected: (value) => _handleMenuAction(value, controller),
             itemBuilder:
                 (context) => [
-                  if (invoice.status == 'draft' && controller.canSubmitInvoices)
+                  if (invoice.status == 'en_attente') ...[
                     const PopupMenuItem(
-                      value: 'submit',
+                      value: 'edit',
                       child: ListTile(
-                        leading: Icon(Icons.send),
-                        title: Text('Soumettre au patron'),
-                      ),
-                    ),
-                  if (invoice.status == 'pending_approval' &&
-                      controller.canApproveInvoices) ...[
-                    const PopupMenuItem(
-                      value: 'approve',
-                      child: ListTile(
-                        leading: Icon(Icons.check, color: Colors.green),
-                        title: Text('Approuver'),
+                        leading: Icon(Icons.edit, color: Colors.blue),
+                        title: Text('Modifier'),
                       ),
                     ),
                     const PopupMenuItem(
-                      value: 'reject',
+                      value: 'generate_pdf',
                       child: ListTile(
-                        leading: Icon(Icons.close, color: Colors.red),
-                        title: Text('Rejeter'),
+                        leading: Icon(Icons.picture_as_pdf),
+                        title: Text('Générer PDF'),
                       ),
                     ),
                   ],
-                  if (invoice.status == 'sent')
+                  if (invoice.status == 'valide' || invoice.status == 'rejete')
                     const PopupMenuItem(
-                      value: 'send_email',
+                      value: 'generate_pdf',
                       child: ListTile(
-                        leading: Icon(Icons.email),
-                        title: Text('Renvoyer par email'),
-                      ),
-                    ),
-                  if (invoice.status == 'paid')
-                    const PopupMenuItem(
-                      value: 'mark_paid',
-                      child: ListTile(
-                        leading: Icon(Icons.payment),
-                        title: Text('Marquer comme payée'),
+                        leading: Icon(Icons.picture_as_pdf),
+                        title: Text('Générer PDF'),
                       ),
                     ),
                 ],
@@ -474,21 +457,11 @@ class InvoiceDetail extends StatelessWidget {
 
   String _getStatusText() {
     switch (invoice.status) {
-      case 'draft':
-        return 'Brouillon';
-      case 'sent':
-        return 'Envoyée';
-      case 'paid':
-        return 'Payée';
-      case 'overdue':
-        return 'En retard';
-      case 'cancelled':
-        return 'Annulée';
-      case 'pending_approval':
-        return 'En attente d\'approbation';
-      case 'approved':
-        return 'Approuvée';
-      case 'rejected':
+      case 'en_attente':
+        return 'En attente';
+      case 'valide':
+        return 'Validée';
+      case 'rejete':
         return 'Rejetée';
       default:
         return 'Inconnu';
@@ -497,21 +470,11 @@ class InvoiceDetail extends StatelessWidget {
 
   Color _getStatusColor() {
     switch (invoice.status) {
-      case 'draft':
-        return Colors.grey;
-      case 'sent':
-        return Colors.blue;
-      case 'paid':
-        return Colors.green;
-      case 'overdue':
-        return Colors.red;
-      case 'cancelled':
-        return Colors.red;
-      case 'pending_approval':
+      case 'en_attente':
         return Colors.orange;
-      case 'approved':
+      case 'valide':
         return Colors.green;
-      case 'rejected':
+      case 'rejete':
         return Colors.red;
       default:
         return Colors.grey;
@@ -535,20 +498,13 @@ class InvoiceDetail extends StatelessWidget {
 
   void _handleMenuAction(String action, InvoiceController controller) {
     switch (action) {
-      case 'submit':
-        controller.submitInvoiceToPatron(invoice.id);
+      case 'edit':
+        // Naviguer vers le formulaire de modification
+        controller.loadInvoiceForEdit(invoice.id);
+        Get.toNamed('/invoices/edit', arguments: invoice.id);
         break;
-      case 'approve':
-        _showApprovalDialog(controller);
-        break;
-      case 'reject':
-        _showRejectionDialog(controller);
-        break;
-      case 'send_email':
-        _showSendEmailDialog(controller);
-        break;
-      case 'mark_paid':
-        _showMarkPaidDialog(controller);
+      case 'generate_pdf':
+        controller.generatePDF(invoice.id);
         break;
     }
   }

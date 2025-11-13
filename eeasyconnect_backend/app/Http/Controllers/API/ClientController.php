@@ -9,25 +9,94 @@ use App\Models\Client;
 class ClientController extends Controller
 {
     // Liste des clients avec filtre rôle et statut
+    // Accessible aux commerciaux, comptables, techniciens, admin et patron
+    // Seuls les commerciaux (role 2) voient uniquement leurs propres clients
+    // Les autres rôles (comptable role 3, technicien role 5, etc.) voient tous les clients
     public function index(Request $request)
     {
-        $status = $request->query('status'); // optionnel
-        $user = $request->user();             // utilisateur connecté
-        $query = Client::query();
+        try {
+            $status = $request->query('status'); // optionnel
+            $user = $request->user();             // utilisateur connecté
+            $query = Client::query();
 
-        if ($status !== null) {
-            $query->where('status', $status);
+            // Filtre par statut
+            if ($status !== null) {
+                $query->where('status', $status);
+            } else {
+                // Par défaut, ne retourner que les clients validés (status = 1) pour faciliter la sélection
+                // Sauf si un filtre explicite est demandé
+                if (!$request->has('status') && !$request->has('include_pending')) {
+                    $query->where('status', 1); // Seulement les clients validés
+                }
+            }
+
+            // Filtre par recherche (nom, email, entreprise)
+            if ($request->has('search')) {
+                $search = $request->query('search');
+                $query->where(function($q) use ($search) {
+                    $q->where('nom', 'like', '%' . $search . '%')
+                      ->orWhere('prenom', 'like', '%' . $search . '%')
+                      ->orWhere('email', 'like', '%' . $search . '%')
+                      ->orWhere('nom_entreprise', 'like', '%' . $search . '%')
+                      ->orWhere('contact', 'like', '%' . $search . '%');
+                });
+            }
+
+            // Si commercial (role 2) → filtre uniquement ses clients
+            // Les comptables (role 3), techniciens (role 5) et autres voient tous les clients
+            if ($user->role == 2) { // 2 = commercial
+                $query->where('user_id', $user->id);
+            }
+
+            $clients = $query->orderBy('nom')->orderBy('prenom')->get();
+
+            // Transformer les données pour faciliter la sélection côté Flutter
+            $data = $clients->map(function ($client) {
+                return [
+                    'id' => $client->id,
+                    'nom' => $client->nom,
+                    'prenom' => $client->prenom,
+                    'email' => $client->email,
+                    'contact' => $client->contact,
+                    'adresse' => $client->adresse,
+                    'nom_entreprise' => $client->nom_entreprise,
+                    'situation_geographique' => $client->situation_geographique,
+                    'status' => $client->status,
+                    'status_label' => $this->getStatusLabel($client->status),
+                    'created_at' => $client->created_at->format('Y-m-d H:i:s'),
+                    'updated_at' => $client->updated_at->format('Y-m-d H:i:s'),
+                    // Champs calculés pour faciliter l'affichage et la sélection
+                    'full_name' => trim($client->nom . ' ' . ($client->prenom ?? '')),
+                    'display_name' => $client->nom_entreprise ?: trim($client->nom . ' ' . ($client->prenom ?? '')),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => 'Liste des clients récupérée avec succès'
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des clients: ' . $e->getMessage()
+            ], 500);
         }
+    }
 
-        // Si commercial → filtre uniquement ses clients
-        if ($user->role == 2) { // 2 = commercial
-            $query->where('user_id', $user->id);
-        }
+    /**
+     * Obtenir le libellé du statut
+     */
+    private function getStatusLabel($status)
+    {
+        $statuses = [
+            0 => 'En attente',
+            1 => 'Validé',
+            2 => 'Rejeté'
+        ];
 
-        return response()->json([
-            'success' => true,
-            'data' => $query->orderBy('created_at', 'desc')->get(),
-        ], 200);
+        return $statuses[$status] ?? 'Inconnu';
     }
 
     // Afficher un client

@@ -34,7 +34,7 @@ class RecruitmentRequest extends Model
     ];
 
     protected $casts = [
-        'application_deadline' => 'date',
+        'application_deadline' => 'datetime',
         'published_at' => 'datetime',
         'approved_at' => 'datetime'
     ];

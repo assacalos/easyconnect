@@ -70,7 +70,6 @@ class UserManagementController extends GetxController {
       activeUsers.value = stats['active'] ?? 0;
       newUsersThisMonth.value = stats['new_this_month'] ?? 0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 

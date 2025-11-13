@@ -1,6 +1,13 @@
+import 'package:easyconnect/Controllers/attendance_controller.dart';
+import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:easyconnect/services/attendance_punch_service.dart';
+import 'package:easyconnect/services/expense_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
+import 'package:easyconnect/services/reporting_service.dart';
+import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/tax_service.dart';
@@ -16,15 +23,17 @@ import 'package:easyconnect/Controllers/payment_controller.dart';
 class ComptableBinding extends Bindings {
   @override
   void dependencies() {
-    print('=== INITIALISATION COMPTABLE BINDING ===');
-
     // Services d'abord
     Get.put(InvoiceService(), permanent: true);
     Get.put(StockService(), permanent: true);
     Get.put(SupplierService(), permanent: true);
     Get.put(TaxService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
+    Get.put(ExpenseService(), permanent: true);
+    Get.put(SalaryService(), permanent: true);
     Get.put(ComptableDashboardService(), permanent: true);
+    Get.put(AttendancePunchService(), permanent: true);
+    Get.put(ReportingService(), permanent: true);
 
     // Contrôleurs ensuite
     Get.put(ComptableDashboardController(), permanent: true);
@@ -34,6 +43,8 @@ class ComptableBinding extends Bindings {
     Get.put(ExpenseController(), permanent: true);
     Get.put(SalaryController(), permanent: true);
     Get.put(PaymentController(), permanent: true);
-    print('✅ PaymentController enregistré dans ComptableBinding');
+    Get.put(AttendanceController(), permanent: true);
+    Get.put(InvoiceController(), permanent: true);
+    Get.put(ReportingController(), permanent: true);
   }
 }

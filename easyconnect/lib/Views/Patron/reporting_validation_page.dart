@@ -453,8 +453,6 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'draft':
-        return Colors.grey;
       case 'submitted':
         return Colors.orange;
       case 'approved':
@@ -468,8 +466,6 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
 
   IconData _getStatusIcon(String status) {
     switch (status) {
-      case 'draft':
-        return Icons.edit;
       case 'submitted':
         return Icons.pending;
       case 'approved':
@@ -483,8 +479,6 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'draft':
-        return 'Brouillon';
       case 'submitted':
         return 'Soumis';
       case 'approved':

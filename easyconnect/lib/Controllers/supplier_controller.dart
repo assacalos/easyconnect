@@ -28,23 +28,16 @@ class SupplierController extends GetxController {
   final TextEditingController adresseController = TextEditingController();
   final TextEditingController villeController = TextEditingController();
   final TextEditingController paysController = TextEditingController();
-  final TextEditingController contactPrincipalController =
-      TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController commentairesController = TextEditingController();
 
   @override
   void onInit() {
     super.onInit();
-    print('🔧 SupplierController: onInit() appelé');
 
     try {
       _supplierService = Get.find<SupplierService>();
-      print('✅ SupplierController: SupplierService trouvé');
     } catch (e) {
-      print(
-        '❌ SupplierController: Erreur lors de la récupération du SupplierService: $e',
-      );
     }
 
     loadSuppliers();
@@ -59,7 +52,6 @@ class SupplierController extends GetxController {
     adresseController.dispose();
     villeController.dispose();
     paysController.dispose();
-    contactPrincipalController.dispose();
     descriptionController.dispose();
     commentairesController.dispose();
     super.onClose();
@@ -67,35 +59,19 @@ class SupplierController extends GetxController {
 
   // Charger tous les fournisseurs
   Future<void> loadSuppliers() async {
-    print('🔄 SupplierController: loadSuppliers() appelé');
-    print('📊 SupplierController: selectedStatus = ${selectedStatus.value}');
-    print('🔍 SupplierController: searchQuery = "${searchQuery.value}"');
-
     try {
       isLoading.value = true;
-      print('⏳ SupplierController: Chargement en cours...');
-
       // Charger tous les fournisseurs sans filtre côté serveur
       final loadedSuppliers = await _supplierService.getSuppliers(
         status: null, // Toujours charger tous les fournisseurs
         search: null, // Pas de recherche côté serveur
       );
-
-      print(
-        '📦 SupplierController: ${loadedSuppliers.length} fournisseurs reçus du service',
-      );
-
       // Stocker tous les fournisseurs
       allSuppliers.assignAll(loadedSuppliers);
 
       // Appliquer les filtres côté client
       applyFilters();
-
-      print(
-        '✅ SupplierController: Liste mise à jour avec ${suppliers.length} fournisseurs filtrés',
-      );
     } catch (e) {
-      print('❌ SupplierController: Erreur lors du chargement: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de charger les fournisseurs',
@@ -103,7 +79,6 @@ class SupplierController extends GetxController {
       );
     } finally {
       isLoading.value = false;
-      print('🏁 SupplierController: Chargement terminé');
     }
   }
 
@@ -112,21 +87,12 @@ class SupplierController extends GetxController {
     try {
       final stats = await _supplierService.getSupplierStats();
       supplierStats.value = stats;
-      print('📊 SupplierController: Statistiques chargées');
     } catch (e) {
-      print(
-        '❌ SupplierController: Erreur lors du chargement des statistiques: $e',
-      );
     }
   }
 
   // Appliquer les filtres côté client
   void applyFilters() {
-    print('🔍 SupplierController: applyFilters() appelé');
-    print('📊 SupplierController: Statut sélectionné: ${selectedStatus.value}');
-    print('🔍 SupplierController: Recherche: "${searchQuery.value}"');
-    print('📦 SupplierController: Total fournisseurs: ${allSuppliers.length}');
-
     List<Supplier> filteredSuppliers = List.from(allSuppliers);
 
     // Filtrer par statut
@@ -135,9 +101,6 @@ class SupplierController extends GetxController {
           filteredSuppliers.where((supplier) {
             return supplier.statut == selectedStatus.value;
           }).toList();
-      print(
-        '📊 SupplierController: Après filtrage par statut: ${filteredSuppliers.length}',
-      );
     }
 
     // Filtrer par recherche
@@ -151,37 +114,27 @@ class SupplierController extends GetxController {
                 supplier.ville.toLowerCase().contains(query) ||
                 supplier.pays.toLowerCase().contains(query);
           }).toList();
-      print(
-        '🔍 SupplierController: Après filtrage par recherche: ${filteredSuppliers.length}',
-      );
     }
 
     suppliers.assignAll(filteredSuppliers);
-    print(
-      '✅ SupplierController: Filtrage terminé - ${suppliers.length} fournisseurs affichés',
-    );
   }
 
   // Rechercher
   void searchSuppliers(String query) {
-    print('🔍 SupplierController: searchSuppliers("$query") appelé');
     searchQuery.value = query;
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    print('🔍 SupplierController: filterByStatus($status) appelé');
     selectedStatus.value = status;
-    print('📊 SupplierController: Nouveau statut sélectionné: $status');
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Créer un fournisseur
-  Future<void> createSupplier() async {
+  Future<bool> createSupplier() async {
     try {
       isLoading.value = true;
-      print('➕ SupplierController: createSupplier() appelé');
 
       final supplier = Supplier(
         nom: nomController.text.trim(),
@@ -190,7 +143,6 @@ class SupplierController extends GetxController {
         adresse: adresseController.text.trim(),
         ville: villeController.text.trim(),
         pays: paysController.text.trim(),
-        contactPrincipal: contactPrincipalController.text.trim(),
         description:
             descriptionController.text.trim().isEmpty
                 ? null
@@ -199,8 +151,7 @@ class SupplierController extends GetxController {
             commentairesController.text.trim().isEmpty
                 ? null
                 : commentairesController.text.trim(),
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
+        statut: 'en_attente', // Statut par défaut selon la doc
       );
 
       await _supplierService.createSupplier(supplier);
@@ -211,26 +162,32 @@ class SupplierController extends GetxController {
         'Succès',
         'Fournisseur créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
 
       clearForm();
+      return true;
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de la création: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de créer le fournisseur',
+        'Impossible de créer le fournisseur: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
   // Mettre à jour un fournisseur
-  Future<void> updateSupplier(Supplier supplier) async {
+  Future<bool> updateSupplier(Supplier supplier) async {
     try {
       isLoading.value = true;
-      print('✏️ SupplierController: updateSupplier(${supplier.id}) appelé');
 
       final updatedSupplier = supplier.copyWith(
         nom: nomController.text.trim(),
@@ -239,7 +196,6 @@ class SupplierController extends GetxController {
         adresse: adresseController.text.trim(),
         ville: villeController.text.trim(),
         pays: paysController.text.trim(),
-        contactPrincipal: contactPrincipalController.text.trim(),
         description:
             descriptionController.text.trim().isEmpty
                 ? null
@@ -248,7 +204,6 @@ class SupplierController extends GetxController {
             commentairesController.text.trim().isEmpty
                 ? null
                 : commentairesController.text.trim(),
-        updatedAt: DateTime.now(),
       );
 
       await _supplierService.updateSupplier(updatedSupplier);
@@ -259,16 +214,23 @@ class SupplierController extends GetxController {
         'Succès',
         'Fournisseur mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
 
       clearForm();
+      return true;
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de la mise à jour: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de mettre à jour le fournisseur',
+        'Impossible de mettre à jour le fournisseur: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -278,7 +240,6 @@ class SupplierController extends GetxController {
   Future<void> deleteSupplier(Supplier supplier) async {
     try {
       isLoading.value = true;
-      print('🗑️ SupplierController: deleteSupplier(${supplier.id}) appelé');
 
       final success = await _supplierService.deleteSupplier(supplier.id!);
       if (success) {
@@ -294,7 +255,6 @@ class SupplierController extends GetxController {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de la suppression: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de supprimer le fournisseur',
@@ -305,15 +265,17 @@ class SupplierController extends GetxController {
     }
   }
 
-  // Approuver un fournisseur
-  Future<void> approveSupplier(Supplier supplier, {String? comments}) async {
+  // Valider un fournisseur
+  Future<void> approveSupplier(
+    Supplier supplier, {
+    String? validationComment,
+  }) async {
     try {
       isLoading.value = true;
-      print('✅ SupplierController: approveSupplier(${supplier.id}) appelé');
 
       final success = await _supplierService.approveSupplier(
         supplier.id!,
-        comments: comments,
+        validationComment: validationComment,
       );
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
@@ -321,18 +283,21 @@ class SupplierController extends GetxController {
 
         Get.snackbar(
           'Succès',
-          'Fournisseur approuvé avec succès',
+          'Fournisseur validé avec succès',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors de l\'approbation');
+        throw Exception('Erreur lors de la validation');
       }
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de l\'approbation: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible d\'approuver le fournisseur',
+        'Impossible de valider le fournisseur: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -340,14 +305,18 @@ class SupplierController extends GetxController {
   }
 
   // Rejeter un fournisseur
-  Future<void> rejectSupplier(Supplier supplier, String reason) async {
+  Future<void> rejectSupplier(
+    Supplier supplier, {
+    required String rejectionReason,
+    String? rejectionComment,
+  }) async {
     try {
       isLoading.value = true;
-      print('❌ SupplierController: rejectSupplier(${supplier.id}) appelé');
 
       final success = await _supplierService.rejectSupplier(
         supplier.id!,
-        reason,
+        rejectionReason: rejectionReason,
+        rejectionComment: rejectionComment,
       );
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
@@ -357,16 +326,19 @@ class SupplierController extends GetxController {
           'Succès',
           'Fournisseur rejeté',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
         );
       } else {
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
-      print('❌ SupplierController: Erreur lors du rejet: $e');
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter le fournisseur',
+        'Impossible de rejeter le fournisseur: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -381,7 +353,6 @@ class SupplierController extends GetxController {
     adresseController.text = supplier.adresse;
     villeController.text = supplier.ville;
     paysController.text = supplier.pays;
-    contactPrincipalController.text = supplier.contactPrincipal;
     descriptionController.text = supplier.description ?? '';
     commentairesController.text = supplier.commentaires ?? '';
   }
@@ -394,7 +365,6 @@ class SupplierController extends GetxController {
     adresseController.clear();
     villeController.clear();
     paysController.clear();
-    contactPrincipalController.clear();
     descriptionController.clear();
     commentairesController.clear();
   }
@@ -407,9 +377,6 @@ class SupplierController extends GetxController {
   }) async {
     try {
       isLoading.value = true;
-      print(
-        '⭐ SupplierController: rateSupplier(${supplier.id}, $rating) appelé',
-      );
 
       final success = await _supplierService.rateSupplier(
         supplier.id!,
@@ -429,7 +396,6 @@ class SupplierController extends GetxController {
         throw Exception('Erreur lors de l\'évaluation');
       }
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de l\'évaluation: $e');
       Get.snackbar(
         'Erreur',
         'Impossible d\'évaluer le fournisseur',
@@ -444,7 +410,6 @@ class SupplierController extends GetxController {
   Future<void> submitSupplier(Supplier supplier) async {
     try {
       isLoading.value = true;
-      print('📤 SupplierController: submitSupplier(${supplier.id}) appelé');
 
       final success = await _supplierService.submitSupplier(supplier.id!);
       if (success) {
@@ -460,7 +425,6 @@ class SupplierController extends GetxController {
         throw Exception('Erreur lors de la soumission');
       }
     } catch (e) {
-      print('❌ SupplierController: Erreur lors de la soumission: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de soumettre le fournisseur',

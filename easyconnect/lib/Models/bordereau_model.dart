@@ -27,18 +27,29 @@ class BordereauItem {
   };
 
   factory BordereauItem.fromJson(Map<String, dynamic> json) => BordereauItem(
-    id: json['id'],
-    designation: json['designation'],
-    unite: json['unite'],
+    id:
+        json['id'] != null
+            ? (json['id'] is String
+                ? int.tryParse(json['id'])
+                : json['id'] is int
+                ? json['id']
+                : null)
+            : null,
+    designation: json['designation']?.toString() ?? '',
+    unite: json['unite']?.toString() ?? 'unité',
     quantite:
         json['quantite'] is String
             ? int.tryParse(json['quantite']) ?? 0
-            : json['quantite'],
+            : (json['quantite'] is int
+                ? json['quantite']
+                : (json['quantite'] is num ? json['quantite'].toInt() : 0)),
     prixUnitaire:
         json['prix_unitaire'] is String
             ? double.tryParse(json['prix_unitaire']) ?? 0.0
-            : (json['prix_unitaire']?.toDouble() ?? 0.0),
-    description: json['description'],
+            : (json['prix_unitaire'] is num
+                ? json['prix_unitaire'].toDouble()
+                : 0.0),
+    description: json['description']?.toString(),
   );
 }
 
@@ -116,46 +127,112 @@ class Bordereau {
     'commentaire': commentaireRejet,
   };
 
-  factory Bordereau.fromJson(Map<String, dynamic> json) => Bordereau(
-    id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
-    reference: json['reference'],
-    clientId:
-        (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
-                is String
-            ? int.tryParse(
+  factory Bordereau.fromJson(Map<String, dynamic> json) {
+    try {
+      // Gérer les dates mal formées (ex: "22025-10-20" ou avec espaces)
+      DateTime? parseDate(dynamic dateValue) {
+        if (dateValue == null) return null;
+        if (dateValue is DateTime) return dateValue;
+        if (dateValue is String) {
+          final trimmed = dateValue.trim();
+          if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+            return null;
+          // Corriger "22025" en "2025"
+          final corrected = trimmed.replaceFirst('22025', '2025');
+          try {
+            return DateTime.parse(corrected);
+          } catch (e) {
+            return null;
+          }
+        }
+        return null;
+      }
+
+      return Bordereau(
+        id: _parseInt(json['id']),
+        reference: json['reference']?.toString() ?? '',
+        clientId:
+            _parseInt(
               json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
-            )
-            : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
-    devisId: json['devis_id'] is String 
-        ? int.tryParse(json['devis_id']) 
-        : json['devis_id'],
-    commercialId:
-        json['user_id'] is String
-            ? int.tryParse(json['user_id'])
-            : json['user_id'],
-    dateCreation: DateTime.parse(json['date_creation']),
-    dateValidation:
-        json['date_validation'] != null
-            ? DateTime.parse(json['date_validation'])
-            : null,
-    notes: json['notes'],
-    items:
-        (json['items'] as List)
-            .map((item) => BordereauItem.fromJson(item))
-            .toList(),
-    remiseGlobale:
-        json['remise_globale'] is String
-            ? double.tryParse(json['remise_globale'])
-            : json['remise_globale']?.toDouble(),
-    tva:
-        json['tva'] is String
-            ? double.tryParse(json['tva'])
-            : json['tva']?.toDouble(),
-    conditions: json['conditions'],
-    status:
-        json['status'] is String
-            ? int.tryParse(json['status'])
-            : json['status'] ?? 1,
-    commentaireRejet: json['commentaire'],
-  );
+            ) ??
+            0,
+        devisId: _parseInt(json['devis_id']),
+        commercialId: _parseInt(json['user_id']) ?? 0,
+        dateCreation:
+            parseDate(
+              json['date_creation'] ??
+                  json['date_creaation'] ??
+                  json['date_creatio'],
+            ) ??
+            DateTime.now(),
+        dateValidation: parseDate(json['date_validation']),
+        notes: json['notes']?.toString(),
+        items:
+            json['items'] != null && json['items'] is List
+                ? (json['items'] as List)
+                    .map(
+                      (item) => BordereauItem.fromJson(
+                        item is Map<String, dynamic>
+                            ? item
+                            : Map<String, dynamic>.from(item),
+                      ),
+                    )
+                    .toList()
+                : [],
+        remiseGlobale: _parseDouble(json['remise_globale']),
+        tva: _parseDouble(json['tva']) ?? 20.0,
+        conditions: json['conditions']?.toString(),
+        status: _parseInt(json['status']) ?? 1,
+        commentaireRejet: json['commentaire']?.toString(),
+      );
+    } catch (e, stackTrace) {
+      print('❌ Bordereau.fromJson: Erreur: $e');
+      print('❌ Bordereau.fromJson: Stack trace: $stackTrace');
+      print('❌ Bordereau.fromJson: JSON: $json');
+      rethrow;
+    }
+  }
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      return int.tryParse(trimmed);
+    }
+    if (value is num) {
+      try {
+        return value.toInt();
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      try {
+        return double.tryParse(trimmed);
+      } catch (e) {
+        return null;
+      }
+    }
+    if (value is num) {
+      try {
+        return value.toDouble();
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
 }

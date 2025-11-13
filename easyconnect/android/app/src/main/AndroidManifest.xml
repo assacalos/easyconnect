@@ -12,6 +12,17 @@
     <!-- Permissions pour le stockage -->
     <uses-permission android:name="android.permission.INTERNET" />
     
+    <!-- Permissions pour Android 13+ (API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Support de toutes les architectures CPU -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    
     <application
         android:label="EasyConnect"
         android:name="${applicationName}"

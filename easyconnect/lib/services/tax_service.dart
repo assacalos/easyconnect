@@ -10,12 +10,7 @@ class TaxService {
   // Tester la connectivité à l'API pour les impôts
   Future<bool> testTaxConnection() async {
     try {
-      print('🧪 TaxService: Test de connectivité à l\'API...');
-      print('🌐 TaxService: URL de base: $baseUrl');
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token disponible: ${token != null ? "✅" : "❌"}');
-
       final response = await http
           .get(
             Uri.parse('$baseUrl/taxes-list'),
@@ -25,15 +20,8 @@ class TaxService {
             },
           )
           .timeout(const Duration(seconds: 10));
-
-      print(
-        '📡 TaxService: Test de connectivité - Status: ${response.statusCode}',
-      );
-      print('📄 TaxService: Test de connectivité - Body: ${response.body}');
-
       return response.statusCode == 200;
     } catch (e) {
-      print('❌ TaxService: Erreur de connectivité: $e');
       return false;
     }
   }
@@ -45,12 +33,7 @@ class TaxService {
     String? search,
   }) async {
     try {
-      print('🌐 TaxService: getTaxes() appelé');
-      print('📊 TaxService: status=$status, type=$type, search=$search');
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
       if (type != null) queryParams['type'] = type;
@@ -62,8 +45,6 @@ class TaxService {
               : '?${Uri(queryParameters: queryParams).query}';
 
       final url = '$baseUrl/taxes-list$queryString';
-      print('🔗 TaxService: URL appelée: $url');
-
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -71,15 +52,9 @@ class TaxService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('📡 TaxService: Réponse reçue - Status: ${response.statusCode}');
-      print('📄 TaxService: Body length: ${response.body.length}');
-
       if (response.statusCode == 200) {
         try {
           final responseData = json.decode(response.body);
-          print('📊 TaxService: Response data keys: ${responseData.keys}');
-
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
 
@@ -104,39 +79,26 @@ class TaxService {
               data = responseData['taxes'];
             }
           }
-
-          print('📦 TaxService: ${data.length} impôts trouvés dans l\'API');
-
           if (data.isEmpty) {
-            print('⚠️ TaxService: Aucun impôt trouvé dans l\'API');
             return [];
           }
 
           try {
             return data.map((json) {
-              print('🔍 TaxService: Parsing tax JSON: $json');
               return Tax.fromJson(json);
             }).toList();
           } catch (e) {
-            print('❌ TaxService: Erreur lors du parsing des impôts: $e');
-            print('📄 TaxService: Données problématiques: $data');
             rethrow;
           }
         } catch (e) {
-          print('❌ TaxService: Erreur de parsing JSON: $e');
-          print('📄 TaxService: Body content: ${response.body}');
           throw Exception('Erreur de format des données: $e');
         }
       } else {
-        print(
-          '❌ TaxService: Erreur API ${response.statusCode}: ${response.body}',
-        );
         throw Exception(
           'Erreur lors de la récupération des impôts: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print('❌ TaxService: Erreur lors du chargement des impôts: $e');
       rethrow;
     }
   }
@@ -161,7 +123,6 @@ class TaxService {
         'Erreur lors de la récupération de l\'impôt: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.getTaxById: $e');
       throw Exception('Erreur lors de la récupération de l\'impôt: $e');
     }
   }
@@ -171,6 +132,28 @@ class TaxService {
     try {
       final token = storage.read('token');
 
+      // Validation des champs requis
+      if (tax.category == null || tax.category!.isEmpty) {
+        throw Exception('category est requis');
+      }
+      if (tax.baseAmount <= 0) {
+        throw Exception('baseAmount doit être supérieur à 0');
+      }
+      if (tax.period == null || tax.period!.isEmpty) {
+        throw Exception('period est requis (format: YYYY-MM)');
+      }
+      if (tax.periodStart == null || tax.periodStart!.isEmpty) {
+        throw Exception('periodStart est requis (format: YYYY-MM-DD)');
+      }
+      if (tax.periodEnd == null || tax.periodEnd!.isEmpty) {
+        throw Exception('periodEnd est requis (format: YYYY-MM-DD)');
+      }
+      if (tax.dueDate == null || tax.dueDate!.isEmpty) {
+        throw Exception('dueDate est requis (format: YYYY-MM-DD)');
+      }
+
+      // Préparer les données selon la documentation API (camelCase)
+      final taxData = tax.toJson();
       final response = await http.post(
         Uri.parse('$baseUrl/taxes-create'),
         headers: {
@@ -178,18 +161,20 @@ class TaxService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode(tax.toJson()),
+        body: json.encode(taxData),
       );
-
-      if (response.statusCode == 201) {
-        return Tax.fromJson(json.decode(response.body)['data']);
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final responseBody = json.decode(response.body);
+        return Tax.fromJson(responseBody['data'] ?? responseBody);
       }
+
+      // Afficher les détails de l'erreur
+      final errorBody = response.body;
       throw Exception(
-        'Erreur lors de la création de l\'impôt: ${response.statusCode}',
+        'Erreur lors de la création de la taxe: ${response.statusCode} - $errorBody',
       );
     } catch (e) {
-      print('Erreur TaxService.createTax: $e');
-      throw Exception('Erreur lors de la création de l\'impôt: $e');
+      throw Exception('Erreur lors de la création de la taxe: $e');
     }
   }
 
@@ -215,7 +200,6 @@ class TaxService {
         'Erreur lors de la mise à jour de l\'impôt: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.updateTax: $e');
       throw Exception('Erreur lors de la mise à jour de l\'impôt: $e');
     }
   }
@@ -231,22 +215,20 @@ class TaxService {
       final token = storage.read('token');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/taxes-pay/$taxId'),
+        Uri.parse('$baseUrl/taxes/$taxId/mark-paid'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
         body: json.encode({
-          'payment_method': paymentMethod,
-          'reference': reference,
-          'notes': notes,
+          if (paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
+          if (reference != null && reference.isNotEmpty) 'reference': reference,
+          if (notes != null && notes.isNotEmpty) 'notes': notes,
         }),
       );
-
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur TaxService.markTaxAsPaid: $e');
       return false;
     }
   }
@@ -266,7 +248,6 @@ class TaxService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur TaxService.deleteTax: $e');
       return false;
     }
   }
@@ -291,7 +272,6 @@ class TaxService {
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.getTaxStats: $e');
       // Retourner des données de test en cas d'erreur
       return TaxStats(
         totalAmount: 0.0,
@@ -328,7 +308,6 @@ class TaxService {
         'Erreur lors de la récupération des impôts en retard: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.getOverdueTaxes: $e');
       throw Exception(
         'Erreur lors de la récupération des impôts en retard: $e',
       );
@@ -357,7 +336,6 @@ class TaxService {
         'Erreur lors de la récupération des impôts à échéance: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.getUpcomingTaxes: $e');
       throw Exception(
         'Erreur lors de la récupération des impôts à échéance: $e',
       );
@@ -365,28 +343,94 @@ class TaxService {
   }
 
   // Récupérer les catégories d'impôts
-  Future<List<Tax>> getTaxCategories() async {
+  Future<List<TaxCategory>> getTaxCategories() async {
     try {
       final token = storage.read('token');
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/tax-categories-list'),
+      // Essayer plusieurs endpoints possibles
+      final endpoints = [
+        '/tax-categories',
+        '/tax_categories',
+        '/taxCategories',
+        '/tax-categories-list',
+      ];
+
+      Exception? lastException;
+
+      for (final endpoint in endpoints) {
+        try {
+          final response = await http
+              .get(
+                Uri.parse('$baseUrl$endpoint'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      );
-
+              )
+              .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => Tax.fromJson(json)).toList();
+
+            final responseBody = json.decode(response.body);
+            if (responseBody is Map) {
+            }
+
+            List<dynamic> data = [];
+
+            // Gérer différents formats de réponse
+            if (responseBody is Map) {
+              if (responseBody['data'] != null) {
+                if (responseBody['data'] is List) {
+                  data = responseBody['data'];
+                } else if (responseBody['data'] is Map &&
+                    responseBody['data']['data'] != null) {
+                  data = responseBody['data']['data'];
+                }
+              } else if (responseBody['categories'] != null) {
+                if (responseBody['categories'] is List) {
+                  data = responseBody['categories'];
+                }
+              } else if (responseBody['tax_categories'] != null) {
+                if (responseBody['tax_categories'] is List) {
+                  data = responseBody['tax_categories'];
+                }
+              }
+            } else if (responseBody is List) {
+              // Si la réponse est directement une liste
+              data = responseBody;
+            }
+            if (data.isEmpty) {
+              continue; // Essayer l'endpoint suivant
+            }
+
+            try {
+              final categories =
+                  data.map((json) {
+                    return TaxCategory.fromJson(json);
+                  }).toList();
+              return categories;
+            } catch (parseError) {
+              lastException = Exception('Erreur de parsing: $parseError');
+              continue; // Essayer l'endpoint suivant
+            }
+          } else {
+            lastException = Exception(
+              'Erreur ${response.statusCode}: ${response.body}',
+            );
+          }
+        } catch (endpointError) {
+          lastException = Exception('Erreur avec $endpoint: $endpointError');
+          continue; // Essayer l'endpoint suivant
+        }
       }
-      throw Exception(
-        'Erreur lors de la récupération des catégories: ${response.statusCode}',
-      );
+
+      // Si aucun endpoint n'a fonctionné
+      if (lastException != null) {
+        throw lastException;
+      }
+      return [];
     } catch (e) {
-      print('Erreur TaxService.getTaxCategories: $e');
-      throw Exception('Erreur lors de la récupération des catégories: $e');
+      // Retourner une liste vide au lieu de lever une exception pour éviter de bloquer l'UI
+      return [];
     }
   }
 
@@ -412,7 +456,6 @@ class TaxService {
         'Erreur lors de la création de la catégorie: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.createTaxCategory: $e');
       throw Exception('Erreur lors de la création de la catégorie: $e');
     }
   }
@@ -439,7 +482,6 @@ class TaxService {
         'Erreur lors de la mise à jour de la catégorie: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur TaxService.updateTaxCategory: $e');
       throw Exception('Erreur lors de la mise à jour de la catégorie: $e');
     }
   }
@@ -459,48 +501,31 @@ class TaxService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur TaxService.deleteTaxCategory: $e');
       return false;
     }
   }
 
-  // Approuver une taxe
+  // Approuver/Valider une taxe
   Future<bool> approveTax(int taxId, {String? notes}) async {
     try {
-      print('✅ TaxService: Approbation de la taxe ID: $taxId');
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       final response = await http.post(
-        Uri.parse('$baseUrl/taxes-approve/$taxId'),
+        Uri.parse('$baseUrl/taxes-validate/$taxId'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
         body: json.encode({
-          'notes': notes,
-          'approved_at': DateTime.now().toIso8601String(),
+          if (notes != null && notes.isNotEmpty) 'validation_comment': notes,
         }),
       );
-
-      print(
-        '📡 TaxService: Réponse d\'approbation - Status: ${response.statusCode}',
-      );
-      print('📄 TaxService: Body: ${response.body}');
-
       if (response.statusCode == 200) {
-        print('✅ TaxService: Taxe approuvée avec succès');
         return true;
       } else {
-        print(
-          '❌ TaxService: Erreur lors de l\'approbation: ${response.statusCode}',
-        );
         return false;
       }
     } catch (e) {
-      print('❌ TaxService: Erreur lors de l\'approbation de la taxe: $e');
       return false;
     }
   }
@@ -512,12 +537,7 @@ class TaxService {
     String? notes,
   }) async {
     try {
-      print('❌ TaxService: Rejet de la taxe ID: $taxId');
-      print('📝 TaxService: Raison du rejet: $reason');
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       final response = await http.post(
         Uri.parse('$baseUrl/taxes-reject/$taxId'),
         headers: {
@@ -526,24 +546,16 @@ class TaxService {
           'Authorization': 'Bearer $token',
         },
         body: json.encode({
-          'reason': reason,
-          'notes': notes,
-          'rejected_at': DateTime.now().toIso8601String(),
+          'rejection_reason': reason,
+          if (notes != null && notes.isNotEmpty) 'rejection_comment': notes,
         }),
       );
-
-      print('📡 TaxService: Réponse de rejet - Status: ${response.statusCode}');
-      print('📄 TaxService: Body: ${response.body}');
-
       if (response.statusCode == 200) {
-        print('✅ TaxService: Taxe rejetée avec succès');
         return true;
       } else {
-        print('❌ TaxService: Erreur lors du rejet: ${response.statusCode}');
         return false;
       }
     } catch (e) {
-      print('❌ TaxService: Erreur lors du rejet de la taxe: $e');
       return false;
     }
   }
@@ -551,11 +563,7 @@ class TaxService {
   // Récupérer les taxes en attente d'approbation
   Future<List<Tax>> getPendingTaxes() async {
     try {
-      print('⏳ TaxService: Récupération des taxes en attente...');
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       final response = await http.get(
         Uri.parse('$baseUrl/taxes-pending'),
         headers: {
@@ -563,11 +571,6 @@ class TaxService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print(
-        '📡 TaxService: Réponse des taxes en attente - Status: ${response.statusCode}',
-      );
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         List<dynamic> data = [];
@@ -581,22 +584,13 @@ class TaxService {
         } else if (responseData['taxes'] != null) {
           data = responseData['taxes'] is List ? responseData['taxes'] : [];
         }
-
-        print('📦 TaxService: ${data.length} taxes en attente trouvées');
-
         return data.map((json) => Tax.fromJson(json)).toList();
       } else {
-        print(
-          '❌ TaxService: Erreur lors de la récupération des taxes en attente: ${response.statusCode}',
-        );
         throw Exception(
           'Erreur lors de la récupération des taxes en attente: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print(
-        '❌ TaxService: Erreur lors de la récupération des taxes en attente: $e',
-      );
       throw Exception(
         'Erreur lors de la récupération des taxes en attente: $e',
       );
@@ -606,13 +600,7 @@ class TaxService {
   // Récupérer l'historique des approbations/rejets
   Future<List<Map<String, dynamic>>> getTaxApprovalHistory(int taxId) async {
     try {
-      print(
-        '📜 TaxService: Récupération de l\'historique pour la taxe ID: $taxId',
-      );
-
       final token = storage.read('token');
-      print('🔑 TaxService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       final response = await http.get(
         Uri.parse('$baseUrl/taxes-history/$taxId'),
         headers: {
@@ -620,30 +608,16 @@ class TaxService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print(
-        '📡 TaxService: Réponse de l\'historique - Status: ${response.statusCode}',
-      );
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         List<dynamic> data = responseData['data'] ?? [];
-
-        print('📦 TaxService: ${data.length} entrées d\'historique trouvées');
-
         return data.cast<Map<String, dynamic>>();
       } else {
-        print(
-          '❌ TaxService: Erreur lors de la récupération de l\'historique: ${response.statusCode}',
-        );
         throw Exception(
           'Erreur lors de la récupération de l\'historique: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print(
-        '❌ TaxService: Erreur lors de la récupération de l\'historique: $e',
-      );
       throw Exception('Erreur lors de la récupération de l\'historique: $e');
     }
   }

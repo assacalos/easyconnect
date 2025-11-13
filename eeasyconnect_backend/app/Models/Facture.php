@@ -21,6 +21,7 @@ class Facture extends Model
         'status',
         'type_paiement',
         'notes',
+        'terms',
         'user_id',
         'validated_by',
         'validated_at',
@@ -79,6 +80,14 @@ class Facture extends Model
     public function paiements()
     {
         return $this->hasMany(Paiement::class);
+    }
+
+    /**
+     * Relation avec les items de la facture
+     */
+    public function items()
+    {
+        return $this->hasMany(FactureItem::class, 'facture_id');
     }
 
     /**

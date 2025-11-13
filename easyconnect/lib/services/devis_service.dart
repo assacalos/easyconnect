@@ -32,8 +32,6 @@ class DevisService {
         },
       );
       final url = '$baseUrl/devis-list$queryString';
-      print('url => $url');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
 
@@ -70,7 +68,6 @@ class DevisService {
         'Erreur lors de la récupération des devis: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la récupération des devis: $e');
     }
   }
@@ -96,7 +93,6 @@ class DevisService {
       }
       throw Exception('Erreur lors de la création du devis');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la création du devis');
     }
   }
@@ -119,7 +115,6 @@ class DevisService {
       }
       throw Exception('Erreur lors de la mise à jour du devis');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la mise à jour du devis');
     }
   }
@@ -137,7 +132,6 @@ class DevisService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -155,7 +149,6 @@ class DevisService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -174,7 +167,6 @@ class DevisService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -182,14 +174,8 @@ class DevisService {
   Future<bool> acceptDevis(int devisId) async {
     try {
       final token = storage.read('token');
-      print('🔍 DevisService.acceptDevis - Début');
-      print(
-        '📊 Paramètres: devisId=$devisId, token=${token?.substring(0, 10)}...',
-      );
 
       final url = '$baseUrl/devis-validate/$devisId';
-      print('🌐 URL de requête: $url');
-
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -197,33 +183,16 @@ class DevisService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print('📡 Réponse reçue: ${response.statusCode}');
-      print('📄 Contenu de la réponse: ${response.body}');
-
       // Log spécial pour les erreurs 500
       if (response.statusCode == 500) {
-        print('🚨 ERREUR 500 - Erreur serveur Laravel');
-        print('📄 Détails complets de l\'erreur:');
-        print('   ${response.body}');
-        print('🔍 Vérifiez les logs Laravel: storage/logs/laravel.log');
       }
 
       if (response.statusCode == 200) {
-        print('✅ DevisService.acceptDevis - Succès');
         return true;
       } else {
-        print('❌ DevisService.acceptDevis - Échec: ${response.statusCode}');
-        print('📄 Détails de l\'erreur: ${response.body}');
-        print('🔍 DevisService.acceptDevis - Analyse de l\'erreur:');
-        print('   - Code de statut: ${response.statusCode}');
-        print('   - URL appelée: $url');
-        print('   - Token présent: ${token != null}');
-        print('   - Devis ID: $devisId');
         return false;
       }
     } catch (e) {
-      print('❌ DevisService.acceptDevis - Erreur: $e');
       return false;
     }
   }
@@ -231,15 +200,8 @@ class DevisService {
   Future<bool> rejectDevis(int devisId, String commentaire) async {
     try {
       final token = storage.read('token');
-      print('🔍 DevisService.rejectDevis - Début');
-      print('📊 Paramètres: devisId=$devisId, commentaire=$commentaire');
-
       final url = '$baseUrl/devis-reject/$devisId';
-      print('🌐 URL de requête: $url');
-
       final body = json.encode({'commentaire': commentaire});
-      print('📦 Corps de la requête: $body');
-
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -249,34 +211,16 @@ class DevisService {
         },
         body: body,
       );
-
-      print('📡 Réponse reçue: ${response.statusCode}');
-      print('📄 Contenu de la réponse: ${response.body}');
-
       // Log spécial pour les erreurs 500
       if (response.statusCode == 500) {
-        print('🚨 ERREUR 500 - Erreur serveur Laravel');
-        print('📄 Détails complets de l\'erreur:');
-        print('   ${response.body}');
-        print('🔍 Vérifiez les logs Laravel: storage/logs/laravel.log');
       }
 
       if (response.statusCode == 200) {
-        print('✅ DevisService.rejectDevis - Succès');
         return true;
       } else {
-        print('❌ DevisService.rejectDevis - Échec: ${response.statusCode}');
-        print('📄 Détails de l\'erreur: ${response.body}');
-        print('🔍 DevisService.rejectDevis - Analyse de l\'erreur:');
-        print('   - Code de statut: ${response.statusCode}');
-        print('   - URL appelée: $url');
-        print('   - Token présent: ${token != null}');
-        print('   - Devis ID: $devisId');
-        print('   - Commentaire envoyé: $commentaire');
         return false;
       }
     } catch (e) {
-      print('❌ DevisService.rejectDevis - Erreur: $e');
       return false;
     }
   }
@@ -297,7 +241,6 @@ class DevisService {
       }
       throw Exception('Erreur lors de la génération du PDF');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la génération du PDF');
     }
   }
@@ -318,7 +261,6 @@ class DevisService {
       }
       throw Exception('Erreur lors de la récupération des statistiques');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la récupération des statistiques');
     }
   }

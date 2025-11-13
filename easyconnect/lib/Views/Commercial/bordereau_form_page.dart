@@ -5,40 +5,87 @@ import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/Views/Components/devis_selection_dialog.dart';
 import 'package:intl/intl.dart';
 
-class BordereauFormPage extends StatelessWidget {
-  final BordereauxController controller = Get.put(BordereauxController());
+class BordereauFormPage extends StatefulWidget {
   final bool isEditing;
   final int? bordereauId;
 
-  // Contrôleurs de formulaire
-  final referenceController = TextEditingController();
-  final notesController = TextEditingController();
-  final remiseController = TextEditingController();
-  final tvaController = TextEditingController(text: '20.0');
-  final conditionsController = TextEditingController();
+  const BordereauFormPage({
+    super.key,
+    this.isEditing = false,
+    this.bordereauId,
+  });
 
-  BordereauFormPage({super.key, this.isEditing = false, this.bordereauId});
+  @override
+  State<BordereauFormPage> createState() => _BordereauFormPageState();
+}
+
+class _BordereauFormPageState extends State<BordereauFormPage> {
+  final BordereauxController controller = Get.put(BordereauxController());
+
+  // Contrôleurs de formulaire
+  late final TextEditingController referenceController;
+  late final TextEditingController notesController;
+  late final TextEditingController remiseController;
+  late final TextEditingController tvaController;
+  late final TextEditingController conditionsController;
+
+  final formKey = GlobalKey<FormState>();
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Toujours réinitialiser les contrôleurs pour avoir des champs vides
+    referenceController = TextEditingController();
+    notesController = TextEditingController();
+    remiseController = TextEditingController();
+    tvaController = TextEditingController(text: '20.0');
+    conditionsController = TextEditingController();
+
+    // S'assurer que le formulaire du contrôleur est aussi réinitialisé
+    if (!widget.isEditing) {
+      controller.clearForm();
+    }
+  }
+
+  @override
+  void dispose() {
+    referenceController.dispose();
+    notesController.dispose();
+    remiseController.dispose();
+    tvaController.dispose();
+    conditionsController.dispose();
+    super.dispose();
+  }
+
+  void _initializeFormIfNeeded() {
+    if (!_isInitialized && widget.isEditing && widget.bordereauId != null) {
+      try {
+        final bordereau = controller.bordereaux.firstWhere(
+          (b) => b.id == widget.bordereauId,
+        );
+        referenceController.text = bordereau.reference;
+        notesController.text = bordereau.notes ?? '';
+        remiseController.text = bordereau.remiseGlobale?.toString() ?? '';
+        tvaController.text = bordereau.tva?.toString() ?? '20.0';
+        conditionsController.text = bordereau.conditions ?? '';
+        controller.items.value = bordereau.items;
+        _isInitialized = true;
+      } catch (e) {
+        // Le bordereau n'est pas encore chargé, on réessayera plus tard
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-
-    if (isEditing && bordereauId != null) {
-      final bordereau = controller.bordereaux.firstWhere(
-        (b) => b.id == bordereauId,
-      );
-      referenceController.text = bordereau.reference;
-      notesController.text = bordereau.notes ?? '';
-      remiseController.text = bordereau.remiseGlobale?.toString() ?? '';
-      tvaController.text = bordereau.tva?.toString() ?? '20.0';
-      conditionsController.text = bordereau.conditions ?? '';
-      controller.items.value = bordereau.items;
-      // TODO: Charger le client si nécessaire
-    }
+    _initializeFormIfNeeded();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Modifier le bordereau' : 'Nouveau bordereau'),
+        title: Text(
+          widget.isEditing ? 'Modifier le bordereau' : 'Nouveau bordereau',
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -414,6 +461,18 @@ class BordereauFormPage extends StatelessWidget {
               return;
             }
 
+            // Vérifier qu'il y a des items
+            if (controller.items.isEmpty) {
+              Get.snackbar(
+                'Erreur',
+                'Veuillez ajouter au moins un article',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
             final data = {
               'reference': referenceController.text,
               'notes': notesController.text,
@@ -422,16 +481,16 @@ class BordereauFormPage extends StatelessWidget {
               'conditions': conditionsController.text,
             };
 
-            if (isEditing && bordereauId != null) {
-              controller.updateBordereau(bordereauId!, data);
+            if (widget.isEditing && widget.bordereauId != null) {
+              controller.updateBordereau(widget.bordereauId!, data);
             } else {
-              // Pour la création
+              // Pour la création, la page se fermera automatiquement après succès
               controller.createBordereau(data);
             }
           }
         },
         icon: const Icon(Icons.save),
-        label: Text(isEditing ? 'Modifier le bordereau' : 'Enregistrer'),
+        label: Text(widget.isEditing ? 'Modifier le bordereau' : 'Enregistrer'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -687,9 +746,8 @@ class BordereauFormPage extends StatelessWidget {
             isLoading: controller.isLoadingDevis.value,
             onDevisSelected: (devis) {
               controller.selectDevis(devis);
-              Navigator.of(
-                context,
-              ).pop(); // Fermer seulement le dialog, pas la page
+              // Le dialog se ferme déjà automatiquement avec Get.back() dans DevisSelectionDialog
+              // Pas besoin de fermer ici pour éviter de fermer la page principale
             },
           ),
     );

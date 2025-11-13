@@ -5,8 +5,6 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\RecruitmentRequest;
 use App\Models\RecruitmentApplication;
-use App\Models\RecruitmentDocument;
-use App\Models\RecruitmentInterview;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -82,65 +80,9 @@ class RecruitmentController extends Controller
             $perPage = $request->get('per_page', 15);
             $requests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-            // Transformer les données
+            // Transformer les données au format Flutter
             $requests->getCollection()->transform(function ($request) {
-                return [
-                    'id' => $request->id,
-                    'title' => $request->title,
-                    'department' => $request->department,
-                    'position' => $request->position,
-                    'description' => $request->description,
-                    'requirements' => $request->requirements,
-                    'responsibilities' => $request->responsibilities,
-                    'number_of_positions' => $request->number_of_positions,
-                    'employment_type' => $request->employment_type,
-                    'employment_type_libelle' => $request->employment_type_libelle,
-                    'experience_level' => $request->experience_level,
-                    'experience_level_libelle' => $request->experience_level_libelle,
-                    'salary_range' => $request->salary_range,
-                    'location' => $request->location,
-                    'application_deadline' => $request->application_deadline?->format('Y-m-d'),
-                    'status' => $request->status,
-                    'status_libelle' => $request->status_libelle,
-                    'rejection_reason' => $request->rejection_reason,
-                    'published_at' => $request->published_at?->format('Y-m-d H:i:s'),
-                    'published_by' => $request->published_by,
-                    'publisher_name' => $request->publisher_name,
-                    'approved_at' => $request->approved_at?->format('Y-m-d H:i:s'),
-                    'approved_by' => $request->approved_by,
-                    'approver_name' => $request->approver_name,
-                    'created_by' => $request->created_by,
-                    'creator_name' => $request->creator_name,
-                    'updated_by' => $request->updated_by,
-                    'updater_name' => $request->updater_name,
-                    'is_draft' => $request->is_draft,
-                    'is_published' => $request->is_published,
-                    'is_closed' => $request->is_closed,
-                    'is_cancelled' => $request->is_cancelled,
-                    'can_publish' => $request->can_publish,
-                    'can_close' => $request->can_close,
-                    'can_cancel' => $request->can_cancel,
-                    'can_edit' => $request->can_edit,
-                    'is_expiring' => $request->is_expiring,
-                    'is_expired' => $request->is_expired,
-                    'applications_count' => $request->applications_count,
-                    'pending_applications_count' => $request->pending_applications_count,
-                    'shortlisted_applications_count' => $request->shortlisted_applications_count,
-                    'hired_applications_count' => $request->hired_applications_count,
-                    'applications' => $request->applications->map(function ($application) {
-                        return [
-                            'id' => $application->id,
-                            'candidate_name' => $application->candidate_name,
-                            'candidate_email' => $application->candidate_email,
-                            'candidate_phone' => $application->candidate_phone,
-                            'status' => $application->status,
-                            'status_libelle' => $application->status_libelle,
-                            'created_at' => $application->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'created_at' => $request->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $request->updated_at->format('Y-m-d H:i:s')
-                ];
+                return $this->formatRecruitmentRequest($request);
             });
 
             return response()->json([
@@ -174,7 +116,7 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $request,
+                'data' => $this->formatRecruitmentRequest($request, true),
                 'message' => 'Demande de recrutement récupérée avec succès'
             ]);
 
@@ -194,17 +136,17 @@ class RecruitmentController extends Controller
         try {
             $validated = $request->validate([
                 'title' => 'required|string|max:255',
-                'department' => 'required|string|max:255',
-                'position' => 'required|string|max:255',
-                'description' => 'required|string',
-                'requirements' => 'required|string',
-                'responsibilities' => 'required|string',
-                'number_of_positions' => 'required|integer|min:1',
+                'department' => 'required|string|max:100',
+                'position' => 'required|string|max:100',
+                'description' => 'required|string|min:50',
+                'requirements' => 'required|string|min:20',
+                'responsibilities' => 'required|string|min:20',
+                'number_of_positions' => 'required|integer|min:1|max:100',
                 'employment_type' => 'required|in:full_time,part_time,contract,internship',
                 'experience_level' => 'required|in:entry,junior,mid,senior,expert',
-                'salary_range' => 'required|string|max:255',
+                'salary_range' => 'required|string|max:100',
                 'location' => 'required|string|max:255',
-                'application_deadline' => 'required|date|after:today'
+                'application_deadline' => 'required|date|after:now'
             ]);
 
             DB::beginTransaction();
@@ -230,7 +172,7 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $recruitmentRequest->load(['creator']),
+                'data' => $this->formatRecruitmentRequest($recruitmentRequest->load(['creator'])),
                 'message' => 'Demande de recrutement créée avec succès'
             ], 201);
 
@@ -267,17 +209,17 @@ class RecruitmentController extends Controller
 
             $validated = $request->validate([
                 'title' => 'sometimes|string|max:255',
-                'department' => 'sometimes|string|max:255',
-                'position' => 'sometimes|string|max:255',
-                'description' => 'sometimes|string',
-                'requirements' => 'sometimes|string',
-                'responsibilities' => 'sometimes|string',
-                'number_of_positions' => 'sometimes|integer|min:1',
+                'department' => 'sometimes|string|max:100',
+                'position' => 'sometimes|string|max:100',
+                'description' => 'sometimes|string|min:50',
+                'requirements' => 'sometimes|string|min:20',
+                'responsibilities' => 'sometimes|string|min:20',
+                'number_of_positions' => 'sometimes|integer|min:1|max:100',
                 'employment_type' => 'sometimes|in:full_time,part_time,contract,internship',
                 'experience_level' => 'sometimes|in:entry,junior,mid,senior,expert',
-                'salary_range' => 'sometimes|string|max:255',
+                'salary_range' => 'sometimes|string|max:100',
                 'location' => 'sometimes|string|max:255',
-                'application_deadline' => 'sometimes|date|after:today'
+                'application_deadline' => 'sometimes|date|after:now'
             ]);
 
             $recruitmentRequest->update(array_merge($validated, [
@@ -286,7 +228,7 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $recruitmentRequest->load(['creator', 'updater']),
+                'data' => $this->formatRecruitmentRequest($recruitmentRequest->load(['creator', 'updater'])),
                 'message' => 'Demande de recrutement mise à jour avec succès'
             ]);
 
@@ -451,6 +393,53 @@ class RecruitmentController extends Controller
     }
 
     /**
+     * Rejeter une demande de recrutement
+     */
+    public function reject(Request $request, $id)
+    {
+        try {
+            $recruitmentRequest = RecruitmentRequest::find($id);
+
+            if (!$recruitmentRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Demande de recrutement non trouvée'
+                ], 404);
+            }
+
+            // Vérifier que la demande peut être rejetée (draft ou published)
+            if (!in_array($recruitmentRequest->status, ['draft', 'published'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cette demande ne peut pas être rejetée'
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'reason' => 'nullable|string|max:1000',
+                'rejection_reason' => 'nullable|string|max:1000'
+            ]);
+
+            // Accepter 'reason' (Flutter) ou 'rejection_reason' (backend)
+            $rejectionReason = $validated['reason'] ?? $validated['rejection_reason'] ?? null;
+
+            $recruitmentRequest->cancel($rejectionReason);
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->formatRecruitmentRequest($recruitmentRequest->load(['creator', 'updater'])),
+                'message' => 'Demande de recrutement rejetée avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du rejet: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Approuver une demande de recrutement
      */
     public function approve($id)
@@ -487,10 +476,30 @@ class RecruitmentController extends Controller
     {
         try {
             $stats = RecruitmentRequest::getRecruitmentStats();
+            
+            // Formater les statistiques au format Flutter
+            $formattedStats = [
+                'total_requests' => $stats['total_requests'],
+                'draft_requests' => $stats['draft_requests'],
+                'published_requests' => $stats['published_requests'],
+                'closed_requests' => $stats['closed_requests'],
+                'total_applications' => $stats['total_applications'],
+                'pending_applications' => $stats['pending_applications'],
+                'shortlisted_applications' => $stats['shortlisted_applications'],
+                'interviewed_applications' => $stats['interviewed_applications'],
+                'hired_applications' => $stats['hired_applications'],
+                'rejected_applications' => $stats['rejected_applications'],
+                'average_application_time' => $stats['average_application_time'],
+                'applications_by_department' => $stats['applications_by_department']->toArray(),
+                'applications_by_position' => $stats['applications_by_position']->toArray(),
+                'recent_applications' => $stats['recent_applications']->map(function ($application) {
+                    return $this->formatRecruitmentApplication($application);
+                })->toArray(),
+            ];
 
             return response()->json([
                 'success' => true,
-                'data' => $stats,
+                'data' => $formattedStats,
                 'message' => 'Statistiques récupérées avec succès'
             ]);
 
@@ -512,7 +521,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes du département récupérées avec succès'
             ]);
 
@@ -534,7 +545,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes du poste récupérées avec succès'
             ]);
 
@@ -556,7 +569,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes expirant récupérées avec succès'
             ]);
 
@@ -578,7 +593,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes expirées récupérées avec succès'
             ]);
 
@@ -600,7 +617,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes publiées récupérées avec succès'
             ]);
 
@@ -622,7 +641,9 @@ class RecruitmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
+                'data' => $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                }),
                 'message' => 'Demandes brouillons récupérées avec succès'
             ]);
 
@@ -632,6 +653,226 @@ class RecruitmentController extends Controller
                 'message' => 'Erreur lors de la récupération des demandes brouillons: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Récupérer les départements disponibles
+     */
+    public function departments()
+    {
+        try {
+            $departments = RecruitmentRequest::distinct()
+                ->whereNotNull('department')
+                ->where('department', '!=', '')
+                ->orderBy('department')
+                ->pluck('department')
+                ->toArray();
+
+            // Si aucun département n'existe, retourner une liste par défaut
+            if (empty($departments)) {
+                $departments = [
+                    'Ressources Humaines',
+                    'Commercial',
+                    'Comptabilité',
+                    'Technique',
+                    'Support',
+                    'Direction'
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $departments,
+                'message' => 'Liste des départements récupérée avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des départements: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les postes disponibles
+     */
+    public function positions()
+    {
+        try {
+            $positions = RecruitmentRequest::distinct()
+                ->whereNotNull('position')
+                ->where('position', '!=', '')
+                ->orderBy('position')
+                ->pluck('position')
+                ->toArray();
+
+            // Si aucun poste n'existe, retourner une liste par défaut
+            if (empty($positions)) {
+                $positions = [
+                    'Développeur',
+                    'Chef de projet',
+                    'Comptable',
+                    'Commercial',
+                    'Technicien',
+                    'Assistant RH',
+                    'Manager'
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $positions,
+                'message' => 'Liste des postes récupérée avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des postes: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les candidatures d'une demande de recrutement
+     */
+    public function applications($id, Request $request)
+    {
+        try {
+            $recruitmentRequest = RecruitmentRequest::find($id);
+
+            if (!$recruitmentRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Demande de recrutement non trouvée'
+                ], 404);
+            }
+
+            $query = $recruitmentRequest->applications()->with(['reviewer', 'documents']);
+
+            // Filtrage par statut
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+
+            $applications = $query->orderBy('created_at', 'desc')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $applications->map(function ($application) {
+                    return $this->formatRecruitmentApplication($application, true);
+                }),
+                'message' => 'Candidatures récupérées avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des candidatures: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Formater une demande de recrutement au format Flutter
+     */
+    private function formatRecruitmentRequest($request, $includeFullDetails = false)
+    {
+        $data = [
+            'id' => $request->id,
+            'title' => $request->title,
+            'department' => $request->department,
+            'position' => $request->position,
+            'description' => $request->description,
+            'requirements' => $request->requirements,
+            'responsibilities' => $request->responsibilities,
+            'number_of_positions' => $request->number_of_positions,
+            'employment_type' => $request->employment_type,
+            'experience_level' => $request->experience_level,
+            'salary_range' => $request->salary_range,
+            'location' => $request->location,
+            'application_deadline' => $request->application_deadline?->format('Y-m-d\TH:i:s\Z'),
+            'status' => $request->status,
+            'rejection_reason' => $request->rejection_reason,
+            'published_at' => $request->published_at?->format('Y-m-d\TH:i:s'),
+            'published_by' => $request->published_by,
+            'published_by_name' => $request->publisher_name,
+            'approved_at' => $request->approved_at?->format('Y-m-d\TH:i:s'),
+            'approved_by' => $request->approved_by,
+            'approved_by_name' => $request->approver_name,
+            'created_at' => $request->created_at->format('Y-m-d\TH:i:s'),
+            'updated_at' => $request->updated_at->format('Y-m-d\TH:i:s'),
+        ];
+
+        // Inclure les applications si demandé
+        if ($includeFullDetails && $request->relationLoaded('applications')) {
+            $data['applications'] = $request->applications->map(function ($application) {
+                return $this->formatRecruitmentApplication($application, true);
+            });
+        } else {
+            $data['applications'] = [];
+        }
+
+        // Inclure les stats si demandé
+        if ($includeFullDetails) {
+            $data['stats'] = [
+                'total_applications' => $request->applications_count ?? 0,
+                'pending_applications' => $request->pending_applications_count ?? 0,
+                'shortlisted_applications' => $request->shortlisted_applications_count ?? 0,
+                'hired_applications' => $request->hired_applications_count ?? 0,
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Formater une candidature au format Flutter
+     */
+    private function formatRecruitmentApplication($application, $includeDocuments = false)
+    {
+        $data = [
+            'id' => $application->id,
+            'recruitment_request_id' => $application->recruitment_request_id,
+            'candidate_name' => $application->candidate_name,
+            'candidate_email' => $application->candidate_email,
+            'candidate_phone' => $application->candidate_phone,
+            'candidate_address' => $application->candidate_address,
+            'cover_letter' => $application->cover_letter,
+            'resume_path' => $application->resume_path,
+            'portfolio_url' => $application->portfolio_url,
+            'linkedin_url' => $application->linkedin_url,
+            'status' => $application->status,
+            'notes' => $application->notes,
+            'rejection_reason' => $application->rejection_reason,
+            'reviewed_at' => $application->reviewed_at?->format('Y-m-d\TH:i:s'),
+            'reviewed_by' => $application->reviewed_by,
+            'reviewed_by_name' => $application->reviewer_name,
+            'interview_scheduled_at' => $application->interview_scheduled_at?->format('Y-m-d\TH:i:s'),
+            'interview_completed_at' => $application->interview_completed_at?->format('Y-m-d\TH:i:s'),
+            'interview_notes' => $application->interview_notes,
+            'created_at' => $application->created_at->format('Y-m-d\TH:i:s'),
+            'updated_at' => $application->updated_at->format('Y-m-d\TH:i:s'),
+        ];
+
+        if ($includeDocuments && $application->relationLoaded('documents')) {
+            $data['documents'] = $application->documents->map(function ($document) {
+                return [
+                    'id' => $document->id,
+                    'application_id' => $document->application_id,
+                    'file_name' => $document->file_name,
+                    'file_path' => $document->file_path,
+                    'file_type' => $document->file_type,
+                    'file_size' => $document->file_size,
+                    'uploaded_at' => $document->uploaded_at->format('Y-m-d\TH:i:s'),
+                ];
+            });
+        } else {
+            $data['documents'] = [];
+        }
+
+        return $data;
     }
 }
 

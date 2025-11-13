@@ -202,7 +202,6 @@ class EmployeeController extends GetxController {
       );
       employees.value = employeesList;
     } catch (e) {
-      print('Erreur lors du chargement des employés: $e');
       Get.snackbar(
         'Erreur',
         'Impossible de charger les employés',
@@ -219,7 +218,6 @@ class EmployeeController extends GetxController {
       final stats = await _employeeService.getEmployeeStats();
       employeeStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -229,7 +227,6 @@ class EmployeeController extends GetxController {
       final departmentsList = await _employeeService.getDepartments();
       departments.value = departmentsList;
     } catch (e) {
-      print('Erreur lors du chargement des départements: $e');
     }
   }
 
@@ -239,7 +236,6 @@ class EmployeeController extends GetxController {
       final positionsList = await _employeeService.getPositions();
       positions.value = positionsList;
     } catch (e) {
-      print('Erreur lors du chargement des postes: $e');
     }
   }
 

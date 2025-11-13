@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:easyconnect/Models/expense_model.dart';
 import 'package:easyconnect/services/expense_service.dart';
+import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class ExpenseController extends GetxController {
@@ -27,8 +30,10 @@ class ExpenseController extends GetxController {
   final TextEditingController amountController = TextEditingController();
   final TextEditingController notesController = TextEditingController();
   final RxString selectedCategoryForm = 'office_supplies'.obs;
+  final RxInt selectedCategoryId = 0.obs;
   final Rx<DateTime?> selectedExpenseDate = Rx<DateTime?>(null);
   final Rx<String?> selectedReceiptPath = Rx<String?>(null);
+  final RxString currency = 'FCFA'.obs;
 
   @override
   void onInit() {
@@ -76,7 +81,6 @@ class ExpenseController extends GetxController {
       final pending = await _expenseService.getPendingExpenses();
       pendingExpenses.assignAll(pending);
     } catch (e) {
-      print('Erreur lors du chargement des dépenses en attente: $e');
     }
   }
 
@@ -86,7 +90,6 @@ class ExpenseController extends GetxController {
       final categories = await _expenseService.getExpenseCategories();
       expenseCategories.assignAll(categories);
     } catch (e) {
-      print('Erreur lors du chargement des catégories: $e');
     }
   }
 
@@ -96,7 +99,6 @@ class ExpenseController extends GetxController {
       final stats = await _expenseService.getExpenseStats();
       expenseStats.value = stats;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
     }
   }
 
@@ -105,22 +107,80 @@ class ExpenseController extends GetxController {
     try {
       isLoading.value = true;
 
-      final expense = Expense(
-        title: titleController.text.trim(),
-        description: descriptionController.text.trim(),
-        amount: double.tryParse(amountController.text) ?? 0.0,
-        category: selectedCategoryForm.value,
-        expenseDate: selectedExpenseDate.value ?? DateTime.now(),
-        receiptPath: selectedReceiptPath.value,
-        notes:
-            notesController.text.trim().isEmpty
-                ? null
-                : notesController.text.trim(),
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
+      // Trouver l'ID de la catégorie depuis la liste chargée
+      int? categoryId;
+      if (expenseCategories.isNotEmpty) {
+        // Chercher la catégorie par son nom/slug
+        final category = expenseCategories.firstWhereOrNull(
+          (cat) =>
+              cat.name.toLowerCase() ==
+                  selectedCategoryForm.value.toLowerCase() ||
+              cat.id.toString() == selectedCategoryForm.value,
+        );
+        categoryId = category?.id;
+      }
 
-      await _expenseService.createExpense(expense);
+      // Si aucune catégorie trouvée, utiliser selectedCategoryId ou essayer de parser
+      if (categoryId == null) {
+        categoryId =
+            selectedCategoryId.value > 0 ? selectedCategoryId.value : null;
+        // Si toujours null, essayer de parser selectedCategoryForm comme ID
+        if (categoryId == null) {
+          categoryId = int.tryParse(selectedCategoryForm.value);
+        }
+      }
+
+      // Récupérer l'utilisateur connecté
+      final user = _authController.userAuth.value;
+      if (user == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      // Validation - s'assurer que title n'est pas vide
+      if (titleController.text.trim().isEmpty) {
+        throw Exception('Le titre de la dépense est obligatoire');
+      }
+
+      // Préparer les données selon ce que le backend Laravel attend
+      // Le backend transforme 'category' en 'expense_category_id' via relation
+      final titleValue = titleController.text.trim();
+
+      final expenseData = <String, dynamic>{
+        'title': titleValue,
+        'description': descriptionController.text.trim(),
+        'amount': double.tryParse(amountController.text) ?? 0.0,
+        'currency': currency.value,
+        'expense_date':
+            (selectedExpenseDate.value ?? DateTime.now()).toIso8601String(),
+        'user_id': user.id, // Ajouter l'ID de l'utilisateur connecté
+        'employee_id': user.id, // Peut aussi être utilisé par le backend
+        'status':
+            'pending', // Statut valide : pending, approved, rejected (pas 'draft')
+      };
+
+      // Envoyer l'ID de catégorie si on l'a trouvé depuis les catégories de l'API
+      // Le backend transforme probablement 'category' en 'expense_category_id'
+      if (selectedCategoryId.value > 0) {
+        expenseData['category'] = selectedCategoryId.value.toString();
+      } else if (categoryId != null && categoryId > 0) {
+        expenseData['category'] = categoryId.toString();
+      } else {
+        expenseData['category'] = selectedCategoryForm.value;
+      }
+
+      // Ajouter les champs optionnels seulement s'ils ne sont pas null ou vides
+      if (selectedReceiptPath.value != null &&
+          selectedReceiptPath.value!.isNotEmpty) {
+        expenseData['receipt_path'] = selectedReceiptPath.value;
+      }
+
+      // Notes peut être utilisé comme justification
+      if (notesController.text.trim().isNotEmpty) {
+        expenseData['notes'] = notesController.text.trim();
+        expenseData['justification'] = notesController.text.trim();
+      }
+
+      await _expenseService.createExpense(expenseData);
       await loadExpenses();
       await loadExpenseStats();
 
@@ -128,14 +188,24 @@ class ExpenseController extends GetxController {
         'Succès',
         'Dépense créée avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
 
       clearForm();
+
+      // Retour automatique après succès
+      await Future.delayed(const Duration(milliseconds: 500));
+      // Utiliser directement Get.back() sans vérification - GetX gère cela automatiquement
+      Get.back();
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de créer la dépense',
+        'Impossible de créer la dépense: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -147,28 +217,80 @@ class ExpenseController extends GetxController {
     try {
       isLoading.value = true;
 
-      final updatedExpense = Expense(
-        id: expense.id,
-        title: titleController.text.trim(),
-        description: descriptionController.text.trim(),
-        amount: double.tryParse(amountController.text) ?? 0.0,
-        category: selectedCategoryForm.value,
-        status: expense.status,
-        expenseDate: selectedExpenseDate.value ?? expense.expenseDate,
-        receiptPath: selectedReceiptPath.value ?? expense.receiptPath,
-        notes:
-            notesController.text.trim().isEmpty
-                ? null
-                : notesController.text.trim(),
-        createdAt: expense.createdAt,
-        updatedAt: DateTime.now(),
-        createdBy: expense.createdBy,
-        approvedBy: expense.approvedBy,
-        rejectionReason: expense.rejectionReason,
-        approvedAt: expense.approvedAt,
-      );
+      // Trouver l'ID de la catégorie depuis la liste chargée
+      int? categoryId;
+      if (expenseCategories.isNotEmpty) {
+        // Chercher la catégorie par son nom/slug
+        final category = expenseCategories.firstWhereOrNull(
+          (cat) =>
+              cat.name.toLowerCase() ==
+                  selectedCategoryForm.value.toLowerCase() ||
+              cat.id.toString() == selectedCategoryForm.value,
+        );
+        categoryId = category?.id;
+      }
 
-      await _expenseService.updateExpense(updatedExpense);
+      // Si aucune catégorie trouvée, utiliser selectedCategoryId ou essayer de parser
+      if (categoryId == null) {
+        categoryId =
+            selectedCategoryId.value > 0 ? selectedCategoryId.value : null;
+        // Si toujours null, essayer de parser selectedCategoryForm comme ID
+        if (categoryId == null) {
+          categoryId = int.tryParse(selectedCategoryForm.value);
+        }
+      }
+
+      // Récupérer l'utilisateur connecté
+      final user = _authController.userAuth.value;
+      if (user == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      // Validation - s'assurer que title n'est pas vide
+      if (titleController.text.trim().isEmpty) {
+        throw Exception('Le titre de la dépense est obligatoire');
+      }
+
+      // Préparer les données selon ce que le backend Laravel attend
+      final expenseData = <String, dynamic>{
+        'title': titleController.text.trim(),
+        'description': descriptionController.text.trim(),
+        'amount': double.tryParse(amountController.text) ?? 0.0,
+        'currency': currency.value,
+        'expense_date':
+            (selectedExpenseDate.value ?? expense.expenseDate)
+                .toIso8601String(),
+        'user_id': user.id, // Ajouter l'ID de l'utilisateur connecté
+        'employee_id': user.id, // Peut aussi être utilisé par le backend
+        'status':
+            expense
+                .status, // Conserver le statut existant lors de la mise à jour
+      };
+
+      // Envoyer l'ID de catégorie si on l'a trouvé depuis les catégories de l'API
+      if (selectedCategoryId.value > 0) {
+        expenseData['category'] = selectedCategoryId.value.toString();
+      } else if (categoryId != null && categoryId > 0) {
+        expenseData['category'] = categoryId.toString();
+      } else {
+        expenseData['category'] = selectedCategoryForm.value;
+      }
+
+      // Ajouter les champs optionnels seulement s'ils ne sont pas null ou vides
+      if (selectedReceiptPath.value != null &&
+          selectedReceiptPath.value!.isNotEmpty) {
+        expenseData['receipt_path'] = selectedReceiptPath.value;
+      } else if (expense.receiptPath != null) {
+        expenseData['receipt_path'] = expense.receiptPath;
+      }
+
+      // Notes peut être utilisé comme justification
+      if (notesController.text.trim().isNotEmpty) {
+        expenseData['notes'] = notesController.text.trim();
+        expenseData['justification'] = notesController.text.trim();
+      }
+
+      await _expenseService.updateExpense(expense.id!, expenseData);
       await loadExpenses();
       await loadExpenseStats();
 
@@ -176,14 +298,59 @@ class ExpenseController extends GetxController {
         'Succès',
         'Dépense mise à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
 
       clearForm();
+
+      // Retour automatique après succès
+      await Future.delayed(const Duration(milliseconds: 500));
+      // Utiliser directement Get.back() sans vérification - GetX gère cela automatiquement
+      Get.back();
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de mettre à jour la dépense',
+        'Impossible de mettre à jour la dépense: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Soumettre une dépense au patron
+  Future<void> submitExpense(Expense expense) async {
+    try {
+      isLoading.value = true;
+
+      final success = await _expenseService.submitExpense(expense.id!);
+
+      if (success) {
+        await loadExpenses();
+        await loadExpenseStats();
+        await loadPendingExpenses();
+
+        Get.snackbar(
+          'Succès',
+          'Dépense soumise au patron',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors de la soumission');
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de soumettre la dépense: ${e.toString()}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -300,6 +467,69 @@ class ExpenseController extends GetxController {
     selectedReceiptPath.value = expense.receiptPath;
     notesController.text = expense.notes ?? '';
     selectedExpense.value = expense;
+    // La devise sera définie par défaut à FCFA si non présente
+  }
+
+  // Sélectionner un justificatif (photo)
+  Future<void> selectReceipt() async {
+    try {
+      final cameraService = CameraService();
+
+      // Proposer à l'utilisateur de choisir la source
+      final source = await Get.dialog<ImageSource>(
+        AlertDialog(
+          title: const Text('Sélectionner une source'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Prendre une photo'),
+                onTap: () => Get.back(result: ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choisir depuis la galerie'),
+                onTap: () => Get.back(result: ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null) return;
+
+      File? imageFile;
+      if (source == ImageSource.camera) {
+        imageFile = await cameraService.takePicture();
+      } else {
+        imageFile = await cameraService.pickImageFromGallery();
+      }
+
+      if (imageFile != null) {
+        // Valider l'image
+        await cameraService.validateImage(imageFile);
+
+        // Stocker le chemin de l'image
+        selectedReceiptPath.value = imageFile.path;
+
+        Get.snackbar(
+          'Succès',
+          'Justificatif sélectionné',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        e.toString(),
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
   // Vider le formulaire
@@ -312,6 +542,7 @@ class ExpenseController extends GetxController {
     selectedExpenseDate.value = null;
     selectedReceiptPath.value = null;
     selectedExpense.value = null;
+    currency.value = 'FCFA';
   }
 
   // Rechercher

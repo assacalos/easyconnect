@@ -4,6 +4,7 @@ import '../../Models/invoice_model.dart';
 import '../../services/invoice_service.dart';
 import '../../Controllers/auth_controller.dart';
 import '../../Controllers/invoice_controller.dart';
+import 'invoice_detail.dart';
 
 class InvoiceListPage extends StatefulWidget {
   const InvoiceListPage({super.key});
@@ -26,6 +27,13 @@ class _InvoiceListPageState extends State<InvoiceListPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          // Forcer la mise à jour de l'interface quand l'onglet change
+        });
+      }
+    });
     _loadInvoices();
   }
 
@@ -36,69 +44,62 @@ class _InvoiceListPageState extends State<InvoiceListPage>
   }
 
   Future<void> _loadInvoices() async {
-    print('🔄 _loadInvoices - Début du chargement');
     setState(() => _isLoading = true);
 
     try {
       final user = _authController.userAuth.value;
-      print('👤 Utilisateur: ${user?.id}, Role: ${user?.role}');
 
       if (user != null) {
-        print('📞 Appel du service getAllInvoices (comptable)...');
-        // Utiliser directement les données mockées pour tester
-        final invoices = _invoiceService.getMockInvoices();
-        print('✅ Factures reçues: ${invoices.length}');
+        // Utiliser les vraies données de l'API
+        final invoices = await _invoiceService.getAllInvoices();
         setState(() => _invoices = invoices);
-        print('📋 Factures dans la liste: ${_invoices.length}');
-      } else {
-        print('❌ Utilisateur null');
       }
     } catch (e) {
-      print('❌ Erreur dans _loadInvoices: $e');
-      Get.snackbar('Erreur', 'Impossible de charger les factures');
+      Get.snackbar('Erreur', 'Impossible de charger les factures: $e');
     } finally {
       setState(() => _isLoading = false);
-      print('🏁 _loadInvoices - Fin du chargement');
     }
   }
 
   List<InvoiceModel> get _filteredInvoices {
-    print('🔍 _filteredInvoices - Début du filtrage');
-    print('📊 Onglet actif: ${_tabController.index}');
-    print('📋 Factures totales: ${_invoices.length}');
-
     List<InvoiceModel> filtered = _invoices;
 
     // Filtrer par statut selon l'onglet actif
+    // Normaliser les statuts pour la comparaison (tolowercase)
     switch (_tabController.index) {
       case 0: // Tous
-        print('📝 Onglet: Toutes les factures');
         break;
       case 1: // En attente
-        print('📝 Onglet: En attente');
         filtered =
-            _invoices
-                .where((invoice) => invoice.status == 'en_attente')
-                .toList();
-        print('⏳ Factures en attente: ${filtered.length}');
+            _invoices.where((invoice) {
+              final status = invoice.status.toLowerCase().trim();
+              return status == 'en_attente' ||
+                  status == 'pending' ||
+                  status == 'draft';
+            }).toList();
         break;
       case 2: // Validées
-        print('📝 Onglet: Validées');
         filtered =
-            _invoices.where((invoice) => invoice.status == 'valide').toList();
-        print('✅ Factures validées: ${filtered.length}');
+            _invoices.where((invoice) {
+              final status = invoice.status.toLowerCase().trim();
+              return status == 'valide' ||
+                  status == 'validated' ||
+                  status == 'valid';
+            }).toList();
         break;
       case 3: // Rejetées
-        print('📝 Onglet: Rejetées');
         filtered =
-            _invoices.where((invoice) => invoice.status == 'rejete').toList();
-        print('❌ Factures rejetées: ${filtered.length}');
+            _invoices.where((invoice) {
+              final status = invoice.status.toLowerCase().trim();
+              return status == 'rejete' ||
+                  status == 'rejected' ||
+                  status == 'cancelled';
+            }).toList();
         break;
     }
 
     // Filtrer par recherche
     if (_searchQuery.isNotEmpty) {
-      print('🔍 Recherche: "$_searchQuery"');
       filtered =
           filtered
               .where(
@@ -111,10 +112,8 @@ class _InvoiceListPageState extends State<InvoiceListPage>
                     ),
               )
               .toList();
-      print('🔍 Résultats de recherche: ${filtered.length}');
     }
 
-    print('📊 Factures filtrées finales: ${filtered.length}');
     return filtered;
   }
 
@@ -176,7 +175,29 @@ class _InvoiceListPageState extends State<InvoiceListPage>
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredInvoices.isEmpty
-                    ? const Center(child: Text('Aucune facture trouvée'))
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.inbox, size: 64, color: Colors.grey),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Aucune facture trouvée',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          if (_invoices.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Total: ${_invoices.length} facture(s)',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
                     : ListView.builder(
                       itemCount: _filteredInvoices.length,
                       itemBuilder: (context, index) {
@@ -217,7 +238,7 @@ class _InvoiceListPageState extends State<InvoiceListPage>
               'Montant: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
             ),
             Text('Date: ${_formatDate(invoice.invoiceDate)}'),
-            if ((invoice.status == 'rejected' || invoice.status == 'rejete') &&
+            if (invoice.status == 'rejete' &&
                 (invoice.notes != null && invoice.notes!.isNotEmpty)) ...[
               const SizedBox(height: 4),
               Row(
@@ -239,8 +260,22 @@ class _InvoiceListPageState extends State<InvoiceListPage>
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Bouton Détail
             IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
+              icon: const Icon(Icons.info_outline, color: Colors.blue),
+              onPressed: () => _showInvoiceDetail(invoice),
+              tooltip: 'Voir détails',
+            ),
+            // Bouton Modifier (seulement si en_attente)
+            if (invoice.status == 'en_attente')
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.orange),
+                onPressed: () => _editInvoice(invoice),
+                tooltip: 'Modifier',
+              ),
+            // Bouton PDF
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
               onPressed: () => _generatePDF(invoice),
               tooltip: 'Générer PDF',
             ),
@@ -277,18 +312,18 @@ class _InvoiceListPageState extends State<InvoiceListPage>
             ),
           ],
         ),
-        onTap: () => _showInvoiceDetails(invoice),
+        onTap: () => _showInvoiceDetail(invoice),
       ),
     );
   }
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'pending':
+      case 'en_attente':
         return Colors.orange;
-      case 'approved':
+      case 'valide':
         return Colors.green;
-      case 'rejected':
+      case 'rejete':
         return Colors.red;
       default:
         return Colors.grey;
@@ -297,11 +332,11 @@ class _InvoiceListPageState extends State<InvoiceListPage>
 
   IconData _getStatusIcon(String status) {
     switch (status) {
-      case 'pending':
+      case 'en_attente':
         return Icons.pending;
-      case 'approved':
+      case 'valide':
         return Icons.check_circle;
-      case 'rejected':
+      case 'rejete':
         return Icons.cancel;
       default:
         return Icons.help;
@@ -310,11 +345,11 @@ class _InvoiceListPageState extends State<InvoiceListPage>
 
   String _getStatusLabel(String status) {
     switch (status) {
-      case 'pending':
+      case 'en_attente':
         return 'En attente';
-      case 'approved':
+      case 'valide':
         return 'Validée';
-      case 'rejected':
+      case 'rejete':
         return 'Rejetée';
       default:
         return 'Inconnu';
@@ -323,6 +358,16 @@ class _InvoiceListPageState extends State<InvoiceListPage>
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  void _showInvoiceDetail(InvoiceModel invoice) {
+    Get.to(() => InvoiceDetail(invoice: invoice));
+  }
+
+  void _editInvoice(InvoiceModel invoice) {
+    final controller = Get.find<InvoiceController>();
+    controller.loadInvoiceForEdit(invoice.id);
+    Get.toNamed('/invoices/edit', arguments: invoice.id);
   }
 
   void _showInvoiceDetails(InvoiceModel invoice) {

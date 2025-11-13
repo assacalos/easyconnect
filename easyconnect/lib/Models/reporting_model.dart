@@ -5,7 +5,7 @@ class ReportingModel {
   final String userRole;
   final DateTime reportDate;
   final Map<String, dynamic> metrics;
-  final String status; // 'draft', 'submitted', 'approved'
+  final String status; // 'submitted', 'approved', 'rejected'
   final DateTime? submittedAt;
   final DateTime? approvedAt;
   final String? comments;
@@ -29,36 +29,21 @@ class ReportingModel {
 
   factory ReportingModel.fromJson(Map<String, dynamic> json) {
     return ReportingModel(
-      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
-      userId:
-          json['user_id'] is String
-              ? int.tryParse(json['user_id'])
-              : json['user_id'],
+      id: _parseInt(json['id']) ?? 0,
+      userId: _parseInt(json['user_id']) ?? 0,
       userName: json['user_name'] ?? '',
       userRole: json['user_role'] ?? '',
-      reportDate: DateTime.parse(json['report_date']),
+      reportDate: _parseDateTime(json['report_date']) ?? DateTime.now(),
       metrics:
           json['metrics'] != null
               ? Map<String, dynamic>.from(json['metrics'])
               : {},
-      status: json['status'] ?? 'draft',
-      submittedAt:
-          json['submitted_at'] != null
-              ? DateTime.parse(json['submitted_at'])
-              : null,
-      approvedAt:
-          json['approved_at'] != null
-              ? DateTime.parse(json['approved_at'])
-              : null,
+      status: json['status'] ?? 'submitted',
+      submittedAt: _parseDateTime(json['submitted_at']),
+      approvedAt: _parseDateTime(json['approved_at']),
       comments: json['comments'],
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
     );
   }
 
@@ -77,6 +62,54 @@ class ReportingModel {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
+  }
+
+  // Méthodes de parsing robustes
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is bool) return value ? 1 : 0;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      return int.tryParse(trimmed);
+    }
+    if (value is num) {
+      try {
+        return value.toInt();
+      } catch (e) {
+        print('⚠️ ReportingModel: Erreur conversion num vers int: $value - $e');
+        return null;
+      }
+    }
+    return null;
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      try {
+        // Gérer le cas où la date est mal formée (ex: "22025-10-14")
+        if (trimmed.startsWith('22') && trimmed.length > 10) {
+          // Corriger "22025" en "2025"
+          final corrected = trimmed.replaceFirst('22025', '2025');
+          print(
+            '⚠️ ReportingModel: Correction date mal formée: "$trimmed" -> "$corrected"',
+          );
+          return DateTime.parse(corrected);
+        }
+        return DateTime.parse(trimmed);
+      } catch (e) {
+        print('⚠️ ReportingModel: Erreur parsing DateTime: $trimmed - $e');
+        return null;
+      }
+    }
+    return null;
   }
 }
 
@@ -199,7 +232,7 @@ class RdvInfo {
   factory RdvInfo.fromJson(Map<String, dynamic> json) {
     return RdvInfo(
       clientName: json['client_name'],
-      dateRdv: DateTime.parse(json['date_rdv']),
+      dateRdv: RdvInfo._parseRdvDateTime(json['date_rdv']) ?? DateTime.now(),
       heureRdv: json['heure_rdv'],
       typeRdv: json['type_rdv'],
       status: json['status'],
@@ -216,6 +249,24 @@ class RdvInfo {
       'status': status,
       'notes': notes,
     };
+  }
+
+  // Méthode de parsing DateTime pour RdvInfo
+  static DateTime? _parseRdvDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      try {
+        return DateTime.parse(trimmed);
+      } catch (e) {
+        print('⚠️ RdvInfo: Erreur parsing DateTime: $trimmed - $e');
+        return null;
+      }
+    }
+    return null;
   }
 }
 
@@ -435,7 +486,9 @@ class InterventionInfo {
   factory InterventionInfo.fromJson(Map<String, dynamic> json) {
     return InterventionInfo(
       clientName: json['client_name'],
-      dateIntervention: DateTime.parse(json['date_intervention']),
+      dateIntervention:
+          _parseInterventionDateTime(json['date_intervention']) ??
+          DateTime.now(),
       heureDebut: json['heure_debut'],
       heureFin: json['heure_fin'],
       typeIntervention: json['type_intervention'],
@@ -456,5 +509,23 @@ class InterventionInfo {
       'description': description,
       'resultat': resultat,
     };
+  }
+
+  // Méthode de parsing DateTime pour InterventionInfo
+  static DateTime? _parseInterventionDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
+        return null;
+      try {
+        return DateTime.parse(trimmed);
+      } catch (e) {
+        print('⚠️ InterventionInfo: Erreur parsing DateTime: $trimmed - $e');
+        return null;
+      }
+    }
+    return null;
   }
 }

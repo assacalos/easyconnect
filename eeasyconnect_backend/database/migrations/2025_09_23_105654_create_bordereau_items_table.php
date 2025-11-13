@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('bordereau_id');
             $table->string('designation');
-            $table->string('unite');
             $table->integer('quantite');
             $table->decimal('prix_unitaire', 10, 2);
             $table->text('description')->nullable();

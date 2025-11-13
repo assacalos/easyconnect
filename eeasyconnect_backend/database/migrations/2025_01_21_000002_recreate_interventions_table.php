@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -31,9 +32,10 @@ return new class extends Migration
             $table->enum('status', ['pending', 'approved', 'in_progress', 'completed', 'rejected'])->default('pending');
             $table->string('priority')->default('medium'); // 'low', 'medium', 'high', 'urgent'
             $table->string('location')->nullable();
-            $table->string('client_name')->nullable();
-            $table->string('client_phone')->nullable();
-            $table->string('client_email')->nullable();
+            $table->unsignedBigInteger('client_id')->nullable(); // Référence au client sélectionné
+            $table->string('client_name')->nullable(); // Gardé pour compatibilité et affichage
+            $table->string('client_phone')->nullable(); // Gardé pour compatibilité et affichage
+            $table->string('client_email')->nullable(); // Gardé pour compatibilité et affichage
             $table->string('equipment')->nullable();
             $table->text('problem_description')->nullable();
             $table->text('solution')->nullable();
@@ -50,6 +52,7 @@ return new class extends Migration
             $table->timestamps();
             
             // Clés étrangères
+            $table->foreign('client_id')->references('id')->on('clients')->onDelete('set null');
             $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
             $table->foreign('approved_by')->references('id')->on('users')->onDelete('set null');
         });

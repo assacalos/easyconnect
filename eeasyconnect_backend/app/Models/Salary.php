@@ -11,7 +11,6 @@ class Salary extends Model
     use HasFactory;
 
     protected $fillable = [
-        'employee_id',
         'hr_id',
         'salary_number',
         'period',
@@ -57,12 +56,12 @@ class Salary extends Model
     // Relations
     public function employee()
     {
-        return $this->belongsTo(User::class, 'employee_id');
+        return $this->belongsTo(User::class, 'hr_id'); // hr_id représente l'employé qui reçoit le salaire
     }
 
     public function hr()
     {
-        return $this->belongsTo(User::class, 'hr_id');
+        return $this->belongsTo(User::class, 'hr_id'); // Alias pour cohérence
     }
 
     public function approver()
@@ -108,7 +107,7 @@ class Salary extends Model
 
     public function scopeByEmployee($query, $employeeId)
     {
-        return $query->where('employee_id', $employeeId);
+        return $query->where('hr_id', $employeeId);
     }
 
     public function scopeByPeriod($query, $period)
@@ -407,7 +406,7 @@ class Salary extends Model
     {
         return self::with(['employee', 'hr', 'salaryItems.salaryComponent'])
             ->where('period', $period)
-            ->orderBy('employee_id')
+            ->orderBy('hr_id')
             ->get();
     }
 

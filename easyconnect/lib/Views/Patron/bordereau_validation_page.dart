@@ -14,7 +14,7 @@ class BordereauValidationPage extends StatefulWidget {
 
 class _BordereauValidationPageState extends State<BordereauValidationPage>
     with SingleTickerProviderStateMixin {
-  final BordereauxController controller = Get.find<BordereauxController>();
+  late final BordereauxController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -22,6 +22,12 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
   @override
   void initState() {
     super.initState();
+    // Vérifier et initialiser le contrôleur
+    if (!Get.isRegistered<BordereauxController>()) {
+      Get.put(BordereauxController(), permanent: true);
+    }
+    controller = Get.find<BordereauxController>();
+
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
@@ -43,9 +49,6 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
   }
 
   Future<void> _loadBordereaux() async {
-    print('🔍 BordereauValidationPage._loadBordereaux - Début');
-    print('📊 Onglet sélectionné: ${_tabController.index}');
-
     int? status;
     switch (_tabController.index) {
       case 0: // Tous
@@ -62,21 +65,16 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
         break;
     }
 
-    print('📊 Status à charger: $status');
     await controller.loadBordereaux(status: status);
-    print(
-      '📊 BordereauValidationPage._loadBordereaux - ${controller.bordereaux.length} bordereaux chargés',
-    );
-    for (final bordereau in controller.bordereaux) {
-      print('📋 Bordereau: ${bordereau.id} - Status: ${bordereau.status}');
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Validation des bordereaux'),
+        title: const Text('Validation des Bordereaux'),
+        backgroundColor: Colors.blueGrey.shade900,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,49 +188,27 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final bordereau = filteredBordereaux[index];
-        return _buildBordereauCard(bordereau);
+        return _buildBordereauCard(context, bordereau);
       },
     );
   }
 
-  Widget _buildBordereauCard(Bordereau bordereau) {
+  Widget _buildBordereauCard(BuildContext context, Bordereau bordereau) {
+    final formatDate = DateFormat('dd/MM/yyyy');
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
-      symbol: 'fcfa',
+      symbol: 'FCFA',
     );
-    final formatDate = DateFormat('dd/MM/yyyy');
+    final statusColor = _getStatusColor(bordereau.status);
+    final statusIcon = _getStatusIcon(bordereau.status);
+    final statusText = _getStatusText(bordereau.status);
 
-    // Déterminer la couleur et l'icône selon le statut
-    Color statusColor;
-    IconData statusIcon;
-    String statusText;
-
-    switch (bordereau.status) {
-      case 0:
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        statusText = 'Brouillon';
-        break;
-      case 1:
-        statusColor = Colors.orange;
-        statusIcon = Icons.pending;
-        statusText = 'En attente';
-        break;
-      case 2:
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle;
-        statusText = 'Validé';
-        break;
-      case 3:
-        statusColor = Colors.red;
-        statusIcon = Icons.cancel;
-        statusText = 'Rejeté';
-        break;
-      default:
-        statusColor = Colors.grey;
-        statusIcon = Icons.help;
-        statusText = 'Inconnu';
+    // Calculer le total
+    double totalHT = 0;
+    for (final item in bordereau.items) {
+      totalHT += item.montantTotal;
     }
+    final totalTTC = totalHT * (1 + (bordereau.tva ?? 0) / 100);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -249,8 +225,9 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
+            Text('Client ID: ${bordereau.clientId}'),
             Text('Date: ${formatDate.format(bordereau.dateCreation)}'),
-            Text('Montant: ${formatCurrency.format(bordereau.montantTTC)}'),
+            Text('Total: ${formatCurrency.format(totalTTC)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -276,9 +253,9 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations client (ID seulement pour l'instant)
+                // Informations générales
                 const Text(
-                  'Informations client',
+                  'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -292,69 +269,77 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Client ID: ${bordereau.clientId}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      Text('Référence: ${bordereau.reference}'),
+                      Text('Client ID: ${bordereau.clientId}'),
+                      Text('Commercial ID: ${bordereau.commercialId}'),
                       if (bordereau.devisId != null)
                         Text('Devis ID: ${bordereau.devisId}'),
+                      Text(
+                        'Date création: ${formatDate.format(bordereau.dateCreation)}',
+                      ),
+                      if (bordereau.dateValidation != null)
+                        Text(
+                          'Date validation: ${formatDate.format(bordereau.dateValidation!)}',
+                        ),
+                      if (bordereau.notes != null)
+                        Text('Notes: ${bordereau.notes}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Détails des articles
                 const Text(
                   'Détails des articles',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 ...bordereau.items.map((item) => _buildItemDetails(item)),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total HT:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(formatCurrency.format(bordereau.montantHT)),
-                  ],
-                ),
-                if (bordereau.remiseGlobale != null) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey),
+                  ),
+                  child: Column(
                     children: [
-                      Text(
-                        'Remise (${bordereau.remiseGlobale}%):',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Sous-total HT:'),
+                          Text(formatCurrency.format(totalHT)),
+                        ],
                       ),
-                      Text(
-                        '- ${formatCurrency.format(bordereau.montantHT * (bordereau.remiseGlobale! / 100))}',
+                      if (bordereau.tva != null && bordereau.tva! > 0) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('TVA (${bordereau.tva}%):'),
+                            Text(
+                              formatCurrency.format(
+                                totalHT * bordereau.tva! / 100,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total TTC:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            formatCurrency.format(totalTTC),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'TVA (${bordereau.tva}%):',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(formatCurrency.format(bordereau.montantTVA)),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total TTC:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      formatCurrency.format(bordereau.montantTTC),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
                 ),
                 const SizedBox(height: 16),
                 _buildActionButtons(bordereau, statusColor),
@@ -369,7 +354,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
   Widget _buildItemDetails(BordereauItem item) {
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
-      symbol: 'fcfa',
+      symbol: 'FCFA',
     );
 
     return Padding(
@@ -388,7 +373,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                 if (item.description != null)
                   Text(
                     item.description!,
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
               ],
             ),
@@ -407,7 +392,6 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
   }
 
   Widget _buildActionButtons(Bordereau bordereau, Color statusColor) {
-    // Afficher les boutons selon le statut
     switch (bordereau.status) {
       case 1: // En attente - Afficher boutons Valider/Rejeter
         return Column(
@@ -435,107 +419,53 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bordereau.id!),
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('Générer PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
           ],
         );
       case 2: // Validé - Afficher seulement info
-        return Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green),
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 8),
+              Text(
+                'Bordereau validé',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Bordereau validé',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bordereau.id!),
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('Générer PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
+            ],
+          ),
         );
       case 3: // Rejeté - Afficher motif du rejet
-        return Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red),
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.red),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.cancel, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(
+                'Bordereau rejeté',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.cancel, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Bordereau rejeté',
-                        style: TextStyle(
-                          color: Colors.red[700],
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (bordereau.commentaireRejet != null &&
-                      bordereau.commentaireRejet!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Motif: ${bordereau.commentaireRejet}',
-                      style: TextStyle(
-                        color: Colors.red[600],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bordereau.id!),
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('Générer PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
+            ],
+          ),
         );
       default: // Autres statuts
         return Container(
@@ -563,6 +493,45 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     }
   }
 
+  Color _getStatusColor(int status) {
+    switch (status) {
+      case 1: // En attente
+        return Colors.orange;
+      case 2: // Validé
+        return Colors.green;
+      case 3: // Rejeté
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getStatusIcon(int status) {
+    switch (status) {
+      case 1: // En attente
+        return Icons.pending;
+      case 2: // Validé
+        return Icons.check_circle;
+      case 3: // Rejeté
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
+
+  String _getStatusText(int status) {
+    switch (status) {
+      case 1: // En attente
+        return 'En attente';
+      case 2: // Validé
+        return 'Validé';
+      case 3: // Rejeté
+        return 'Rejeté';
+      default:
+        return 'Inconnu';
+    }
+  }
+
   void _showApproveConfirmation(Bordereau bordereau) {
     Get.defaultDialog(
       title: 'Confirmation',
@@ -573,6 +542,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
       onConfirm: () {
         Get.back();
         controller.approveBordereau(bordereau.id!);
+        _loadBordereaux();
       },
     );
   }
@@ -609,6 +579,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
         }
         Get.back();
         controller.rejectBordereau(bordereau.id!, commentController.text);
+        _loadBordereaux();
       },
     );
   }

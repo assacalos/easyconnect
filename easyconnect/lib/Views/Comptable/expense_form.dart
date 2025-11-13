@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/expense_controller.dart';
@@ -13,6 +14,11 @@ class ExpenseForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ExpenseController controller = Get.put(ExpenseController());
+
+    // S'assurer que les catégories sont chargées
+    if (controller.expenseCategories.isEmpty) {
+      controller.loadExpenseCategories();
+    }
 
     // Si on édite une dépense existante, remplir le formulaire
     if (expense != null) {
@@ -55,8 +61,10 @@ class ExpenseForm extends StatelessWidget {
               const SizedBox(height: 16),
 
               // Catégorie
-              Obx(
-                () => DropdownButtonFormField<String>(
+              Obx(() {
+                // Toujours utiliser les catégories par défaut pour garantir une liste complète
+                // Les catégories par défaut sont toujours disponibles et complètes
+                return DropdownButtonFormField<String>(
                   value: controller.selectedCategoryForm.value,
                   decoration: const InputDecoration(
                     labelText: 'Catégorie *',
@@ -72,16 +80,35 @@ class ExpenseForm extends StatelessWidget {
                             );
                           })
                           .toList(),
-                  onChanged:
-                      (value) => controller.selectedCategoryForm.value = value!,
+                  onChanged: (value) {
+                    if (value != null) {
+                      controller.selectedCategoryForm.value = value;
+                      // Si on a des catégories API, essayer de trouver l'ID correspondant
+                      if (controller.expenseCategories.isNotEmpty) {
+                        final apiCategory = controller.expenseCategories
+                            .firstWhereOrNull(
+                              (cat) =>
+                                  cat.name.toLowerCase() ==
+                                      value.toLowerCase() ||
+                                  cat.name.toLowerCase().contains(
+                                    value.toLowerCase(),
+                                  ),
+                            );
+                        if (apiCategory != null) {
+                          controller.selectedCategoryId.value =
+                              apiCategory.id ?? 0;
+                        }
+                      }
+                    }
+                  },
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'La catégorie est obligatoire';
                     }
                     return null;
                   },
-                ),
-              ),
+                );
+              }),
 
               const SizedBox(height: 16),
 
@@ -204,11 +231,35 @@ class ExpenseForm extends StatelessWidget {
                       ),
                       if (controller.selectedReceiptPath.value != null) ...[
                         const SizedBox(height: 8),
-                        TextButton.icon(
-                          icon: const Icon(Icons.delete),
-                          label: const Text('Supprimer'),
-                          onPressed:
-                              () => controller.selectedReceiptPath.value = null,
+                        // Afficher un aperçu de l'image
+                        Container(
+                          width: 200,
+                          height: 200,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(
+                              File(controller.selectedReceiptPath.value!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.delete),
+                              label: const Text('Supprimer'),
+                              onPressed:
+                                  () =>
+                                      controller.selectedReceiptPath.value =
+                                          null,
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -262,15 +313,10 @@ class ExpenseForm extends StatelessWidget {
     } else {
       await controller.updateExpense(expense!);
     }
-    Get.back(); // Retour automatique à la liste
+    // Le retour automatique est géré dans le contrôleur après succès
   }
 
   void _selectReceipt(ExpenseController controller) {
-    // Implémentation de la sélection de justificatif
-    Get.snackbar(
-      'Justificatif',
-      'Fonctionnalité de sélection de justificatif à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    controller.selectReceipt();
   }
 }

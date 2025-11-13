@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'package:get/get.dart';
 
 class AttendancePunchModel {
   final int? id;
@@ -44,30 +43,134 @@ class AttendancePunchModel {
     this.approverName,
   });
 
+  // Normaliser le statut (convertir en_attente, valide, rejete en anglais)
+  static String _normalizeStatus(String? status) {
+    if (status == null) return 'pending';
+    final normalized = status.toLowerCase().trim();
+
+    // Normaliser les statuts français vers anglais
+    String normalizedStatus;
+    switch (normalized) {
+      case 'en_attente':
+      case 'en attente':
+      case 'pending':
+        normalizedStatus = 'pending';
+        break;
+      case 'approuvé':
+      case 'approuve':
+      case 'approved':
+      case 'valide':
+      case 'validé':
+        normalizedStatus = 'approved';
+        break;
+      case 'rejeté':
+      case 'rejete':
+      case 'rejected':
+        normalizedStatus = 'rejected';
+        break;
+      default:
+        // Si c'est déjà en anglais ou format inconnu, retourner tel quel
+        normalizedStatus = normalized;
+    }
+
+    if (normalized != normalizedStatus) {}
+
+    return normalizedStatus;
+  }
+
   factory AttendancePunchModel.fromJson(Map<String, dynamic> json) {
-    return AttendancePunchModel(
-      id: json['id'],
-      userId: json['user_id'],
-      type: json['type'],
-      timestamp: DateTime.parse(json['timestamp']),
-      latitude: double.tryParse(json['latitude']?.toString() ?? '0') ?? 0.0,
-      longitude: double.tryParse(json['longitude']?.toString() ?? '0') ?? 0.0,
-      address: json['address'],
-      accuracy: double.tryParse(json['accuracy']?.toString() ?? '0'),
-      photoPath: json['photo_path'],
-      notes: json['notes'],
-      status: json['status'] ?? 'pending',
-      rejectionReason: json['rejection_reason'],
-      approvedBy: json['approved_by'],
-      approvedAt:
-          json['approved_at'] != null
-              ? DateTime.parse(json['approved_at'])
-              : null,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      userName: json['user']?['name'] ?? json['user']?['nom'],
-      approverName: json['approver']?['name'] ?? json['approver']?['nom'],
-    );
+    try {
+      // Logger le statut brut avant normalisation
+      final rawStatus = json['status']?.toString();
+
+      // Gérer les deux formats possibles : nouveau format (check_in_time/check_out_time) et ancien format (timestamp/type)
+      DateTime timestamp;
+      String type;
+
+      if (json['check_in_time'] != null || json['check_out_time'] != null) {
+        // Nouveau format avec check_in_time et check_out_time
+        if (json['check_in_time'] != null) {
+          timestamp = DateTime.parse(json['check_in_time']);
+          type = 'check_in';
+        } else {
+          timestamp = DateTime.parse(json['check_out_time']);
+          type = 'check_out';
+        }
+      } else {
+        // Ancien format avec timestamp et type
+        timestamp = DateTime.parse(json['timestamp']);
+        type = json['type'] ?? 'check_in';
+      }
+
+      // Gérer la localisation (peut être un objet ou des champs directs)
+      double latitude = 0.0;
+      double longitude = 0.0;
+      String? address;
+      double? accuracy;
+
+      if (json['location'] != null && json['location'] is Map) {
+        // Format avec objet location
+        final location = json['location'] as Map<String, dynamic>;
+        latitude =
+            double.tryParse(location['latitude']?.toString() ?? '0') ?? 0.0;
+        longitude =
+            double.tryParse(location['longitude']?.toString() ?? '0') ?? 0.0;
+        address = location['address']?.toString();
+        accuracy = double.tryParse(location['accuracy']?.toString() ?? '0');
+      } else {
+        // Format avec champs directs
+        latitude = double.tryParse(json['latitude']?.toString() ?? '0') ?? 0.0;
+        longitude =
+            double.tryParse(json['longitude']?.toString() ?? '0') ?? 0.0;
+        address = json['address']?.toString();
+        accuracy = double.tryParse(json['accuracy']?.toString() ?? '0');
+      }
+
+      // Gérer les champs de validation (peut être validated_by ou approved_by)
+      final approvedBy = json['approved_by'] ?? json['validated_by'];
+      final approvedAtStr = json['approved_at'] ?? json['validated_at'];
+      final rejectionReason =
+          json['rejection_reason'] ?? json['validation_comment'];
+
+      // Gérer l'approbateur (peut être approver ou validator)
+      final approver = json['approver'] ?? json['validator'];
+
+      final normalizedStatus = _normalizeStatus(rawStatus);
+
+      return AttendancePunchModel(
+        id: json['id'],
+        userId: json['user_id'],
+        type: type,
+        timestamp: timestamp,
+        latitude: latitude,
+        longitude: longitude,
+        address: address,
+        accuracy: accuracy,
+        photoPath: json['photo_path'],
+        notes: json['notes'],
+        status: normalizedStatus,
+        rejectionReason: rejectionReason?.toString(),
+        approvedBy:
+            approvedBy != null ? int.tryParse(approvedBy.toString()) : null,
+        approvedAt:
+            approvedAtStr != null ? DateTime.parse(approvedAtStr) : null,
+        createdAt: DateTime.parse(json['created_at']),
+        updatedAt: DateTime.parse(json['updated_at']),
+        userName:
+            json['user']?['name'] ??
+            json['user']?['nom'] ??
+            '${json['user']?['prenom'] ?? ''} ${json['user']?['nom'] ?? ''}'
+                .trim(),
+        approverName:
+            approver?['name'] ??
+            approver?['nom'] ??
+            (approver?['prenom'] != null && approver?['nom'] != null
+                ? '${approver['prenom']} ${approver['nom']}'
+                : null),
+      );
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {

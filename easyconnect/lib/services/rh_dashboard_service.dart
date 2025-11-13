@@ -34,7 +34,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur congés: $e');
       }
 
       // Récupérer les recrutements en attente
@@ -56,7 +55,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur recrutements: $e');
       }
 
       // Récupérer les pointages en attente
@@ -78,7 +76,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur pointages: $e');
       }
 
       // Récupérer les salaires en attente
@@ -100,7 +97,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur salaires: $e');
       }
 
       return {
@@ -110,7 +106,6 @@ class RhDashboardService {
         'salaries': pendingSalaries,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'leaves': 0, 'recruitments': 0, 'attendance': 0, 'salaries': 0};
     }
   }
@@ -143,7 +138,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur employés validés: $e');
       }
 
       // Récupérer les congés validés
@@ -165,7 +159,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur congés validés: $e');
       }
 
       // Récupérer les recrutements validés
@@ -189,7 +182,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur recrutements validés: $e');
       }
 
       // Récupérer les salaires validés
@@ -215,7 +207,6 @@ class RhDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur salaires validés: $e');
       }
 
       return {
@@ -225,7 +216,6 @@ class RhDashboardService {
         'salaries': validatedSalaries,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {'employees': 0, 'leaves': 0, 'recruitments': 0, 'salaries': 0};
     }
   }
@@ -256,7 +246,6 @@ class RhDashboardService {
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       return {
         'total_salary_mass': 0.0,
         'total_bonuses': 0.0,
@@ -286,7 +275,6 @@ class RhDashboardService {
         'Erreur lors de la récupération des données du dashboard: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       return {
         'pending_entities': {
           'leaves': 0,

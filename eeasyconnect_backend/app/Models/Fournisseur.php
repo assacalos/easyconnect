@@ -16,7 +16,6 @@ class Fournisseur extends Model
         'adresse',
         'ville',
         'pays',
-        'contact_principal',
         'description',
         'status',
         'note_evaluation',
@@ -74,8 +73,7 @@ class Fournisseur extends Model
             return $query->where(function ($q) use ($search) {
                 $q->where('nom', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('ville', 'like', "%{$search}%")
-                  ->orWhere('contact_principal', 'like', "%{$search}%");
+                  ->orWhere('ville', 'like', "%{$search}%");
             });
         }
         return $query;

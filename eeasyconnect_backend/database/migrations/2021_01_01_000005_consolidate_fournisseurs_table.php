@@ -22,7 +22,6 @@ return new class extends Migration
             $table->text('adresse');
             $table->string('ville');
             $table->string('pays');
-            $table->string('contact_principal');
             $table->text('description')->nullable();
             $table->enum('status', ['en_attente', 'valide', 'rejete'])->default('en_attente');
             $table->decimal('note_evaluation', 2, 1)->nullable();

@@ -15,7 +15,6 @@ class BordereauItemFactory extends Factory
         return [
             'bordereau_id' => Bordereau::factory(),
             'designation' => $this->faker->word(),
-            'unite' => $this->faker->randomElement(['pièce', 'boîte', 'kg', 'litre']),
             'quantite' => $this->faker->numberBetween(1, 20),
             'prix_unitaire' => $this->faker->randomFloat(2, 10, 500),
             'description' => $this->faker->sentence(),

@@ -36,7 +36,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur interventions: $e');
       }
 
       // Récupérer les équipements nécessitant une maintenance
@@ -55,7 +54,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur maintenance: $e');
       }
 
       // Récupérer les rapports en attente (utiliser les interventions comme proxy)
@@ -77,7 +75,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur rapports: $e');
       }
 
       // Récupérer les équipements en attente
@@ -99,7 +96,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur équipements: $e');
       }
 
       return {
@@ -109,7 +105,6 @@ class TechnicienDashboardService {
         'equipments': pendingEquipments,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {
         'interventions': 0,
         'maintenance': 0,
@@ -151,7 +146,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur interventions validées: $e');
       }
 
       // Récupérer les équipements opérationnels
@@ -177,7 +171,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur équipements validés: $e');
       }
 
       // Récupérer les rapports validés (utiliser les interventions comme proxy)
@@ -203,7 +196,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur rapports validés: $e');
       }
 
       return {
@@ -213,7 +205,6 @@ class TechnicienDashboardService {
         'equipments': validatedEquipments,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {
         'interventions': 0,
         'maintenance': 0,
@@ -256,7 +247,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul coût interventions: $e');
       }
 
       // Calculer le coût de maintenance
@@ -286,7 +276,6 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
-        print('Erreur calcul coût maintenance: $e');
       }
 
       // Calculer les économies (différence entre coût préventif et correctif)
@@ -299,7 +288,6 @@ class TechnicienDashboardService {
         'savings': savings,
       };
     } catch (e) {
-      print('Erreur: $e');
       return {
         'intervention_cost': 0.0,
         'maintenance_cost': 0.0,
@@ -329,7 +317,6 @@ class TechnicienDashboardService {
         'Erreur lors de la récupération des données du dashboard: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur: $e');
       return {
         'pending_entities': {
           'interventions': 0,

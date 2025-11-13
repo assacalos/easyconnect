@@ -18,19 +18,13 @@ class Stock extends Model
         'barcode',
         'brand',
         'model',
-        'unit',
         'current_quantity',
         'minimum_quantity',
         'maximum_quantity',
-        'reorder_point',
         'unit_cost',
-        'selling_price',
-        'supplier',
-        'location',
         'status',
         'notes',
-        'specifications',
-        'attachments',
+       
         'created_by',
         'updated_by'
     ];
@@ -72,10 +66,7 @@ class Stock extends Model
         return $this->hasMany(StockOrderItem::class);
     }
 
-    public function categoryInfo()
-    {
-        return $this->belongsTo(StockCategory::class, 'category', 'name');
-    }
+    // Note: category est maintenant un champ string, pas une relation
 
     // Scopes
     public function scopeActive($query)
@@ -115,22 +106,99 @@ class Stock extends Model
 
     public function scopeLowStock($query)
     {
-        return $query->whereRaw('current_quantity <= minimum_quantity');
+        // Utiliser les noms de colonnes de la migration
+        return $query->whereRaw('quantity <= min_quantity');
     }
 
     public function scopeOutOfStock($query)
     {
-        return $query->where('current_quantity', 0);
+        // Utiliser les noms de colonnes de la migration
+        return $query->where('quantity', 0);
     }
 
     public function scopeOverstock($query)
     {
-        return $query->whereRaw('current_quantity > maximum_quantity');
+        // Utiliser les noms de colonnes de la migration
+        return $query->whereRaw('quantity > max_quantity');
     }
 
     public function scopeNeedsReorder($query)
     {
-        return $query->whereRaw('current_quantity <= reorder_point');
+        // Utiliser les noms de colonnes de la migration (reorder_point n'existe pas dans la migration, donc on utilise min_quantity)
+        return $query->whereRaw('quantity <= min_quantity');
+    }
+
+    // Accesseurs pour mapper les noms de colonnes de la migration
+    public function getCurrentQuantityAttribute()
+    {
+        // Mapper quantity (migration) vers current_quantity (modèle)
+        return $this->attributes['quantity'] ?? $this->attributes['current_quantity'] ?? 0;
+    }
+
+    public function setCurrentQuantityAttribute($value)
+    {
+        // Mapper current_quantity (modèle) vers quantity (migration)
+        $this->attributes['quantity'] = $value;
+    }
+
+    public function getMinimumQuantityAttribute()
+    {
+        // Mapper min_quantity (migration) vers minimum_quantity (modèle)
+        return $this->attributes['min_quantity'] ?? $this->attributes['minimum_quantity'] ?? 0;
+    }
+
+    public function setMinimumQuantityAttribute($value)
+    {
+        // Mapper minimum_quantity (modèle) vers min_quantity (migration)
+        $this->attributes['min_quantity'] = $value;
+    }
+
+    public function getMaximumQuantityAttribute()
+    {
+        // Mapper max_quantity (migration) vers maximum_quantity (modèle)
+        return $this->attributes['max_quantity'] ?? $this->attributes['maximum_quantity'] ?? 0;
+    }
+
+    public function setMaximumQuantityAttribute($value)
+    {
+        // Mapper maximum_quantity (modèle) vers max_quantity (migration)
+        $this->attributes['max_quantity'] = $value;
+    }
+
+    public function getUnitCostAttribute()
+    {
+        // Mapper unit_price (migration) vers unit_cost (modèle)
+        return $this->attributes['unit_price'] ?? $this->attributes['unit_cost'] ?? 0;
+    }
+
+    public function setUnitCostAttribute($value)
+    {
+        // Mapper unit_cost (modèle) vers unit_price (migration)
+        $this->attributes['unit_price'] = $value;
+    }
+
+    public function getNotesAttribute()
+    {
+        // Mapper commentaire (migration) vers notes (modèle)
+        return $this->attributes['commentaire'] ?? $this->attributes['notes'] ?? null;
+    }
+
+    public function setNotesAttribute($value)
+    {
+        // Mapper notes (modèle) vers commentaire (migration)
+        $this->attributes['commentaire'] = $value;
+    }
+
+    public function getReorderPointAttribute()
+    {
+        // reorder_point n'existe pas dans la migration, on utilise min_quantity
+        return $this->attributes['min_quantity'] ?? $this->attributes['reorder_point'] ?? 0;
+    }
+
+    public function setReorderPointAttribute($value)
+    {
+        // Mapper reorder_point (modèle) vers min_quantity (migration)
+        $this->attributes['min_quantity'] = $value;
     }
 
     // Accesseurs
@@ -139,7 +207,10 @@ class Stock extends Model
         $statuses = [
             'active' => 'Actif',
             'inactive' => 'Inactif',
-            'discontinued' => 'Discontinué'
+            'discontinued' => 'Discontinué',
+            'en_attente' => 'En attente',
+            'valide' => 'Validé',
+            'rejete' => 'Rejeté'
         ];
 
         return $statuses[$this->status] ?? $this->status;
@@ -167,22 +238,26 @@ class Stock extends Model
 
     public function getFormattedCurrentQuantityAttribute()
     {
-        return number_format($this->current_quantity, 3, ',', ' ') . ' ' . $this->unit;
+        // unit n'existe pas dans la migration, on retourne juste la quantité formatée
+        return number_format($this->current_quantity, 3, ',', ' ');
     }
 
     public function getFormattedMinimumQuantityAttribute()
     {
-        return number_format($this->minimum_quantity, 3, ',', ' ') . ' ' . $this->unit;
+        // unit n'existe pas dans la migration
+        return number_format($this->minimum_quantity, 3, ',', ' ');
     }
 
     public function getFormattedMaximumQuantityAttribute()
     {
-        return $this->maximum_quantity ? number_format($this->maximum_quantity, 3, ',', ' ') . ' ' . $this->unit : 'N/A';
+        // unit n'existe pas dans la migration
+        return $this->maximum_quantity ? number_format($this->maximum_quantity, 3, ',', ' ') : 'N/A';
     }
 
     public function getFormattedReorderPointAttribute()
     {
-        return number_format($this->reorder_point, 3, ',', ' ') . ' ' . $this->unit;
+        // unit n'existe pas dans la migration
+        return number_format($this->reorder_point, 3, ',', ' ');
     }
 
     public function getIsLowStockAttribute()
@@ -342,31 +417,26 @@ class Stock extends Model
 
     public function checkAlerts()
     {
-        // Supprimer les alertes existantes
-        $this->alerts()->where('status', 'active')->delete();
+        // Supprimer les alertes existantes avec statut 'en_attente'
+        $this->alerts()->where('status', 'en_attente')->delete();
 
-        // Vérifier les nouvelles alertes
+        // Vérifier les nouvelles alertes (selon les types autorisés dans la migration: 'low_stock', 'out_of_stock', 'expired')
         if ($this->current_quantity == 0) {
-            $this->createAlert('out_of_stock', 'high', 'Stock épuisé');
+            $this->createAlert('out_of_stock', 'Stock épuisé');
         } elseif ($this->current_quantity <= $this->minimum_quantity) {
-            $this->createAlert('low_stock', 'medium', 'Stock faible');
-        } elseif ($this->maximum_quantity && $this->current_quantity > $this->maximum_quantity) {
-            $this->createAlert('overstock', 'low', 'Stock excédentaire');
+            $this->createAlert('low_stock', 'Stock faible');
         }
-
-        if ($this->current_quantity <= $this->reorder_point) {
-            $this->createAlert('reorder', 'high', 'Réapprovisionnement nécessaire');
-        }
+        // Note: 'overstock' et 'reorder' ne sont pas dans l'enum de la migration, on ne les crée pas
     }
 
-    public function createAlert($type, $priority, $message)
+    public function createAlert($type, $message)
     {
+        // Créer l'alerte avec uniquement les champs présents dans la migration
         return StockAlert::create([
             'stock_id' => $this->id,
             'type' => $type,
-            'priority' => $priority,
             'message' => $message,
-            'triggered_at' => now()
+            'status' => 'en_attente', // Statut par défaut selon la migration
         ]);
     }
 

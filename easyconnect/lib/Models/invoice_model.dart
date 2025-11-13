@@ -52,57 +52,72 @@ class InvoiceModel {
   });
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
-    return InvoiceModel(
-      id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
-      invoiceNumber: json['invoice_number'],
-      clientId:
-          (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
-                  is String
-              ? int.tryParse(
-                json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
-              )
-              : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
-      clientName: json['nom'],
-      clientEmail: json['email'],
-      clientAddress: json['adresse'],
-      commercialId: json['user_id'],
-      commercialName: json['nom'],
-      invoiceDate: DateTime.parse(json['invoice_date']),
-      dueDate: DateTime.parse(json['due_date']),
-      status: json['status'],
-      subtotal:
-          json['subtotal'] is String
-              ? double.tryParse(json['subtotal']) ?? 0.0
-              : (json['subtotal']?.toDouble() ?? 0.0),
-      taxRate:
-          json['tax_rate'] is String
-              ? double.tryParse(json['tax_rate']) ?? 0.0
-              : (json['tax_rate']?.toDouble() ?? 0.0),
-      taxAmount:
-          json['tax_amount'] is String
-              ? double.tryParse(json['tax_amount']) ?? 0.0
-              : (json['tax_amount']?.toDouble() ?? 0.0),
-      totalAmount:
-          json['total_amount'] is String
-              ? double.tryParse(json['total_amount']) ?? 0.0
-              : (json['total_amount']?.toDouble() ?? 0.0),
-      currency: json['currency'] ?? 'EUR',
-      notes: json['notes'],
-      terms: json['terms'],
-      items:
-          (json['items'] as List<dynamic>?)
-              ?.map((item) => InvoiceItem.fromJson(item))
-              .toList() ??
-          [],
-      paymentInfo:
-          json['payment_info'] != null
-              ? PaymentInfo.fromJson(json['payment_info'])
-              : null,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      sentAt: json['sent_at'] != null ? DateTime.parse(json['sent_at']) : null,
-      paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at']) : null,
-    );
+    try {
+      return InvoiceModel(
+        id: _parseInt(json['id']) ?? 0,
+        invoiceNumber: json['invoice_number']?.toString() ?? '',
+        clientId:
+            _parseInt(
+              json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
+            ) ??
+            0,
+        clientName:
+            json['nom']?.toString() ?? json['client_name']?.toString() ?? '',
+        clientEmail:
+            json['email']?.toString() ?? json['client_email']?.toString() ?? '',
+        clientAddress:
+            json['adresse']?.toString() ??
+            json['client_address']?.toString() ??
+            '',
+        commercialId: _parseInt(json['user_id']) ?? 0,
+        commercialName:
+            json['commercial_name']?.toString() ??
+            json['nom']?.toString() ??
+            '',
+        invoiceDate: _parseDateTime(json['invoice_date']) ?? DateTime.now(),
+        dueDate: _parseDateTime(json['due_date']) ?? DateTime.now(),
+        status: json['status']?.toString() ?? 'en_attente',
+        subtotal: _parseDouble(json['subtotal']),
+        taxRate: _parseDouble(json['tax_rate']),
+        taxAmount: _parseDouble(json['tax_amount']),
+        totalAmount: _parseDouble(json['total_amount']),
+        currency: json['currency']?.toString() ?? 'EUR',
+        notes: json['notes']?.toString(),
+        terms: json['terms']?.toString(),
+        items:
+            json['items'] != null && json['items'] is List
+                ? (json['items'] as List<dynamic>)
+                    .map((item) {
+                      try {
+                        return InvoiceItem.fromJson(
+                          item is Map<String, dynamic>
+                              ? item
+                              : Map<String, dynamic>.from(item),
+                        );
+                      } catch (e) {
+                        print('⚠️ InvoiceModel: Erreur parsing item: $e');
+                        return null;
+                      }
+                    })
+                    .where((item) => item != null)
+                    .cast<InvoiceItem>()
+                    .toList()
+                : [],
+        paymentInfo:
+            json['payment_info'] != null
+                ? PaymentInfo.fromJson(json['payment_info'])
+                : null,
+        createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
+        updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
+        sentAt: _parseDateTime(json['sent_at']),
+        paidAt: _parseDateTime(json['paid_at']),
+      );
+    } catch (e, stackTrace) {
+      print('❌ InvoiceModel.fromJson: Erreur: $e');
+      print('❌ InvoiceModel.fromJson: Stack trace: $stackTrace');
+      print('❌ InvoiceModel.fromJson: JSON: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -114,7 +129,7 @@ class InvoiceModel {
       'email': clientEmail,
       'adresse': clientAddress,
       'user_id': commercialId,
-      'nom': commercialName,
+      'commercial_name': commercialName,
       'invoice_date': invoiceDate.toIso8601String(),
       'due_date': dueDate.toIso8601String(),
       'status': status,
@@ -153,14 +168,30 @@ class InvoiceItem {
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
-    return InvoiceItem(
-      id: json['id'] ?? 0,
-      description: json['description'],
-      quantity: json['quantity'],
-      unitPrice: (json['unit_price'] ?? 0).toDouble(),
-      totalPrice: (json['total_price'] ?? 0).toDouble(),
-      unit: json['unit'],
-    );
+    try {
+      return InvoiceItem(
+        id: _parseInt(json['id']) ?? 0,
+        description: json['description']?.toString() ?? '',
+        quantity:
+            _parseInt(json['quantity']) ?? _parseInt(json['quantite']) ?? 0,
+        unitPrice: _parseDouble(
+          json['unit_price'] ?? json['prix_unitaire'] ?? 0,
+        ),
+        totalPrice: _parseDouble(json['total_price'] ?? json['total'] ?? 0),
+        unit: json['unit']?.toString(),
+      );
+    } catch (e) {
+      print('⚠️ InvoiceItem.fromJson: Erreur: $e');
+      print('⚠️ InvoiceItem.fromJson: JSON: $json');
+      // Retourner un item par défaut en cas d'erreur
+      return InvoiceItem(
+        id: 0,
+        description: json['description']?.toString() ?? '',
+        quantity: 0,
+        unitPrice: 0.0,
+        totalPrice: 0.0,
+      );
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -317,4 +348,53 @@ class InvoiceTemplate {
       'created_at': createdAt.toIso8601String(),
     };
   }
+}
+
+// Méthodes de parsing robustes pour InvoiceModel
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+  if (value is num) return value.toInt();
+  return null;
+}
+
+double _parseDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return 0.0;
+    final parsed = double.tryParse(trimmed);
+    if (parsed != null) return parsed;
+    final cleaned = trimmed
+        .replaceAll(RegExp(r'[^\d.,-]'), '')
+        .replaceAll(',', '.');
+    return double.tryParse(cleaned) ?? 0.0;
+  }
+  if (value is num) return value.toDouble();
+  return 0.0;
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String) {
+    try {
+      if (value.contains('T') || value.contains(' ')) {
+        return DateTime.parse(value);
+      } else {
+        return DateTime.parse('${value}T00:00:00');
+      }
+    } catch (e) {
+      print('⚠️ InvoiceModel: Erreur parsing DateTime: $value - $e');
+      return null;
+    }
+  }
+  return null;
 }

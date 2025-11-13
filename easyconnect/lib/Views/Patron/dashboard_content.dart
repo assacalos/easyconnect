@@ -25,13 +25,13 @@ class DashboardContent extends StatelessWidget {
                 id: 'revenue',
                 label: "Chiffre d'affaires",
                 icon: Icons.euro,
-                onTap: () => Get.toNamed('/comptable'),
+                onTap: () => Get.toNamed('/patron/finances'),
               ),
               FavoriteItem(
                 id: 'employees',
                 label: 'Employés',
                 icon: Icons.people,
-                onTap: () => Get.toNamed('/rh'),
+                onTap: () => Get.toNamed('/admin/users'),
               ),
               FavoriteItem(
                 id: 'tickets',

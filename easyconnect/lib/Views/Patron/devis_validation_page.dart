@@ -13,7 +13,7 @@ class DevisValidationPage extends StatefulWidget {
 
 class _DevisValidationPageState extends State<DevisValidationPage>
     with SingleTickerProviderStateMixin {
-  final DevisController controller = Get.find<DevisController>();
+  late final DevisController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -21,6 +21,12 @@ class _DevisValidationPageState extends State<DevisValidationPage>
   @override
   void initState() {
     super.initState();
+    // Vérifier et initialiser le contrôleur
+    if (!Get.isRegistered<DevisController>()) {
+      Get.put(DevisController(), permanent: true);
+    }
+    controller = Get.find<DevisController>();
+
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
@@ -48,13 +54,13 @@ class _DevisValidationPageState extends State<DevisValidationPage>
         status = null;
         break;
       case 1: // En attente
-        status = 1; // 1 = envoyé/en attente
+        status = 1;
         break;
       case 2: // Validés
-        status = 2; // 2 = accepté/validé
+        status = 2;
         break;
       case 3: // Rejetés
-        status = 3; // 3 = refusé/rejeté
+        status = 3;
         break;
     }
 
@@ -258,6 +264,13 @@ class _DevisValidationPageState extends State<DevisValidationPage>
                       Text('Référence: ${devis.reference}'),
                       Text('Client ID: ${devis.clientId}'),
                       Text('Commercial ID: ${devis.commercialId}'),
+                      Text(
+                        'Date création: ${formatDate.format(devis.dateCreation)}',
+                      ),
+                      if (devis.dateValidite != null)
+                        Text(
+                          'Date validité: ${formatDate.format(devis.dateValidite!)}',
+                        ),
                       if (devis.notes != null) Text('Notes: ${devis.notes}'),
                     ],
                   ),

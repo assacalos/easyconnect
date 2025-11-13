@@ -212,6 +212,16 @@ class BordereauListPage extends StatelessWidget {
       );
     }
 
+    // Bouton Modifier pour les bordereaux validés ou rejetés
+    if (userRole == Roles.COMMERCIAL &&
+        (bordereau.status == 2 || bordereau.status == 3)) {
+      return IconButton(
+        icon: const Icon(Icons.edit),
+        onPressed: () => Get.toNamed('/bordereaux/${bordereau.id}/edit'),
+        tooltip: 'Modifier',
+      );
+    }
+
     if (userRole == Roles.PATRON && bordereau.status == 1) {
       return PopupMenuButton(
         itemBuilder:

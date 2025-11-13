@@ -359,14 +359,6 @@ class PdfService {
             pw.Padding(
               padding: const pw.EdgeInsets.all(8),
               child: pw.Text(
-                'Unité',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                textAlign: pw.TextAlign.center,
-              ),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(
                 'Prix U.',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 textAlign: pw.TextAlign.right,
@@ -394,13 +386,6 @@ class PdfService {
                 padding: const pw.EdgeInsets.all(8),
                 child: pw.Text(
                   '${item['quantite'] ?? 0}',
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(
-                  item['unite'] ?? '',
                   textAlign: pw.TextAlign.center,
                 ),
               ),
@@ -611,4 +596,3 @@ class PdfService {
     }
   }
 }
-

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Facture;
+use App\Models\FactureItem;
 use App\Models\Client;
 
 class FactureController extends Controller
@@ -15,34 +16,49 @@ class FactureController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Facture::with('client');
+        $query = Facture::with(['client', 'items', 'user']);
         
         // Filtrage par status si fourni
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
         
-        // Filtrage par date si fourni
-        if ($request->has('date_debut')) {
-            $query->where('date_facture', '>=', $request->date_debut);
+        // Filtrage par client_id si fourni
+        if ($request->has('client_id')) {
+            $query->where('client_id', $request->client_id);
         }
         
-        if ($request->has('date_fin')) {
-            $query->where('date_facture', '<=', $request->date_fin);
+        // Filtrage par commercial_id si fourni
+        if ($request->has('commercial_id')) {
+            $query->where('user_id', $request->commercial_id);
         }
         
-        // Si commercial → filtre ses propres clients
+        // Filtrage par date de début (start_date ou date_debut)
+        if ($request->has('start_date') || $request->has('date_debut')) {
+            $date = $request->start_date ?? $request->date_debut;
+            $query->where('date_facture', '>=', $date);
+        }
+        
+        // Filtrage par date de fin (end_date ou date_fin)
+        if ($request->has('end_date') || $request->has('date_fin')) {
+            $date = $request->end_date ?? $request->date_fin;
+            $query->where('date_facture', '<=', $date);
+        }
+        
+        // Si commercial → filtre ses propres factures
         if (auth()->user()->isCommercial()) {
-            $query->whereHas('client', function($q) {
-                $q->where('user_id', auth()->id());
-            });
+            $query->where('user_id', auth()->id());
         }
         
-        $factures = $query->get();
+        $factures = $query->orderBy('created_at', 'desc')->get();
+        
+        $formattedFactures = $factures->map(function ($facture) {
+            return $this->formatFactureForFrontend($facture);
+        });
         
         return response()->json([
             'success' => true,
-            'factures' => $factures,
+            'data' => $formattedFactures,
             'message' => 'Liste des factures récupérée avec succès'
         ]);
     }
@@ -53,10 +69,10 @@ class FactureController extends Controller
      */
     public function show($id)
     {
-        $facture = Facture::with('client', 'paiements')->findOrFail($id);
+        $facture = Facture::with(['client', 'items', 'user', 'paiements'])->findOrFail($id);
         
         // Vérification des permissions pour les commerciaux
-        if (auth()->user()->isCommercial() && $facture->client->user_id !== auth()->id()) {
+        if (auth()->user()->isCommercial() && $facture->user_id !== auth()->id()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Accès refusé à cette facture'
@@ -65,7 +81,7 @@ class FactureController extends Controller
         
         return response()->json([
             'success' => true,
-            'facture' => $facture,
+            'data' => $this->formatFactureForFrontend($facture),
             'message' => 'Facture récupérée avec succès'
         ]);
     }
@@ -73,33 +89,139 @@ class FactureController extends Controller
     /**
      * Créer une facture
      * Accessible par Comptable et Admin
+     * Accepte les données du frontend avec items, subtotal, tax_rate, etc.
      */
     public function store(Request $request)
     {
         $request->validate([
             'client_id' => 'required|exists:clients,id',
-            'numero_facture' => 'required|string|unique:factures',
-            'montant' => 'required|numeric|min:0',
-            'date_facture' => 'required|date',
-            'description' => 'nullable|string',
-            'status' => 'required|in:en_attente,payee,impayee'
+            'invoice_date' => 'required|date',
+            'due_date' => 'required|date',
+            'subtotal' => 'required|numeric|min:0',
+            'tax_rate' => 'required|numeric|min:0|max:100',
+            'tax_amount' => 'required|numeric|min:0',
+            'total_amount' => 'required|numeric|min:0',
+            'items' => 'required|array|min:1',
+            'items.*.description' => 'required|string',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.total_price' => 'required|numeric|min:0',
+            'items.*.unit' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'terms' => 'nullable|string',
+            'numero_facture' => 'nullable|string|unique:factures,numero_facture'
         ]);
 
+        // Génération automatique du numéro de facture si non fourni
+        $numeroFacture = $request->numero_facture;
+        if (!$numeroFacture) {
+            $numeroFacture = $this->generateInvoiceNumber();
+        }
+
+        // Création de la facture
         $facture = Facture::create([
             'client_id' => $request->client_id,
-            'numero_facture' => $request->numero_facture,
-            'montant' => $request->montant,
-            'date_facture' => $request->date_facture,
-            'description' => $request->description,
-            'status' => $request->status,
-            'user_id' => auth()->id()
+            'numero_facture' => $numeroFacture,
+            'date_facture' => $request->invoice_date,
+            'date_echeance' => $request->due_date,
+            'montant_ht' => $request->subtotal,
+            'tva' => $request->tax_rate,
+            'montant_ttc' => $request->total_amount,
+            'status' => 'en_attente',
+            'notes' => $request->notes,
+            'terms' => $request->terms,
+            'user_id' => $request->user_id ?? auth()->id()
         ]);
+
+        // Création des items de la facture
+        foreach ($request->items as $item) {
+            FactureItem::create([
+                'facture_id' => $facture->id,
+                'description' => $item['description'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'total_price' => $item['total_price'],
+                'unit' => $item['unit'] ?? null
+            ]);
+        }
+
+        // Charger la facture avec ses relations
+        $facture->load('client', 'items', 'user');
 
         return response()->json([
             'success' => true,
-            'facture' => $facture,
+            'data' => $this->formatFactureForFrontend($facture),
             'message' => 'Facture créée avec succès'
         ], 201);
+    }
+
+    /**
+     * Générer un numéro de facture automatique
+     */
+    private function generateInvoiceNumber()
+    {
+        $year = date('Y');
+        
+        // Trouver toutes les factures de l'année avec le format FAC-YYYY-XXXX
+        $invoices = Facture::whereYear('created_at', $year)
+            ->where('numero_facture', 'like', 'FAC-' . $year . '-%')
+            ->get();
+        
+        $maxNumber = 0;
+        foreach ($invoices as $invoice) {
+            if (preg_match('/FAC-\d{4}-(\d+)$/', $invoice->numero_facture, $matches)) {
+                $num = (int) $matches[1];
+                if ($num > $maxNumber) {
+                    $maxNumber = $num;
+                }
+            }
+        }
+        
+        $number = $maxNumber + 1;
+        
+        return 'FAC-' . $year . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Formater une facture pour le frontend
+     */
+    private function formatFactureForFrontend($facture)
+    {
+        $client = $facture->client;
+        $user = $facture->user;
+
+        return [
+            'id' => $facture->id,
+            'invoice_number' => $facture->numero_facture,
+            'client_id' => $facture->client_id,
+            'nom' => $client ? ($client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom)) : '',
+            'email' => $client->email ?? '',
+            'adresse' => $client->adresse ?? '',
+            'user_id' => $facture->user_id,
+            'commercial_name' => $user ? ($user->nom . ' ' . $user->prenom) : '',
+            'invoice_date' => $facture->date_facture->format('Y-m-d'),
+            'due_date' => $facture->date_echeance->format('Y-m-d'),
+            'status' => $facture->status,
+            'subtotal' => (float) $facture->montant_ht,
+            'tax_rate' => (float) $facture->tva,
+            'tax_amount' => (float) ($facture->montant_ttc - $facture->montant_ht),
+            'total_amount' => (float) $facture->montant_ttc,
+            'currency' => 'fcfa',
+            'notes' => $facture->notes,
+            'terms' => $facture->terms,
+            'items' => $facture->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'description' => $item->description,
+                    'quantity' => $item->quantity,
+                    'unit_price' => (float) $item->unit_price,
+                    'total_price' => (float) $item->total_price,
+                    'unit' => $item->unit
+                ];
+            }),
+            'created_at' => $facture->created_at->toDateTimeString(),
+            'updated_at' => $facture->updated_at->toDateTimeString()
+        ];
     }
 
     /**
@@ -204,10 +326,10 @@ class FactureController extends Controller
         ]);
         
         $facture->update([
-            'status' => 'validee',
+            'status' => 'valide',
             'validated_by' => auth()->id(),
             'validated_at' => now(),
-            'validation_comment' => $request->commentaire
+            'validation_comment' => $request->commentaire ?? $request->comments
         ]);
         
         // Log de l'action
@@ -229,7 +351,7 @@ class FactureController extends Controller
         $facture = Facture::findOrFail($id);
         
         // Vérification que la facture peut être rejetée
-        if (!in_array($facture->status, ['en_attente', 'validee'])) {
+        if (!in_array($facture->status, ['en_attente', 'valide'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cette facture ne peut pas être rejetée dans son état actuel'
@@ -237,15 +359,16 @@ class FactureController extends Controller
         }
         
         $request->validate([
-            'raison_rejet' => 'required|string|max:500',
+            'raison_rejet' => 'nullable|string|max:500',
+            'reason' => 'nullable|string|max:500',
             'commentaire' => 'nullable|string|max:500'
         ]);
         
         $facture->update([
-            'status' => 'rejetee',
+            'status' => 'rejete',
             'rejected_by' => auth()->id(),
             'rejected_at' => now(),
-            'rejection_reason' => $request->raison_rejet,
+            'rejection_reason' => $request->raison_rejet ?? $request->reason,
             'rejection_comment' => $request->commentaire
         ]);
         
@@ -267,7 +390,7 @@ class FactureController extends Controller
     {
         $facture = Facture::findOrFail($id);
         
-        if ($facture->status !== 'rejetee') {
+        if ($facture->status !== 'rejete') {
             return response()->json([
                 'success' => false,
                 'message' => 'Cette facture n\'est pas rejetée'
@@ -352,17 +475,14 @@ class FactureController extends Controller
         
         $rapport = [
             'total_factures' => $factures->count(),
-            'montant_total' => $factures->sum('montant'),
-            'factures_payees' => $factures->where('status', 'payee')->count(),
-            'montant_paye' => $factures->where('status', 'payee')->sum('montant'),
-            'factures_impayees' => $factures->where('status', 'impayee')->count(),
-            'montant_impaye' => $factures->where('status', 'impayee')->sum('montant'),
+            'montant_total' => $factures->sum('montant_ttc'),
+            'montant_total_ht' => $factures->sum('montant_ht'),
             'factures_en_attente' => $factures->where('status', 'en_attente')->count(),
-            'montant_en_attente' => $factures->where('status', 'en_attente')->sum('montant'),
-            'factures_validees' => $factures->where('status', 'validee')->count(),
-            'montant_valide' => $factures->where('status', 'validee')->sum('montant'),
-            'factures_rejetees' => $factures->where('status', 'rejetee')->count(),
-            'montant_rejete' => $factures->where('status', 'rejetee')->sum('montant')
+            'montant_en_attente' => $factures->where('status', 'en_attente')->sum('montant_ttc'),
+            'factures_validees' => $factures->where('status', 'valide')->count(),
+            'montant_valide' => $factures->where('status', 'valide')->sum('montant_ttc'),
+            'factures_rejetees' => $factures->where('status', 'rejete')->count(),
+            'montant_rejete' => $factures->where('status', 'rejete')->sum('montant_ttc')
         ];
         
         return response()->json([

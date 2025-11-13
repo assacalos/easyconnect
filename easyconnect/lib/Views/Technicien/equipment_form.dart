@@ -543,9 +543,10 @@ class EquipmentForm extends StatelessWidget {
   void _saveEquipment(EquipmentController controller) async {
     if (equipment == null) {
       await controller.createEquipment();
+      // Le retour est géré dans le contrôleur après succès
     } else {
       await controller.updateEquipment(equipment!);
+      // Le retour est géré dans le contrôleur après succès
     }
-    Get.back(); // Retour automatique à la liste
   }
 }

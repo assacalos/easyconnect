@@ -77,7 +77,7 @@ class CommercialDashboardController extends BaseDashboardController {
       updateChartData('opportunities', opportunitiesData);
       updateChartData('conversion', conversionData);
     } catch (e) {
-      print('Erreur lors du chargement des données: $e');
+      // Erreur silencieuse lors du chargement des données
     } finally {
       isLoading.value = false;
     }

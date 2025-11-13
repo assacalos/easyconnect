@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Intervention;
 use App\Models\Equipment;
 use App\Models\InterventionReport;
+use App\Models\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +19,7 @@ class InterventionController extends Controller
     {
         try {
             $user = $request->user();
-            $query = Intervention::with(['creator', 'approver', 'reports.technician']);
+            $query = Intervention::with(['creator', 'approver', 'client', 'reports.technician']);
 
             // Filtrage par statut
             if ($request->has('status')) {
@@ -63,84 +64,30 @@ class InterventionController extends Controller
             $perPage = $request->get('per_page', 15);
             $interventions = $query->orderBy('scheduled_date', 'desc')->paginate($perPage);
 
-            // Transformer les données
-            $interventions->getCollection()->transform(function ($intervention) {
-                return [
-                    'id' => $intervention->id,
-                    'title' => $intervention->title,
-                    'description' => $intervention->description,
-                    'type' => $intervention->type,
-                    'type_libelle' => $intervention->type_libelle,
-                    'status' => $intervention->status,
-                    'status_libelle' => $intervention->status_libelle,
-                    'priority' => $intervention->priority,
-                    'priority_libelle' => $intervention->priority_libelle,
-                    'scheduled_date' => $intervention->scheduled_date->format('Y-m-d H:i:s'),
-                    'start_date' => $intervention->start_date?->format('Y-m-d H:i:s'),
-                    'end_date' => $intervention->end_date?->format('Y-m-d H:i:s'),
-                    'location' => $intervention->location,
-                    'client_name' => $intervention->client_name,
-                    'client_phone' => $intervention->client_phone,
-                    'client_email' => $intervention->client_email,
-                    'equipment' => $intervention->equipment,
-                    'problem_description' => $intervention->problem_description,
-                    'solution' => $intervention->solution,
-                    'notes' => $intervention->notes,
-                    'attachments' => $intervention->attachments,
-                    'estimated_duration' => $intervention->estimated_duration,
-                    'actual_duration' => $intervention->actual_duration,
-                    'calculated_duration' => $intervention->calculated_duration,
-                    'cost' => $intervention->cost,
-                    'formatted_cost' => $intervention->formatted_cost,
-                    'formatted_estimated_duration' => $intervention->formatted_estimated_duration,
-                    'formatted_actual_duration' => $intervention->formatted_actual_duration,
-                    'created_by' => $intervention->created_by,
-                    'creator_name' => $intervention->creator_name,
-                    'approved_by' => $intervention->approved_by,
-                    'approver_name' => $intervention->approver_name,
-                    'approved_at' => $intervention->approved_at?->format('Y-m-d H:i:s'),
-                    'rejection_reason' => $intervention->rejection_reason,
-                    'completion_notes' => $intervention->completion_notes,
-                    'is_overdue' => $intervention->is_overdue,
-                    'is_due_soon' => $intervention->is_due_soon,
-                    'can_be_edited' => $intervention->canBeEdited(),
-                    'can_be_approved' => $intervention->canBeApproved(),
-                    'can_be_rejected' => $intervention->canBeRejected(),
-                    'can_be_started' => $intervention->canBeStarted(),
-                    'can_be_completed' => $intervention->canBeCompleted(),
-                    'reports' => $intervention->reports->map(function ($report) {
-                        return [
-                            'id' => $report->id,
-                            'report_number' => $report->report_number,
-                            'work_performed' => $report->work_performed,
-                            'findings' => $report->findings,
-                            'recommendations' => $report->recommendations,
-                            'parts_used' => $report->parts_used,
-                            'labor_hours' => $report->labor_hours,
-                            'parts_cost' => $report->parts_cost,
-                            'labor_cost' => $report->labor_cost,
-                            'total_cost' => $report->total_cost,
-                            'formatted_labor_hours' => $report->formatted_labor_hours,
-                            'formatted_parts_cost' => $report->formatted_parts_cost,
-                            'formatted_labor_cost' => $report->formatted_labor_cost,
-                            'formatted_total_cost' => $report->formatted_total_cost,
-                            'photos' => $report->photos,
-                            'client_signature' => $report->client_signature,
-                            'technician_signature' => $report->technician_signature,
-                            'technician_name' => $report->technician_name,
-                            'report_date' => $report->report_date->format('Y-m-d H:i:s'),
-                            'created_at' => $report->created_at->format('Y-m-d H:i:s'),
-                            'updated_at' => $report->updated_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'created_at' => $intervention->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $intervention->updated_at->format('Y-m-d H:i:s')
-                ];
+            // Transformer les données au format Flutter
+            $transformed = $interventions->getCollection()->map(function ($intervention) {
+                return $this->transformInterventionForFlutter($intervention);
             });
 
+            // Si Flutter envoie un paramètre search, retourner directement la liste (pas de pagination)
+            if ($request->has('search')) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $transformed,
+                    'message' => 'Liste des interventions récupérée avec succès'
+                ]);
+            }
+
+            // Sinon, retourner avec pagination
             return response()->json([
                 'success' => true,
-                'data' => $interventions,
+                'data' => [
+                    'data' => $transformed,
+                    'current_page' => $interventions->currentPage(),
+                    'per_page' => $interventions->perPage(),
+                    'total' => $interventions->total(),
+                    'last_page' => $interventions->lastPage(),
+                ],
                 'message' => 'Liste des interventions récupérée avec succès'
             ]);
 
@@ -158,7 +105,7 @@ class InterventionController extends Controller
     public function show($id)
     {
         try {
-            $intervention = Intervention::with(['creator', 'approver', 'reports.technician'])->find($id);
+            $intervention = Intervention::with(['creator', 'approver', 'client', 'reports.technician'])->find($id);
 
             if (!$intervention) {
                 return response()->json([
@@ -169,7 +116,7 @@ class InterventionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $intervention,
+                'data' => $this->transformInterventionForFlutter($intervention),
                 'message' => 'Intervention récupérée avec succès'
             ]);
 
@@ -192,8 +139,10 @@ class InterventionController extends Controller
                 'description' => 'required|string',
                 'type' => 'required|in:external,on_site',
                 'priority' => 'required|in:low,medium,high,urgent',
-                'scheduled_date' => 'required|date|after:now',
+                'scheduled_date' => 'required|date', // Retiré after:now pour permettre les dates passées
                 'location' => 'nullable|string|max:255',
+                // Accepter client_id (recommandé) ou client_name/client_phone/client_email (ancien format)
+                'client_id' => 'nullable|integer|exists:clients,id',
                 'client_name' => 'nullable|string|max:255',
                 'client_phone' => 'nullable|string|max:20',
                 'client_email' => 'nullable|email|max:255',
@@ -202,10 +151,30 @@ class InterventionController extends Controller
                 'estimated_duration' => 'nullable|numeric|min:0',
                 'cost' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string',
-                'attachments' => 'nullable|array'
+                'attachments' => 'nullable|array',
+                // Ignorer les champs créés automatiquement par le backend
+                'created_at' => 'nullable',
+                'updated_at' => 'nullable',
+                'created_by' => 'nullable',
             ]);
 
             DB::beginTransaction();
+
+            // Si client_id est fourni, récupérer les infos du client et remplir automatiquement
+            $clientId = $validated['client_id'] ?? null;
+            $clientName = $validated['client_name'] ?? null;
+            $clientPhone = $validated['client_phone'] ?? null;
+            $clientEmail = $validated['client_email'] ?? null;
+
+            if ($clientId) {
+                $client = Client::find($clientId);
+                if ($client) {
+                    // Utiliser les infos du client existant pour remplir les champs texte
+                    $clientName = $client->nom . ' ' . ($client->prenom ?? '');
+                    $clientPhone = $client->contact ?? $clientPhone;
+                    $clientEmail = $client->email ?? $clientEmail;
+                }
+            }
 
             $intervention = Intervention::create([
                 'title' => $validated['title'],
@@ -214,9 +183,10 @@ class InterventionController extends Controller
                 'priority' => $validated['priority'],
                 'scheduled_date' => $validated['scheduled_date'],
                 'location' => $validated['location'] ?? null,
-                'client_name' => $validated['client_name'] ?? null,
-                'client_phone' => $validated['client_phone'] ?? null,
-                'client_email' => $validated['client_email'] ?? null,
+                'client_id' => $clientId, // Sauvegarder l'ID du client sélectionné
+                'client_name' => $clientName, // Rempli automatiquement si client_id fourni
+                'client_phone' => $clientPhone, // Rempli automatiquement si client_id fourni
+                'client_email' => $clientEmail, // Rempli automatiquement si client_id fourni
                 'equipment' => $validated['equipment'] ?? null,
                 'problem_description' => $validated['problem_description'] ?? null,
                 'estimated_duration' => $validated['estimated_duration'] ?? null,
@@ -231,7 +201,7 @@ class InterventionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $intervention->load(['creator']),
+                'data' => $this->transformInterventionForFlutter($intervention->load(['creator', 'client'])),
                 'message' => 'Intervention créée avec succès'
             ], 201);
 
@@ -273,6 +243,8 @@ class InterventionController extends Controller
                 'priority' => 'sometimes|in:low,medium,high,urgent',
                 'scheduled_date' => 'sometimes|date',
                 'location' => 'nullable|string|max:255',
+                // Accepter client_id (recommandé) ou client_name/client_phone/client_email (ancien format)
+                'client_id' => 'nullable|integer|exists:clients,id',
                 'client_name' => 'nullable|string|max:255',
                 'client_phone' => 'nullable|string|max:20',
                 'client_email' => 'nullable|email|max:255',
@@ -284,11 +256,23 @@ class InterventionController extends Controller
                 'attachments' => 'nullable|array'
             ]);
 
+            // Si client_id est fourni, récupérer les infos du client et remplir automatiquement
+            $clientId = $validated['client_id'] ?? null;
+            if ($clientId) {
+                $client = Client::find($clientId);
+                if ($client) {
+                    $validated['client_name'] = $client->nom . ' ' . ($client->prenom ?? '');
+                    $validated['client_phone'] = $client->contact ?? $validated['client_phone'] ?? null;
+                    $validated['client_email'] = $client->email ?? $validated['client_email'] ?? null;
+                }
+            }
+            // Garder client_id dans validated car il existe maintenant dans la table interventions
+
             $intervention->update($validated);
 
             return response()->json([
                 'success' => true,
-                'data' => $intervention->load(['creator', 'approver']),
+                'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
                 'message' => 'Intervention mise à jour avec succès'
             ]);
 
@@ -357,6 +341,7 @@ class InterventionController extends Controller
             if ($intervention->approve($request->user()->id, $notes)) {
                 return response()->json([
                     'success' => true,
+                    'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
                     'message' => 'Intervention approuvée avec succès'
                 ]);
             } else {
@@ -389,13 +374,20 @@ class InterventionController extends Controller
                 ], 404);
             }
 
+            // Accepter 'reason' (Flutter) ou 'rejection_reason' (backend)
+            $reason = $request->get('reason') ?? $request->get('rejection_reason');
+            
             $validated = $request->validate([
-                'rejection_reason' => 'required|string|max:1000'
+                'reason' => 'required_without:rejection_reason|string|max:1000',
+                'rejection_reason' => 'required_without:reason|string|max:1000'
             ]);
 
-            if ($intervention->reject($validated['rejection_reason'])) {
+            $rejectionReason = $reason ?? $validated['rejection_reason'] ?? $validated['reason'];
+
+            if ($intervention->reject($rejectionReason)) {
                 return response()->json([
                     'success' => true,
+                    'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
                     'message' => 'Intervention rejetée avec succès'
                 ]);
             } else {
@@ -416,7 +408,7 @@ class InterventionController extends Controller
     /**
      * Démarrer une intervention
      */
-    public function start($id)
+    public function start(Request $request, $id)
     {
         try {
             $intervention = Intervention::find($id);
@@ -428,9 +420,16 @@ class InterventionController extends Controller
                 ], 404);
             }
 
+            // Accepter notes optionnel (envoyé par Flutter)
+            $notes = $request->get('notes');
+            if ($notes && $intervention->canBeStarted()) {
+                $intervention->update(['notes' => $notes]);
+            }
+
             if ($intervention->start()) {
                 return response()->json([
                     'success' => true,
+                    'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
                     'message' => 'Intervention démarrée avec succès'
                 ]);
             } else {
@@ -464,18 +463,23 @@ class InterventionController extends Controller
             }
 
             $validated = $request->validate([
+                'solution' => 'nullable|string|max:1000', // Champ envoyé par Flutter
                 'completion_notes' => 'nullable|string|max:1000',
                 'actual_duration' => 'nullable|numeric|min:0',
                 'cost' => 'nullable|numeric|min:0'
             ]);
 
+            // Utiliser solution si fourni, sinon completion_notes
+            $completionNotes = $validated['solution'] ?? $validated['completion_notes'] ?? null;
+
             if ($intervention->complete(
-                $validated['completion_notes'] ?? null,
+                $completionNotes,
                 $validated['actual_duration'] ?? null,
                 $validated['cost'] ?? null
             )) {
                 return response()->json([
                     'success' => true,
+                    'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
                     'message' => 'Intervention terminée avec succès'
                 ]);
             } else {
@@ -560,6 +564,74 @@ class InterventionController extends Controller
                 'message' => 'Erreur lors de la récupération des interventions dues bientôt: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Récupérer les interventions en attente
+     */
+    public function pending()
+    {
+        try {
+            $interventions = Intervention::where('status', 'pending')
+                ->with(['creator', 'approver', 'client'])
+                ->orderBy('scheduled_date', 'asc')
+                ->get();
+
+            // Transformer les données au format Flutter
+            $data = $interventions->map(function ($intervention) {
+                return $this->transformInterventionForFlutter($intervention);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+                'message' => 'Interventions en attente récupérées avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des interventions en attente: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Transformer une intervention au format attendu par Flutter
+     */
+    private function transformInterventionForFlutter($intervention)
+    {
+        return [
+            'id' => $intervention->id,
+            'title' => $intervention->title,
+            'description' => $intervention->description,
+            'type' => $intervention->type,
+            'status' => $intervention->status,
+            'priority' => $intervention->priority,
+            'scheduled_date' => $intervention->scheduled_date->format('Y-m-d H:i:s'),
+            'start_date' => $intervention->start_date?->format('Y-m-d H:i:s'),
+            'end_date' => $intervention->end_date?->format('Y-m-d H:i:s'),
+            'location' => $intervention->location,
+            'client_id' => $intervention->client_id, // ID du client sélectionné
+            'client_name' => $intervention->client_name,
+            'client_phone' => $intervention->client_phone,
+            'client_email' => $intervention->client_email,
+            'equipment' => $intervention->equipment,
+            'problem_description' => $intervention->problem_description,
+            'solution' => $intervention->completion_notes, // Mapper completion_notes vers solution pour Flutter
+            'notes' => $intervention->notes,
+            'attachments' => $intervention->attachments,
+            'estimated_duration' => $intervention->estimated_duration,
+            'actual_duration' => $intervention->actual_duration,
+            'cost' => $intervention->cost,
+            'created_at' => $intervention->created_at->format('Y-m-d H:i:s'),
+            'updated_at' => $intervention->updated_at->format('Y-m-d H:i:s'),
+            'created_by' => $intervention->created_by,
+            'approved_by' => $intervention->approved_by,
+            'approved_at' => $intervention->approved_at?->format('Y-m-d H:i:s'),
+            'rejection_reason' => $intervention->rejection_reason,
+            'completion_notes' => $intervention->completion_notes,
+        ];
     }
 
     /**

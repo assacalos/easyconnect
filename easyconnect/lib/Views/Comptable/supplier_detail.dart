@@ -13,7 +13,6 @@ class SupplierDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final SupplierController controller = Get.put(SupplierController());
-    final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
     return Scaffold(
       appBar: AppBar(
@@ -46,11 +45,6 @@ class SupplierDetail extends StatelessWidget {
               _buildInfoRow(Icons.business, 'Nom', supplier.nom),
               _buildInfoRow(Icons.email, 'Email', supplier.email),
               _buildInfoRow(Icons.phone, 'Téléphone', supplier.telephone),
-              _buildInfoRow(
-                Icons.person,
-                'Contact principal',
-                supplier.contactPrincipal,
-              ),
             ]),
 
             const SizedBox(height: 16),
@@ -136,7 +130,9 @@ class SupplierDetail extends StatelessWidget {
                   _buildStatusChip(),
                   const SizedBox(height: 8),
                   Text(
-                    'Créé le ${DateFormat('dd/MM/yyyy').format(supplier.createdAt)}',
+                    supplier.createdAt != null
+                        ? 'Créé le ${DateFormat('dd/MM/yyyy').format(supplier.createdAt!)}'
+                        : 'Date de création non disponible',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ],
@@ -298,31 +294,25 @@ class SupplierDetail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildHistoryItem(
-              Icons.add,
-              'Créé',
-              DateFormat('dd/MM/yyyy à HH:mm').format(supplier.createdAt),
-              Colors.blue,
-            ),
-            if (supplier.statut == 'submitted')
+            if (supplier.createdAt != null)
               _buildHistoryItem(
-                Icons.send,
-                'Soumis au patron',
-                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.createdAt),
-                Colors.orange,
+                Icons.add,
+                'Créé',
+                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.createdAt!),
+                Colors.blue,
               ),
-            if (supplier.statut == 'approved')
+            if (supplier.isValidated && supplier.updatedAt != null)
               _buildHistoryItem(
                 Icons.check_circle,
-                'Approuvé',
-                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.createdAt),
+                'Validé',
+                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.updatedAt!),
                 Colors.green,
               ),
-            if (supplier.statut == 'rejected')
+            if (supplier.isRejected && supplier.updatedAt != null)
               _buildHistoryItem(
                 Icons.cancel,
                 'Rejeté',
-                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.createdAt),
+                DateFormat('dd/MM/yyyy à HH:mm').format(supplier.updatedAt!),
                 Colors.red,
               ),
           ],
@@ -425,7 +415,7 @@ class SupplierDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (supplier.isApproved) ...[
+                if (supplier.isValidated) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.star),
@@ -533,7 +523,7 @@ class SupplierDetail extends StatelessWidget {
             onPressed: () {
               controller.approveSupplier(
                 supplier,
-                comments:
+                validationComment:
                     commentsController.text.trim().isEmpty
                         ? null
                         : commentsController.text.trim(),
@@ -549,24 +539,38 @@ class SupplierDetail extends StatelessWidget {
 
   void _showRejectDialog(SupplierController controller) {
     final reasonController = TextEditingController();
+    final commentController = TextEditingController();
 
     Get.dialog(
       AlertDialog(
         title: const Text('Rejeter le fournisseur'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Motif du rejet (obligatoire) :'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                hintText: 'Expliquez la raison du rejet...',
-                border: OutlineInputBorder(),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Motif du rejet (obligatoire) :'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  hintText: 'Expliquez la raison du rejet...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
               ),
-              maxLines: 3,
-            ),
-          ],
+              const SizedBox(height: 16),
+              const Text('Commentaire (optionnel) :'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: commentController,
+                decoration: const InputDecoration(
+                  hintText: 'Commentaire supplémentaire...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
@@ -575,9 +579,21 @@ class SupplierDetail extends StatelessWidget {
               if (reasonController.text.trim().isNotEmpty) {
                 controller.rejectSupplier(
                   supplier,
-                  reasonController.text.trim(),
+                  rejectionReason: reasonController.text.trim(),
+                  rejectionComment:
+                      commentController.text.trim().isEmpty
+                          ? null
+                          : commentController.text.trim(),
                 );
                 Get.back();
+              } else {
+                Get.snackbar(
+                  'Erreur',
+                  'Le motif du rejet est obligatoire',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
               }
             },
             style: ElevatedButton.styleFrom(

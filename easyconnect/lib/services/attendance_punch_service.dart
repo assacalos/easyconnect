@@ -23,33 +23,39 @@ class AttendancePunchService {
     String? notes,
   }) async {
     try {
-      print('🔄 Début du pointage: $type');
-
       // 1. Obtenir la localisation
-      print('📍 Récupération de la localisation...');
       final locationInfo = await _locationService.getLocationInfo();
       if (locationInfo == null) {
         throw Exception('Impossible d\'obtenir la localisation');
       }
 
       // 2. Valider la photo
-      print('📸 Validation de la photo...');
       await _cameraService.validateImage(photo);
 
-      // 3. Préparer les données
+      // 3. Utiliser les routes dédiées check-in ou check-out
+      final endpoint =
+          type == 'check_in'
+              ? '/attendances/check-in'
+              : '/attendances/check-out';
+
+      // 4. Préparer les données
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/attendance/punch'),
+        Uri.parse('$baseUrl$endpoint'),
       );
 
-      // Headers
-      request.headers.addAll(ApiService.headers());
+      // Headers (important : ne pas mettre Content-Type pour MultipartRequest, il sera ajouté automatiquement)
+      final headers = ApiService.headers();
+      // Retirer Content-Type si présent car MultipartRequest le gère automatiquement
+      headers.remove('Content-Type');
+      request.headers.addAll(headers);
 
-      // Champs
-      request.fields['type'] = type;
+      // Champs (le backend checkIn/checkOut fusionne le type automatiquement)
       request.fields['latitude'] = locationInfo.latitude.toString();
       request.fields['longitude'] = locationInfo.longitude.toString();
-      request.fields['address'] = locationInfo.address;
+      if (locationInfo.address.isNotEmpty) {
+        request.fields['address'] = locationInfo.address;
+      }
       request.fields['accuracy'] = locationInfo.accuracy.toString();
       if (notes != null && notes.isNotEmpty) {
         request.fields['notes'] = notes;
@@ -64,7 +70,6 @@ class AttendancePunchService {
         ),
       );
 
-      print('📡 Envoi de la requête...');
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -73,55 +78,65 @@ class AttendancePunchService {
       );
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('📊 Réponse: ${response.statusCode} - ${response.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
 
-      if (response.statusCode == 201) {
-        final data = jsonDecode(response.body);
+        // Vérifier le format de la réponse
+        AttendancePunchModel? attendanceData;
+        if (responseData['data'] != null) {
+          try {
+            attendanceData = AttendancePunchModel.fromJson(
+              responseData['data'],
+            );
+          } catch (e) {}
+        } else if (responseData['attendance'] != null) {
+          try {
+            attendanceData = AttendancePunchModel.fromJson(
+              responseData['attendance'],
+            );
+          } catch (e) {}
+        }
+
         return {
           'success': true,
-          'message': 'Pointage enregistré avec succès',
-          'data': AttendancePunchModel.fromJson(data['data']),
-        };
-      } else if (response.statusCode == 404) {
-        // Si l'endpoint n'existe pas, simuler un succès
-        print('⚠️ Endpoint punch non trouvé (404), simulation du succès');
-        return {
-          'success': true,
-          'message': 'Pointage enregistré localement (mode fallback)',
-          'data': null,
+          'message':
+              responseData['message'] ??
+              'Pointage enregistré avec succès et soumis pour validation',
+          'data': attendanceData,
         };
       } else {
-        final error = jsonDecode(response.body);
-        return {
-          'success': false,
-          'message': error['message'] ?? 'Erreur lors du pointage',
-        };
+        // Gestion détaillée des erreurs
+        String errorMessage = 'Erreur lors du pointage';
+        try {
+          final errorData = jsonDecode(response.body);
+          errorMessage =
+              errorData['message'] ?? errorData['error'] ?? errorMessage;
+          if (errorData['errors'] != null) {
+            // Erreurs de validation Laravel
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final errorList = errors.values.expand((e) => e as List).join(', ');
+            errorMessage = errorList.isNotEmpty ? errorList : errorMessage;
+          }
+        } catch (e) {
+          errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
+        }
+
+        return {'success': false, 'message': errorMessage};
       }
     } catch (e) {
-      print('❌ Erreur lors du pointage: $e');
-
-      // En cas d'erreur de connexion, simuler un succès
-      if (e.toString().contains('Timeout') ||
-          e.toString().contains('Connection') ||
-          e.toString().contains('SocketException')) {
-        print('⚠️ Erreur de connexion, simulation du succès');
-        return {
-          'success': true,
-          'message': 'Pointage enregistré localement (serveur indisponible)',
-          'data': null,
-        };
-      }
-
-      return {'success': false, 'message': 'Erreur: $e'};
+      return {
+        'success': false,
+        'message':
+            'Erreur lors de l\'enregistrement du pointage: ${e.toString()}',
+      };
     }
   }
 
-  // Vérifier si l'utilisateur peut pointer
+  // Vérifier si l'utilisateur peut pointer (statut actuel)
   Future<Map<String, dynamic>> canPunch({String type = 'check_in'}) async {
     try {
-      final url = '$baseUrl/attendance/can-punch?type=$type';
-      print('🔍 Vérification canPunch - URL: $url');
-      print('🔍 Headers: ${ApiService.headers()}');
+      // Utiliser la route current-status (la route can-punch n'existe pas dans les routes backend)
+      final url = '$baseUrl/attendances/current-status?type=$type';
 
       final response = await http
           .get(Uri.parse(url), headers: ApiService.headers())
@@ -132,47 +147,102 @@ class AttendancePunchService {
             },
           );
 
-      print('📊 Réponse canPunch - Status: ${response.statusCode}');
-      print('📊 Body: ${response.body}');
-
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        print('✅ canPunch result: $result');
-        return result;
-      } else if (response.statusCode == 404) {
-        // Si l'endpoint n'existe pas, permettre le pointage par défaut
-        print(
-          '⚠️ Endpoint can-punch non trouvé (404), autorisation par défaut',
-        );
+
+        // Le backend canPunch() retourne {'success': true, 'can_punch': bool, 'message': string}
+        // Gérer aussi le cas où les données sont dans 'data'
+        bool canPunchValue = false;
+        String message = '';
+        String? currentStatus;
+
+        if (result['can_punch'] != null) {
+          // Format direct depuis canPunch()
+          canPunchValue = result['can_punch'] ?? false;
+          message =
+              result['message'] ??
+              (canPunchValue
+                  ? 'Vous pouvez pointer maintenant'
+                  : 'Vous ne pouvez pas pointer maintenant');
+        } else if (result['data'] != null) {
+          // Format avec wrapper data (fallback)
+          final data = result['data'];
+          // Si data contient can_punch, l'utiliser
+          if (data['can_punch'] != null) {
+            canPunchValue = data['can_punch'] ?? false;
+            message =
+                data['message'] ??
+                (canPunchValue
+                    ? 'Vous pouvez pointer maintenant'
+                    : 'Vous ne pouvez pas pointer maintenant');
+          } else if (data is Map &&
+              data['user'] == null &&
+              data['approver'] == null &&
+              data['type'] == null &&
+              data['status'] == null) {
+            // Cas où il n'y a pas de pointage précédent (user/approver null = pas de pointage)
+            // Aucun pointage existant : on peut pointer l'arrivée
+            canPunchValue = type == 'check_in';
+            message =
+                canPunchValue
+                    ? 'Vous pouvez pointer votre arrivée'
+                    : 'Vous devez d\'abord pointer votre arrivée';
+            currentStatus = 'no_attendance';
+          } else {
+            // Sinon, utiliser currentStatus pour calculer
+            final status = data['status'] ?? result['status'];
+            currentStatus = status?.toString();
+            // Si status est null, c'est qu'il n'y a pas de pointage - permettre check_in
+            if (status == null) {
+              canPunchValue = type == 'check_in';
+              message =
+                  canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous devez d\'abord pointer votre arrivée';
+            } else {
+              // Calculer can_punch basé sur le type et le statut
+              if (type == 'check_in') {
+                canPunchValue = status != 'checked_in';
+              } else if (type == 'check_out') {
+                canPunchValue = status == 'checked_in';
+              }
+              message =
+                  canPunchValue
+                      ? 'Vous pouvez pointer maintenant'
+                      : 'Vous ne pouvez pas pointer maintenant';
+            }
+          }
+        } else {
+          // Aucune donnée valide, par défaut permettre si pas de pointage
+          canPunchValue =
+              type ==
+              'check_in'; // Par défaut, on peut toujours pointer l'arrivée
+          message = 'Statut non disponible, pointage autorisé';
+        }
+
         return {
           'success': true,
-          'can_punch': true,
-          'message': 'Pointage autorisé (mode fallback)',
+          'can_punch': canPunchValue,
+          'message': message,
+          'current_status': currentStatus,
         };
       } else {
-        print('❌ Erreur HTTP ${response.statusCode}: ${response.body}');
-        return {
-          'success': false,
-          'can_punch': false,
-          'message': 'Erreur HTTP ${response.statusCode}',
-        };
+        String errorMessage = 'Erreur lors de la vérification du statut';
+        try {
+          final errorData = jsonDecode(response.body);
+          errorMessage = errorData['message'] ?? errorMessage;
+        } catch (e) {
+          errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
+        }
+
+        return {'success': false, 'can_punch': false, 'message': errorMessage};
       }
     } catch (e) {
-      print('❌ Erreur lors de la vérification: $e');
-
-      // En cas d'erreur de connexion, permettre le pointage par défaut
-      if (e.toString().contains('Timeout') ||
-          e.toString().contains('Connection') ||
-          e.toString().contains('SocketException')) {
-        print('⚠️ Erreur de connexion, autorisation par défaut');
-        return {
-          'success': true,
-          'can_punch': true,
-          'message': 'Pointage autorisé (mode fallback - serveur indisponible)',
-        };
-      }
-
-      return {'success': false, 'can_punch': false, 'message': 'Erreur: $e'};
+      return {
+        'success': false,
+        'can_punch': false,
+        'message': 'Erreur lors de la vérification: ${e.toString()}',
+      };
     }
   }
 
@@ -205,23 +275,58 @@ class AttendancePunchService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true && data['data'] != null) {
-          List<dynamic> attendancesData;
-          if (data['data']['data'] != null) {
-            // Pagination
-            attendancesData = data['data']['data'];
-          } else {
-            attendancesData = data['data'];
-          }
 
-          return attendancesData
-              .map((json) => AttendancePunchModel.fromJson(json))
-              .toList();
+        List<dynamic> attendancesData = [];
+
+        // Gérer différents formats de réponse
+        if (data is List) {
+          // La réponse est directement une liste
+          attendancesData = data;
+        } else if (data is Map && data['data'] != null) {
+          final dataField = data['data'];
+
+          if (dataField is List) {
+            // data['data'] est une liste
+            attendancesData = dataField;
+          } else if (dataField is Map && dataField['data'] != null) {
+            // Pagination Laravel: data.data.data
+            attendancesData =
+                dataField['data'] is List
+                    ? dataField['data']
+                    : [dataField['data']];
+          } else if (dataField is Map) {
+            // data['data'] est un objet unique
+            attendancesData = [dataField];
+          } else {
+            attendancesData = [dataField];
+          }
+        } else if (data is Map &&
+            data['success'] == true &&
+            data['data'] != null) {
+          if (data['data'] is List) {
+            attendancesData = data['data'];
+          } else {
+            attendancesData = [data['data']];
+          }
         }
+
+        final attendances =
+            attendancesData
+                .map((json) {
+                  try {
+                    final attendance = AttendancePunchModel.fromJson(json);
+                    return attendance;
+                  } catch (e) {
+                    return null;
+                  }
+                })
+                .where((attendance) => attendance != null)
+                .cast<AttendancePunchModel>()
+                .toList();
+        return attendances;
       }
       return [];
     } catch (e) {
-      print('❌ Erreur lors de la récupération des pointages: $e');
       return [];
     }
   }
@@ -231,16 +336,25 @@ class AttendancePunchService {
     return await getAttendances(status: 'pending');
   }
 
-  // Approuver un pointage
+  // Approuver un pointage (utilise POST /attendances/{id}/approve)
   Future<Map<String, dynamic>> approveAttendance(int attendanceId) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/attendances/$attendanceId/approve'),
-        headers: ApiService.headers(),
+        headers: ApiService.headers(jsonContent: true),
+        body: jsonEncode({}), // Le backend n'attend pas de body pour approve
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Pointage approuvé avec succès',
+          'data':
+              data['data'] != null
+                  ? AttendancePunchModel.fromJson(data['data'])
+                  : null,
+        };
       } else {
         final error = jsonDecode(response.body);
         return {
@@ -249,12 +363,14 @@ class AttendancePunchService {
         };
       }
     } catch (e) {
-      print('❌ Erreur lors de l\'approbation: $e');
-      return {'success': false, 'message': 'Erreur: $e'};
+      return {
+        'success': false,
+        'message': 'Erreur lors de l\'approbation: ${e.toString()}',
+      };
     }
   }
 
-  // Rejeter un pointage
+  // Rejeter un pointage (utilise POST /attendances/{id}/reject avec reason)
   Future<Map<String, dynamic>> rejectAttendance(
     int attendanceId,
     String reason,
@@ -262,12 +378,22 @@ class AttendancePunchService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/attendances/$attendanceId/reject'),
-        headers: ApiService.headers(),
-        body: jsonEncode({'reason': reason}),
+        headers: ApiService.headers(jsonContent: true),
+        body: jsonEncode({
+          'reason': reason,
+        }), // Le backend attend 'reason' dans le body
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final data = jsonDecode(response.body);
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Pointage rejeté avec succès',
+          'data':
+              data['data'] != null
+                  ? AttendancePunchModel.fromJson(data['data'])
+                  : null,
+        };
       } else {
         final error = jsonDecode(response.body);
         return {
@@ -276,8 +402,10 @@ class AttendancePunchService {
         };
       }
     } catch (e) {
-      print('❌ Erreur lors du rejet: $e');
-      return {'success': false, 'message': 'Erreur: $e'};
+      return {
+        'success': false,
+        'message': 'Erreur lors du rejet: ${e.toString()}',
+      };
     }
   }
 
@@ -297,7 +425,6 @@ class AttendancePunchService {
       }
       return null;
     } catch (e) {
-      print('❌ Erreur lors de la récupération du pointage: $e');
       return null;
     }
   }

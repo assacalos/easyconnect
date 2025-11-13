@@ -143,7 +143,8 @@ class UserReportingController extends Controller
             $reporting = new Reporting();
             $reporting->user_id = $user->id;
             $reporting->report_date = $request->report_date;
-            $reporting->status = 'draft';
+            $reporting->status = 'submitted'; // Soumis directement, plus de draft
+            $reporting->submitted_at = now(); // Date de soumission immédiate
             
             // Utiliser les métriques fournies ou générer automatiquement selon le rôle
             if ($request->has('metrics') && is_array($request->metrics)) {
@@ -183,7 +184,7 @@ class UserReportingController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $reporting->load(['user', 'approver']),
-                'message' => 'Reporting créé avec succès'
+                'message' => 'Reporting créé et soumis avec succès'
             ], 201);
 
         } catch (\Exception $e) {
@@ -252,7 +253,8 @@ class UserReportingController extends Controller
 
 
     /**
-     * Soumettre un reporting
+     * Soumettre un reporting (obsolète - les reportings sont maintenant soumis automatiquement à la création)
+     * Gardée pour compatibilité avec l'API existante
      */
     public function submit($id)
     {
@@ -268,6 +270,16 @@ class UserReportingController extends Controller
                 ], 403);
             }
             
+            // Si le reporting est déjà soumis, retourner un message informatif
+            if ($reporting->status === 'submitted') {
+                return response()->json([
+                    'success' => true,
+                    'data' => $reporting->load(['user', 'approver']),
+                    'message' => 'Ce reporting est déjà soumis (les reportings sont soumis automatiquement lors de leur création)'
+                ]);
+            }
+            
+            // Si c'est un draft (ancien système), on peut encore le soumettre
             if ($reporting->submit()) {
                 return response()->json([
                     'success' => true,
@@ -277,7 +289,7 @@ class UserReportingController extends Controller
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Impossible de soumettre ce reporting'
+                    'message' => 'Impossible de soumettre ce reporting (statut: ' . $reporting->status . ')'
                 ], 400);
             }
 

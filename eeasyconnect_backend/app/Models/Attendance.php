@@ -12,26 +12,27 @@ class Attendance extends Model
 
     protected $fillable = [
         'user_id',
-        'type',
-        'timestamp',
-        'latitude',
-        'longitude',
-        'address',
-        'accuracy',
+        'check_in_time',
+        'check_out_time',
+        'status',
+        'location',
         'photo_path',
         'notes',
-        'status',
+        'validated_by',
+        'validated_at',
+        'validation_comment',
+        'rejected_by',
+        'rejected_at',
         'rejection_reason',
-        'approved_by',
-        'approved_at',
+        'rejection_comment',
     ];
 
     protected $casts = [
-        'timestamp' => 'datetime',
-        'approved_at' => 'datetime',
-        'latitude' => 'decimal:8',
-        'longitude' => 'decimal:8',
-        'accuracy' => 'decimal:2',
+        'check_in_time' => 'datetime',
+        'check_out_time' => 'datetime',
+        'validated_at' => 'datetime',
+        'rejected_at' => 'datetime',
+        'location' => 'array',
     ];
 
     // Relations
@@ -42,33 +43,33 @@ class Attendance extends Model
 
     public function approver(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'approved_by');
+        return $this->belongsTo(User::class, 'validated_by');
+    }
+
+    public function validator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'validated_by');
+    }
+
+    public function rejector(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 
     // Scopes
     public function scopePending($query)
     {
-        return $query->where('status', 'pending');
+        return $query->where('status', 'en_attente');
     }
 
     public function scopeApproved($query)
     {
-        return $query->where('status', 'approved');
+        return $query->where('status', 'valide');
     }
 
     public function scopeRejected($query)
     {
-        return $query->where('status', 'rejected');
-    }
-
-    public function scopeCheckIn($query)
-    {
-        return $query->where('type', 'check_in');
-    }
-
-    public function scopeCheckOut($query)
-    {
-        return $query->where('type', 'check_out');
+        return $query->where('status', 'rejete');
     }
 
     // Accessors
@@ -83,18 +84,9 @@ class Attendance extends Model
     public function getStatusLabelAttribute()
     {
         return match($this->status) {
-            'pending' => 'En attente',
-            'approved' => 'Approuvé',
-            'rejected' => 'Rejeté',
-            default => 'Inconnu'
-        };
-    }
-
-    public function getTypeLabelAttribute()
-    {
-        return match($this->type) {
-            'check_in' => 'Arrivée',
-            'check_out' => 'Départ',
+            'en_attente' => 'En attente',
+            'valide' => 'Validé',
+            'rejete' => 'Rejeté',
             default => 'Inconnu'
         };
     }
@@ -102,40 +94,42 @@ class Attendance extends Model
     // Méthodes
     public function canBeApproved(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === 'en_attente';
     }
 
     public function canBeRejected(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === 'en_attente';
     }
 
-    public function approve(User $approver): bool
+    public function approve(User $approver, string $comment = null): bool
     {
         if (!$this->canBeApproved()) {
             return false;
         }
 
         $this->update([
-            'status' => 'approved',
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
+            'status' => 'valide',
+            'validated_by' => $approver->id,
+            'validated_at' => now(),
+            'validation_comment' => $comment,
         ]);
 
         return true;
     }
 
-    public function reject(User $approver, string $reason): bool
+    public function reject(User $approver, string $reason, string $comment = null): bool
     {
         if (!$this->canBeRejected()) {
             return false;
         }
 
         $this->update([
-            'status' => 'rejected',
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
+            'status' => 'rejete',
+            'rejected_by' => $approver->id,
+            'rejected_at' => now(),
             'rejection_reason' => $reason,
+            'rejection_comment' => $comment,
         ]);
 
         return true;

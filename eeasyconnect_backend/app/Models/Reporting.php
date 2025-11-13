@@ -99,7 +99,9 @@ class Reporting extends Model
     // Méthodes utilitaires
     public function canBeEdited()
     {
-        return $this->status === 'draft';
+        // Permettre l'édition des reportings soumis (non approuvés)
+        // Plus de draft, donc on peut éditer les reportings soumis
+        return in_array($this->status, ['draft', 'submitted']);
     }
 
     public function canBeSubmitted()

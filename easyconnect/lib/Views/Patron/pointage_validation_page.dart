@@ -2,6 +2,7 @@ import 'package:easyconnect/Controllers/attendance_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
+import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:intl/intl.dart';
 
 class PointageValidationPage extends StatefulWidget {
@@ -25,7 +26,10 @@ class _PointageValidationPageState extends State<PointageValidationPage>
     _tabController.addListener(() {
       _onTabChanged();
     });
-    _loadAttendanceData();
+    // Charger les données après que le widget soit monté
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAttendanceData();
+    });
   }
 
   @override
@@ -42,7 +46,18 @@ class _PointageValidationPageState extends State<PointageValidationPage>
   }
 
   Future<void> _loadAttendanceData() async {
-    await controller.loadAttendanceData();
+    print('🔄 PointageValidationPage._loadAttendanceData - Début');
+    try {
+      await controller.loadAttendanceData();
+      print('✅ PointageValidationPage._loadAttendanceData - Terminé');
+      print(
+        '📊 Nombre de pointages après chargement: ${controller.attendanceHistory.length}',
+      );
+      // Forcer la mise à jour de l'UI
+      setState(() {});
+    } catch (e) {
+      print('❌ Erreur lors du chargement: $e');
+    }
   }
 
   @override
@@ -104,12 +119,15 @@ class _PointageValidationPageState extends State<PointageValidationPage>
           ),
           // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildAttendanceList(),
-            ),
+            child: Obx(() {
+              // Forcer l'observation de attendanceHistory
+              controller
+                  .attendanceHistory
+                  .length; // Accès pour déclencher la réactivité
+              return controller.isLoading.value
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildAttendanceList();
+            }),
           ),
         ],
       ),
@@ -118,17 +136,44 @@ class _PointageValidationPageState extends State<PointageValidationPage>
 
   Widget _buildAttendanceList() {
     // Filtrer les pointages selon l'onglet et la recherche
+    print('🔍 _buildAttendanceList - Onglet: ${_tabController.index}');
+    print(
+      '🔍 Nombre total de pointages: ${controller.attendanceHistory.length}',
+    );
+
     List<AttendancePunchModel> filteredPointages;
 
     switch (_tabController.index) {
       case 0: // Tous
         filteredPointages = controller.attendanceHistory;
+        print('📋 Onglet "Tous": ${filteredPointages.length} pointages');
+        for (var p in filteredPointages) {
+          print('   - ID: ${p.id}, Status: "${p.status}", User: ${p.userName}');
+        }
         break;
       case 1: // En attente
+        print(
+          '🔍 Filtrage "En attente" - Total: ${controller.attendanceHistory.length}',
+        );
+        for (var p in controller.attendanceHistory) {
+          print(
+            '   - ID: ${p.id}, Status: "${p.status}" (lowercase: "${p.status.toLowerCase()}"), User: ${p.userName}',
+          );
+        }
         filteredPointages =
-            controller.attendanceHistory
-                .where((pointage) => pointage.status.toLowerCase() == 'pending')
-                .toList();
+            controller.attendanceHistory.where((pointage) {
+              final status = pointage.status.toLowerCase();
+              final matches = status == 'pending';
+              if (matches) {
+                print(
+                  '✅ Pointage ${pointage.id} correspond au filtre "pending"',
+                );
+              }
+              return matches;
+            }).toList();
+        print(
+          '📋 Onglet "En attente": ${filteredPointages.length} pointages filtrés',
+        );
         break;
       case 2: // Validés
         filteredPointages =
@@ -441,11 +486,11 @@ class _PointageValidationPageState extends State<PointageValidationPage>
                 color: Colors.grey[600],
                 fontWeight: FontWeight.bold,
               ),
-          ),
-        ],
-      ),
-    );
-  }
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Color _getStatusColor(String status) {
@@ -487,23 +532,48 @@ class _PointageValidationPageState extends State<PointageValidationPage>
     }
   }
 
-  void _showApproveConfirmation(AttendancePunchModel pointage) {
+  void _showApproveConfirmation(AttendancePunchModel pointage) async {
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous valider ce pointage ?',
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        // TODO: Implémenter la validation du pointage
-        Get.snackbar(
-          'Succès',
-          'Pointage validé avec succès',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
-        _loadAttendanceData();
+
+        try {
+          final AttendancePunchService _punchService = AttendancePunchService();
+          final result = await _punchService.approveAttendance(pointage.id!);
+
+          if (result['success'] == true) {
+            Get.snackbar(
+              'Succès',
+              'Pointage validé avec succès',
+              backgroundColor: Colors.green,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 3),
+            );
+            _loadAttendanceData();
+          } else {
+            Get.snackbar(
+              'Erreur',
+              result['message'] ?? 'Erreur lors de la validation',
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.BOTTOM,
+            );
+          }
+        } catch (e) {
+          Get.snackbar(
+            'Erreur',
+            'Erreur lors de la validation: $e',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
       },
     );
   }
@@ -516,9 +586,9 @@ class _PointageValidationPageState extends State<PointageValidationPage>
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-                TextField(
+          TextField(
             controller: commentController,
-                  decoration: const InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Motif du rejet',
               hintText: 'Entrez le motif du rejet',
             ),
@@ -529,7 +599,7 @@ class _PointageValidationPageState extends State<PointageValidationPage>
       textConfirm: 'Rejeter',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         if (commentController.text.isEmpty) {
           Get.snackbar(
             'Erreur',
@@ -539,14 +609,42 @@ class _PointageValidationPageState extends State<PointageValidationPage>
           return;
         }
         Get.back();
-        // TODO: Implémenter le rejet du pointage
-        Get.snackbar(
-          'Succès',
-          'Pointage rejeté',
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
-        _loadAttendanceData();
+
+        try {
+          final AttendancePunchService _punchService = AttendancePunchService();
+          final result = await _punchService.rejectAttendance(
+            pointage.id!,
+            commentController.text.trim(),
+          );
+
+          if (result['success'] == true) {
+            Get.snackbar(
+              'Succès',
+              'Pointage rejeté avec succès',
+              backgroundColor: Colors.orange,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 3),
+            );
+            _loadAttendanceData();
+          } else {
+            Get.snackbar(
+              'Erreur',
+              result['message'] ?? 'Erreur lors du rejet',
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.BOTTOM,
+            );
+          }
+        } catch (e) {
+          Get.snackbar(
+            'Erreur',
+            'Erreur lors du rejet: $e',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
       },
     );
   }

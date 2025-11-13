@@ -6,13 +6,12 @@ class Supplier {
   final String adresse;
   final String ville;
   final String pays;
-  final String contactPrincipal;
   final String? description;
-  final String statut;
+  final String statut; // 'en_attente', 'valide', 'rejete'
   final double? noteEvaluation;
   final String? commentaires;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   Supplier({
     this.id,
@@ -22,101 +21,118 @@ class Supplier {
     required this.adresse,
     required this.ville,
     required this.pays,
-    required this.contactPrincipal,
     this.description,
-    this.statut = 'pending',
+    this.statut = 'en_attente',
     this.noteEvaluation,
     this.commentaires,
-    required this.createdAt,
-    required this.updatedAt,
+    this.createdAt,
+    this.updatedAt,
   });
 
-  // Méthodes utilitaires
-  bool get isPending => statut == 'pending';
-  bool get isApproved => statut == 'approved';
-  bool get isRejected => statut == 'rejected';
-  bool get isActive => statut == 'active';
-  bool get isInactive => statut == 'inactive';
+  // Méthodes utilitaires - Statuts normalisés vers 3 statuts
+  bool get isPending {
+    final statusLower = statut.toLowerCase();
+    return statusLower == 'en_attente' || statusLower == 'pending';
+  }
+
+  bool get isValidated {
+    final statusLower = statut.toLowerCase();
+    return statusLower == 'valide' ||
+        statusLower == 'validated' ||
+        statusLower == 'approved';
+  }
+
+  bool get isRejected {
+    final statusLower = statut.toLowerCase();
+    return statusLower == 'rejete' || statusLower == 'rejected';
+  }
 
   String get statusText {
-    switch (statut) {
-      case 'pending':
-        return 'En attente';
-      case 'approved':
-        return 'Approuvé';
-      case 'rejected':
-        return 'Rejeté';
-      case 'active':
-        return 'Actif';
-      case 'inactive':
-        return 'Inactif';
-      default:
-        return 'Inconnu';
+    final statusLower = statut.toLowerCase();
+    if (statusLower == 'en_attente' || statusLower == 'pending') {
+      return 'En attente';
     }
+    if (statusLower == 'valide' ||
+        statusLower == 'validated' ||
+        statusLower == 'approved') {
+      return 'Validé';
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return 'Rejeté';
+    }
+    return 'Inconnu';
   }
 
   String get statusColor {
-    switch (statut) {
-      case 'pending':
-        return 'orange';
-      case 'approved':
-        return 'green';
-      case 'rejected':
-        return 'red';
-      case 'active':
-        return 'blue';
-      case 'inactive':
-        return 'grey';
-      default:
-        return 'grey';
+    final statusLower = statut.toLowerCase();
+    if (statusLower == 'en_attente' || statusLower == 'pending') {
+      return 'orange';
     }
+    if (statusLower == 'valide' ||
+        statusLower == 'validated' ||
+        statusLower == 'approved') {
+      return 'green';
+    }
+    if (statusLower == 'rejete' || statusLower == 'rejected') {
+      return 'red';
+    }
+    return 'grey';
   }
 
-  // Sérialisation JSON
+  // Sérialisation JSON pour création/mise à jour
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+    final json = <String, dynamic>{
+      if (id != null) 'id': id,
       'nom': nom,
       'email': email,
       'telephone': telephone,
       'adresse': adresse,
       'ville': ville,
       'pays': pays,
-      'contact_principal': contactPrincipal,
-      'description': description,
-      'statut': statut,
-      'note_evaluation': noteEvaluation,
-      'commentaires': commentaires,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
+      if (description != null && description!.isNotEmpty)
+        'description': description,
+      if (noteEvaluation != null) 'noteEvaluation': noteEvaluation,
+      if (commentaires != null && commentaires!.isNotEmpty)
+        'commentaires': commentaires,
     };
+    return json;
   }
 
   factory Supplier.fromJson(Map<String, dynamic> json) {
     return Supplier(
-      id: json['id'],
-      nom: json['nom'] ?? '',
-      email: json['email'] ?? '',
-      telephone: json['telephone'] ?? '',
-      adresse: json['adresse'] ?? '',
-      ville: json['ville'] ?? '',
-      pays: json['pays'] ?? '',
-      contactPrincipal: json['contact_principal'] ?? '',
-      description: json['description'],
-      statut: json['statut'] ?? 'pending',
+      id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
+      nom: json['nom']?.toString() ?? json['name']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      telephone:
+          json['telephone']?.toString() ?? json['phone']?.toString() ?? '',
+      adresse: json['adresse']?.toString() ?? json['address']?.toString() ?? '',
+      ville: json['ville']?.toString() ?? json['city']?.toString() ?? '',
+      pays: json['pays']?.toString() ?? json['country']?.toString() ?? '',
+      description: json['description']?.toString(),
+      statut:
+          json['statut']?.toString() ??
+          json['status']?.toString() ??
+          'en_attente',
       noteEvaluation:
-          json['note_evaluation'] != null
-              ? (json['note_evaluation'] is String
-                  ? double.tryParse(json['note_evaluation'])
-                  : json['note_evaluation']?.toDouble())
+          json['note_evaluation'] != null || json['noteEvaluation'] != null
+              ? (json['note_evaluation'] ?? json['noteEvaluation']) is String
+                  ? double.tryParse(
+                    (json['note_evaluation'] ?? json['noteEvaluation'])
+                        .toString(),
+                  )
+                  : (json['note_evaluation'] ?? json['noteEvaluation'])
+                      ?.toDouble()
               : null,
-      commentaires: json['commentaires'],
-      createdAt: DateTime.parse(
-        json['created_at'] ?? DateTime.now().toIso8601String(),
-      ),
-      updatedAt: DateTime.parse(
-        json['updated_at'] ?? DateTime.now().toIso8601String(),
-      ),
+      commentaires:
+          json['commentaires']?.toString() ?? json['comments']?.toString(),
+      createdAt:
+          json['created_at'] != null
+              ? DateTime.tryParse(json['created_at'].toString())
+              : null,
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.tryParse(json['updated_at'].toString())
+              : null,
     );
   }
 
@@ -129,7 +145,6 @@ class Supplier {
     String? adresse,
     String? ville,
     String? pays,
-    String? contactPrincipal,
     String? description,
     String? statut,
     double? noteEvaluation,
@@ -145,7 +160,6 @@ class Supplier {
       adresse: adresse ?? this.adresse,
       ville: ville ?? this.ville,
       pays: pays ?? this.pays,
-      contactPrincipal: contactPrincipal ?? this.contactPrincipal,
       description: description ?? this.description,
       statut: statut ?? this.statut,
       noteEvaluation: noteEvaluation ?? this.noteEvaluation,
@@ -160,30 +174,24 @@ class Supplier {
 class SupplierStats {
   final int total;
   final int pending;
-  final int approved;
+  final int validated;
   final int rejected;
-  final int active;
-  final int inactive;
   final double averageRating;
 
   SupplierStats({
     required this.total,
     required this.pending,
-    required this.approved,
+    required this.validated,
     required this.rejected,
-    required this.active,
-    required this.inactive,
     required this.averageRating,
   });
 
   factory SupplierStats.fromJson(Map<String, dynamic> json) {
     return SupplierStats(
       total: json['total'] ?? 0,
-      pending: json['pending'] ?? 0,
-      approved: json['approved'] ?? 0,
-      rejected: json['rejected'] ?? 0,
-      active: json['active'] ?? 0,
-      inactive: json['inactive'] ?? 0,
+      pending: json['pending'] ?? json['en_attente'] ?? 0,
+      validated: json['validated'] ?? json['valide'] ?? json['approved'] ?? 0,
+      rejected: json['rejected'] ?? json['rejete'] ?? 0,
       averageRating:
           json['average_rating'] != null
               ? (json['average_rating'] is String

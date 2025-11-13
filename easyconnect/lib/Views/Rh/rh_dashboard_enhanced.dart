@@ -42,10 +42,10 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
       route: '/recruitment',
     ),
     FavoriteItem(
-      id: 'salaries',
-      label: 'Salaires',
-      icon: Icons.account_balance_wallet,
-      route: '/salaries',
+      id: 'contracts',
+      label: 'Contrats',
+      icon: Icons.description,
+      route: '/contracts',
     ),
   ];
 
@@ -58,7 +58,8 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
   @override
   Widget buildCustomContent(BuildContext context) {
     return Obx(
-      () => SingleChildScrollView(
+      () => Padding(
+        padding: const EdgeInsets.only(bottom: 80),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -82,7 +83,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
 
   Widget _buildPendingSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.amber.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -96,37 +97,37 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
               Icon(
                 Icons.pending_actions,
                 color: Colors.amber.shade700,
-                size: 24,
+                size: 22,
               ),
               const SizedBox(width: 8),
               Text(
                 'Entités en Attente',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey.shade800,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: Get.width > 800 ? 4 : 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.1,
+            childAspectRatio: 1.3,
             children: [
               _buildPendingCard(
-                title: 'Demandes Congés',
+                title: 'Congés',
                 count: controller.pendingLeaves.value,
                 icon: Icons.beach_access,
                 color: Colors.blue,
                 onTap: () => Get.toNamed('/leaves'),
               ),
               _buildPendingCard(
-                title: 'Candidatures',
+                title: 'Recrutements',
                 count: controller.pendingRecruitments.value,
                 icon: Icons.person_add,
                 color: Colors.green,
@@ -140,11 +141,11 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                 onTap: () => Get.toNamed('/attendance'),
               ),
               _buildPendingCard(
-                title: 'Salaires',
-                count: controller.pendingSalaries.value,
-                icon: Icons.account_balance_wallet,
+                title: 'Contrats',
+                count: controller.pendingContracts.value,
+                icon: Icons.description,
                 color: Colors.purple,
-                onTap: () => Get.toNamed('/salaries'),
+                onTap: () => Get.toNamed('/contracts'),
               ),
             ],
           ),
@@ -155,7 +156,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
 
   Widget _buildValidatedSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -166,54 +167,47 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         children: [
           Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.green.shade700, size: 24),
+              Icon(Icons.check_circle, color: Colors.green.shade700, size: 22),
               const SizedBox(width: 8),
               Text(
                 'Entités Validées',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey.shade800,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: Get.width > 800 ? 4 : 2,
+            crossAxisCount: Get.width > 800 ? 3 : 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 1.1,
+            childAspectRatio: 1.35,
             children: [
               _buildValidatedCard(
-                title: 'Employés Actifs',
-                count: controller.activeEmployees.value,
-                icon: Icons.people,
-                color: Colors.blue,
-                subtitle: 'Effectif total',
-              ),
-              _buildValidatedCard(
-                title: 'Congés Approuvés',
+                title: 'Congés',
                 count: controller.approvedLeaves.value,
                 icon: Icons.beach_access,
                 color: Colors.green,
-                subtitle: 'Congés validés',
+                subtitle: 'Validés',
               ),
               _buildValidatedCard(
                 title: 'Recrutements',
                 count: controller.completedRecruitments.value,
                 icon: Icons.person_add,
                 color: Colors.orange,
-                subtitle: 'Embauches effectuées',
+                subtitle: 'Embauches',
               ),
               _buildValidatedCard(
-                title: 'Salaires Payés',
-                count: controller.paidSalaries.value,
-                icon: Icons.account_balance_wallet,
+                title: 'Contrats',
+                count: controller.approvedContracts.value,
+                icon: Icons.description,
                 color: Colors.purple,
-                subtitle: 'Salaires traités',
+                subtitle: 'Actifs',
               ),
             ],
           ),
@@ -256,14 +250,6 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
             mainAxisSpacing: 12,
             childAspectRatio: 2.2,
             children: [
-              _buildStatisticCard(
-                title: 'Masse Salariale',
-                value:
-                    '${controller.totalSalaryMass.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.account_balance_wallet,
-                color: Colors.purple,
-                subtitle: 'Montant total des salaires',
-              ),
               _buildStatisticCard(
                 title: 'Primes Versées',
                 value:
@@ -309,7 +295,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
@@ -322,29 +308,28 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 32, color: color),
+                child: Icon(icon, size: 24, color: color),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: Colors.grey.shade800,
                 ),
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.amber,
                   borderRadius: BorderRadius.circular(20),
@@ -354,7 +339,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -376,7 +361,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
@@ -389,26 +374,28 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 32, color: color),
+              child: Icon(icon, size: 22, color: color),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: Colors.grey.shade800,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.green,
                 borderRadius: BorderRadius.circular(20),
@@ -418,15 +405,17 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: 13,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 1),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -502,25 +491,23 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
   }
 
   @override
-  List<Widget> buildDrawerItems() {
+  List<Widget> buildDrawerItems(BuildContext context) {
     return [
-      ListTile(
-        leading: const Icon(Icons.dashboard, color: Colors.white70),
-        title: const Text(
-          'Tableau de bord',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () {},
-      ),
       ListTile(
         leading: const Icon(Icons.people, color: Colors.white70),
         title: const Text('Employés', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/employees'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/admin/users');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.beach_access, color: Colors.white70),
         title: const Text('Congés', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/leaves'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/leaves');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.person_add, color: Colors.white70),
@@ -528,15 +515,18 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
           'Recrutement',
           style: TextStyle(color: Colors.white70),
         ),
-        onTap: () => Get.toNamed('/recruitment'),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/recruitment');
+        },
       ),
       ListTile(
-        leading: const Icon(
-          Icons.account_balance_wallet,
-          color: Colors.white70,
-        ),
-        title: const Text('Salaires', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/salaries'),
+        leading: const Icon(Icons.description, color: Colors.white70),
+        title: const Text('Contrats', style: TextStyle(color: Colors.white70)),
+        onTap: () {
+          Navigator.pop(context);
+          Get.toNamed('/contracts');
+        },
       ),
     ];
   }

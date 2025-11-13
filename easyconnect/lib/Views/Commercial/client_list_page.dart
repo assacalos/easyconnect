@@ -49,6 +49,11 @@ class ClientsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final ClientController controller = Get.find<ClientController>();
 
+    // Charger tous les clients (sans filtre de statut) au démarrage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadClients(status: null);
+    });
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -68,7 +73,7 @@ class ClientsPage extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
-                controller.loadClients();
+                controller.loadClients(status: null);
               },
             ),
           ],
@@ -104,8 +109,24 @@ class ClientsPage extends StatelessWidget {
         return const Center(child: CircularProgressIndicator());
       }
 
+      // Debug: afficher tous les clients et leurs statuts
+      print('🔍 _buildClientList - Status recherché: $status');
+      print('📊 Total clients dans la liste: ${controller.clients.length}');
+      for (final client in controller.clients) {
+        print(
+          '   - Client: ${client.nomEntreprise ?? 'N/A'} - Status: ${client.status}',
+        );
+      }
+
+      // Filtrer les clients par statut
+      // Si status est null, on le traite comme 0 (en attente)
       final clientList =
-          controller.clients.where((c) => c.status == status).toList();
+          controller.clients.where((c) {
+            final clientStatus = c.status ?? 0; // null = en attente
+            return clientStatus == status;
+          }).toList();
+
+      print('📋 Clients filtrés pour status $status: ${clientList.length}');
 
       if (clientList.isEmpty) {
         return Center(
@@ -281,6 +302,7 @@ class ClientsPage extends StatelessWidget {
   }
 
   void _showValidationDialog(client) {
+    final ClientController controller = Get.find<ClientController>();
     Get.dialog(
       AlertDialog(
         title: const Text('Valider le client'),
@@ -288,9 +310,11 @@ class ClientsPage extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              // TODO: Implémenter la validation
+            onPressed: () async {
               Get.back();
+              await controller.approveClient(client.id);
+              // Recharger tous les clients après validation
+              await controller.loadClients(status: null);
             },
             child: const Text('Valider'),
           ),
@@ -300,6 +324,7 @@ class ClientsPage extends StatelessWidget {
   }
 
   void _showRejectionDialog(client) {
+    final ClientController controller = Get.find<ClientController>();
     final reasonController = TextEditingController();
     Get.dialog(
       AlertDialog(
@@ -322,10 +347,15 @@ class ClientsPage extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (reasonController.text.trim().isNotEmpty) {
-                // TODO: Implémenter le rejet
                 Get.back();
+                await controller.rejectClient(
+                  client.id,
+                  reasonController.text.trim(),
+                );
+                // Recharger tous les clients après rejet
+                await controller.loadClients(status: null);
               } else {
                 Get.snackbar('Erreur', 'Veuillez saisir une raison');
               }

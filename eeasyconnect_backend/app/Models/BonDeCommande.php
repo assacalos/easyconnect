@@ -54,6 +54,11 @@ class BonDeCommande extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function items()
+    {
+        return $this->hasMany(BonDeCommandeItem::class, 'bon_de_commande_id');
+    }
+
     // Scopes
     public function scopeEnAttente($query)
     {

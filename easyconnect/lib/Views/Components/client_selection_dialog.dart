@@ -39,13 +39,24 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
       final clients = await _clientService.getClients(
         status: 1,
       ); // Status 1 = Validé
+
       _clients.value = clients;
+
+      // Vérifier si des clients ont été chargés
+      if (clients.isEmpty) {
+        // Ne pas afficher de snackbar automatiquement pour éviter le spam
+        // L'utilisateur verra le message dans le dialog
+      }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les clients validés',
+        'Impossible de charger les clients: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
       );
+      _clients.value = []; // S'assurer que la liste est vide en cas d'erreur
     } finally {
       _isLoading.value = false;
     }
@@ -84,34 +95,45 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
           children: [
             Row(
               children: [
-                const Text(
-                  'Sélectionner un client',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Sélectionner un client',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green),
+                          ),
+                          child: const Text(
+                            'Validés uniquement',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green),
-                  ),
-                  child: const Text(
-                    'Validés uniquement',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Get.back(),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -127,62 +149,102 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: Obx(
-                () =>
-                    _isLoading.value
-                        ? const Center(child: CircularProgressIndicator())
-                        : _clients.isEmpty
-                        ? const Center(child: Text('Aucun client trouvé'))
-                        : ListView.builder(
-                          itemCount: _clients.length,
-                          itemBuilder: (context, index) {
-                            final client = _clients[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: client.statusColor,
-                                  child: Icon(
-                                    client.statusIcon,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                title: Text(
-                                  '${client.nom ?? ''} ${client.prenom ?? ''}'
-                                      .trim(),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (client.nomEntreprise != null)
-                                      Text(
-                                        'Entreprise: ${client.nomEntreprise}',
-                                      ),
-                                    if (client.email != null)
-                                      Text('Email: ${client.email}'),
-                                    if (client.contact != null)
-                                      Text('Contact: ${client.contact}'),
-                                    Text(
-                                      'Statut: ${client.statusText}',
-                                      style: TextStyle(
-                                        color: client.statusColor,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                onTap: () {
-                                  widget.onClientSelected(client);
-                                  Get.back();
-                                },
-                              ),
-                            );
-                          },
+              child: Obx(() {
+                if (_isLoading.value) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (_clients.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.person_off,
+                          size: 64,
+                          color: Colors.grey,
                         ),
-              ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Aucun client validé disponible',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Actualiser'),
+                          onPressed: _loadClients,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  itemCount: _clients.length,
+                  itemBuilder: (context, index) {
+                    final client = _clients[index];
+                    final displayName =
+                        '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+                    final nameToDisplay =
+                        displayName.isEmpty
+                            ? (client.nomEntreprise ?? 'Client #${client.id}')
+                            : displayName;
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: client.statusColor,
+                          child: Icon(client.statusIcon, color: Colors.white),
+                        ),
+                        title: Text(
+                          nameToDisplay,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (client.nomEntreprise != null &&
+                                displayName.isNotEmpty)
+                              Text(
+                                'Entreprise: ${client.nomEntreprise}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            if (client.email != null)
+                              Text(
+                                'Email: ${client.email}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            if (client.contact != null)
+                              Text(
+                                'Contact: ${client.contact}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            Text(
+                              'Statut: ${client.statusText}',
+                              style: TextStyle(
+                                color: client.statusColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        isThreeLine: false,
+                        onTap: () {
+                          widget.onClientSelected(client);
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    );
+                  },
+                );
+              }),
             ),
           ],
         ),

@@ -214,7 +214,9 @@ class _StockValidationPageState extends State<StockValidationPage>
             const SizedBox(height: 4),
             Text('Catégorie: ${stock.category}'),
             Text('Quantité: ${stock.quantity}'),
-            Text('Date: ${formatDate.format(stock.createdAt)}'),
+            Text(
+              'Date: ${stock.createdAt != null ? formatDate.format(stock.createdAt!) : "N/A"}',
+            ),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -260,7 +262,9 @@ class _StockValidationPageState extends State<StockValidationPage>
                       Text('Catégorie: ${stock.category}'),
                       Text('Quantité: ${stock.quantity}'),
                       Text('Prix unitaire: ${stock.unitPrice}'),
-                      Text('Date: ${formatDate.format(stock.createdAt)}'),
+                      Text(
+                        'Date: ${stock.createdAt != null ? formatDate.format(stock.createdAt!) : "N/A"}',
+                      ),
                     ],
                   ),
                 ),
@@ -427,7 +431,12 @@ class _StockValidationPageState extends State<StockValidationPage>
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.approveStock(stock);
+        // Note: Approbation supprimée selon la nouvelle API (statuts: active/inactive/discontinued)
+        Get.snackbar(
+          'Info',
+          'Les statuts sont maintenant: active, inactive, discontinued',
+          snackPosition: SnackPosition.BOTTOM,
+        );
         _loadStocks();
       },
     );
@@ -464,7 +473,10 @@ class _StockValidationPageState extends State<StockValidationPage>
           return;
         }
         Get.back();
-        controller.rejectStock(stock);
+        controller.rejectStock(
+          stock,
+          commentaire: commentController.text.trim(),
+        );
         _loadStocks();
       },
     );

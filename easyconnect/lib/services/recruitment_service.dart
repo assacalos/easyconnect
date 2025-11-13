@@ -51,7 +51,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.createRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -87,16 +86,33 @@ class RecruitmentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['data'] as List)
-            .map((json) => RecruitmentRequest.fromJson(json))
-            .toList();
+
+        if (data['data'] != null) {
+          // Le backend peut retourner soit une liste directe, soit un objet paginé
+          List<dynamic> dataList;
+
+          if (data['data'] is List) {
+            // Format simple : {"success": true, "data": [...]}
+            dataList = data['data'] as List;
+          } else if (data['data'] is Map && data['data']['data'] != null) {
+            // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
+            dataList = data['data']['data'] as List;
+          } else {
+            return [];
+          }
+
+          return dataList
+              .map((json) => RecruitmentRequest.fromJson(json))
+              .toList();
+        } else {
+          return [];
+        }
       } else {
         throw Exception(
           'Erreur lors de la récupération des demandes: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getAllRecruitmentRequests: $e');
       rethrow;
     }
   }
@@ -118,7 +134,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -126,7 +141,7 @@ class RecruitmentService extends GetxService {
   // Publier une demande de recrutement
   Future<Map<String, dynamic>> publishRecruitmentRequest(int id) async {
     try {
-      final response = await http.put(
+      final response = await http.post(
         Uri.parse('$baseUrl/recruitment-requests/$id/publish'),
         headers: ApiService.headers(),
       );
@@ -139,7 +154,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.publishRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -147,7 +161,7 @@ class RecruitmentService extends GetxService {
   // Approuver une demande de recrutement
   Future<Map<String, dynamic>> approveRecruitmentRequest(int id) async {
     try {
-      final response = await http.put(
+      final response = await http.post(
         Uri.parse('$baseUrl/recruitment-requests/$id/approve'),
         headers: ApiService.headers(),
       );
@@ -160,7 +174,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.approveRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -180,12 +193,9 @@ class RecruitmentService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors du rejet: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors du rejet: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur RecruitmentService.rejectRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -193,7 +203,7 @@ class RecruitmentService extends GetxService {
   // Fermer une demande de recrutement
   Future<Map<String, dynamic>> closeRecruitmentRequest(int id) async {
     try {
-      final response = await http.put(
+      final response = await http.post(
         Uri.parse('$baseUrl/recruitment-requests/$id/close'),
         headers: ApiService.headers(),
       );
@@ -201,12 +211,9 @@ class RecruitmentService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors de la fermeture: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors de la fermeture: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur RecruitmentService.closeRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -214,7 +221,7 @@ class RecruitmentService extends GetxService {
   // Annuler une demande de recrutement
   Future<Map<String, dynamic>> cancelRecruitmentRequest(int id) async {
     try {
-      final response = await http.put(
+      final response = await http.post(
         Uri.parse('$baseUrl/recruitment-requests/$id/cancel'),
         headers: ApiService.headers(),
       );
@@ -222,12 +229,9 @@ class RecruitmentService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors de l\'annulation: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors de l\'annulation: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erreur RecruitmentService.cancelRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -250,19 +254,21 @@ class RecruitmentService extends GetxService {
   }) async {
     try {
       Map<String, dynamic> body = {};
-      
+
       if (title != null) body['title'] = title;
       if (department != null) body['department'] = department;
       if (position != null) body['position'] = position;
       if (description != null) body['description'] = description;
       if (requirements != null) body['requirements'] = requirements;
       if (responsibilities != null) body['responsibilities'] = responsibilities;
-      if (numberOfPositions != null) body['number_of_positions'] = numberOfPositions;
+      if (numberOfPositions != null)
+        body['number_of_positions'] = numberOfPositions;
       if (employmentType != null) body['employment_type'] = employmentType;
       if (experienceLevel != null) body['experience_level'] = experienceLevel;
       if (salaryRange != null) body['salary_range'] = salaryRange;
       if (location != null) body['location'] = location;
-      if (applicationDeadline != null) body['application_deadline'] = applicationDeadline.toIso8601String();
+      if (applicationDeadline != null)
+        body['application_deadline'] = applicationDeadline.toIso8601String();
 
       final response = await http.put(
         Uri.parse('$baseUrl/recruitment-requests/$id'),
@@ -278,7 +284,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.updateRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -299,7 +304,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.deleteRecruitmentRequest: $e');
       rethrow;
     }
   }
@@ -310,8 +314,9 @@ class RecruitmentService extends GetxService {
     String? status,
   }) async {
     try {
-      String url = '$baseUrl/recruitment-requests/$recruitmentRequestId/applications';
-      
+      String url =
+          '$baseUrl/recruitment-requests/$recruitmentRequestId/applications';
+
       if (status != null) {
         url += '?status=$status';
       }
@@ -332,7 +337,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getApplications: $e');
       rethrow;
     }
   }
@@ -354,7 +358,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getApplication: $e');
       rethrow;
     }
   }
@@ -385,7 +388,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.updateApplicationStatus: $e');
       rethrow;
     }
   }
@@ -423,7 +425,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.scheduleInterview: $e');
       rethrow;
     }
   }
@@ -464,7 +465,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getInterviews: $e');
       rethrow;
     }
   }
@@ -476,7 +476,7 @@ class RecruitmentService extends GetxService {
     String? department,
   }) async {
     try {
-      String url = '$baseUrl/recruitment-stats';
+      String url = '$baseUrl/recruitment-statistics';
       List<String> params = [];
 
       if (startDate != null) {
@@ -507,7 +507,6 @@ class RecruitmentService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getRecruitmentStats: $e');
       rethrow;
     }
   }
@@ -535,7 +534,6 @@ class RecruitmentService extends GetxService {
         ];
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getDepartments: $e');
       return [
         'Ressources Humaines',
         'Commercial',
@@ -571,7 +569,6 @@ class RecruitmentService extends GetxService {
         ];
       }
     } catch (e) {
-      print('Erreur RecruitmentService.getPositions: $e');
       return [
         'Développeur',
         'Chef de projet',

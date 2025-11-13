@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/roles.dart';
 
 class BordereauService {
   final storage = GetStorage();
@@ -23,11 +24,6 @@ class BordereauService {
               : '?${Uri(queryParameters: queryParams).query}';
       final url = '$baseUrl/bordereaux-list$queryString';
 
-      print('➡️ URL de requête bordereaux: $url');
-      print('➡️ Token: ${token != null ? "Présent" : "Absent"}');
-      print('➡️ User ID: $userId');
-      print('➡️ User Role: $userRole');
-
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -36,12 +32,8 @@ class BordereauService {
         },
       );
 
-      print('➡️ Status code: ${response.statusCode}');
-      print('➡️ Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        print('➡️ Données reçues: $responseData');
 
         // Gérer le cas où les données sont directement dans un tableau
         List<dynamic> data;
@@ -50,25 +42,15 @@ class BordereauService {
         } else if (responseData['data'] != null) {
           data = responseData['data'];
         } else {
-          print('➡️ Aucune donnée dans la réponse');
           return [];
-        }
-
-        print('➡️ Nombre de bordereaux: ${data.length}');
-
-        if (data.isNotEmpty) {
-          print('➡️ Premier bordereau: ${data[0]}');
         }
 
         final List<Bordereau> bordereauList =
             data
                 .map((json) {
-                  print('➡️ Parsing bordereau: $json');
                   try {
                     return Bordereau.fromJson(json);
                   } catch (e) {
-                    print('➡️ Erreur parsing bordereau: $e');
-                    print('➡️ JSON problématique: $json');
                     return null;
                   }
                 })
@@ -76,7 +58,6 @@ class BordereauService {
                 .cast<Bordereau>()
                 .toList();
 
-        print('➡️ Bordereaux parsés: ${bordereauList.length}');
         return bordereauList;
       }
 
@@ -84,7 +65,6 @@ class BordereauService {
         'Erreur lors de la récupération des bordereaux: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur détaillée: $e');
       throw Exception('Erreur lors de la récupération des bordereaux: $e');
     }
   }
@@ -93,6 +73,8 @@ class BordereauService {
     try {
       final token = storage.read('token');
 
+      final bordereauJson = bordereau.toJson();
+
       final response = await http.post(
         Uri.parse('$baseUrl/bordereaux-create'),
         headers: {
@@ -100,31 +82,87 @@ class BordereauService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode(bordereau.toJson()),
+        body: json.encode(bordereauJson),
       );
 
-      print('Création bordereau - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        try {
+          final responseData = json.decode(response.body);
 
-      if (response.statusCode == 201) {
-        final responseData = json.decode(response.body);
-        // La réponse contient directement les données du bordereau
-        return Bordereau.fromJson(responseData);
-      } else if (response.statusCode == 200) {
-        // Gérer le cas où l'API retourne 200 au lieu de 201
-        final responseData = json.decode(response.body);
-        if (responseData['data'] != null) {
-          return Bordereau.fromJson(responseData['data']);
-        } else {
-          return Bordereau.fromJson(responseData);
+          // Gérer différents formats de réponse
+          Map<String, dynamic> bordereauData;
+          if (responseData is Map) {
+            if (responseData['data'] != null) {
+              bordereauData =
+                  responseData['data'] is Map<String, dynamic>
+                      ? responseData['data']
+                      : Map<String, dynamic>.from(responseData['data']);
+            } else if (responseData['bordereau'] != null) {
+              bordereauData =
+                  responseData['bordereau'] is Map<String, dynamic>
+                      ? responseData['bordereau']
+                      : Map<String, dynamic>.from(responseData['bordereau']);
+            } else {
+              bordereauData =
+                  responseData is Map<String, dynamic>
+                      ? responseData
+                      : Map<String, dynamic>.from(responseData);
+            }
+          } else {
+            throw Exception(
+              'Format de réponse inattendu: ${responseData.runtimeType}',
+            );
+          }
+
+          final createdBordereau = Bordereau.fromJson(bordereauData);
+          return createdBordereau;
+        } catch (parseError) {
+          throw Exception('Erreur lors du parsing de la réponse: $parseError');
         }
+      } else if (response.statusCode == 403) {
+        // Gestion spécifique de l'erreur 403 (Accès refusé)
+        try {
+          final errorData = json.decode(response.body);
+          final message = errorData['message'] ?? 'Accès refusé';
+          final requiredRoles = errorData['required_roles'] as List<dynamic>?;
+          final userRole = errorData['user_role'];
+
+          String errorMessage = message;
+          if (requiredRoles != null && userRole != null) {
+            final rolesNames = requiredRoles
+                .map(
+                  (r) => Roles.getRoleName(
+                    r is int ? r : int.tryParse(r.toString()),
+                  ),
+                )
+                .join(', ');
+
+            final userRoleName = Roles.getRoleName(
+              userRole is int ? userRole : int.tryParse(userRole.toString()),
+            );
+
+            errorMessage =
+                '$message\n\nRôles requis: $rolesNames\nVotre rôle: $userRoleName';
+          }
+
+          throw Exception(errorMessage);
+        } catch (e) {
+          // Si le parsing de l'erreur échoue, utiliser le message par défaut
+          throw Exception(
+            'Accès refusé (403). Vous n\'avez pas les permissions pour créer un bordereau. Vérifiez vos droits d\'accès avec l\'administrateur.',
+          );
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception(
+          'Non autorisé (401). Votre session a peut-être expiré. Veuillez vous reconnecter.',
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la création du bordereau: ${response.statusCode}',
+        );
       }
-      throw Exception(
-        'Erreur lors de la création du bordereau: ${response.statusCode} - ${response.body}',
-      );
     } catch (e) {
-      print('Erreur détaillée: $e');
-      throw Exception('Erreur lors de la création du bordereau');
+      rethrow;
     }
   }
 
@@ -146,7 +184,6 @@ class BordereauService {
       }
       throw Exception('Erreur lors de la mise à jour du bordereau');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la mise à jour du bordereau');
     }
   }
@@ -164,7 +201,6 @@ class BordereauService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -182,7 +218,6 @@ class BordereauService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -192,11 +227,6 @@ class BordereauService {
       final token = storage.read('token');
       final url = '$baseUrl/bordereaux-validate/$bordereauId';
 
-      print('🔍 BordereauService.approveBordereau - Début');
-      print('📊 Paramètres: bordereauId=$bordereauId');
-      print('➡️ URL: $url');
-      print('➡️ Token: ${token != null ? "Présent" : "Absent"}');
-
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -205,24 +235,17 @@ class BordereauService {
         },
       );
 
-      print('➡️ Status code: ${response.statusCode}');
-      print('➡️ Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
-          print('✅ Bordereau approuvé avec succès');
           return true;
         } else {
-          print('❌ Échec de l\'approbation: ${responseData['message']}');
           return false;
         }
       } else {
-        print('❌ Erreur HTTP ${response.statusCode}: ${response.body}');
         return false;
       }
     } catch (e) {
-      print('❌ Erreur détaillée: $e');
       return false;
     }
   }
@@ -232,14 +255,6 @@ class BordereauService {
       final token = storage.read('token');
       final url = '$baseUrl/bordereaux-reject/$bordereauId';
       final body = {'commentaire': commentaire};
-
-      print('🔍 BordereauService.rejectBordereau - Début');
-      print(
-        '📊 Paramètres: bordereauId=$bordereauId, commentaire=$commentaire',
-      );
-      print('➡️ URL: $url');
-      print('➡️ Token: ${token != null ? "Présent" : "Absent"}');
-      print('➡️ Body: $body');
 
       final response = await http.post(
         Uri.parse(url),
@@ -251,24 +266,17 @@ class BordereauService {
         body: json.encode(body),
       );
 
-      print('➡️ Status code: ${response.statusCode}');
-      print('➡️ Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
-          print('✅ Bordereau rejeté avec succès');
           return true;
         } else {
-          print('❌ Échec du rejet: ${responseData['message']}');
           return false;
         }
       } else {
-        print('❌ Erreur HTTP ${response.statusCode}: ${response.body}');
         return false;
       }
     } catch (e) {
-      print('❌ Erreur détaillée: $e');
       return false;
     }
   }
@@ -284,15 +292,11 @@ class BordereauService {
         },
       );
 
-      print('Stats bordereaux - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         return json.decode(response.body)['data'];
       }
       throw Exception('Erreur lors de la récupération des statistiques');
     } catch (e) {
-      print('Erreur détaillée: $e');
       throw Exception('Erreur lors de la récupération des statistiques');
     }
   }

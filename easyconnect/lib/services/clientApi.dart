@@ -13,12 +13,8 @@ class ClientApi {
       ),
       headers: {"Authorization": "Bearer $token"},
     );
-    print(
-      "data => ${baseUrl}/clients-list${status != null ? '?status=$status' : ''}",
-    );
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body)["clients"];
-      print("data => $data");
       return data.map((e) => Client.fromJson(e)).toList();
     } else {
       throw Exception("Erreur lors du chargement des clients");

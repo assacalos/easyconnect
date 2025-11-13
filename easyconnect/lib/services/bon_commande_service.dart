@@ -21,9 +21,7 @@ class BonCommandeService {
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
-      final url = '$baseUrl/bons-de-commande-list$queryString';
-
-      print('URL de requête: $url');
+      final url = '$baseUrl/commandes-entreprise-list$queryString';
 
       final response = await http.get(
         Uri.parse(url),
@@ -33,60 +31,36 @@ class BonCommandeService {
         },
       );
 
-      print('Status code: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         try {
           final responseData = json.decode(response.body);
-          print('➡️ Données reçues: $responseData');
 
           // Gérer différents formats de réponse
           List<dynamic> data;
           if (responseData is List) {
             // La réponse est directement une liste
             data = responseData;
-            print('➡️ Réponse directe (liste): ${data.length} éléments');
           } else if (responseData['data'] != null) {
             // La réponse contient une clé 'data'
             if (responseData['data'] is List) {
               data = responseData['data'];
-              print(
-                '➡️ Données dans responseData.data: ${data.length} éléments',
-              );
             } else if (responseData['data']['data'] != null) {
               // Cas où data contient un objet avec une clé 'data' (pagination)
               data = responseData['data']['data'];
-              print(
-                '➡️ Données dans responseData.data.data: ${data.length} éléments',
-              );
             } else {
               // Si data n'est pas une liste, essayer de la convertir
-              print(
-                '➡️ responseData.data n\'est pas une liste: ${responseData['data']}',
-              );
               data = [responseData['data']];
             }
           } else {
-            print('➡️ Aucune donnée trouvée dans la réponse');
             return [];
-          }
-
-          print('➡️ Nombre de bons de commande: ${data.length}');
-
-          if (data.isNotEmpty) {
-            print('➡️ Premier bon de commande: ${data[0]}');
           }
 
           final List<BonCommande> bonCommandeList =
               data
                   .map((json) {
-                    print('➡️ Parsing bon de commande: $json');
                     try {
                       return BonCommande.fromJson(json);
                     } catch (e) {
-                      print('➡️ Erreur parsing bon de commande: $e');
-                      print('➡️ JSON problématique: $json');
                       return null;
                     }
                   })
@@ -94,12 +68,8 @@ class BonCommandeService {
                   .cast<BonCommande>()
                   .toList();
 
-          print('➡️ Bons de commande parsés: ${bonCommandeList.length}');
           return bonCommandeList;
         } catch (e) {
-          print('❌ BonCommandeService: Erreur de parsing JSON: $e');
-          print('📄 BonCommandeService: Body content: ${response.body}');
-
           // Essayer de nettoyer les caractères invalides
           try {
             String cleanedBody =
@@ -118,17 +88,11 @@ class BonCommandeService {
                     ) // Supprimer tous les caractères non-ASCII
                     .trim();
 
-            print(
-              '🔧 BonCommandeService: Tentative de nettoyage des caractères invalides',
-            );
-
             if (cleanedBody.isEmpty) {
-              print('❌ BonCommandeService: JSON vide après nettoyage');
               return [];
             }
 
             final responseData = jsonDecode(cleanedBody);
-            print('✅ BonCommandeService: JSON nettoyé avec succès');
 
             // Continuer avec le parsing normal
             List<dynamic> data = [];
@@ -141,15 +105,11 @@ class BonCommandeService {
             }
 
             if (data.isEmpty) {
-              print(
-                '⚠️ BonCommandeService: Aucune donnée trouvée après nettoyage',
-              );
               return [];
             }
 
             return data.map((json) => BonCommande.fromJson(json)).toList();
           } catch (cleanError) {
-            print('❌ BonCommandeService: Échec du nettoyage JSON: $cleanError');
             return [];
           }
         }
@@ -159,7 +119,6 @@ class BonCommandeService {
         'Erreur lors de la récupération des bons de commande: ${response.statusCode}',
       );
     } catch (e) {
-      print('Erreur détaillée: $e');
       throw Exception(
         'Erreur lors de la récupération des bons de commande: $e',
       );
@@ -170,38 +129,105 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
 
+      // Utiliser toJsonForCreate() pour n'envoyer que les champs nécessaires
+      final bonCommandeJson = bonCommande.toJsonForCreate();
+
       final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-create'),
+        Uri.parse('$baseUrl/commandes-entreprise-create'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode(bonCommande.toJson()),
+        body: json.encode(bonCommandeJson),
       );
 
-      print('Création bon de commande - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        try {
+          final responseData = json.decode(response.body);
 
-      if (response.statusCode == 201) {
-        final responseData = json.decode(response.body);
-        // La réponse contient directement les données du bon de commande
-        return BonCommande.fromJson(responseData);
-      } else if (response.statusCode == 200) {
-        // Gérer le cas où l'API retourne 200 au lieu de 201
-        final responseData = json.decode(response.body);
-        if (responseData['data'] != null) {
-          return BonCommande.fromJson(responseData['data']);
-        } else {
-          return BonCommande.fromJson(responseData);
+          // Gérer différents formats de réponse
+          Map<String, dynamic> bonCommandeData;
+          if (responseData is Map) {
+            if (responseData['data'] != null) {
+              bonCommandeData =
+                  responseData['data'] is Map<String, dynamic>
+                      ? responseData['data']
+                      : Map<String, dynamic>.from(responseData['data']);
+            } else {
+              bonCommandeData =
+                  responseData is Map<String, dynamic>
+                      ? responseData
+                      : Map<String, dynamic>.from(responseData);
+            }
+          } else {
+            throw Exception(
+              'Format de réponse inattendu: ${responseData.runtimeType}',
+            );
+          }
+
+          return BonCommande.fromJson(bonCommandeData);
+        } catch (parseError) {
+          throw Exception('Erreur lors du parsing de la réponse: $parseError');
         }
+      } else if (response.statusCode == 403) {
+        // Gestion spécifique de l'erreur 403 (Accès refusé)
+        try {
+          final errorData = json.decode(response.body);
+          final message = errorData['message'] ?? 'Accès refusé';
+          throw Exception(message);
+        } catch (e) {
+          throw Exception(
+            'Accès refusé (403). Vous n\'avez pas les permissions pour créer un bon de commande.',
+          );
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception(
+          'Non autorisé (401). Votre session a peut-être expiré. Veuillez vous reconnecter.',
+        );
+      } else if (response.statusCode == 422) {
+        // Gestion spécifique de l'erreur 422 (Validation échouée)
+        try {
+          final errorData = json.decode(response.body);
+          String errorMessage = 'Erreur de validation';
+
+          // Laravel renvoie généralement les erreurs dans 'errors' ou 'message'
+          if (errorData['errors'] != null) {
+            // Format Laravel avec erreurs par champ
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final errorMessages = <String>[];
+
+            errors.forEach((field, messages) {
+              if (messages is List) {
+                errorMessages.addAll(messages.map((m) => '$field: $m'));
+              } else {
+                errorMessages.add('$field: $messages');
+              }
+            });
+
+            errorMessage = errorMessages.join('\n');
+          } else if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          } else if (errorData['error'] != null) {
+            errorMessage = errorData['error'].toString();
+          }
+
+          throw Exception(errorMessage);
+        } catch (e) {
+          if (e is Exception && e.toString().contains('Erreur de validation')) {
+            rethrow;
+          }
+          throw Exception(
+            'Erreur de validation (422). Veuillez vérifier les données saisies.',
+          );
+        }
+      } else {
+        throw Exception(
+          'Erreur lors de la création du bon de commande: ${response.statusCode}',
+        );
       }
-      throw Exception(
-        'Erreur lors de la création du bon de commande: ${response.statusCode} - ${response.body}',
-      );
     } catch (e) {
-      print('Erreur détaillée: $e');
-      throw Exception('Erreur lors de la création du bon de commande');
+      rethrow;
     }
   }
 
@@ -209,7 +235,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.put(
-        Uri.parse('$baseUrl/bons-de-commande-update/${bonCommande.id}'),
+        Uri.parse('$baseUrl/commandes-entreprise-update/${bonCommande.id}'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -223,7 +249,6 @@ class BonCommandeService {
       }
       throw Exception('Erreur lors de la mise à jour du bon de commande');
     } catch (e) {
-      print('Erreur: $e');
       throw Exception('Erreur lors de la mise à jour du bon de commande');
     }
   }
@@ -232,7 +257,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.delete(
-        Uri.parse('$baseUrl/bons-de-commande-delete/$bonCommandeId'),
+        Uri.parse('$baseUrl/commandes-entreprise-destroy/$bonCommandeId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -241,7 +266,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -250,7 +274,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-submit/$bonCommandeId'),
+        Uri.parse('$baseUrl/commandes-entreprise-submit/$bonCommandeId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -259,7 +283,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -268,7 +291,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-validate/$bonCommandeId'),
+        Uri.parse('$baseUrl/commandes-entreprise-validate/$bonCommandeId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -277,7 +300,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -286,7 +308,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-reject/$bonCommandeId'),
+        Uri.parse('$baseUrl/commandes-entreprise-reject/$bonCommandeId'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -297,7 +319,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -306,7 +327,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bon-commandes/$bonCommandeId/deliver'),
+        Uri.parse(
+          '$baseUrl/commandes-entreprise-mark-delivered/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -315,7 +338,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -324,7 +346,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bon-commandes/$bonCommandeId/invoice'),
+        Uri.parse('$baseUrl/commandes-entreprise-mark-invoiced/$bonCommandeId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -333,7 +355,6 @@ class BonCommandeService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Erreur: $e');
       return false;
     }
   }
@@ -349,15 +370,11 @@ class BonCommandeService {
         },
       );
 
-      print('Stats bon de commande - Status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
       if (response.statusCode == 200) {
         return json.decode(response.body)['data'];
       }
       throw Exception('Erreur lors de la récupération des statistiques');
     } catch (e) {
-      print('Erreur détaillée: $e');
       throw Exception('Erreur lors de la récupération des statistiques');
     }
   }

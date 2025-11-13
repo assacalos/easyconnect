@@ -51,6 +51,14 @@ class AuthMiddleware extends GetMiddleware {
             return const RouteSettings(name: '/unauthorized');
           }
           break;
+        case '/admin/users':
+          // Le patron et RH peuvent voir la liste des utilisateurs (employés)
+          if (userRole != Roles.ADMIN &&
+              userRole != Roles.PATRON &&
+              userRole != Roles.RH) {
+            return const RouteSettings(name: '/unauthorized');
+          }
+          break;
       }
 
       // Si tout est OK, laisser passer

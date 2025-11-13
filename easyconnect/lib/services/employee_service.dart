@@ -60,7 +60,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.getEmployees: $e');
       rethrow;
     }
   }
@@ -82,7 +81,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.getEmployee: $e');
       rethrow;
     }
   }
@@ -152,7 +150,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.createEmployee: $e');
       rethrow;
     }
   }
@@ -225,7 +222,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.updateEmployee: $e');
       rethrow;
     }
   }
@@ -246,7 +242,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.deleteEmployee: $e');
       rethrow;
     }
   }
@@ -267,7 +262,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.submitEmployeeForApproval: $e');
       rethrow;
     }
   }
@@ -289,7 +283,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.approveEmployee: $e');
       rethrow;
     }
   }
@@ -311,7 +304,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.rejectEmployee: $e');
       rethrow;
     }
   }
@@ -333,7 +325,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.getEmployeeStats: $e');
       rethrow;
     }
   }
@@ -355,7 +346,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.getDepartments: $e');
       rethrow;
     }
   }
@@ -377,7 +367,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.getPositions: $e');
       rethrow;
     }
   }
@@ -414,7 +403,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.addEmployeeDocument: $e');
       rethrow;
     }
   }
@@ -447,7 +435,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.addEmployeeLeave: $e');
       rethrow;
     }
   }
@@ -469,7 +456,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.approveLeave: $e');
       rethrow;
     }
   }
@@ -491,7 +477,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.rejectLeave: $e');
       rethrow;
     }
   }
@@ -528,7 +513,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.addEmployeePerformance: $e');
       rethrow;
     }
   }
@@ -552,7 +536,6 @@ class EmployeeService extends GetxService {
         );
       }
     } catch (e) {
-      print('Erreur EmployeeService.searchEmployees: $e');
       rethrow;
     }
   }

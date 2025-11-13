@@ -96,31 +96,56 @@ class BonCommandeController extends GetxController
       bonCommandesLivres.value = stats['livres'] ?? 0;
       montantTotal.value = stats['montant_total'] ?? 0.0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
+      // Erreur silencieuse lors du chargement des statistiques
     }
   }
 
   Future<void> createBonCommande(Map<String, dynamic> data) async {
     try {
+      // Vérifications
+      if (selectedClient.value == null) {
+        throw Exception('Aucun client sélectionné');
+      }
+
+      if (selectedClient.value!.id == null) {
+        throw Exception(
+          'L\'ID du client est manquant. Veuillez sélectionner un client valide.',
+        );
+      }
+
+      if (items.isEmpty) {
+        throw Exception('Aucun article ajouté au bon de commande');
+      }
+
       isLoading.value = true;
 
+      final clientId = selectedClient.value!.id!;
+
       final newBonCommande = BonCommande(
-        clientId: selectedClient.value!.id!,
+        clientId: clientId,
         reference: data['reference'],
         dateCreation: DateTime.now(),
         dateLivraisonPrevue: data['date_livraison_prevue'],
         adresseLivraison: data['adresse_livraison'],
         notes: data['notes'],
-        items: items,
-        remiseGlobale: data['remise_globale'],
-        tva: data['tva'],
+        items: items.toList(), // Convertir en liste
+        remiseGlobale:
+            data['remise_globale'] != null
+                ? (data['remise_globale'] is double
+                    ? data['remise_globale']
+                    : double.tryParse(data['remise_globale'].toString()))
+                : null,
+        tva:
+            data['tva'] != null
+                ? (data['tva'] is double
+                    ? data['tva']
+                    : double.tryParse(data['tva'].toString()) ?? 20.0)
+                : 20.0,
         conditions: data['conditions'],
         commercialId: userId,
       );
 
-      final createdBonCommande = await _bonCommandeService.createBonCommande(
-        newBonCommande,
-      );
+      await _bonCommandeService.createBonCommande(newBonCommande);
 
       // Effacer le formulaire
       clearForm();
@@ -139,10 +164,19 @@ class BonCommandeController extends GetxController
         duration: const Duration(seconds: 3),
       );
     } catch (e) {
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de créer le bon de commande',
+        errorMessage,
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -400,7 +434,7 @@ class BonCommandeController extends GetxController
       }
       // La recherche sera implémentée dans l'interface utilisateur
     } catch (e) {
-      print('Erreur lors de la recherche des clients: $e');
+      // Erreur silencieuse lors de la recherche des clients
     }
   }
 
@@ -455,10 +489,10 @@ class BonCommandeController extends GetxController
         },
         items: items,
         fournisseur: {
-          'nom': client?.nom ?? '',
-          'email': client?.email,
-          'contact': client?.contact,
-          'adresse': client?.adresse,
+          'nom': client.nom ?? '',
+          'email': client.email,
+          'contact': client.contact,
+          'adresse': client.adresse,
         },
       );
 

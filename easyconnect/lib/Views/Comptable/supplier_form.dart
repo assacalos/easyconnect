@@ -160,27 +160,6 @@ class SupplierForm extends StatelessWidget {
 
               const SizedBox(height: 24),
 
-              // Contact
-              _buildSectionTitle('Contact'),
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: controller.contactPrincipalController,
-                decoration: const InputDecoration(
-                  labelText: 'Contact principal *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Le contact principal est obligatoire';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 24),
-
               // Description et commentaires
               _buildSectionTitle('Informations supplémentaires'),
               const SizedBox(height: 16),
@@ -236,11 +215,17 @@ class SupplierForm extends StatelessWidget {
   }
 
   void _saveSupplier(SupplierController controller) async {
+    bool success = false;
     if (supplier == null) {
-      await controller.createSupplier();
+      success = await controller.createSupplier();
     } else {
-      await controller.updateSupplier(supplier!);
+      success = await controller.updateSupplier(supplier!);
     }
-    Get.back(); // Retour automatique à la liste
+
+    // Fermer automatiquement le formulaire après succès
+    if (success) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.back();
+    }
   }
 }

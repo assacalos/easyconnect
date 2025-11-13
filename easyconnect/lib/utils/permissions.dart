@@ -42,7 +42,12 @@ class Permissions {
   static const VIEW_CLIENTS = Permission(
     code: 'view_clients',
     description: 'Voir les clients',
-    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL],
+    allowedRoles: [
+      Roles.ADMIN,
+      Roles.COMMERCIAL,
+      Roles.COMPTABLE,
+      Roles.TECHNICIEN,
+    ],
   );
   static const CREATE_CLIENTS = Permission(
     code: 'create_clients',
@@ -87,14 +92,14 @@ class Permissions {
   static const MANAGE_EXPENSES = Permission(
     code: 'manage_expenses',
     description: 'Gérer les dépenses',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   // Permissions RH
   static const MANAGE_EMPLOYEES = Permission(
     code: 'manage_employees',
     description: 'Gérer les employés',
-    allowedRoles: [Roles.ADMIN, Roles.RH],
+    allowedRoles: [Roles.ADMIN, Roles.RH, Roles.PATRON],
   );
 
   static const MANAGE_LEAVES = Permission(
@@ -119,14 +124,20 @@ class Permissions {
   static const MANAGE_ATTENDANCE = Permission(
     code: 'Gerer_attendance',
     description: 'Gerer les présences',
-    allowedRoles: [Roles.ADMIN, Roles.RH, Roles.PATRON],
+    allowedRoles: [
+      Roles.ADMIN,
+      Roles.RH,
+      Roles.PATRON,
+      Roles.COMMERCIAL,
+      Roles.TECHNICIEN,
+    ],
   );
 
   // Permissions Facturation
   static const MANAGE_INVOICES = Permission(
     code: 'manage_invoices',
     description: 'Gérer les factures',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_INVOICES = Permission(
@@ -145,7 +156,7 @@ class Permissions {
   static const MANAGE_PAYMENTS = Permission(
     code: 'manage_payments',
     description: 'Gérer les paiements',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_PAYMENTS = Permission(
@@ -164,7 +175,7 @@ class Permissions {
   static const MANAGE_SUPPLIERS = Permission(
     code: 'manage_suppliers',
     description: 'Gérer les fournisseurs',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_SUPPLIERS = Permission(
@@ -183,7 +194,7 @@ class Permissions {
   static const MANAGE_TAXES = Permission(
     code: 'manage_taxes',
     description: 'Gérer les impôts et taxes',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_TAXES = Permission(
@@ -202,7 +213,7 @@ class Permissions {
   static const MANAGE_SALARIES = Permission(
     code: 'manage_salaries',
     description: 'Gérer les salaires',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_SALARIES = Permission(
@@ -221,7 +232,7 @@ class Permissions {
   static const MANAGE_INTERVENTIONS = Permission(
     code: 'manage_interventions',
     description: 'Gérer les interventions',
-    allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN],
+    allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN, Roles.PATRON],
   );
 
   static const VIEW_INTERVENTIONS = Permission(
@@ -240,7 +251,7 @@ class Permissions {
   static const MANAGE_EQUIPMENTS = Permission(
     code: 'manage_equipments',
     description: 'Gérer les équipements',
-    allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN],
+    allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN, Roles.PATRON],
   );
 
   static const VIEW_EQUIPMENTS = Permission(
@@ -253,7 +264,7 @@ class Permissions {
   static const MANAGE_STOCKS = Permission(
     code: 'manage_stocks',
     description: 'Gérer le stock',
-    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE],
+    allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
   );
 
   static const VIEW_STOCKS = Permission(
@@ -277,7 +288,7 @@ class Permissions {
   static const APPROVE_EMPLOYEES = Permission(
     code: 'approve_employees',
     description: 'Approuver les employés',
-    allowedRoles: [Roles.ADMIN, Roles.PATRON],
+    allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.RH],
   );
 
   static const VIEW_LEAVES = Permission(
@@ -289,7 +300,7 @@ class Permissions {
   static const APPROVE_LEAVES = Permission(
     code: 'approve_leaves',
     description: 'Approuver les congés',
-    allowedRoles: [Roles.ADMIN, Roles.PATRON],
+    allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.RH],
   );
 
   static const REQUEST_LEAVES = Permission(
@@ -381,7 +392,7 @@ class Permissions {
   static const VIEW_DEVIS = Permission(
     code: 'view_devis',
     description: 'Voir les devis',
-    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL],
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
   );
   static const CREATE_DEVIS = Permission(
     code: 'create_devis',
@@ -408,9 +419,30 @@ class Permissions {
     description: 'Gérer les bordereaux',
     allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
   );
+  static const VIEW_BORDEREAUX = Permission(
+    code: 'view_bordereaux',
+    description: 'Voir les bordereaux',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+  static const APPROVE_BORDEREAUX = Permission(
+    code: 'approve_bordereaux',
+    description: 'Approuver les bordereaux',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+
   static const MANAGE_BON_COMMANDES = Permission(
     code: 'manage_bon_commandes',
     description: 'Gérer les bons de commande',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+  static const VIEW_BON_COMMANDES = Permission(
+    code: 'view_bon_commandes',
+    description: 'Voir les bons de commande',
+    allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
+  );
+  static const APPROVE_BON_COMMANDES = Permission(
+    code: 'approve_bon_commandes',
+    description: 'Approuver les bons de commande',
     allowedRoles: [Roles.ADMIN, Roles.COMMERCIAL, Roles.PATRON],
   );
   static const VIEW_STATS = Permission(

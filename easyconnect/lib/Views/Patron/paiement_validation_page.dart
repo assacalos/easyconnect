@@ -13,7 +13,7 @@ class PaiementValidationPage extends StatefulWidget {
 
 class _PaiementValidationPageState extends State<PaiementValidationPage>
     with SingleTickerProviderStateMixin {
-  final PaymentController controller = Get.find<PaymentController>();
+  late final PaymentController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -21,6 +21,12 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   @override
   void initState() {
     super.initState();
+    // Vérifier et initialiser le contrôleur
+    if (!Get.isRegistered<PaymentController>()) {
+      Get.put(PaymentController(), permanent: true);
+    }
+    controller = Get.find<PaymentController>();
+
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
@@ -42,6 +48,27 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Future<void> _loadPayments() async {
+    String? status;
+    switch (_tabController.index) {
+      case 0: // Tous
+        status = null;
+        break;
+      case 1: // En attente
+        status = 'pending';
+        break;
+      case 2: // Validés
+        status = 'approved';
+        break;
+      case 3: // Rejetés
+        status = 'rejected';
+        break;
+    }
+
+    if (status != null) {
+      controller.selectedStatus.value = status;
+    } else {
+      controller.selectedStatus.value = 'all';
+    }
     await controller.loadPayments();
   }
 
@@ -117,92 +144,75 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Widget _buildPaymentList() {
-    // Filtrer les paiements selon l'onglet et la recherche
-    List<PaymentModel> filteredPayments;
+    // Utiliser Obx pour rendre réactif l'accès à controller.payments
+    return Obx(() {
+      // Appliquer la recherche
+      final filteredPayments =
+          _searchQuery.isEmpty
+              ? controller.payments
+              : controller.payments
+                  .where(
+                    (paiement) =>
+                        (paiement.reference ?? '').toLowerCase().contains(
+                          _searchQuery.toLowerCase(),
+                        ) ||
+                        paiement.clientName.toLowerCase().contains(
+                          _searchQuery.toLowerCase(),
+                        ),
+                  )
+                  .toList();
 
-    switch (_tabController.index) {
-      case 0: // Tous
-        filteredPayments = controller.payments;
-        break;
-      case 1: // En attente
-        filteredPayments = controller.getPendingPayments();
-        break;
-      case 2: // Validés
-        filteredPayments = controller.getApprovedPayments();
-        break;
-      case 3: // Rejetés
-        filteredPayments = controller.getRejectedPayments();
-        break;
-      default:
-        filteredPayments = controller.payments;
-    }
-
-    // Appliquer la recherche
-    if (_searchQuery.isNotEmpty) {
-      filteredPayments =
-          filteredPayments
-              .where(
-                (paiement) =>
-                    (paiement.reference ?? '').toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    paiement.clientName.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
-
-    if (filteredPayments.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.payment, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isEmpty
-                  ? 'Aucun paiement trouvé'
-                  : 'Aucun paiement correspondant à "$_searchQuery"',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-            if (_searchQuery.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
-                },
-                icon: const Icon(Icons.clear),
-                label: const Text('Effacer la recherche'),
+      if (filteredPayments.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.payment, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                _searchQuery.isEmpty
+                    ? 'Aucun paiement trouvé'
+                    : 'Aucun paiement correspondant à "$_searchQuery"',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
+              if (_searchQuery.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                  icon: const Icon(Icons.clear),
+                  label: const Text('Effacer la recherche'),
+                ),
+              ],
             ],
-          ],
-        ),
-      );
-    }
+          ),
+        );
+      }
 
-    return ListView.builder(
-      itemCount: filteredPayments.length,
-      padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final paiement = filteredPayments[index];
-        return _buildPaiementCard(context, paiement);
-      },
-    );
+      return ListView.builder(
+        itemCount: filteredPayments.length,
+        padding: const EdgeInsets.all(8),
+        itemBuilder: (context, index) {
+          final payment = filteredPayments[index];
+          return _buildPaymentCard(context, payment);
+        },
+      );
+    });
   }
 
-  Widget _buildPaiementCard(BuildContext context, PaymentModel paiement) {
+  Widget _buildPaymentCard(BuildContext context, PaymentModel payment) {
     final formatDate = DateFormat('dd/MM/yyyy');
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
       symbol: 'FCFA',
     );
-    final statusColor = _getStatusColor(paiement.status);
-    final statusIcon = _getStatusIcon(paiement.status);
-    final statusText = _getStatusText(paiement.status);
+    final statusColor = _getStatusColor(payment.status);
+    final statusIcon = _getStatusIcon(payment.status);
+    final statusText = _getStatusText(payment.status);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -212,16 +222,16 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          paiement.reference ?? 'Inconnu',
+          payment.paymentNumber,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Client: ${paiement.clientName}'),
-            Text('Date: ${formatDate.format(paiement.paymentDate)}'),
-            Text('Montant: ${formatCurrency.format(paiement.amount)}'),
+            Text('Client: ${payment.clientName}'),
+            Text('Date: ${formatDate.format(payment.paymentDate)}'),
+            Text('Montant: ${formatCurrency.format(payment.amount)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -247,9 +257,9 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations client
+                // Informations générales
                 const Text(
-                  'Informations client',
+                  'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -263,19 +273,32 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Client: ${paiement.clientName}'),
-                      Text('Email: ${paiement.clientEmail}'),
-                      Text('Adresse: ${paiement.clientAddress}'),
+                      Text('Numéro: ${payment.paymentNumber}'),
+                      Text('Type: ${_getPaymentTypeText(payment.type)}'),
+                      Text('Client: ${payment.clientName}'),
+                      Text('Email: ${payment.clientEmail}'),
+                      Text('Adresse: ${payment.clientAddress}'),
+                      Text('Comptable: ${payment.comptableName}'),
+                      Text(
+                        'Date paiement: ${formatDate.format(payment.paymentDate)}',
+                      ),
+                      if (payment.dueDate != null)
+                        Text(
+                          'Date échéance: ${formatDate.format(payment.dueDate!)}',
+                        ),
+                      Text(
+                        'Méthode: ${_getPaymentMethodText(payment.paymentMethod)}',
+                      ),
+                      if (payment.reference != null)
+                        Text('Référence: ${payment.reference}'),
+                      if (payment.description != null)
+                        Text('Description: ${payment.description}'),
+                      if (payment.notes != null)
+                        Text('Notes: ${payment.notes}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Détails du paiement
-                const Text(
-                  'Détails du paiement',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -283,58 +306,22 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.grey),
                   ),
-                  child: Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Montant:'),
-                          Text(
-                            formatCurrency.format(paiement.amount),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                      const Text(
+                        'Montant total:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Mode de paiement:'),
-                          Text(paiement.paymentMethod),
-                        ],
+                      Text(
+                        formatCurrency.format(payment.amount),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      if (paiement.reference != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('ID Transaction:'),
-                            Text(paiement.reference!),
-                          ],
-                        ),
-                      if (paiement.submittedAt != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Date de paiement:'),
-                            Text(formatDate.format(paiement.submittedAt!)),
-                          ],
-                        ),
-                      if (paiement.notes != null && paiement.notes!.isNotEmpty)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Notes:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            Text(paiement.notes!),
-                          ],
-                        ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(paiement, statusColor),
+                _buildActionButtons(payment, statusColor),
               ],
             ),
           ),
@@ -343,122 +330,115 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
     );
   }
 
-  Widget _buildActionButtons(PaymentModel paiement, Color statusColor) {
-    if (paiement.isPending) {
-      // En attente - Afficher boutons Valider/Rejeter
-      return Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(paiement),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+  Widget _buildActionButtons(PaymentModel payment, Color statusColor) {
+    switch (payment.status) {
+      case 'submitted': // En attente - Afficher boutons Valider/Rejeter
+        return Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _showApproveConfirmation(payment),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Valider'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(paiement),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
+                ElevatedButton.icon(
+                  onPressed: () => _showRejectDialog(payment),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Rejeter'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      case 'approved': // Validé - Afficher seulement info
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 8),
+              Text(
+                'Paiement validé',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
-        ],
-      );
-    } else if (paiement.isApproved) {
-      // Validé - Afficher seulement info
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 8),
-            Text(
-              'Paiement validé',
-              style: TextStyle(
-                color: Colors.green[700],
-                fontWeight: FontWeight.bold,
+        );
+      case 'rejected': // Rejeté - Afficher motif du rejet
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.red),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.cancel, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(
+                'Paiement rejeté',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    } else if (paiement.isRejected) {
-      // Rejeté - Afficher motif du rejet
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.red),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.cancel, color: Colors.red),
-            const SizedBox(width: 8),
-            Text(
-              'Paiement rejeté',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontWeight: FontWeight.bold,
+            ],
+          ),
+        );
+      default: // Autres statuts
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.help, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Text(
+                'Statut: ${payment.status}',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Autres statuts
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.help, color: Colors.grey[600]),
-            const SizedBox(width: 8),
-            Text(
-              'Statut: ${paiement.status}',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
     }
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
+    switch (status) {
       case 'submitted':
         return Colors.orange;
       case 'approved':
-      case 'paid':
         return Colors.green;
       case 'rejected':
-        return Colors.red;
-      case 'overdue':
         return Colors.red;
       default:
         return Colors.grey;
@@ -466,42 +446,60 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
+    switch (status) {
       case 'submitted':
         return Icons.pending;
       case 'approved':
-      case 'paid':
         return Icons.check_circle;
       case 'rejected':
         return Icons.cancel;
-      case 'overdue':
-        return Icons.warning;
       default:
         return Icons.help;
     }
   }
 
   String _getStatusText(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'En attente';
+    switch (status) {
       case 'submitted':
-        return 'Soumis';
+        return 'En attente';
       case 'approved':
         return 'Validé';
-      case 'paid':
-        return 'Payé';
       case 'rejected':
         return 'Rejeté';
-      case 'overdue':
-        return 'En retard';
       default:
         return status;
     }
   }
 
-  void _showApproveConfirmation(PaymentModel paiement) {
+  String _getPaymentTypeText(String type) {
+    switch (type) {
+      case 'one_time':
+        return 'Paiement unique';
+      case 'monthly':
+        return 'Paiement mensuel';
+      default:
+        return type;
+    }
+  }
+
+  String _getPaymentMethodText(String method) {
+    switch (method) {
+      case 'bank_transfer':
+        return 'Virement bancaire';
+      case 'check':
+        return 'Chèque';
+      case 'cash':
+        return 'Espèces';
+      case 'card':
+        return 'Carte';
+      case 'direct_debit':
+        return 'Prélèvement';
+      default:
+        return method;
+    }
+  }
+
+  void _showApproveConfirmation(PaymentModel payment) {
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous valider ce paiement ?',
@@ -510,14 +508,14 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.approvePayment(paiement.id);
+        controller.approvePayment(payment.id);
         _loadPayments();
       },
     );
   }
 
-  void _showRejectDialog(PaymentModel paiement) {
-    final commentController = TextEditingController();
+  void _showRejectDialog(PaymentModel payment) {
+    final reasonController = TextEditingController();
 
     Get.defaultDialog(
       title: 'Rejeter le paiement',
@@ -525,7 +523,7 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            controller: commentController,
+            controller: reasonController,
             decoration: const InputDecoration(
               labelText: 'Motif du rejet',
               hintText: 'Entrez le motif du rejet',
@@ -538,7 +536,7 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () {
-        if (commentController.text.isEmpty) {
+        if (reasonController.text.isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -547,7 +545,7 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
           return;
         }
         Get.back();
-        controller.rejectPayment(paiement.id, reason: commentController.text);
+        controller.rejectPayment(payment.id, reason: reasonController.text);
         _loadPayments();
       },
     );

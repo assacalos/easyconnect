@@ -11,7 +11,7 @@ class Tax extends Model
     use HasFactory;
 
     protected $fillable = [
-        'tax_category_id',
+        'category',
         'comptable_id',
         'reference',
         'period',
@@ -53,10 +53,7 @@ class Tax extends Model
     ];
 
     // Relations
-    public function taxCategory()
-    {
-        return $this->belongsTo(TaxCategory::class);
-    }
+    // Note: category est maintenant un champ string, pas une relation
 
     public function comptable()
     {
@@ -79,31 +76,6 @@ class Tax extends Model
     }
 
     // Scopes
-    public function scopeDraft($query)
-    {
-        return $query->where('status', 'draft');
-    }
-
-    public function scopeCalculated($query)
-    {
-        return $query->where('status', 'calculated');
-    }
-
-    public function scopeDeclared($query)
-    {
-        return $query->where('status', 'declared');
-    }
-
-    public function scopePaid($query)
-    {
-        return $query->where('status', 'paid');
-    }
-
-    public function scopeOverdue($query)
-    {
-        return $query->where('status', 'overdue');
-    }
-
     public function scopeEnAttente($query)
     {
         return $query->where('status', 'en_attente');
@@ -119,14 +91,19 @@ class Tax extends Model
         return $query->where('status', 'rejete');
     }
 
+    public function scopePaye($query)
+    {
+        return $query->where('status', 'paye');
+    }
+
     public function scopeByPeriod($query, $period)
     {
         return $query->where('period', $period);
     }
 
-    public function scopeByCategory($query, $categoryId)
+    public function scopeByCategory($query, $categoryName)
     {
-        return $query->where('tax_category_id', $categoryId);
+        return $query->where('category', $categoryName);
     }
 
     public function scopeByComptable($query, $comptableId)
@@ -145,7 +122,8 @@ class Tax extends Model
         $statuses = [
             'en_attente' => 'En attente',
             'valide' => 'Validé',
-            'rejete' => 'Rejeté'
+            'rejete' => 'Rejeté',
+            'paye' => 'Payé'
         ];
 
         return $statuses[$this->status] ?? $this->status;
@@ -158,12 +136,12 @@ class Tax extends Model
 
     public function getCategoryNameAttribute()
     {
-        return $this->taxCategory ? $this->taxCategory->name : 'N/A';
+        return $this->category ?? 'N/A';
     }
 
     public function getDaysUntilDueAttribute()
     {
-        if (!$this->due_date || $this->status === 'paid') {
+        if (!$this->due_date || $this->status === 'paye') {
             return null;
         }
 
@@ -179,7 +157,7 @@ class Tax extends Model
 
     public function getIsOverdueAttribute()
     {
-        return $this->status !== 'paid' && $this->due_date && $this->due_date < now()->toDateString();
+        return $this->status !== 'paye' && $this->due_date && $this->due_date < now()->toDateString();
     }
 
     public function getTotalPaidAttribute()
@@ -195,22 +173,8 @@ class Tax extends Model
     // Méthodes utilitaires
     public function canBeEdited()
     {
-        return in_array($this->status, ['draft']);
-    }
-
-    public function canBeCalculated()
-    {
-        return in_array($this->status, ['draft']);
-    }
-
-    public function canBeDeclared()
-    {
-        return in_array($this->status, ['calculated']);
-    }
-
-    public function canBePaid()
-    {
-        return in_array($this->status, ['declared']);
+        // Peut être édité seulement si en attente
+        return $this->status === 'en_attente';
     }
 
     public function canBeValidated()
@@ -223,32 +187,17 @@ class Tax extends Model
         return $this->status === 'en_attente';
     }
 
-    public function markAsCalculated()
+    public function canBePaid()
     {
-        if ($this->canBeCalculated()) {
-            $this->update(['status' => 'calculated']);
-            return true;
-        }
-        return false;
-    }
-
-    public function markAsDeclared()
-    {
-        if ($this->canBeDeclared()) {
-            $this->update([
-                'status' => 'declared',
-                'declared_at' => now()
-            ]);
-            return true;
-        }
-        return false;
+        // Peut être payée si validée
+        return $this->status === 'valide';
     }
 
     public function markAsPaid()
     {
         if ($this->canBePaid() || $this->remaining_amount <= 0) {
             $this->update([
-                'status' => 'paid',
+                'status' => 'paye',
                 'paid_at' => now()
             ]);
             return true;
@@ -285,52 +234,68 @@ class Tax extends Model
         return false;
     }
 
-    public function calculateTax($baseAmount = null)
+    public function calculateTax($baseAmount = null, $taxRate = null)
     {
         $baseAmount = $baseAmount ?? $this->base_amount;
         
-        if ($this->taxCategory) {
-            $taxAmount = $this->taxCategory->calculateTax($baseAmount);
-            
-            $this->update([
-                'base_amount' => $baseAmount,
-                'tax_rate' => $this->taxCategory->default_rate,
-                'tax_amount' => $taxAmount,
-                'total_amount' => $baseAmount + $taxAmount,
-                'calculation_details' => [
-                    'base_amount' => $baseAmount,
-                    'tax_rate' => $this->taxCategory->default_rate,
-                    'tax_amount' => $taxAmount,
-                    'calculation_date' => now()->toIso8601String()
-                ]
-            ]);
-            
-            return $taxAmount;
+        // Si taxRate n'est pas fourni, chercher dans tax_categories par nom
+        if (!$taxRate && $this->category) {
+            $taxCategory = TaxCategory::where('name', $this->category)->first();
+            if ($taxCategory) {
+                $taxRate = $taxCategory->default_rate;
+                // Utiliser la méthode de calcul de la catégorie si disponible
+                if (method_exists($taxCategory, 'calculateTax')) {
+                    $taxAmount = $taxCategory->calculateTax($baseAmount);
+                } else {
+                    $taxAmount = ($baseAmount * $taxRate) / 100;
+                }
+            } else {
+                // Si la catégorie n'existe pas, utiliser tax_rate existant ou 0
+                $taxRate = $this->tax_rate ?? 0;
+                $taxAmount = ($baseAmount * $taxRate) / 100;
+            }
+        } else {
+            // Utiliser le taxRate fourni ou celui existant
+            $taxRate = $taxRate ?? $this->tax_rate ?? 0;
+            $taxAmount = ($baseAmount * $taxRate) / 100;
         }
         
-        return 0;
+        $this->update([
+            'base_amount' => $baseAmount,
+            'tax_rate' => $taxRate,
+            'tax_amount' => $taxAmount,
+            'total_amount' => $baseAmount + $taxAmount,
+            'calculation_details' => [
+                'base_amount' => $baseAmount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'calculation_date' => now()->toIso8601String()
+            ]
+        ]);
+        
+        return $taxAmount;
     }
 
     // Méthodes statiques
-    public static function generateReference($categoryCode, $period)
+    public static function generateReference($categoryName, $period)
     {
-        $count = self::whereHas('taxCategory', function ($query) use ($categoryCode) {
-            $query->where('code', $categoryCode);
-        })->where('period', $period)->count() + 1;
+        // Compter les taxes avec cette catégorie et cette période
+        $count = self::where('category', $categoryName)
+            ->where('period', $period)
+            ->count() + 1;
         
-        return strtoupper($categoryCode) . '-' . $period . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        // Générer un code court depuis le nom (premiers caractères en majuscules)
+        $code = strtoupper(substr(str_replace(' ', '', $categoryName), 0, 4));
+        
+        return $code . '-' . $period . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
     }
 
-    public static function updateOverdueTaxes()
-    {
-        return self::whereIn('status', ['calculated', 'declared'])
-            ->where('due_date', '<', now()->toDateString())
-            ->update(['status' => 'overdue']);
-    }
+    // Note: Les taxes en retard ne changent plus de statut automatiquement
+    // On utilise l'accesseur is_overdue pour identifier les taxes en retard
 
     public static function getTaxesByPeriod($period)
     {
-        return self::with(['taxCategory', 'comptable', 'payments'])
+        return self::with(['comptable', 'payments'])
             ->where('period', $period)
             ->orderBy('due_date')
             ->get();
@@ -348,11 +313,10 @@ class Tax extends Model
         
         return [
             'total_taxes' => $taxes->count(),
-            'draft_taxes' => $taxes->where('status', 'draft')->count(),
-            'calculated_taxes' => $taxes->where('status', 'calculated')->count(),
-            'declared_taxes' => $taxes->where('status', 'declared')->count(),
-            'paid_taxes' => $taxes->where('status', 'paid')->count(),
-            'overdue_taxes' => $taxes->where('status', 'overdue')->count(),
+            'en_attente' => $taxes->where('status', 'en_attente')->count(),
+            'valide' => $taxes->where('status', 'valide')->count(),
+            'rejete' => $taxes->where('status', 'rejete')->count(),
+            'paye' => $taxes->where('status', 'paye')->count(),
             'total_amount' => $taxes->sum('total_amount'),
             'total_paid' => $taxes->sum('total_paid'),
             'remaining_amount' => $taxes->sum('remaining_amount')

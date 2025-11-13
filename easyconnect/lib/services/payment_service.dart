@@ -14,13 +14,7 @@ class PaymentService extends GetxService {
   // Tester la connectivité à l'API pour les paiements
   Future<bool> testPaymentConnection() async {
     try {
-      print('🧪 PaymentService: Test de connectivité à l\'API...');
-      print('🌐 PaymentService: URL de base: $baseUrl');
-
       final token = storage.read('token');
-      print(
-        '🔑 PaymentService: Token disponible: ${token != null ? "✅" : "❌"}',
-      );
 
       final response = await http
           .get(
@@ -32,14 +26,8 @@ class PaymentService extends GetxService {
           )
           .timeout(const Duration(seconds: 10));
 
-      print(
-        '📡 PaymentService: Test de connectivité - Status: ${response.statusCode}',
-      );
-      print('📄 PaymentService: Test de connectivité - Body: ${response.body}');
-
       return response.statusCode == 200;
     } catch (e) {
-      print('❌ PaymentService: Erreur de connectivité: $e');
       return false;
     }
   }
@@ -54,13 +42,7 @@ class PaymentService extends GetxService {
     String? type,
   }) async {
     try {
-      print('🌐 PaymentService: getAllPayments() appelé');
-      print(
-        '📊 PaymentService: startDate=$startDate, endDate=$endDate, status=$status, type=$type',
-      );
-
       final token = storage.read('token');
-      print('🔑 PaymentService: Token récupéré: ${token != null ? "✅" : "❌"}');
 
       String url = '$baseUrl/payments';
       List<String> params = [];
@@ -81,8 +63,6 @@ class PaymentService extends GetxService {
       if (params.isNotEmpty) {
         url += '?${params.join('&')}';
       }
-
-      print('🔗 PaymentService: URL complète appelée: $url');
 
       final response = await http.get(
         Uri.parse(url),
@@ -116,7 +96,6 @@ class PaymentService extends GetxService {
 
           return data.map((json) => PaymentModel.fromJson(json)).toList();
         } catch (e) {
-          print('❌ PaymentService: Erreur de parsing JSON: $e');
           return [];
         }
       } else {
@@ -125,7 +104,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getAllPayments: $e');
       rethrow;
     }
   }
@@ -133,8 +111,6 @@ class PaymentService extends GetxService {
   // Récupérer un paiement par ID
   Future<PaymentModel> getPaymentById(int paymentId) async {
     try {
-      print('🌐 PaymentService: getPaymentById() appelé pour ID: $paymentId');
-
       final token = storage.read('token');
       final response = await http.get(
         Uri.parse('$baseUrl/payments/$paymentId'),
@@ -153,7 +129,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getPaymentById: $e');
       rethrow;
     }
   }
@@ -167,13 +142,7 @@ class PaymentService extends GetxService {
     String? type,
   }) async {
     try {
-      print('🌐 PaymentService: getComptablePayments() appelé');
-      print(
-        '📊 PaymentService: comptableId=$comptableId, status=$status, type=$type',
-      );
-
       final token = storage.read('token');
-      print('🔑 PaymentService: Token récupéré: ${token != null ? "✅" : "❌"}');
 
       // Utiliser la nouvelle route organisée
       String url = '$baseUrl/payments';
@@ -197,13 +166,6 @@ class PaymentService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      print('🔗 PaymentService: URL complète appelée: $url');
-      print('🌐 PaymentService: Base URL: $baseUrl');
-      print('📡 PaymentService: Endpoint: payments');
-      print(
-        '🔑 PaymentService: Headers: Accept: application/json, Authorization: Bearer $token',
-      );
-
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -212,15 +174,6 @@ class PaymentService extends GetxService {
         },
       );
 
-      print(
-        '📡 PaymentService: Réponse reçue - Status: ${response.statusCode}',
-      );
-      print('📄 PaymentService: Body length: ${response.body.length}');
-      print(
-        '📄 PaymentService: Body content (first 200 chars): ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
-      );
-      print('📄 PaymentService: Headers de réponse: ${response.headers}');
-
       if (response.statusCode == 200) {
         try {
           // Nettoyer la réponse JSON avant de la parser
@@ -228,7 +181,6 @@ class PaymentService extends GetxService {
 
           // Vérifier si la réponse se termine correctement
           if (!cleanedBody.endsWith('}') && !cleanedBody.endsWith(']')) {
-            print('⚠️ PaymentService: Réponse JSON potentiellement tronquée');
             // Essayer de corriger en ajoutant les caractères manquants
             if (cleanedBody.contains('"data":[') &&
                 !cleanedBody.endsWith(']')) {
@@ -241,12 +193,9 @@ class PaymentService extends GetxService {
             if (!cleanedBody.endsWith('}')) {
               cleanedBody += '}';
             }
-            print('🔧 PaymentService: Réponse JSON corrigée');
           }
 
           final responseData = jsonDecode(cleanedBody);
-          print('📊 PaymentService: Response data keys: ${responseData.keys}');
-          print('📄 PaymentService: Response data content: $responseData');
 
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
@@ -272,36 +221,19 @@ class PaymentService extends GetxService {
               data = responseData['paiements'];
             }
           }
-
-          print(
-            '📦 PaymentService: ${data.length} paiements trouvés dans l\'API',
-          );
-
           if (data.isEmpty) {
-            print('⚠️ PaymentService: Aucun paiement trouvé dans l\'API');
-            print(
-              '📄 PaymentService: Structure de réponse: ${responseData.runtimeType}',
-            );
-            print('📄 PaymentService: Contenu complet: $responseData');
-
             // Retourner une liste vide au lieu de lever une exception
             return [];
           }
 
           try {
             return data.map((json) {
-              print('🔍 PaymentService: Parsing payment JSON: $json');
               return PaymentModel.fromJson(json);
             }).toList();
           } catch (e) {
-            print('❌ PaymentService: Erreur lors du parsing des paiements: $e');
-            print('📄 PaymentService: Données problématiques: $data');
             rethrow;
           }
         } catch (e) {
-          print('❌ PaymentService: Erreur de parsing JSON: $e');
-          print('📄 PaymentService: Body content: ${response.body}');
-
           // Essayer de nettoyer les caractères invalides
           try {
             String cleanedBody =
@@ -319,19 +251,12 @@ class PaymentService extends GetxService {
                       '',
                     ) // Supprimer tous les caractères non-ASCII
                     .trim();
-
-            print(
-              '🔧 PaymentService: Tentative de nettoyage des caractères invalides',
-            );
-
             // Vérifier si le JSON nettoyé est valide
             if (cleanedBody.isEmpty) {
-              print('❌ PaymentService: JSON vide après nettoyage');
               return [];
             }
 
             final responseData = jsonDecode(cleanedBody);
-            print('✅ PaymentService: JSON nettoyé avec succès');
 
             // Continuer avec le parsing normal
             List<dynamic> data = [];
@@ -353,18 +278,13 @@ class PaymentService extends GetxService {
             }
 
             if (data.isEmpty) {
-              print('⚠️ PaymentService: Aucune donnée trouvée après nettoyage');
               return [];
             }
 
             return data.map((json) => PaymentModel.fromJson(json)).toList();
           } catch (cleanError) {
-            print('❌ PaymentService: Échec du nettoyage JSON: $cleanError');
-
             // Dernière tentative : essayer de parser seulement une partie de la réponse
             try {
-              print('🔧 PaymentService: Tentative de parsing partiel...');
-
               // Essayer de trouver le début d'un JSON valide
               int startIndex = response.body.indexOf('{');
               int endIndex = response.body.lastIndexOf('}');
@@ -374,12 +294,8 @@ class PaymentService extends GetxService {
                   startIndex,
                   endIndex + 1,
                 );
-                print(
-                  '📄 PaymentService: JSON partiel extrait: ${partialJson.length} caractères',
-                );
 
                 final responseData = jsonDecode(partialJson);
-                print('✅ PaymentService: JSON partiel parsé avec succès');
 
                 // Essayer de récupérer les données
                 List<dynamic> data = [];
@@ -398,28 +314,18 @@ class PaymentService extends GetxService {
                 }
               }
 
-              print(
-                '❌ PaymentService: Impossible de récupérer des données valides',
-              );
               return [];
             } catch (partialError) {
-              print(
-                '❌ PaymentService: Échec du parsing partiel: $partialError',
-              );
               throw Exception('Erreur de format des données: $e');
             }
           }
         }
       } else {
-        print(
-          '❌ PaymentService: Erreur API ${response.statusCode}: ${response.body}',
-        );
         throw Exception(
           'Erreur lors de la récupération des paiements: ${response.statusCode}',
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur lors du chargement: $e');
       rethrow;
     }
   }
@@ -432,8 +338,6 @@ class PaymentService extends GetxService {
     String? comments,
   }) async {
     try {
-      print('🔄 PaymentService: approvePayment() appelé pour ID: $paymentId');
-
       final token = storage.read('token');
       final response = await http.patch(
         Uri.parse('$baseUrl/payments/$paymentId/approve'),
@@ -446,7 +350,6 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Paiement approuvé avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception(
@@ -454,7 +357,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur approvePayment: $e');
       rethrow;
     }
   }
@@ -465,7 +367,6 @@ class PaymentService extends GetxService {
     String? reason,
   }) async {
     try {
-      print('🔄 PaymentService: rejectPayment() appelé pour ID: $paymentId');
 
       final token = storage.read('token');
       final response = await http.patch(
@@ -479,13 +380,11 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Paiement rejeté avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception('Erreur lors du rejet: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur rejectPayment: $e');
       rethrow;
     }
   }
@@ -497,7 +396,6 @@ class PaymentService extends GetxService {
     String? notes,
   }) async {
     try {
-      print('🔄 PaymentService: markAsPaid() appelé pour ID: $paymentId');
 
       final token = storage.read('token');
       final response = await http.patch(
@@ -514,13 +412,11 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Paiement marqué comme payé avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception('Erreur lors du marquage: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur markAsPaid: $e');
       rethrow;
     }
   }
@@ -528,9 +424,6 @@ class PaymentService extends GetxService {
   // Réactiver un paiement rejeté
   Future<Map<String, dynamic>> reactivatePayment(int paymentId) async {
     try {
-      print(
-        '🔄 PaymentService: reactivatePayment() appelé pour ID: $paymentId',
-      );
 
       final token = storage.read('token');
       final response = await http.patch(
@@ -542,7 +435,6 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Paiement réactivé avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception(
@@ -550,7 +442,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur reactivatePayment: $e');
       rethrow;
     }
   }
@@ -560,7 +451,6 @@ class PaymentService extends GetxService {
   // Récupérer les plannings de paiement
   Future<List<Map<String, dynamic>>> getPaymentSchedules() async {
     try {
-      print('🌐 PaymentService: getPaymentSchedules() appelé');
 
       final token = storage.read('token');
       final response = await http.get(
@@ -580,7 +470,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getPaymentSchedules: $e');
       rethrow;
     }
   }
@@ -588,7 +477,6 @@ class PaymentService extends GetxService {
   // Mettre en pause un planning
   Future<Map<String, dynamic>> pauseSchedule(int scheduleId) async {
     try {
-      print('🔄 PaymentService: pauseSchedule() appelé pour ID: $scheduleId');
 
       final token = storage.read('token');
       final response = await http.post(
@@ -600,13 +488,11 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Planning mis en pause avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception('Erreur lors de la pause: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur pauseSchedule: $e');
       rethrow;
     }
   }
@@ -614,7 +500,6 @@ class PaymentService extends GetxService {
   // Reprendre un planning
   Future<Map<String, dynamic>> resumeSchedule(int scheduleId) async {
     try {
-      print('🔄 PaymentService: resumeSchedule() appelé pour ID: $scheduleId');
 
       final token = storage.read('token');
       final response = await http.post(
@@ -626,13 +511,11 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Planning repris avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception('Erreur lors de la reprise: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur resumeSchedule: $e');
       rethrow;
     }
   }
@@ -640,7 +523,6 @@ class PaymentService extends GetxService {
   // Annuler un planning
   Future<Map<String, dynamic>> cancelSchedule(int scheduleId) async {
     try {
-      print('🔄 PaymentService: cancelSchedule() appelé pour ID: $scheduleId');
 
       final token = storage.read('token');
       final response = await http.post(
@@ -652,13 +534,11 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Planning annulé avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception('Erreur lors de l\'annulation: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur cancelSchedule: $e');
       rethrow;
     }
   }
@@ -669,9 +549,6 @@ class PaymentService extends GetxService {
     int installmentId,
   ) async {
     try {
-      print(
-        '🔄 PaymentService: markInstallmentPaid() appelé pour schedule: $scheduleId, installment: $installmentId',
-      );
 
       final token = storage.read('token');
       final response = await http.post(
@@ -685,7 +562,6 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print('✅ PaymentService: Échéance marquée comme payée avec succès');
         return jsonDecode(response.body);
       } else {
         throw Exception(
@@ -693,7 +569,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur markInstallmentPaid: $e');
       rethrow;
     }
   }
@@ -703,7 +578,6 @@ class PaymentService extends GetxService {
   // Récupérer les statistiques des plannings
   Future<Map<String, dynamic>> getScheduleStats() async {
     try {
-      print('🌐 PaymentService: getScheduleStats() appelé');
 
       final token = storage.read('token');
       final response = await http.get(
@@ -715,9 +589,6 @@ class PaymentService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        print(
-          '✅ PaymentService: Statistiques des plannings récupérées avec succès',
-        );
         return jsonDecode(response.body);
       } else {
         throw Exception(
@@ -725,7 +596,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getScheduleStats: $e');
       rethrow;
     }
   }
@@ -733,7 +603,6 @@ class PaymentService extends GetxService {
   // Récupérer les paiements à venir
   Future<List<Map<String, dynamic>>> getUpcomingPayments() async {
     try {
-      print('🌐 PaymentService: getUpcomingPayments() appelé');
 
       final token = storage.read('token');
       final response = await http.get(
@@ -746,7 +615,6 @@ class PaymentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('✅ PaymentService: Paiements à venir récupérés avec succès');
         return List<Map<String, dynamic>>.from(data['payments'] ?? []);
       } else {
         throw Exception(
@@ -754,7 +622,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getUpcomingPayments: $e');
       rethrow;
     }
   }
@@ -762,7 +629,6 @@ class PaymentService extends GetxService {
   // Récupérer les paiements en retard
   Future<List<Map<String, dynamic>>> getOverduePayments() async {
     try {
-      print('🌐 PaymentService: getOverduePayments() appelé');
 
       final token = storage.read('token');
       final response = await http.get(
@@ -775,7 +641,6 @@ class PaymentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('✅ PaymentService: Paiements en retard récupérés avec succès');
         return List<Map<String, dynamic>>.from(data['payments'] ?? []);
       } else {
         throw Exception(
@@ -783,7 +648,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getOverduePayments: $e');
       rethrow;
     }
   }
@@ -810,6 +674,54 @@ class PaymentService extends GetxService {
   }) async {
     try {
       final token = storage.read('token');
+
+      // Préparer les données à envoyer en nettoyant les valeurs null et vides
+      final Map<String, dynamic> requestData = {
+        'client_name': clientName.trim(),
+        'client_email': clientEmail.trim(),
+        'client_address': clientAddress.trim(),
+        'comptable_id': comptableId,
+        'comptable_name': comptableName.trim(),
+        'type': type,
+        'payment_date': paymentDate.toIso8601String(),
+        'amount': amount,
+        'payment_method': paymentMethod,
+      };
+
+      // Ajouter client_id seulement s'il est > 0 (certains backends ne acceptent pas 0)
+      if (clientId > 0) {
+        requestData['client_id'] = clientId;
+      }
+
+      // Ajouter les champs optionnels seulement s'ils ne sont pas null ou vides
+      if (dueDate != null) {
+        requestData['due_date'] = dueDate.toIso8601String();
+      }
+
+      if (description != null && description.trim().isNotEmpty) {
+        requestData['description'] = description.trim();
+      }
+
+      if (notes != null && notes.trim().isNotEmpty) {
+        requestData['notes'] = notes.trim();
+      }
+
+      if (reference != null && reference.trim().isNotEmpty) {
+        requestData['reference'] = reference.trim();
+      }
+
+      // Ajouter le schedule seulement s'il existe
+      if (schedule != null) {
+        try {
+          requestData['schedule'] = schedule.toJson();
+        } catch (e) {
+          // Ne pas inclure le schedule s'il y a une erreur
+        }
+      }
+
+      // Log des données avant envoi
+
+      final jsonBody = jsonEncode(requestData);
       final response = await http.post(
         Uri.parse('$baseUrl/payments'),
         headers: {
@@ -817,32 +729,30 @@ class PaymentService extends GetxService {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'client_id': clientId,
-          'client_name': clientName,
-          'client_email': clientEmail,
-          'client_address': clientAddress,
-          'comptable_id': comptableId,
-          'comptable_name': comptableName,
-          'type': type,
-          'payment_date': paymentDate.toIso8601String(),
-          'due_date': dueDate?.toIso8601String(),
-          'amount': amount,
-          'payment_method': paymentMethod,
-          'description': description,
-          'notes': notes,
-          'reference': reference,
-          'schedule': schedule?.toJson(),
-        }),
+        body: jsonBody,
       );
-
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(response.body);
+        try {
+          final responseBody = jsonDecode(response.body);
+          return responseBody;
+        } catch (e) {
+          throw Exception('Erreur de format de réponse: ${response.body}');
+        }
       } else {
-        throw Exception('Erreur lors de la création: ${response.statusCode}');
+        try {
+          final errorBody = jsonDecode(response.body);
+          final errorMessage =
+              errorBody['message'] ??
+              errorBody['error'] ??
+              'Erreur lors de la création: ${response.statusCode}';
+          throw Exception(errorMessage);
+        } catch (e) {
+          throw Exception(
+            'Erreur lors de la création: ${response.statusCode} - ${response.body}',
+          );
+        }
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur createPayment: $e');
       rethrow;
     }
   }
@@ -865,7 +775,6 @@ class PaymentService extends GetxService {
         throw Exception('Erreur lors de la soumission: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur submitPaymentToPatron: $e');
       rethrow;
     }
   }
@@ -890,7 +799,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur deletePayment: $e');
       rethrow;
     }
   }
@@ -934,7 +842,6 @@ class PaymentService extends GetxService {
         throw Exception('Erreur lors de l\'action: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur togglePaymentSchedule: $e');
       rethrow;
     }
   }
@@ -980,7 +887,6 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
-      print('❌ PaymentService: Erreur getPaymentStats: $e');
       rethrow;
     }
   }

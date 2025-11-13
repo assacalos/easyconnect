@@ -12,15 +12,18 @@ class SupplierService extends GetxService {
 
   // Récupérer tous les fournisseurs
   Future<List<Supplier>> getSuppliers({String? status, String? search}) async {
-    print('🌐 SupplierService: getSuppliers() appelé');
-    print('📊 SupplierService: status = $status, search = $search');
-
     try {
       final token = storage.read('token');
-      print('🔑 SupplierService: Token récupéré: ${token != null ? "✅" : "❌"}');
-
       var queryParams = <String, String>{};
-      if (status != null && status != 'all') queryParams['statut'] = status;
+      if (status != null && status != 'all') {
+        // Normaliser le statut vers le format backend
+        String backendStatus = status;
+        if (status == 'pending') backendStatus = 'en_attente';
+        if (status == 'approved' || status == 'validated')
+          backendStatus = 'valide';
+        if (status == 'rejected') backendStatus = 'rejete';
+        queryParams['statut'] = backendStatus;
+      }
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final queryString =
@@ -29,8 +32,6 @@ class SupplierService extends GetxService {
               : '?${Uri(queryParameters: queryParams).query}';
 
       final url = '$baseUrl/fournisseurs-list$queryString';
-      print('🔗 SupplierService: URL appelée: $url');
-
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -38,74 +39,40 @@ class SupplierService extends GetxService {
           'Authorization': 'Bearer $token',
         },
       );
-
-      print(
-        '📡 SupplierService: Réponse reçue - Status: ${response.statusCode}',
-      );
-      print('📄 SupplierService: Body length: ${response.body.length}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        print('📊 SupplierService: Response data keys: ${responseData.keys}');
-        print('📄 SupplierService: Full response: ${response.body}');
-
         // Essayer différents formats de réponse
         List<dynamic> data = [];
 
         if (responseData['data'] != null) {
           data = responseData['data'];
-          print(
-            '📦 SupplierService: Données trouvées dans "data": ${data.length}',
-          );
         } else if (responseData['fournisseurs'] != null) {
           data = responseData['fournisseurs'];
-          print(
-            '📦 SupplierService: Données trouvées dans "fournisseurs": ${data.length}',
-          );
         } else if (responseData is List) {
           data = responseData;
-          print(
-            '📦 SupplierService: Données trouvées directement dans la liste: ${data.length}',
-          );
         } else {
-          print('❌ SupplierService: Format de réponse non reconnu');
-          print('📄 SupplierService: Structure: ${responseData.runtimeType}');
           return [];
         }
 
         if (data.isNotEmpty) {
-          print('📋 SupplierService: Premier élément: ${data.first}');
         }
 
         try {
           final suppliers =
               data.map((json) => Supplier.fromJson(json)).toList();
-          print('✅ SupplierService: ${suppliers.length} fournisseurs créés');
           return suppliers;
         } catch (e) {
-          print(
-            '❌ SupplierService: Erreur lors du parsing des fournisseurs: $e',
-          );
-          print(
-            '📋 SupplierService: Premier élément problématique: ${data.isNotEmpty ? data.first : "Aucun"}',
-          );
           return [];
         }
       }
-
-      print('❌ SupplierService: Erreur HTTP ${response.statusCode}');
-      print('📄 SupplierService: Response body: ${response.body}');
       return [];
     } catch (e) {
-      print('❌ SupplierService: Exception globale dans getSuppliers: $e');
-      print('🔍 SupplierService: Type d\'erreur: ${e.runtimeType}');
       return [];
     }
   }
 
   // Récupérer un fournisseur par ID
   Future<Supplier> getSupplierById(int id) async {
-    print('🔍 SupplierService: getSupplierById($id) appelé');
 
     final token = storage.read('token');
     final response = await http.get(
@@ -125,10 +92,28 @@ class SupplierService extends GetxService {
 
   // Créer un fournisseur
   Future<Supplier> createSupplier(Supplier supplier) async {
-    print('➕ SupplierService: createSupplier() appelé');
-    print('📝 SupplierService: Nom = ${supplier.nom}');
+    // Validation des champs requis
+    if (supplier.nom.isEmpty) {
+      throw Exception('Le nom du fournisseur est requis');
+    }
+    if (supplier.email.isEmpty) {
+      throw Exception('L\'email est requis');
+    }
+    if (supplier.telephone.isEmpty) {
+      throw Exception('Le téléphone est requis');
+    }
+    if (supplier.adresse.isEmpty) {
+      throw Exception('L\'adresse est requise');
+    }
+    if (supplier.ville.isEmpty) {
+      throw Exception('La ville est requise');
+    }
+    if (supplier.pays.isEmpty) {
+      throw Exception('Le pays est requis');
+    }
 
     final token = storage.read('token');
+    final supplierData = supplier.toJson();
     final response = await http.post(
       Uri.parse('$baseUrl/fournisseurs-create'),
       headers: {
@@ -136,22 +121,22 @@ class SupplierService extends GetxService {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
-      body: json.encode(supplier.toJson()),
+      body: json.encode(supplierData),
     );
-
-    if (response.statusCode == 201) {
+    if (response.statusCode == 201 || response.statusCode == 200) {
       final responseData = json.decode(response.body);
-      return Supplier.fromJson(responseData['data']);
+      return Supplier.fromJson(responseData['data'] ?? responseData);
     }
 
+    // Afficher les détails de l'erreur
+    final errorBody = response.body;
     throw Exception(
-      'Erreur lors de la création du fournisseur: ${response.statusCode}',
+      'Erreur lors de la création du fournisseur: ${response.statusCode} - $errorBody',
     );
   }
 
   // Mettre à jour un fournisseur
   Future<Supplier> updateSupplier(Supplier supplier) async {
-    print('✏️ SupplierService: updateSupplier(${supplier.id}) appelé');
 
     final token = storage.read('token');
     final response = await http.put(
@@ -174,13 +159,12 @@ class SupplierService extends GetxService {
     );
   }
 
-  // Supprimer un fournisseur
+  // Supprimer un fournisseur (soft delete)
   Future<bool> deleteSupplier(int supplierId) async {
-    print('🗑️ SupplierService: deleteSupplier($supplierId) appelé');
 
     final token = storage.read('token');
     final response = await http.delete(
-      Uri.parse('$baseUrl/fournisseurs-delete/$supplierId'),
+      Uri.parse('$baseUrl/fournisseurs-destroy/$supplierId'),
       headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     );
 
@@ -189,7 +173,6 @@ class SupplierService extends GetxService {
 
   // Récupérer les statistiques
   Future<SupplierStats> getSupplierStats() async {
-    print('📊 SupplierService: getSupplierStats() appelé');
 
     final token = storage.read('token');
     final response = await http.get(
@@ -209,7 +192,6 @@ class SupplierService extends GetxService {
 
   // Récupérer les fournisseurs en attente
   Future<List<Supplier>> getPendingSuppliers() async {
-    print('⏳ SupplierService: getPendingSuppliers() appelé');
 
     final token = storage.read('token');
     final response = await http.get(
@@ -228,9 +210,11 @@ class SupplierService extends GetxService {
     );
   }
 
-  // Approuver un fournisseur
-  Future<bool> approveSupplier(int supplierId, {String? comments}) async {
-    print('✅ SupplierService: approveSupplier($supplierId) appelé');
+  // Valider un fournisseur
+  Future<bool> approveSupplier(
+    int supplierId, {
+    String? validationComment,
+  }) async {
 
     final token = storage.read('token');
     final response = await http.post(
@@ -240,16 +224,20 @@ class SupplierService extends GetxService {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
-      body: json.encode({'comments': comments}),
+      body: json.encode({
+        if (validationComment != null && validationComment.isNotEmpty)
+          'validation_comment': validationComment,
+      }),
     );
-
     return response.statusCode == 200;
   }
 
   // Rejeter un fournisseur
-  Future<bool> rejectSupplier(int supplierId, String reason) async {
-    print('❌ SupplierService: rejectSupplier($supplierId) appelé');
-
+  Future<bool> rejectSupplier(
+    int supplierId, {
+    required String rejectionReason,
+    String? rejectionComment,
+  }) async {
     final token = storage.read('token');
     final response = await http.post(
       Uri.parse('$baseUrl/fournisseurs-reject/$supplierId'),
@@ -258,9 +246,12 @@ class SupplierService extends GetxService {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
-      body: json.encode({'reason': reason}),
+      body: json.encode({
+        'rejection_reason': rejectionReason,
+        if (rejectionComment != null && rejectionComment.isNotEmpty)
+          'rejection_comment': rejectionComment,
+      }),
     );
-
     return response.statusCode == 200;
   }
 
@@ -270,7 +261,6 @@ class SupplierService extends GetxService {
     double rating, {
     String? comments,
   }) async {
-    print('⭐ SupplierService: rateSupplier($supplierId, $rating) appelé');
 
     final token = storage.read('token');
     final response = await http.post(
@@ -288,7 +278,6 @@ class SupplierService extends GetxService {
 
   // Soumettre un fournisseur
   Future<bool> submitSupplier(int supplierId) async {
-    print('📤 SupplierService: submitSupplier($supplierId) appelé');
 
     final token = storage.read('token');
     final response = await http.post(

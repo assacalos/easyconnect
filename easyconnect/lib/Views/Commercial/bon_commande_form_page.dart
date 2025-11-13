@@ -441,7 +441,8 @@ class BonCommandeFormPage extends StatelessWidget {
           (context) => ClientSelectionDialog(
             onClientSelected: (client) {
               controller.selectClient(client);
-              Get.back();
+              // Le dialog se ferme déjà automatiquement avec Navigator.of(context).pop()
+              // Pas besoin d'appeler Get.back() ici
             },
           ),
     );

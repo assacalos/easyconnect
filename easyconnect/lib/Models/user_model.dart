@@ -20,12 +20,17 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    // Conversion ID en int
+    // Conversion ID en int (avec gestion robuste)
     int idValue;
     if (json['id'] is String) {
-      idValue = int.parse(json['id']);
+      final idStr = json['id'] as String;
+      idValue = int.tryParse(idStr.trim()) ?? 0;
+    } else if (json['id'] is int) {
+      idValue = json['id'] as int;
+    } else if (json['id'] is num) {
+      idValue = (json['id'] as num).toInt();
     } else {
-      idValue = json['id'];
+      idValue = 0;
     }
 
     // Conversion rôle en int

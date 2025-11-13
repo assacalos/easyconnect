@@ -110,7 +110,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.build),
-        label: 'Maintenance',
+        label: 'Interventions',
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.access_time),

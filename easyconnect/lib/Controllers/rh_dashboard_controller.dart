@@ -12,7 +12,7 @@ import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/services/leave_service.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/recruitment_service.dart';
-import 'package:easyconnect/services/salary_service.dart';
+import 'package:easyconnect/services/contract_service.dart';
 
 class RhDashboardController extends BaseDashboardController {
   var currentSection = 'dashboard'.obs;
@@ -26,7 +26,7 @@ class RhDashboardController extends BaseDashboardController {
   final AttendancePunchService _attendanceService =
       Get.find<AttendancePunchService>();
   final RecruitmentService _recruitmentService = Get.find<RecruitmentService>();
-  final SalaryService _salaryService = Get.find<SalaryService>();
+  final ContractService _contractService = Get.find<ContractService>();
 
   List<Filter> get filters => DashboardFilters.getFiltersForRole(Roles.RH);
 
@@ -42,12 +42,14 @@ class RhDashboardController extends BaseDashboardController {
   final pendingRecruitments = 0.obs;
   final pendingAttendance = 0.obs;
   final pendingSalaries = 0.obs;
+  final pendingContracts = 0.obs;
 
   // Deuxième partie - Entités validées
   final activeEmployees = 0.obs;
   final approvedLeaves = 0.obs;
   final completedRecruitments = 0.obs;
   final paidSalaries = 0.obs;
+  final approvedContracts = 0.obs;
 
   // Troisième partie - Statistiques montants
   final totalSalaryMass = 0.0.obs;
@@ -78,13 +80,6 @@ class RhDashboardController extends BaseDashboardController {
       color: Colors.orange,
       requiredPermission: Permissions.MANAGE_RECRUITMENT,
     ),
-    StatCard(
-      title: "Salaires",
-      value: paidSalaries.value.toString(),
-      icon: Icons.account_balance_wallet,
-      color: Colors.purple,
-      requiredPermission: Permissions.MANAGE_SALARIES,
-    ),
   ];
 
   // Nouvelles statistiques pour le dashboard amélioré
@@ -109,13 +104,6 @@ class RhDashboardController extends BaseDashboardController {
       icon: Icons.access_time,
       color: Colors.orange,
       requiredPermission: Permissions.VIEW_ATTENDANCE,
-    ),
-    StatCard(
-      title: "Salaires en attente",
-      value: pendingSalaries.value.toString(),
-      icon: Icons.account_balance_wallet,
-      color: Colors.purple,
-      requiredPermission: Permissions.MANAGE_SALARIES,
     ),
   ];
 
@@ -167,20 +155,11 @@ class RhDashboardController extends BaseDashboardController {
         ChartData(4, 1, "Annulés"),
       ];
 
-      salaryData.value = [
-        ChartData(1, 45000, "Salaires"),
-        ChartData(2, 5000, "Primes"),
-        ChartData(3, 3000, "Avantages"),
-        ChartData(4, 2000, "Autres"),
-      ];
-
       // Mettre à jour les données des graphiques
       updateChartData('employees', employeeData);
       updateChartData('leaves', leaveData);
       updateChartData('recruitment', recruitmentData);
-      updateChartData('salaries', salaryData);
     } catch (e) {
-      print('Erreur lors du chargement des données: $e');
     } finally {
       isLoading.value = false;
     }
@@ -200,15 +179,14 @@ class RhDashboardController extends BaseDashboardController {
       pendingAttendance.value =
           attendances.where((a) => a.status.toLowerCase() == 'pending').length;
 
-      final salaries = await _salaryService.getSalaries();
-      pendingSalaries.value =
-          salaries.where((s) => s.status == 'pending').length;
+      final contracts = await _contractService.getAllContracts();
+      pendingContracts.value =
+          contracts.where((c) => c.status == 'pending').length;
     } catch (e) {
-      print('Erreur lors du chargement des entités en attente: $e');
       pendingLeaves.value = 0;
       pendingRecruitments.value = 0;
       pendingAttendance.value = 0;
-      pendingSalaries.value = 0;
+      pendingContracts.value = 0;
     }
   }
 
@@ -225,29 +203,23 @@ class RhDashboardController extends BaseDashboardController {
       completedRecruitments.value =
           recruitments.length - pendingRecruitments.value;
 
-      final salaries = await _salaryService.getSalaries();
-      paidSalaries.value = salaries.length - pendingSalaries.value;
+      final contracts = await _contractService.getAllContracts();
+      approvedContracts.value =
+          contracts.where((c) => c.status == 'active').length;
     } catch (e) {
-      print('Erreur lors du chargement des entités validées: $e');
       activeEmployees.value = 0;
       approvedLeaves.value = 0;
       completedRecruitments.value = 0;
-      paidSalaries.value = 0;
+      approvedContracts.value = 0;
     }
   }
 
   Future<void> _loadStatistics() async {
     try {
-      final salaries = await _salaryService.getSalaries();
-      totalSalaryMass.value = salaries.fold(0.0, (sum, s) => sum + s.netSalary);
-      totalBonuses.value = salaries.fold(0.0, (sum, s) => sum + s.bonus);
       // Valeurs approximatives si non disponibles
       recruitmentCost.value = 0.0;
       trainingCost.value = 0.0;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
-      totalSalaryMass.value = 0.0;
-      totalBonuses.value = 0.0;
       recruitmentCost.value = 0.0;
       trainingCost.value = 0.0;
     }

@@ -3,316 +3,183 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 
-class PaymentList extends StatelessWidget {
+class PaymentList extends StatefulWidget {
   const PaymentList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    print('🔄 PaymentList: build() appelé');
-    final PaymentController controller = Get.find<PaymentController>();
-    print('📦 PaymentList: PaymentController trouvé: true');
-    print('📊 PaymentList: Nombre de paiements: ${controller.payments.length}');
-    print('⏳ PaymentList: Chargement en cours: ${controller.isLoading.value}');
+  State<PaymentList> createState() => _PaymentListState();
+}
 
+class _PaymentListState extends State<PaymentList>
+    with SingleTickerProviderStateMixin {
+  final PaymentController controller = Get.find<PaymentController>();
+  late TabController _tabController;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        controller.loadPayments();
+      }
+    });
+    controller.loadPayments();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<PaymentModel> get _filteredPayments {
+    List<PaymentModel> filtered = controller.payments;
+
+    // Filtrer par statut selon l'onglet actif
+    switch (_tabController.index) {
+      case 0: // Tous
+        break;
+      case 1: // En attente
+        filtered = filtered.where((p) => p.isPending).toList();
+        break;
+      case 2: // Validés
+        filtered = filtered.where((p) => p.isApproved).toList();
+        break;
+      case 3: // Rejetés
+        filtered = filtered.where((p) => p.isRejected).toList();
+        break;
+    }
+
+    // Filtrer par recherche
+    if (_searchQuery.isNotEmpty) {
+      filtered =
+          filtered
+              .where(
+                (payment) =>
+                    payment.paymentNumber.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    payment.clientName.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ),
+              )
+              .toList();
+    }
+
+    return filtered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestion des paiements'),
-        backgroundColor: Colors.deepPurple,
+        title: const Text('Paiements'),
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => controller.loadPayments(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.wifi_tethering),
-            onPressed: () => controller.testPaymentConnection(),
+            onPressed: controller.loadPayments,
+            tooltip: 'Actualiser',
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Tous', icon: Icon(Icons.list)),
+            Tab(text: 'En attente', icon: Icon(Icons.pending)),
+            Tab(text: 'Validés', icon: Icon(Icons.check_circle)),
+            Tab(text: 'Rejetés', icon: Icon(Icons.cancel)),
+          ],
+        ),
       ),
-      body: DefaultTabController(
-        length: 3,
-        child: Column(
+      body: Obx(() {
+        return Column(
           children: [
             // Barre de recherche
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: TextField(
-                onChanged: (value) {
-                  controller.searchQuery.value = value;
-                  controller.loadPayments();
-                },
                 decoration: InputDecoration(
-                  hintText: 'Rechercher un paiement...',
+                  hintText: 'Rechercher par numéro ou client...',
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon:
+                      _searchQuery.isNotEmpty
+                          ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                          : null,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
+                },
               ),
             ),
 
-            // Statistiques rapides
-            _buildQuickStats(controller),
-
-            // Onglets
-            Container(
-              color: Colors.deepPurple,
-              child: const TabBar(
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                indicatorColor: Colors.white,
-                tabs: [
-                  Tab(text: 'En attente'),
-                  Tab(text: 'Validé'),
-                  Tab(text: 'Rejeté'),
-                ],
-              ),
-            ),
-
-            // Contenu des onglets
+            // Liste des paiements
             Expanded(
-              child: TabBarView(
-                children: [
-                  _buildPaymentList(controller, 'pending'),
-                  _buildPaymentList(controller, 'approved'),
-                  _buildPaymentList(controller, 'rejected'),
-                ],
-              ),
+              child:
+                  controller.isLoading.value
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredPayments.isEmpty
+                      ? const Center(child: Text('Aucun paiement trouvé'))
+                      : ListView.builder(
+                        itemCount: _filteredPayments.length,
+                        itemBuilder: (context, index) {
+                          final payment = _filteredPayments[index];
+                          return _buildPaymentCard(payment);
+                        },
+                      ),
             ),
           ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed('/payments/new'),
-        icon: const Icon(Icons.add),
-        label: const Text('Nouveau Paiement'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-      ),
-    );
-  }
-
-  Widget _buildQuickStats(PaymentController controller) {
-    return Obx(() {
-      final pendingCount = controller.getPendingPayments().length;
-      final approvedCount = controller.getApprovedPayments().length;
-      final rejectedCount = controller.getRejectedPayments().length;
-
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'En attente',
-                pendingCount.toString(),
-                Colors.orange,
-                Icons.pending,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Validé',
-                approvedCount.toString(),
-                Colors.green,
-                Icons.check_circle,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Rejeté',
-                rejectedCount.toString(),
-                Colors.red,
-                Icons.cancel,
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _buildStatCard(
-    String title,
-    String value,
-    Color color,
-    IconData icon,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentList(PaymentController controller, String status) {
-    return Obx(() {
-      if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
-      }
-
-      List<PaymentModel> filteredPayments;
-      switch (status) {
-        case 'pending':
-          filteredPayments = controller.getPendingPayments();
-          break;
-        case 'approved':
-          filteredPayments = controller.getApprovedPayments();
-          break;
-        case 'rejected':
-          filteredPayments = controller.getRejectedPayments();
-          break;
-        default:
-          filteredPayments = controller.payments;
-      }
-
-      if (filteredPayments.isEmpty) {
-        String message;
-        switch (status) {
-          case 'pending':
-            message = 'Aucun paiement en attente';
-            break;
-          case 'approved':
-            message = 'Aucun paiement validé';
-            break;
-          case 'rejected':
-            message = 'Aucun paiement rejeté';
-            break;
-          default:
-            message = 'Aucun paiement trouvé';
-        }
-
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.payment, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-            ],
-          ),
         );
-      }
-
-      return ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: filteredPayments.length,
-        itemBuilder: (context, index) {
-          final payment = filteredPayments[index];
-          return _buildPaymentCard(controller, payment);
-        },
-      );
-    });
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Get.toNamed('/payments/new'),
+        tooltip: 'Nouveau paiement',
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
+    );
   }
 
-  Widget _buildPaymentCard(PaymentController controller, PaymentModel payment) {
+  Widget _buildPaymentCard(PaymentModel payment) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: _getStatusColor(payment),
+          child: Icon(_getStatusIcon(payment), color: Colors.white),
+        ),
+        title: Text(
+          payment.paymentNumber,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec numéro et statut d'approbation
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    payment.paymentNumber,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                _buildApprovalStatusChip(payment),
-              ],
+            Text('Client: ${payment.clientName}'),
+            Text(
+              'Montant: ${payment.amount.toStringAsFixed(0)} ${payment.currency}',
             ),
-            const SizedBox(height: 8),
-
-            // Informations client
-            Row(
-              children: [
-                const Icon(Icons.person, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    payment.clientName,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-
-            // Type et méthode de paiement
-            Row(
-              children: [
-                const Icon(Icons.payment, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(controller.getPaymentTypeName(payment.type)),
-                const SizedBox(width: 16),
-                const Icon(Icons.credit_card, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(controller.getPaymentMethodName(payment.paymentMethod)),
-              ],
-            ),
-            const SizedBox(height: 4),
-
-            // Date et montant
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(
-                  '${payment.paymentDate.day}/${payment.paymentDate.month}/${payment.paymentDate.year}',
-                ),
-                const Spacer(),
-                Text(
-                  '${payment.amount.toStringAsFixed(2)} ${payment.currency}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-
-            // Raison du rejet pour les paiements rejetés (utilise notes si fourni)
+            Text('Date: ${_formatDate(payment.paymentDate)}'),
             if (payment.isRejected &&
                 (payment.notes != null && payment.notes!.isNotEmpty)) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 16, color: Colors.red),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.report, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       'Raison du rejet: ${payment.notes}',
@@ -322,311 +189,98 @@ class PaymentList extends StatelessWidget {
                 ],
               ),
             ],
-
-            // Actions selon le statut d'approbation
-            if (payment.isPending && controller.canApprovePayments) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed:
-                          () => _showApprovalDialog(controller, payment.id),
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Approuver'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed:
-                          () => _showRejectionDialog(controller, payment.id),
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bouton Modifier
+            if (payment.status == 'draft' || payment.status == 'pending')
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.orange),
+                onPressed: () => _editPayment(payment),
+                tooltip: 'Modifier',
               ),
-            ],
-
-            // Bouton PDF pour tous les paiements
-            const SizedBox(height: 8),
-            Row(
+            // Bouton Détail
+            IconButton(
+              icon: const Icon(Icons.info_outline, color: Colors.blue),
+              onPressed: () => _showPaymentDetail(payment),
+              tooltip: 'Voir détails',
+            ),
+            // Bouton PDF
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              onPressed: () => controller.generatePDF(payment.id),
+              tooltip: 'Générer PDF',
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => controller.generatePDF(payment.id),
-                    icon: const Icon(Icons.picture_as_pdf, size: 16),
-                    label: const Text('Générer PDF'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(payment).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _getStatusLabel(payment),
+                    style: TextStyle(
+                      color: _getStatusColor(payment),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${payment.amount.toStringAsFixed(0)} ${payment.currency}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
                 ),
               ],
             ),
-
-            if (payment.isApproved) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed:
-                          () => _showPaymentDialog(controller, payment.id),
-                      icon: const Icon(Icons.payment, size: 16),
-                      label: const Text('Marquer payé'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  if (payment.type == 'monthly') ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            () => _showScheduleDialog(controller, payment.id),
-                        icon: const Icon(Icons.schedule, size: 16),
-                        label: const Text('Planning'),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-
-            if (payment.isRejected) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed:
-                          () => _showReactivationDialog(controller, payment.id),
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('Réactiver'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
+        onTap: () => _showPaymentDetail(payment),
       ),
     );
   }
 
-  Widget _buildApprovalStatusChip(PaymentModel payment) {
-    Color color;
-    switch (payment.approvalStatusColor) {
-      case 'orange':
-        color = Colors.orange;
-        break;
-      case 'green':
-        color = Colors.green;
-        break;
-      case 'red':
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        payment.approvalStatusText,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
-    );
+  Color _getStatusColor(PaymentModel payment) {
+    if (payment.isPending) return Colors.orange;
+    if (payment.isApproved) return Colors.green;
+    if (payment.isRejected) return Colors.red;
+    return Colors.grey;
   }
-}
 
-void _showApprovalDialog(PaymentController controller, int paymentId) {
-  final commentsController = TextEditingController();
+  IconData _getStatusIcon(PaymentModel payment) {
+    if (payment.isPending) return Icons.pending;
+    if (payment.isApproved) return Icons.check_circle;
+    if (payment.isRejected) return Icons.cancel;
+    return Icons.help;
+  }
 
-  Get.dialog(
-    AlertDialog(
-      title: const Text('Approuver le paiement'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Êtes-vous sûr de vouloir approuver ce paiement ?'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: commentsController,
-            decoration: const InputDecoration(
-              labelText: 'Commentaires (optionnel)',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-        ElevatedButton(
-          onPressed: () {
-            controller.approvePayment(
-              paymentId,
-              comments:
-                  commentsController.text.trim().isEmpty
-                      ? null
-                      : commentsController.text.trim(),
-            );
-            Get.back();
-          },
-          child: const Text('Approuver'),
-        ),
-      ],
-    ),
-  );
-}
+  String _getStatusLabel(PaymentModel payment) {
+    if (payment.isPending) return 'En attente';
+    if (payment.isApproved) return 'Validé';
+    if (payment.isRejected) return 'Rejeté';
+    return 'Inconnu';
+  }
 
-void _showRejectionDialog(PaymentController controller, int paymentId) {
-  final reasonController = TextEditingController();
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
 
-  Get.dialog(
-    AlertDialog(
-      title: const Text('Rejeter le paiement'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Êtes-vous sûr de vouloir rejeter ce paiement ?'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: reasonController,
-            decoration: const InputDecoration(
-              labelText: 'Raison du rejet *',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-        ElevatedButton(
-          onPressed: () {
-            if (reasonController.text.trim().isNotEmpty) {
-              controller.rejectPayment(
-                paymentId,
-                reason: reasonController.text.trim(),
-              );
-              Get.back();
-            } else {
-              Get.snackbar('Erreur', 'Veuillez saisir une raison');
-            }
-          },
-          child: const Text('Rejeter'),
-        ),
-      ],
-    ),
-  );
-}
+  void _showPaymentDetail(PaymentModel payment) {
+    Get.toNamed('/payments/detail', arguments: payment.id);
+  }
 
-void _showPaymentDialog(PaymentController controller, int paymentId) {
-  final referenceController = TextEditingController();
-  final notesController = TextEditingController();
-
-  Get.dialog(
-    AlertDialog(
-      title: const Text('Marquer comme payé'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: referenceController,
-            decoration: const InputDecoration(
-              labelText: 'Référence de paiement',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: notesController,
-            decoration: const InputDecoration(
-              labelText: 'Notes (optionnel)',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-        ElevatedButton(
-          onPressed: () {
-            controller.markAsPaid(
-              paymentId,
-              paymentReference:
-                  referenceController.text.trim().isEmpty
-                      ? null
-                      : referenceController.text.trim(),
-              notes:
-                  notesController.text.trim().isEmpty
-                      ? null
-                      : notesController.text.trim(),
-            );
-            Get.back();
-          },
-          child: const Text('Confirmer'),
-        ),
-      ],
-    ),
-  );
-}
-
-void _showReactivationDialog(PaymentController controller, int paymentId) {
-  Get.dialog(
-    AlertDialog(
-      title: const Text('Réactiver le paiement'),
-      content: const Text(
-        'Êtes-vous sûr de vouloir réactiver ce paiement ? Il sera remis en attente d\'approbation.',
-      ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-        ElevatedButton(
-          onPressed: () {
-            controller.reactivatePayment(paymentId);
-            Get.back();
-          },
-          child: const Text('Réactiver'),
-        ),
-      ],
-    ),
-  );
-}
-
-void _showScheduleDialog(PaymentController controller, int paymentId) {
-  Get.dialog(
-    AlertDialog(
-      title: const Text('Gestion du planning'),
-      content: const Text(
-        'Fonctionnalité de gestion du planning à implémenter',
-      ),
-      actions: [
-        TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
-      ],
-    ),
-  );
+  void _editPayment(PaymentModel payment) {
+    Get.toNamed('/payments/edit', arguments: payment.id);
+  }
 }

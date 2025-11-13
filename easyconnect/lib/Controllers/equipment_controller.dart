@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
 import 'package:easyconnect/services/equipment_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 
 class EquipmentController extends GetxController {
   final EquipmentService _equipmentService = EquipmentService();
@@ -12,7 +13,8 @@ class EquipmentController extends GetxController {
   final RxList<Equipment> equipments = <Equipment>[].obs;
   final RxList<Equipment> equipmentsNeedingMaintenance = <Equipment>[].obs;
   final RxList<Equipment> equipmentsWithExpiredWarranty = <Equipment>[].obs;
-  final RxList<EquipmentCategory> equipmentCategories = <EquipmentCategory>[].obs;
+  final RxList<EquipmentCategory> equipmentCategories =
+      <EquipmentCategory>[].obs;
   final RxBool isLoading = false.obs;
   final Rx<EquipmentStats?> equipmentStats = Rx<EquipmentStats?>(null);
 
@@ -74,22 +76,19 @@ class EquipmentController extends GetxController {
     super.onClose();
   }
 
-  // Charger tous les équipements
+  // Charger tous les équipements (sans filtre pour permettre le filtrage côté client)
   Future<void> loadEquipments() async {
     try {
       isLoading.value = true;
-      final loadedEquipments = await _equipmentService.getEquipments(
-        status: selectedStatus.value == 'all' ? null : selectedStatus.value,
-        category: selectedCategory.value == 'all' ? null : selectedCategory.value,
-        condition: selectedCondition.value == 'all' ? null : selectedCondition.value,
-        search: searchQuery.value.isEmpty ? null : searchQuery.value,
-      );
+      // Charger TOUS les équipements sans filtre pour permettre le filtrage par onglet
+      final loadedEquipments = await _equipmentService.getEquipments();
       equipments.assignAll(loadedEquipments);
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les équipements',
+        'Impossible de charger les équipements: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -99,21 +98,19 @@ class EquipmentController extends GetxController {
   // Charger les équipements nécessitant une maintenance
   Future<void> loadEquipmentsNeedingMaintenance() async {
     try {
-      final needingMaintenance = await _equipmentService.getEquipmentsNeedingMaintenance();
+      final needingMaintenance =
+          await _equipmentService.getEquipmentsNeedingMaintenance();
       equipmentsNeedingMaintenance.assignAll(needingMaintenance);
-    } catch (e) {
-      print('Erreur lors du chargement des équipements nécessitant une maintenance: $e');
-    }
+    } catch (e) {}
   }
 
   // Charger les équipements avec garantie expirée
   Future<void> loadEquipmentsWithExpiredWarranty() async {
     try {
-      final expiredWarranty = await _equipmentService.getEquipmentsWithExpiredWarranty();
+      final expiredWarranty =
+          await _equipmentService.getEquipmentsWithExpiredWarranty();
       equipmentsWithExpiredWarranty.assignAll(expiredWarranty);
-    } catch (e) {
-      print('Erreur lors du chargement des équipements avec garantie expirée: $e');
-    }
+    } catch (e) {}
   }
 
   // Charger les catégories
@@ -121,9 +118,7 @@ class EquipmentController extends GetxController {
     try {
       final categories = await _equipmentService.getEquipmentCategories();
       equipmentCategories.assignAll(categories);
-    } catch (e) {
-      print('Erreur lors du chargement des catégories: $e');
-    }
+    } catch (e) {}
   }
 
   // Charger les statistiques
@@ -131,9 +126,7 @@ class EquipmentController extends GetxController {
     try {
       final stats = await _equipmentService.getEquipmentStats();
       equipmentStats.value = stats;
-    } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
-    }
+    } catch (e) {}
   }
 
   // Créer un équipement
@@ -147,14 +140,38 @@ class EquipmentController extends GetxController {
         category: selectedCategoryForm.value,
         status: selectedStatusForm.value,
         condition: selectedConditionForm.value,
-        serialNumber: serialNumberController.text.trim().isEmpty ? null : serialNumberController.text.trim(),
-        model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-        brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-        location: locationController.text.trim().isEmpty ? null : locationController.text.trim(),
-        department: departmentController.text.trim().isEmpty ? null : departmentController.text.trim(),
-        assignedTo: assignedToController.text.trim().isEmpty ? null : assignedToController.text.trim(),
-        supplier: supplierController.text.trim().isEmpty ? null : supplierController.text.trim(),
-        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        serialNumber:
+            serialNumberController.text.trim().isEmpty
+                ? null
+                : serialNumberController.text.trim(),
+        model:
+            modelController.text.trim().isEmpty
+                ? null
+                : modelController.text.trim(),
+        brand:
+            brandController.text.trim().isEmpty
+                ? null
+                : brandController.text.trim(),
+        location:
+            locationController.text.trim().isEmpty
+                ? null
+                : locationController.text.trim(),
+        department:
+            departmentController.text.trim().isEmpty
+                ? null
+                : departmentController.text.trim(),
+        assignedTo:
+            assignedToController.text.trim().isEmpty
+                ? null
+                : assignedToController.text.trim(),
+        supplier:
+            supplierController.text.trim().isEmpty
+                ? null
+                : supplierController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
         purchaseDate: selectedPurchaseDate.value,
         warrantyExpiry: selectedWarrantyExpiry.value,
         lastMaintenance: selectedLastMaintenance.value,
@@ -167,21 +184,31 @@ class EquipmentController extends GetxController {
       );
 
       await _equipmentService.createEquipment(equipment);
+
+      // Attendre un peu pour que l'API mette à jour
+      await Future.delayed(const Duration(milliseconds: 500));
+
       await loadEquipments();
       await loadEquipmentStats();
+      _notifyDashboard();
+
+      clearForm();
 
       Get.snackbar(
         'Succès',
         'Équipement créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
       );
 
-      clearForm();
+      // Fermer automatiquement la page après la soumission
+      Get.back();
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de créer l\'équipement',
+        'Impossible de créer l\'équipement: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -200,21 +227,55 @@ class EquipmentController extends GetxController {
         category: selectedCategoryForm.value,
         status: selectedStatusForm.value,
         condition: selectedConditionForm.value,
-        serialNumber: serialNumberController.text.trim().isEmpty ? null : serialNumberController.text.trim(),
-        model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-        brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-        location: locationController.text.trim().isEmpty ? null : locationController.text.trim(),
-        department: departmentController.text.trim().isEmpty ? null : departmentController.text.trim(),
-        assignedTo: assignedToController.text.trim().isEmpty ? null : assignedToController.text.trim(),
-        supplier: supplierController.text.trim().isEmpty ? null : supplierController.text.trim(),
-        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        serialNumber:
+            serialNumberController.text.trim().isEmpty
+                ? null
+                : serialNumberController.text.trim(),
+        model:
+            modelController.text.trim().isEmpty
+                ? null
+                : modelController.text.trim(),
+        brand:
+            brandController.text.trim().isEmpty
+                ? null
+                : brandController.text.trim(),
+        location:
+            locationController.text.trim().isEmpty
+                ? null
+                : locationController.text.trim(),
+        department:
+            departmentController.text.trim().isEmpty
+                ? null
+                : departmentController.text.trim(),
+        assignedTo:
+            assignedToController.text.trim().isEmpty
+                ? null
+                : assignedToController.text.trim(),
+        supplier:
+            supplierController.text.trim().isEmpty
+                ? null
+                : supplierController.text.trim(),
+        notes:
+            notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
         purchaseDate: selectedPurchaseDate.value ?? equipment.purchaseDate,
-        warrantyExpiry: selectedWarrantyExpiry.value ?? equipment.warrantyExpiry,
-        lastMaintenance: selectedLastMaintenance.value ?? equipment.lastMaintenance,
-        nextMaintenance: selectedNextMaintenance.value ?? equipment.nextMaintenance,
-        purchasePrice: double.tryParse(purchasePriceController.text) ?? equipment.purchasePrice,
-        currentValue: double.tryParse(currentValueController.text) ?? equipment.currentValue,
-        attachments: selectedAttachments.isEmpty ? equipment.attachments : selectedAttachments,
+        warrantyExpiry:
+            selectedWarrantyExpiry.value ?? equipment.warrantyExpiry,
+        lastMaintenance:
+            selectedLastMaintenance.value ?? equipment.lastMaintenance,
+        nextMaintenance:
+            selectedNextMaintenance.value ?? equipment.nextMaintenance,
+        purchasePrice:
+            double.tryParse(purchasePriceController.text) ??
+            equipment.purchasePrice,
+        currentValue:
+            double.tryParse(currentValueController.text) ??
+            equipment.currentValue,
+        attachments:
+            selectedAttachments.isEmpty
+                ? equipment.attachments
+                : selectedAttachments,
         createdAt: equipment.createdAt,
         updatedAt: DateTime.now(),
         createdBy: equipment.createdBy,
@@ -224,14 +285,19 @@ class EquipmentController extends GetxController {
       await _equipmentService.updateEquipment(updatedEquipment);
       await loadEquipments();
       await loadEquipmentStats();
+      _notifyDashboard();
+
+      clearForm();
 
       Get.snackbar(
         'Succès',
         'Équipement mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
       );
 
-      clearForm();
+      // Fermer automatiquement la page après la mise à jour
+      Get.back();
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -252,6 +318,7 @@ class EquipmentController extends GetxController {
       if (success) {
         equipments.removeWhere((e) => e.id == equipment.id);
         await loadEquipmentStats();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -277,10 +344,14 @@ class EquipmentController extends GetxController {
     try {
       isLoading.value = true;
 
-      final success = await _equipmentService.updateEquipmentStatus(equipment.id!, status);
+      final success = await _equipmentService.updateEquipmentStatus(
+        equipment.id!,
+        status,
+      );
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -302,14 +373,21 @@ class EquipmentController extends GetxController {
   }
 
   // Mettre à jour l'état d'un équipement
-  Future<void> updateEquipmentCondition(Equipment equipment, String condition) async {
+  Future<void> updateEquipmentCondition(
+    Equipment equipment,
+    String condition,
+  ) async {
     try {
       isLoading.value = true;
 
-      final success = await _equipmentService.updateEquipmentCondition(equipment.id!, condition);
+      final success = await _equipmentService.updateEquipmentCondition(
+        equipment.id!,
+        condition,
+      );
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
+        _notifyDashboard();
 
         Get.snackbar(
           'Succès',
@@ -335,7 +413,10 @@ class EquipmentController extends GetxController {
     try {
       isLoading.value = true;
 
-      final success = await _equipmentService.assignEquipment(equipment.id!, assignedTo);
+      final success = await _equipmentService.assignEquipment(
+        equipment.id!,
+        assignedTo,
+      );
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
@@ -411,6 +492,16 @@ class EquipmentController extends GetxController {
     selectedNextMaintenance.value = equipment.nextMaintenance;
     selectedAttachments.assignAll(equipment.attachments ?? []);
     selectedEquipment.value = equipment;
+  }
+
+  // Notifier le dashboard technicien d'un changement
+  void _notifyDashboard() {
+    try {
+      if (Get.isRegistered<TechnicienDashboardController>()) {
+        final dashboardController = Get.find<TechnicienDashboardController>();
+        dashboardController.refreshPendingEntities();
+      }
+    } catch (e) {}
   }
 
   // Vider le formulaire
@@ -499,14 +590,54 @@ class EquipmentController extends GetxController {
 
   // Obtenir les catégories d'équipements
   List<Map<String, dynamic>> get equipmentCategoriesList => [
-    {'value': 'computer', 'label': 'Ordinateur', 'icon': Icons.computer, 'color': Colors.blue},
-    {'value': 'printer', 'label': 'Imprimante', 'icon': Icons.print, 'color': Colors.green},
-    {'value': 'network', 'label': 'Réseau', 'icon': Icons.router, 'color': Colors.orange},
-    {'value': 'server', 'label': 'Serveur', 'icon': Icons.dns, 'color': Colors.purple},
-    {'value': 'mobile', 'label': 'Mobile', 'icon': Icons.phone_android, 'color': Colors.teal},
-    {'value': 'tablet', 'label': 'Tablette', 'icon': Icons.tablet, 'color': Colors.indigo},
-    {'value': 'monitor', 'label': 'Écran', 'icon': Icons.monitor, 'color': Colors.cyan},
-    {'value': 'other', 'label': 'Autre', 'icon': Icons.devices_other, 'color': Colors.grey},
+    {
+      'value': 'computer',
+      'label': 'Ordinateur',
+      'icon': Icons.computer,
+      'color': Colors.blue,
+    },
+    {
+      'value': 'printer',
+      'label': 'Imprimante',
+      'icon': Icons.print,
+      'color': Colors.green,
+    },
+    {
+      'value': 'network',
+      'label': 'Réseau',
+      'icon': Icons.router,
+      'color': Colors.orange,
+    },
+    {
+      'value': 'server',
+      'label': 'Serveur',
+      'icon': Icons.dns,
+      'color': Colors.purple,
+    },
+    {
+      'value': 'mobile',
+      'label': 'Mobile',
+      'icon': Icons.phone_android,
+      'color': Colors.teal,
+    },
+    {
+      'value': 'tablet',
+      'label': 'Tablette',
+      'icon': Icons.tablet,
+      'color': Colors.indigo,
+    },
+    {
+      'value': 'monitor',
+      'label': 'Écran',
+      'icon': Icons.monitor,
+      'color': Colors.cyan,
+    },
+    {
+      'value': 'other',
+      'label': 'Autre',
+      'icon': Icons.devices_other,
+      'color': Colors.grey,
+    },
   ];
 
   // Obtenir les statuts
@@ -559,41 +690,51 @@ class EquipmentController extends GetxController {
     List<Equipment> filtered = equipments;
 
     if (selectedStatus.value != 'all') {
-      filtered = filtered
-          .where((equipment) => equipment.status == selectedStatus.value)
-          .toList();
+      filtered =
+          filtered
+              .where((equipment) => equipment.status == selectedStatus.value)
+              .toList();
     }
 
     if (selectedCategory.value != 'all') {
-      filtered = filtered
-          .where((equipment) => equipment.category == selectedCategory.value)
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (equipment) => equipment.category == selectedCategory.value,
+              )
+              .toList();
     }
 
     if (selectedCondition.value != 'all') {
-      filtered = filtered
-          .where((equipment) => equipment.condition == selectedCondition.value)
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (equipment) => equipment.condition == selectedCondition.value,
+              )
+              .toList();
     }
 
     if (searchQuery.value.isNotEmpty) {
-      filtered = filtered
-          .where(
-            (equipment) =>
-                equipment.name.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                equipment.description.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                (equipment.serialNumber?.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ?? false) ||
-                (equipment.model?.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ?? false),
-          )
-          .toList();
+      filtered =
+          filtered
+              .where(
+                (equipment) =>
+                    equipment.name.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ) ||
+                    equipment.description.toLowerCase().contains(
+                      searchQuery.value.toLowerCase(),
+                    ) ||
+                    (equipment.serialNumber?.toLowerCase().contains(
+                          searchQuery.value.toLowerCase(),
+                        ) ??
+                        false) ||
+                    (equipment.model?.toLowerCase().contains(
+                          searchQuery.value.toLowerCase(),
+                        ) ??
+                        false),
+              )
+              .toList();
     }
 
     return filtered;

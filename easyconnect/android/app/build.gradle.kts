@@ -24,15 +24,37 @@ android {
         applicationId = "com.easyconnect.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 21  // Android 5.0 (Lollipop) - Supporte la plupart des appareils
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Support de toutes les architectures CPU pour compatibilité maximale
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
+    }
+
+    // Configuration des splits ABI pour créer un APK universel
+    splits {
+        abi {
+            isEnable = false  // Désactivé pour créer un APK universel (fat APK)
+            reset()
+            // Si vous voulez créer des APK séparés par architecture, décommentez:
+            // include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            // isUniversalApk = true  // Crée aussi un APK universel
+        }
     }
 
     buildTypes {
         release {
             // Configuration de signature temporairement désactivée pour les tests
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

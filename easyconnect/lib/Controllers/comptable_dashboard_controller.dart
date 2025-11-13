@@ -182,7 +182,6 @@ class ComptableDashboardController extends BaseDashboardController {
       updateChartData('expenses', expenseData);
       updateChartData('salaries', salaryData);
     } catch (e) {
-      print('Erreur lors du chargement des données: $e');
     } finally {
       isLoading.value = false;
     }
@@ -191,13 +190,16 @@ class ComptableDashboardController extends BaseDashboardController {
   Future<void> _loadPendingEntities() async {
     try {
       final factures = await _invoiceService.getAllInvoices();
-      pendingFactures.value = factures.where((f) => f.status == 'draft').length;
+      final statusLower = (String status) => status.toLowerCase();
+      pendingFactures.value =
+          factures.where((f) {
+            final status = statusLower(f.status);
+            return status == 'draft' || status == 'en_attente';
+          }).length;
 
       final paiements = await _paymentService.getAllPayments();
-      pendingPaiements.value =
-          paiements
-              .where((p) => p.status == 'pending' || p.status == 'submitted')
-              .length;
+      // Utiliser la propriété isPending du modèle qui gère tous les cas
+      pendingPaiements.value = paiements.where((p) => p.isPending).length;
 
       final depenses = await _expenseService.getExpenses();
       pendingDepenses.value =
@@ -207,7 +209,6 @@ class ComptableDashboardController extends BaseDashboardController {
       pendingSalaires.value =
           salaires.where((s) => s.status == 'pending').length;
     } catch (e) {
-      print('Erreur lors du chargement des entités en attente: $e');
       pendingFactures.value = 0;
       pendingPaiements.value = 0;
       pendingDepenses.value = 0;
@@ -229,7 +230,6 @@ class ComptableDashboardController extends BaseDashboardController {
       final salaires = await _salaryService.getSalaries();
       validatedSalaires.value = salaires.length - pendingSalaires.value;
     } catch (e) {
-      print('Erreur lors du chargement des entités validées: $e');
       validatedFactures.value = 0;
       validatedPaiements.value = 0;
       validatedDepenses.value = 0;
@@ -262,7 +262,6 @@ class ComptableDashboardController extends BaseDashboardController {
       netProfit.value =
           totalRevenue.value - totalExpenses.value - totalSalaries.value;
     } catch (e) {
-      print('Erreur lors du chargement des statistiques: $e');
       totalRevenue.value = 0.0;
       totalPayments.value = 0.0;
       totalExpenses.value = 0.0;

@@ -54,101 +54,78 @@ class PaymentModel {
   });
 
   factory PaymentModel.fromJson(Map<String, dynamic> json) {
-    print('🔍 PaymentModel: Parsing JSON: $json');
+    try {
+      print('🔍 PaymentModel: Parsing JSON: $json');
 
-    return PaymentModel(
-      id:
-          json['id'] is String
-              ? int.tryParse(json['id']) ?? 0
-              : (json['id'] ?? 0),
-      paymentNumber: json['payment_number'] ?? json['paymentNumber'] ?? 'N/A',
-      type: json['type'] ?? 'one_time',
-      clientId:
-          (json['client_id'] ??
-                      json['cliennt_id'] ??
-                      json['clieent_id'] ??
-                      json['clientId'] ??
-                      0)
-                  is String
-              ? int.tryParse(
-                    json['client_id'] ??
-                        json['cliennt_id'] ??
-                        json['clieent_id'] ??
-                        json['clientId'] ??
-                        '0',
-                  ) ??
-                  0
-              : (json['client_id'] ??
+      return PaymentModel(
+        id: _parseInt(json['id']) ?? 0,
+        paymentNumber:
+            json['payment_number']?.toString() ??
+            json['paymentNumber']?.toString() ??
+            'N/A',
+        type: json['type']?.toString() ?? 'one_time',
+        clientId:
+            _parseInt(
+              json['client_id'] ??
                   json['cliennt_id'] ??
                   json['clieent_id'] ??
-                  json['clientId'] ??
-                  0),
-      clientName: json['client_name'] ?? json['clientName'] ?? 'Client inconnu',
-      clientEmail: json['client_email'] ?? json['clientEmail'] ?? '',
-      clientAddress: json['client_address'] ?? json['clientAddress'] ?? '',
-      comptableId: json['comptable_id'] ?? json['comptableId'] ?? 0,
-      comptableName:
-          json['comptable_name'] ??
-          json['comptableName'] ??
-          'Comptable inconnu',
-      paymentDate:
-          json['payment_date'] != null
-              ? DateTime.parse(json['payment_date'])
-              : (json['paymentDate'] != null
-                  ? DateTime.parse(json['paymentDate'])
-                  : DateTime.now()),
-      dueDate:
-          json['due_date'] != null
-              ? DateTime.parse(json['due_date'])
-              : (json['dueDate'] != null
-                  ? DateTime.parse(json['dueDate'])
-                  : null),
-      status: json['status'] ?? 'pending',
-      amount:
-          json['amount'] is String
-              ? double.tryParse(json['amount']) ?? 0.0
-              : (json['amount']?.toDouble() ?? 0.0),
-      currency: json['currency'] ?? 'FCFA',
-      paymentMethod:
-          json['payment_method'] ?? json['paymentMethod'] ?? 'bank_transfer',
-      description: json['description'] ?? '',
-      notes: json['notes'] ?? '',
-      reference: json['reference'] ?? '',
-      schedule:
-          json['schedule'] != null
-              ? PaymentSchedule.fromJson(json['schedule'])
-              : null,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : (json['createdAt'] != null
-                  ? DateTime.parse(json['createdAt'])
-                  : DateTime.now()),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : (json['updatedAt'] != null
-                  ? DateTime.parse(json['updatedAt'])
-                  : DateTime.now()),
-      submittedAt:
-          json['submitted_at'] != null
-              ? DateTime.parse(json['submitted_at'])
-              : (json['submittedAt'] != null
-                  ? DateTime.parse(json['submittedAt'])
-                  : null),
-      approvedAt:
-          json['approved_at'] != null
-              ? DateTime.parse(json['approved_at'])
-              : (json['approvedAt'] != null
-                  ? DateTime.parse(json['approvedAt'])
-                  : null),
-      paidAt:
-          json['paid_at'] != null
-              ? DateTime.parse(json['paid_at'])
-              : (json['paidAt'] != null
-                  ? DateTime.parse(json['paidAt'])
-                  : null),
-    );
+                  json['clientId'],
+            ) ??
+            0,
+        clientName:
+            json['client_name']?.toString() ??
+            json['clientName']?.toString() ??
+            'Client inconnu',
+        clientEmail:
+            json['client_email']?.toString() ??
+            json['clientEmail']?.toString() ??
+            '',
+        clientAddress:
+            json['client_address']?.toString() ??
+            json['clientAddress']?.toString() ??
+            '',
+        comptableId:
+            _parseInt(json['comptable_id'] ?? json['comptableId']) ?? 0,
+        comptableName:
+            json['comptable_name']?.toString() ??
+            json['comptableName']?.toString() ??
+            'Comptable inconnu',
+        paymentDate:
+            _parseDateTime(json['payment_date'] ?? json['paymentDate']) ??
+            DateTime.now(),
+        dueDate: _parseDateTime(json['due_date'] ?? json['dueDate']),
+        status: json['status']?.toString() ?? 'pending',
+        amount: _parseDouble(json['amount']),
+        currency: json['currency']?.toString() ?? 'FCFA',
+        paymentMethod:
+            json['payment_method']?.toString() ??
+            json['paymentMethod']?.toString() ??
+            'bank_transfer',
+        description: json['description']?.toString(),
+        notes: json['notes']?.toString(),
+        reference: json['reference']?.toString(),
+        schedule:
+            json['schedule'] != null
+                ? PaymentSchedule.fromJson(json['schedule'])
+                : null,
+        createdAt:
+            _parseDateTime(json['created_at'] ?? json['createdAt']) ??
+            DateTime.now(),
+        updatedAt:
+            _parseDateTime(json['updated_at'] ?? json['updatedAt']) ??
+            DateTime.now(),
+        submittedAt: _parseDateTime(
+          json['submitted_at'] ?? json['submittedAt'],
+        ),
+        approvedAt: _parseDateTime(json['approved_at'] ?? json['approvedAt']),
+        paidAt: _parseDateTime(json['paid_at'] ?? json['paidAt']),
+      );
+    } catch (e, stackTrace) {
+      print('❌ PaymentModel.fromJson: Erreur: $e');
+      print('❌ PaymentModel.fromJson: Stack trace: $stackTrace');
+      print('❌ PaymentModel.fromJson: JSON: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -181,7 +158,8 @@ class PaymentModel {
   }
 
   // Méthodes pour gérer le statut d'approbation
-  bool get isPending => status == 'pending' || status == 'submitted';
+  bool get isPending =>
+      status == 'pending' || status == 'submitted' || status == 'draft';
   bool get isApproved => status == 'approved' || status == 'paid';
   bool get isRejected => status == 'rejected';
 
@@ -449,4 +427,49 @@ class PaymentTemplate {
       'created_at': createdAt.toIso8601String(),
     };
   }
+}
+
+// Méthodes de parsing robustes pour PaymentModel
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+  if (value is num) return value.toInt();
+  return null;
+}
+
+double _parseDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return 0.0;
+    final parsed = double.tryParse(trimmed);
+    if (parsed != null) return parsed;
+    final cleaned = trimmed
+        .replaceAll(RegExp(r'[^\d.,-]'), '')
+        .replaceAll(',', '.');
+    return double.tryParse(cleaned) ?? 0.0;
+  }
+  if (value is num) return value.toDouble();
+  return 0.0;
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String) {
+    try {
+      return DateTime.parse(value);
+    } catch (e) {
+      print('⚠️ PaymentModel: Erreur parsing DateTime: $value - $e');
+      return null;
+    }
+  }
+  return null;
 }

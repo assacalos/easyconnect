@@ -27,7 +27,7 @@ return new class extends Migration
             $table->decimal('tax_rate', 10, 2); // Taux appliqué
             $table->decimal('tax_amount', 15, 2); // Montant de la taxe
             $table->decimal('total_amount', 15, 2); // Montant total
-            $table->enum('status', ['en_attente', 'valide', 'rejete'])->default('en_attente');
+            $table->enum('status', ['en_attente', 'valide', 'rejete', 'paye'])->default('en_attente');
             $table->text('description')->nullable();
             $table->text('notes')->nullable();
             $table->json('calculation_details')->nullable(); // Détails du calcul

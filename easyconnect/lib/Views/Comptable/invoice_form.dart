@@ -58,31 +58,43 @@ class InvoiceForm extends StatelessWidget {
               children: [
                 const Icon(Icons.person, color: Colors.blue),
                 const SizedBox(width: 8),
-                const Text(
-                  'Informations client',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Informations client',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green),
+                          ),
+                          child: const Text(
+                            'Validés uniquement',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green),
-                  ),
-                  child: const Text(
-                    'Validés uniquement',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
                 ElevatedButton.icon(
                   onPressed: () => _showClientSelectionDialog(controller),
                   icon: const Icon(Icons.search, size: 16),
@@ -527,7 +539,7 @@ class InvoiceForm extends StatelessWidget {
           (context) => ClientSelectionDialog(
             onClientSelected: (client) {
               controller.selectClientForInvoice(client);
-              Get.back();
+              // Ne pas appeler Get.back() ici car le dialog le fait déjà
             },
           ),
     );
@@ -537,7 +549,6 @@ class InvoiceForm extends StatelessWidget {
     final descriptionController = TextEditingController();
     final quantityController = TextEditingController(text: '1');
     final unitPriceController = TextEditingController();
-    final unitController = TextEditingController();
 
     Get.dialog(
       AlertDialog(
@@ -553,29 +564,13 @@ class InvoiceForm extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: quantityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Quantité',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: unitController,
-                    decoration: const InputDecoration(
-                      labelText: 'Unité',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
+            TextField(
+              controller: quantityController,
+              decoration: const InputDecoration(
+                labelText: 'Quantité',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextField(
@@ -599,8 +594,6 @@ class InvoiceForm extends StatelessWidget {
                   description: descriptionController.text,
                   quantity: int.tryParse(quantityController.text) ?? 1,
                   unitPrice: double.tryParse(unitPriceController.text) ?? 0.0,
-                  unit:
-                      unitController.text.isEmpty ? null : unitController.text,
                 );
                 Get.back();
               } else {

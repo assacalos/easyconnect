@@ -14,7 +14,6 @@ class BordereauItem extends Model
     protected $fillable = [
         'bordereau_id',
         'designation',
-        'unite',
         'quantite',
         'prix_unitaire',
         'description',

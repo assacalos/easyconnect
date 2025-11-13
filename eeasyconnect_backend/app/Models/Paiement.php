@@ -13,6 +13,10 @@ class Paiement extends Model
         'payment_number',
         'type',
         'facture_id',
+        'client_id',
+        'client_name',
+        'client_email',
+        'client_address',
         'montant',
         'date_paiement',
         'due_date',
@@ -21,8 +25,11 @@ class Paiement extends Model
         'status',
         'reference',
         'commentaire',
+        'notes',
         'description',
         'user_id',
+        'comptable_id',
+        'comptable_name',
         'validated_by',
         'validated_at',
         'validation_comment',
@@ -52,9 +59,19 @@ class Paiement extends Model
         return $this->belongsTo(Facture::class);
     }
 
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function comptable()
+    {
+        return $this->belongsTo(User::class, 'comptable_id');
     }
 
     public function validator()
