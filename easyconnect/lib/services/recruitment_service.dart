@@ -101,9 +101,15 @@ class RecruitmentService extends GetxService {
             return [];
           }
 
-          return dataList
-              .map((json) => RecruitmentRequest.fromJson(json))
-              .toList();
+          try {
+            final requests =
+                dataList
+                    .map((json) => RecruitmentRequest.fromJson(json))
+                    .toList();
+            return requests;
+          } catch (e) {
+            rethrow;
+          }
         } else {
           return [];
         }
@@ -521,19 +527,26 @@ class RecruitmentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<String>.from(data['data']);
-      } else {
-        // Retourner des départements par défaut en cas d'erreur
-        return [
-          'Ressources Humaines',
-          'Commercial',
-          'Comptabilité',
-          'Technique',
-          'Support',
-          'Direction',
-        ];
+        final departments = List<String>.from(data['data'] ?? []);
+        // S'assurer que "Ressources Humaines" est toujours dans la liste
+        if (departments.isNotEmpty) {
+          if (!departments.contains('Ressources Humaines')) {
+            departments.add('Ressources Humaines');
+          }
+          return departments;
+        }
       }
+      // Retourner des départements par défaut si le backend ne retourne rien
+      return [
+        'Ressources Humaines',
+        'Commercial',
+        'Comptabilité',
+        'Technique',
+        'Support',
+        'Direction',
+      ];
     } catch (e) {
+      // Retourner des départements par défaut en cas d'erreur
       return [
         'Ressources Humaines',
         'Commercial',

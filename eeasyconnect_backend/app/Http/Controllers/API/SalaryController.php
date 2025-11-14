@@ -576,17 +576,34 @@ class SalaryController extends Controller
                 ], 404);
             }
 
+            // Si le salaire est en pending, le calculer d'abord
+            if ($salary->status === 'pending' || $salary->status === 'draft') {
+                if (!$salary->calculateSalary()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Impossible de calculer ce salaire pour l\'approbation'
+                    ], 400);
+                }
+                // Recharger le salaire après calcul
+                $salary->refresh();
+            }
+
             $notes = $request->get('notes');
 
             if ($salary->approve($request->user()->id, $notes)) {
+                // Recharger le salaire avec ses relations
+                $salary->refresh();
+                $salary->load(['employee', 'hr', 'approver', 'salaryItems.salaryComponent']);
+
                 return response()->json([
                     'success' => true,
+                    'data' => $salary,
                     'message' => 'Salaire approuvé avec succès'
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Ce salaire ne peut pas être approuvé'
+                    'message' => 'Ce salaire ne peut pas être approuvé. Statut actuel: ' . $salary->status . '. Les statuts acceptés sont: calculated'
                 ], 400);
             }
 

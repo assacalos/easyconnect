@@ -22,6 +22,8 @@ import 'package:easyconnect/services/recruitment_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
+import 'package:easyconnect/services/contract_service.dart';
+import 'package:easyconnect/services/leave_service.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 
@@ -49,6 +51,8 @@ class PatronDashboardController extends BaseDashboardController {
   final SupplierService _supplierService = Get.find<SupplierService>();
   final StockService _stockService = Get.find<StockService>();
   final EmployeeService _employeeService = Get.find<EmployeeService>();
+  final ContractService _contractService = Get.find<ContractService>();
+  final LeaveService _leaveService = Get.find<LeaveService>();
 
   List<Filter> get filters => DashboardFilters.getFiltersForRole(Roles.PATRON);
 
@@ -73,6 +77,8 @@ class PatronDashboardController extends BaseDashboardController {
   final pendingInterventions = 0.obs;
   final pendingTaxes = 0.obs;
   final pendingRecruitments = 0.obs;
+  final pendingContracts = 0.obs;
+  final pendingLeaves = 0.obs;
   final pendingSuppliers = 0.obs;
   final pendingStocks = 0.obs;
 
@@ -292,73 +298,57 @@ class PatronDashboardController extends BaseDashboardController {
   }
 
   Future<void> _loadPendingValidations() async {
-    try {
-      // Charger les clients en attente (status = 0 ou null)
-      await _loadPendingClients();
+    // Charger chaque entité indépendamment pour éviter qu'une erreur affecte les autres
+    // Charger les clients en attente (status = 0 ou null)
+    await _loadPendingClients();
 
-      // Charger les devis en attente (status = 1)
-      await _loadPendingDevis();
+    // Charger les devis en attente (status = 1)
+    await _loadPendingDevis();
 
-      // Charger les bordereaux en attente (status = 1)
-      await _loadPendingBordereaux();
+    // Charger les bordereaux en attente (status = 1)
+    await _loadPendingBordereaux();
 
-      // Charger les bons de commande en attente (status = 0)
-      await _loadPendingBonCommandes();
+    // Charger les bons de commande en attente (status = 0)
+    await _loadPendingBonCommandes();
 
-      // Charger les factures en attente (status = 'draft')
-      await _loadPendingFactures();
+    // Charger les factures en attente (status = 'draft' ou 'en_attente')
+    await _loadPendingFactures();
 
-      // Charger les paiements en attente (status = 'pending' ou 'submitted')
-      await _loadPendingPaiements();
+    // Charger les paiements en attente (status = 'pending' ou 'submitted' ou 'draft')
+    await _loadPendingPaiements();
 
-      // Charger les dépenses en attente (status = 'pending')
-      await _loadPendingDepenses();
+    // Charger les dépenses en attente (status = 'pending')
+    await _loadPendingDepenses();
 
-      // Charger les salaires en attente (status = 'pending')
-      await _loadPendingSalaires();
+    // Charger les salaires en attente (status = 'pending')
+    await _loadPendingSalaires();
 
-      // Charger les rapports en attente (status = 'submitted')
-      await _loadPendingReporting();
+    // Charger les rapports en attente (status = 'submitted')
+    await _loadPendingReporting();
 
-      // Charger les pointages en attente (status = 'pending')
-      await _loadPendingPointages();
+    // Charger les pointages en attente (status = 'pending')
+    await _loadPendingPointages();
 
-      // Charger les interventions en attente (status = 'pending')
-      await _loadPendingInterventions();
+    // Charger les interventions en attente (status = 'pending')
+    await _loadPendingInterventions();
 
-      // Charger les taxes en attente (status = 'pending')
-      await _loadPendingTaxes();
+    // Charger les taxes en attente (status = 'pending')
+    await _loadPendingTaxes();
 
-      // Charger les recrutements en attente (status = 'draft')
-      await _loadPendingRecruitments();
+    // Charger les recrutements en attente (status = 'draft')
+    await _loadPendingRecruitments();
 
-      // Charger les fournisseurs en attente (status = 'pending')
-      await _loadPendingSuppliers();
+    // Charger les contrats en attente (status = 'pending')
+    await _loadPendingContracts();
 
-      // Charger les stocks en attente (status = 'pending')
-      await _loadPendingStocks();
-    } catch (e, stackTrace) {
-      // Réinitialiser toutes les valeurs en cas d'erreur
-      _resetAllPendingCounts();
-    }
-  }
+    // Charger les congés en attente (status = 'pending')
+    await _loadPendingLeaves();
 
-  void _resetAllPendingCounts() {
-    pendingClients.value = 0;
-    pendingDevis.value = 0;
-    pendingBordereaux.value = 0;
-    pendingBonCommandes.value = 0;
-    pendingFactures.value = 0;
-    pendingPaiements.value = 0;
-    pendingDepenses.value = 0;
-    pendingSalaires.value = 0;
-    pendingReporting.value = 0;
-    pendingPointages.value = 0;
-    pendingInterventions.value = 0;
-    pendingTaxes.value = 0;
-    pendingRecruitments.value = 0;
-    pendingSuppliers.value = 0;
-    pendingStocks.value = 0;
+    // Charger les fournisseurs en attente (status = 'pending')
+    await _loadPendingSuppliers();
+
+    // Charger les stocks en attente (status = 'pending')
+    await _loadPendingStocks();
   }
 
   Future<void> _loadPerformanceMetrics() async {
@@ -481,31 +471,65 @@ class PatronDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingFactures() async {
     try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<InvoiceService>()) {
+        print('⚠️ InvoiceService n\'est pas enregistré');
+        pendingFactures.value = 0;
+        return;
+      }
+
       final factures = await _invoiceService.getAllInvoices();
-      final statusLower = (String status) => status.toLowerCase();
+      final statusLower = (String status) => status.toLowerCase().trim();
       pendingFactures.value =
           factures.where(
             (facture) {
               final status = statusLower(facture.status);
-              return status == 'draft' || status == 'en_attente';
-            }, // draft ou en_attente = en attente
+              return status == 'draft' ||
+                  status == 'en_attente' ||
+                  status == 'pending' ||
+                  status == 'en attente';
+            }, // draft, en_attente, pending ou en attente = en attente
           ).length;
+      print(
+        '📊 Factures en attente: ${pendingFactures.value} sur ${factures.length} factures totales',
+      );
       // Debug: afficher les statuts uniques
       final statusSet = factures.map((f) => f.status).toSet();
-    } catch (e) {
+      print('📋 Statuts de factures trouvés: $statusSet');
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des factures en attente: $e');
+      print('Stack trace: $stackTrace');
       pendingFactures.value = 0;
     }
   }
 
   Future<void> _loadPendingPaiements() async {
     try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<PaymentService>()) {
+        print('⚠️ PaymentService n\'est pas enregistré');
+        pendingPaiements.value = 0;
+        return;
+      }
+
       final paiements = await _paymentService.getAllPayments();
       // Utiliser la propriété isPending du modèle qui gère tous les cas (pending, submitted, draft)
       pendingPaiements.value =
           paiements.where((paiement) => paiement.isPending).length;
+      print(
+        '💰 Paiements en attente: ${pendingPaiements.value} sur ${paiements.length} paiements totaux',
+      );
       // Debug: afficher les statuts uniques
       final statusSet = paiements.map((p) => p.status).toSet();
-    } catch (e) {
+      print('📋 Statuts de paiements trouvés: $statusSet');
+      // Debug: afficher les paiements en attente
+      final pendingList = paiements.where((p) => p.isPending).toList();
+      print(
+        '📝 Paiements en attente détaillés: ${pendingList.map((p) => '${p.paymentNumber}: ${p.status}').join(', ')}',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des paiements en attente: $e');
+      print('Stack trace: $stackTrace');
       pendingPaiements.value = 0;
     }
   }
@@ -569,22 +593,52 @@ class PatronDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingTaxes() async {
     try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<TaxService>()) {
+        print('⚠️ TaxService n\'est pas enregistré');
+        pendingTaxes.value = 0;
+        return;
+      }
+
       final taxes = await _taxService.getTaxes();
-      pendingTaxes.value = taxes.where((tax) => tax.status == 'pending').length;
-    } catch (e) {
+      // Utiliser la propriété isPending du modèle qui gère tous les cas
+      pendingTaxes.value = taxes.where((tax) => tax.isPending).length;
+      print(
+        '💰 Taxes en attente: ${pendingTaxes.value} sur ${taxes.length} taxes totales',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des taxes en attente: $e');
+      print('Stack trace: $stackTrace');
       pendingTaxes.value = 0;
     }
   }
 
   Future<void> _loadPendingRecruitments() async {
     try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<RecruitmentService>()) {
+        print('⚠️ RecruitmentService n\'est pas enregistré');
+        pendingRecruitments.value = 0;
+        return;
+      }
+
       final recruitments =
           await _recruitmentService.getAllRecruitmentRequests();
+      // Les recrutements en attente peuvent avoir le statut 'draft' ou 'published'
       pendingRecruitments.value =
           recruitments
-              .where((recruitment) => recruitment.status == 'draft')
+              .where(
+                (recruitment) =>
+                    recruitment.status.toLowerCase() == 'draft' ||
+                    recruitment.status.toLowerCase() == 'published',
+              )
               .length;
-    } catch (e) {
+      print(
+        '👔 Recrutements en attente: ${pendingRecruitments.value} sur ${recruitments.length} recrutements totaux',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des recrutements en attente: $e');
+      print('Stack trace: $stackTrace');
       pendingRecruitments.value = 0;
     }
   }
@@ -596,6 +650,62 @@ class PatronDashboardController extends BaseDashboardController {
           suppliers.where((supplier) => supplier.statut == 'pending').length;
     } catch (e) {
       pendingSuppliers.value = 0;
+    }
+  }
+
+  Future<void> _loadPendingContracts() async {
+    try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<ContractService>()) {
+        print('⚠️ ContractService n\'est pas enregistré');
+        pendingContracts.value = 0;
+        return;
+      }
+
+      final contracts = await _contractService.getAllContracts();
+      pendingContracts.value =
+          contracts
+              .where(
+                (contract) =>
+                    contract.status.toLowerCase() == 'pending' ||
+                    contract.status.toLowerCase() == 'draft',
+              )
+              .length;
+      print(
+        '📄 Contrats en attente: ${pendingContracts.value} sur ${contracts.length} contrats totaux',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des contrats en attente: $e');
+      print('Stack trace: $stackTrace');
+      pendingContracts.value = 0;
+    }
+  }
+
+  Future<void> _loadPendingLeaves() async {
+    try {
+      // Vérifier que le service est bien initialisé
+      if (!Get.isRegistered<LeaveService>()) {
+        print('⚠️ LeaveService n\'est pas enregistré');
+        pendingLeaves.value = 0;
+        return;
+      }
+
+      final leaves = await _leaveService.getAllLeaveRequests();
+      pendingLeaves.value =
+          leaves
+              .where(
+                (leave) =>
+                    leave.status.toLowerCase() == 'pending' ||
+                    leave.status.toLowerCase() == 'submitted',
+              )
+              .length;
+      print(
+        '🏖️ Congés en attente: ${pendingLeaves.value} sur ${leaves.length} congés totaux',
+      );
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des congés en attente: $e');
+      print('Stack trace: $stackTrace');
+      pendingLeaves.value = 0;
     }
   }
 

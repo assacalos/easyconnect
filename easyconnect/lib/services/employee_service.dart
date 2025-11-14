@@ -9,6 +9,8 @@ class EmployeeService extends GetxService {
   static EmployeeService get to => Get.find();
 
   // Récupérer tous les employés
+  // Note: Si la réponse est trop grande, le backend peut la tronquer
+  // Dans ce cas, on charge par pagination avec une limite par défaut
   Future<List<Employee>> getEmployees({
     String? search,
     String? department,
@@ -17,7 +19,11 @@ class EmployeeService extends GetxService {
     int? page,
     int? limit,
   }) async {
+    // Si aucune limite n'est spécifiée, utiliser une limite par défaut pour éviter les réponses trop grandes
+    final effectiveLimit = limit ?? 50;
+    final effectivePage = page ?? 1;
     try {
+      print('🔵 [EMPLOYEE_SERVICE] getEmployees() appelé');
       String url = '$baseUrl/employees';
       List<String> params = [];
 
@@ -33,33 +39,127 @@ class EmployeeService extends GetxService {
       if (status != null && status.isNotEmpty) {
         params.add('status=$status');
       }
-      if (page != null) {
-        params.add('page=$page');
-      }
-      if (limit != null) {
-        params.add('limit=$limit');
-      }
+      // Toujours ajouter la pagination pour éviter les réponses trop grandes
+      params.add('page=$effectivePage');
+      params.add('limit=$effectiveLimit');
 
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
+      // Construire l'URL avec les paramètres
+      url += '?${params.join('&')}';
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return (data['data'] as List)
-            .map((json) => Employee.fromJson(json))
-            .toList();
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération des employés: ${response.statusCode}',
+      print('🔵 [EMPLOYEE_SERVICE] Appel GET $url');
+      http.Response response;
+      try {
+        response = await http.get(
+          Uri.parse(url),
+          headers: ApiService.headers(),
+        );
+      } catch (e) {
+        // Si la route /employees échoue, essayer /employees-list
+        print(
+          '⚠️ [EMPLOYEE_SERVICE] Route /employees échouée, essai /employees-list: $e',
+        );
+        url = '$baseUrl/employees-list';
+        if (params.isNotEmpty) {
+          url += '?${params.join('&')}';
+        }
+        print('🔵 [EMPLOYEE_SERVICE] Tentative avec route: $url');
+        response = await http.get(
+          Uri.parse(url),
+          headers: ApiService.headers(),
         );
       }
-    } catch (e) {
+
+      print('🔵 [EMPLOYEE_SERVICE] Réponse status: ${response.statusCode}');
+      print(
+        '🔵 [EMPLOYEE_SERVICE] Réponse body length: ${response.body.length}',
+      );
+
+      // Afficher seulement un aperçu du body pour éviter de surcharger les logs
+      final bodyPreview =
+          response.body.length > 1000
+              ? '${response.body.substring(0, 1000)}... (tronqué)'
+              : response.body;
+      print('🔵 [EMPLOYEE_SERVICE] Réponse body (preview): $bodyPreview');
+
+      if (response.statusCode == 200) {
+        // Vérifier si le body est complet (se termine par } ou ])
+        final bodyTrimmed = response.body.trim();
+        final isComplete =
+            bodyTrimmed.endsWith('}') || bodyTrimmed.endsWith(']');
+
+        if (!isComplete) {
+          print('⚠️ [EMPLOYEE_SERVICE] Le body semble être tronqué');
+          print(
+            '⚠️ [EMPLOYEE_SERVICE] Derniers caractères: ${bodyTrimmed.substring(bodyTrimmed.length > 100 ? bodyTrimmed.length - 100 : 0)}',
+          );
+          throw Exception(
+            'La réponse du serveur est incomplète (JSON tronqué). Le backend a peut-être renvoyé trop de données.',
+          );
+        }
+
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e, stackTrace) {
+          print('❌ [EMPLOYEE_SERVICE] Erreur lors du parsing JSON: $e');
+          print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
+          // Afficher les derniers caractères pour debug
+          final lastChars =
+              response.body.length > 200
+                  ? response.body.substring(response.body.length - 200)
+                  : response.body;
+          print('❌ [EMPLOYEE_SERVICE] Derniers caractères du body: $lastChars');
+          throw Exception(
+            'Erreur lors du parsing JSON: $e. La réponse du serveur est peut-être mal formatée ou tronquée.',
+          );
+        }
+
+        if (data['data'] != null) {
+          // Le backend peut retourner soit une liste directe, soit un objet paginé
+          List<dynamic> dataList;
+
+          if (data['data'] is List) {
+            // Format simple : {"success": true, "data": [...]}
+            dataList = data['data'] as List;
+            print(
+              '🔵 [EMPLOYEE_SERVICE] Format simple - ${dataList.length} employés trouvés',
+            );
+          } else if (data['data'] is Map && data['data']['data'] != null) {
+            // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
+            dataList = data['data']['data'] as List;
+            print(
+              '🔵 [EMPLOYEE_SERVICE] Format paginé - ${dataList.length} employés trouvés',
+            );
+          } else {
+            print('⚠️ [EMPLOYEE_SERVICE] Format de données non reconnu');
+            return [];
+          }
+
+          try {
+            final employees =
+                dataList.map((json) => Employee.fromJson(json)).toList();
+            print(
+              '✅ [EMPLOYEE_SERVICE] ${employees.length} employés parsés avec succès',
+            );
+            return employees;
+          } catch (e, stackTrace) {
+            print('❌ [EMPLOYEE_SERVICE] Erreur lors du parsing: $e');
+            print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
+            rethrow;
+          }
+        } else {
+          print('⚠️ [EMPLOYEE_SERVICE] Pas de champ "data" dans la réponse');
+          return [];
+        }
+      } else {
+        print('❌ [EMPLOYEE_SERVICE] Erreur HTTP ${response.statusCode}');
+        throw Exception(
+          'Erreur lors de la récupération des employés: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ [EMPLOYEE_SERVICE] Exception getEmployees: $e');
+      print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -257,9 +357,7 @@ class EmployeeService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors de la soumission: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors de la soumission: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -267,7 +365,10 @@ class EmployeeService extends GetxService {
   }
 
   // Approuver un employé (pour le patron)
-  Future<Map<String, dynamic>> approveEmployee(int id, {String? comments}) async {
+  Future<Map<String, dynamic>> approveEmployee(
+    int id, {
+    String? comments,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/employees/$id/approve'),
@@ -288,7 +389,10 @@ class EmployeeService extends GetxService {
   }
 
   // Rejeter un employé (pour le patron)
-  Future<Map<String, dynamic>> rejectEmployee(int id, {required String reason}) async {
+  Future<Map<String, dynamic>> rejectEmployee(
+    int id, {
+    required String reason,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/employees/$id/reject'),
@@ -299,9 +403,7 @@ class EmployeeService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors du rejet: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors du rejet: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -339,14 +441,34 @@ class EmployeeService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<String>.from(data['data']);
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération des départements: ${response.statusCode}',
-        );
+        final departments = List<String>.from(data['data'] ?? []);
+        // S'assurer que "Ressources Humaines" est toujours dans la liste
+        if (departments.isNotEmpty) {
+          if (!departments.contains('Ressources Humaines')) {
+            departments.add('Ressources Humaines');
+          }
+          return departments;
+        }
       }
+      // Retourner des départements par défaut si le backend ne retourne rien
+      return [
+        'Ressources Humaines',
+        'Commercial',
+        'Comptabilité',
+        'Technique',
+        'Support',
+        'Direction',
+      ];
     } catch (e) {
-      rethrow;
+      // Retourner des départements par défaut en cas d'erreur
+      return [
+        'Ressources Humaines',
+        'Commercial',
+        'Comptabilité',
+        'Technique',
+        'Support',
+        'Direction',
+      ];
     }
   }
 
@@ -440,7 +562,10 @@ class EmployeeService extends GetxService {
   }
 
   // Approuver un congé
-  Future<Map<String, dynamic>> approveLeave(int leaveId, {String? comments}) async {
+  Future<Map<String, dynamic>> approveLeave(
+    int leaveId, {
+    String? comments,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/leaves/$leaveId/approve'),
@@ -461,7 +586,10 @@ class EmployeeService extends GetxService {
   }
 
   // Rejeter un congé
-  Future<Map<String, dynamic>> rejectLeave(int leaveId, {required String reason}) async {
+  Future<Map<String, dynamic>> rejectLeave(
+    int leaveId, {
+    required String reason,
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/leaves/$leaveId/reject'),
@@ -531,9 +659,7 @@ class EmployeeService extends GetxService {
             .map((json) => Employee.fromJson(json))
             .toList();
       } else {
-        throw Exception(
-          'Erreur lors de la recherche: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors de la recherche: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;

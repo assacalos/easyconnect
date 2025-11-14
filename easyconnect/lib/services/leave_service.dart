@@ -29,7 +29,7 @@ class LeaveService extends GetxService {
           'end_date': endDate.toIso8601String(),
           'reason': reason,
           'comments': comments,
-          'attachment_paths': attachmentPaths,
+          'attachment_paths': attachmentPaths ?? [],
         }),
       );
 
@@ -202,9 +202,7 @@ class LeaveService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors du rejet: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors du rejet: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -222,9 +220,7 @@ class LeaveService extends GetxService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors de l\'annulation: ${response.statusCode}',
-        );
+        throw Exception('Erreur lors de l\'annulation: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -242,7 +238,7 @@ class LeaveService extends GetxService {
   }) async {
     try {
       Map<String, dynamic> body = {};
-      
+
       if (leaveType != null) body['leave_type'] = leaveType;
       if (startDate != null) body['start_date'] = startDate.toIso8601String();
       if (endDate != null) body['end_date'] = endDate.toIso8601String();
@@ -361,14 +357,16 @@ class LeaveService extends GetxService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return (data['data'] as List)
-            .map((json) => LeaveType(
-              value: json['value'],
-              label: json['label'],
-              description: json['description'],
-              requiresApproval: json['requires_approval'],
-              maxDays: json['max_days'],
-              isPaid: json['is_paid'],
-            ))
+            .map(
+              (json) => LeaveType(
+                value: json['value'],
+                label: json['label'],
+                description: json['description'],
+                requiresApproval: json['requires_approval'],
+                maxDays: json['max_days'],
+                isPaid: json['is_paid'],
+              ),
+            )
             .toList();
       } else {
         // Retourner les types par défaut en cas d'erreur

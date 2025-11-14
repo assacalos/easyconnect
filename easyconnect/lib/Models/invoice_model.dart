@@ -55,7 +55,10 @@ class InvoiceModel {
     try {
       return InvoiceModel(
         id: _parseInt(json['id']) ?? 0,
-        invoiceNumber: json['invoice_number']?.toString() ?? '',
+        invoiceNumber:
+            json['invoice_number']?.toString() ??
+            json['numero_facture']?.toString() ??
+            '',
         clientId:
             _parseInt(
               json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
@@ -74,14 +77,18 @@ class InvoiceModel {
             json['commercial_name']?.toString() ??
             json['nom']?.toString() ??
             '',
-        invoiceDate: _parseDateTime(json['invoice_date']) ?? DateTime.now(),
-        dueDate: _parseDateTime(json['due_date']) ?? DateTime.now(),
+        invoiceDate:
+            _parseDateTime(json['invoice_date'] ?? json['date_facture']) ??
+            DateTime.now(),
+        dueDate:
+            _parseDateTime(json['due_date'] ?? json['date_echeance']) ??
+            DateTime.now(),
         status: json['status']?.toString() ?? 'en_attente',
-        subtotal: _parseDouble(json['subtotal']),
-        taxRate: _parseDouble(json['tax_rate']),
-        taxAmount: _parseDouble(json['tax_amount']),
-        totalAmount: _parseDouble(json['total_amount']),
-        currency: json['currency']?.toString() ?? 'EUR',
+        subtotal: _parseDouble(json['subtotal'] ?? json['montant_ht']),
+        taxRate: _parseDouble(json['tax_rate'] ?? json['tva']),
+        taxAmount: _parseDouble(json['tax_amount'] ?? json['tva']),
+        totalAmount: _parseDouble(json['total_amount'] ?? json['montant_ttc']),
+        currency: json['currency']?.toString() ?? 'FCFA',
         notes: json['notes']?.toString(),
         terms: json['terms']?.toString(),
         items:

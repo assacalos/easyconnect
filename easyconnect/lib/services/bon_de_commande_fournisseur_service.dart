@@ -42,6 +42,10 @@ class BonDeCommandeFournisseurService {
         try {
           final responseData = json.decode(response.body);
 
+          print(
+            '📥 Réponse getBonDeCommandes: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
+          );
+
           // Gérer différents formats de réponse
           List<dynamic> data;
           if (responseData is List) {
@@ -54,18 +58,32 @@ class BonDeCommandeFournisseurService {
             } else {
               data = [responseData['data']];
             }
+          } else if (responseData['bon_de_commandes'] != null) {
+            if (responseData['bon_de_commandes'] is List) {
+              data = responseData['bon_de_commandes'];
+            } else {
+              data = [responseData['bon_de_commandes']];
+            }
           } else if (responseData['bon_de_commande'] != null) {
             data = [responseData['bon_de_commande']];
           } else {
+            print('⚠️ Aucune donnée trouvée dans la réponse');
             return [];
           }
+
+          print('📊 ${data.length} bons de commande trouvés');
 
           final List<BonDeCommande> bonDeCommandeList =
               data
                   .map((json) {
                     try {
                       return BonDeCommande.fromJson(json);
-                    } catch (e) {
+                    } catch (e, stackTrace) {
+                      print(
+                        '❌ Erreur lors du parsing d\'un bon de commande: $e',
+                      );
+                      print('📋 JSON: $json');
+                      print('Stack trace: $stackTrace');
                       return null;
                     }
                   })
@@ -73,8 +91,13 @@ class BonDeCommandeFournisseurService {
                   .cast<BonDeCommande>()
                   .toList();
 
+          print(
+            '✅ ${bonDeCommandeList.length} bons de commande parsés avec succès',
+          );
           return bonDeCommandeList;
-        } catch (e) {
+        } catch (e, stackTrace) {
+          print('❌ Erreur lors du parsing de la réponse: $e');
+          print('Stack trace: $stackTrace');
           return [];
         }
       }
@@ -95,6 +118,10 @@ class BonDeCommandeFournisseurService {
 
       final bonDeCommandeJson = bonDeCommande.toJsonForCreate();
 
+      // Log pour déboguer
+      print('📤 JSON envoyé au backend:');
+      print(json.encode(bonDeCommandeJson));
+
       final response = await http.post(
         Uri.parse('$baseUrl/bons-de-commande-create'),
         headers: {
@@ -104,6 +131,10 @@ class BonDeCommandeFournisseurService {
         },
         body: json.encode(bonDeCommandeJson),
       );
+
+      // Log de la réponse
+      print('📥 Réponse du backend (${response.statusCode}):');
+      print(response.body);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         try {
@@ -187,9 +218,39 @@ class BonDeCommandeFournisseurService {
             'Erreur de validation (422). Veuillez vérifier les données saisies.',
           );
         }
+      } else if (response.statusCode == 500) {
+        try {
+          final errorData = json.decode(response.body);
+          String errorMessage = 'Erreur serveur (500)';
+
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          } else if (errorData['error'] != null) {
+            errorMessage = errorData['error'].toString();
+          } else if (errorData['errors'] != null) {
+            if (errorData['errors'] is Map) {
+              final errors = errorData['errors'] as Map<String, dynamic>;
+              errorMessage = errors.entries
+                  .map((e) => '${e.key}: ${e.value}')
+                  .join('\n');
+            } else {
+              errorMessage = errorData['errors'].toString();
+            }
+          }
+
+          print('❌ Erreur 500 détaillée: $errorMessage');
+          print('📋 Corps de la réponse: ${response.body}');
+
+          throw Exception('Erreur serveur: $errorMessage');
+        } catch (e) {
+          if (e is Exception && e.toString().contains('Erreur serveur')) {
+            rethrow;
+          }
+          throw Exception('Erreur serveur (500). Détails: ${response.body}');
+        }
       } else {
         throw Exception(
-          'Erreur lors de la création du bon de commande: ${response.statusCode}',
+          'Erreur lors de la création du bon de commande: ${response.statusCode}\nRéponse: ${response.body}',
         );
       }
     } catch (e) {
@@ -296,6 +357,55 @@ class BonDeCommandeFournisseurService {
       throw Exception('Erreur lors de la récupération du bon de commande');
     } catch (e) {
       throw Exception('Erreur lors de la récupération du bon de commande: $e');
+    }
+  }
+
+  // Valider/Approuver un bon de commande
+  Future<bool> validateBonDeCommande(int bonDeCommandeId) async {
+    try {
+      final token = storage.read('token');
+      final response = await http.post(
+        Uri.parse('$baseUrl/bons-de-commande-validate/$bonDeCommandeId'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        return responseData['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Rejeter un bon de commande
+  Future<bool> rejectBonDeCommande(
+    int bonDeCommandeId,
+    String commentaire,
+  ) async {
+    try {
+      final token = storage.read('token');
+      final response = await http.post(
+        Uri.parse('$baseUrl/bons-de-commande-reject/$bonDeCommandeId'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'commentaire': commentaire}),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        return responseData['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      return false;
     }
   }
 }

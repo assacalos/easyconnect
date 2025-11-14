@@ -55,7 +55,29 @@ class PaiementController extends Controller
             $query->where('comptable_id', auth()->id());
         }
         
-        $paiements = $query->orderBy('created_at', 'desc')->paginate($request->get('per_page', 15));
+        // Pagination optionnelle
+        $perPage = $request->get('per_page');
+        $limit = $request->get('limit');
+        
+        // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
+        if (!$perPage && !$limit) {
+            $paiements = $query->orderBy('created_at', 'desc')->get();
+            
+            // Formater pour le frontend
+            $formattedPaiements = $paiements->map(function ($paiement) {
+                return $this->formatPaymentForFrontend($paiement);
+            });
+            
+            return response()->json([
+                'success' => true,
+                'data' => $formattedPaiements,
+                'message' => 'Liste des paiements récupérée avec succès'
+            ]);
+        }
+        
+        // Sinon, utiliser la pagination
+        $perPage = $perPage ?? $limit ?? 15;
+        $paiements = $query->orderBy('created_at', 'desc')->paginate($perPage);
         
         // Formater pour le frontend
         $paiements->getCollection()->transform(function ($paiement) {
@@ -64,11 +86,7 @@ class PaiementController extends Controller
         
         return response()->json([
             'success' => true,
-            'data' => $paiements->items(),
-            'current_page' => $paiements->currentPage(),
-            'last_page' => $paiements->lastPage(),
-            'per_page' => $paiements->perPage(),
-            'total' => $paiements->total(),
+            'data' => $paiements,
             'message' => 'Liste des paiements récupérée avec succès'
         ]);
     }
@@ -355,30 +373,52 @@ class PaiementController extends Controller
      * Valider un paiement
      * Accessible par Comptable et Admin
      */
-    public function validatePaiement($id)
+    public function validatePaiement(Request $request, $id)
     {
-        $paiement = Paiement::findOrFail($id);
-        
-        if ($paiement->statut === 'valide') {
+        try {
+            $paiement = Paiement::findOrFail($id);
+            
+            // Vérifier que le paiement peut être validé
+            if ($paiement->status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce paiement est déjà validé'
+                ], 400);
+            }
+
+            // Si le paiement est en draft, le soumettre d'abord
+            if ($paiement->status === 'draft') {
+                $paiement->submit();
+            }
+
+            // Utiliser la méthode approve du modèle qui gère correctement la validation
+            if ($paiement->approve(auth()->id(), $request->get('comment'))) {
+                // Marquer la facture comme payée si elle existe
+                if ($paiement->facture_id && $paiement->facture) {
+                    $paiement->facture->update(['statut' => 'payee']);
+                }
+
+                // Recharger le paiement avec ses relations
+                $paiement->refresh();
+                $paiement->load('client', 'comptable', 'facture', 'schedule');
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->formatPaymentForFrontend($paiement),
+                    'message' => 'Paiement validé avec succès'
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce paiement ne peut pas être validé. Statut actuel: ' . $paiement->status
+                ], 400);
+            }
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Ce paiement est déjà validé'
-            ], 400);
+                'message' => 'Erreur lors de la validation: ' . $e->getMessage()
+            ], 500);
         }
-        
-        $paiement->update([
-            'statut' => 'valide',
-            'date_validation' => now()
-        ]);
-
-        // Marquer la facture comme payée
-        $paiement->facture->update(['statut' => 'payee']);
-
-        return response()->json([
-            'success' => true,
-            'paiement' => $paiement,
-            'message' => 'Paiement validé avec succès'
-        ]);
     }
 
     /**

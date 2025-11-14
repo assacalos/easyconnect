@@ -167,22 +167,46 @@ class RhDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingEntities() async {
     try {
-      final leaves = await _leaveService.getAllLeaveRequests();
-      pendingLeaves.value = leaves.where((l) => l.status == 'pending').length;
+      // Charger les congés en attente
+      try {
+        final leaves = await _leaveService.getAllLeaveRequests();
+        pendingLeaves.value = leaves.where((l) => l.status == 'pending').length;
+      } catch (e) {
+        pendingLeaves.value = 0;
+      }
 
-      final recruitments =
-          await _recruitmentService.getAllRecruitmentRequests();
-      pendingRecruitments.value =
-          recruitments.where((r) => r.status == 'draft').length;
+      // Charger les recrutements en attente
+      // Les recrutements "en attente" sont ceux avec le statut "published" (publié mais pas encore validé)
+      try {
+        final recruitments =
+            await _recruitmentService.getAllRecruitmentRequests();
+        pendingRecruitments.value =
+            recruitments.where((r) => r.status == 'published').length;
+      } catch (e) {
+        pendingRecruitments.value = 0;
+      }
 
-      final attendances = await _attendanceService.getAttendances();
-      pendingAttendance.value =
-          attendances.where((a) => a.status.toLowerCase() == 'pending').length;
+      // Charger les pointages en attente
+      try {
+        final attendances = await _attendanceService.getAttendances();
+        pendingAttendance.value =
+            attendances
+                .where((a) => a.status.toLowerCase() == 'pending')
+                .length;
+      } catch (e) {
+        pendingAttendance.value = 0;
+      }
 
-      final contracts = await _contractService.getAllContracts();
-      pendingContracts.value =
-          contracts.where((c) => c.status == 'pending').length;
+      // Charger les contrats en attente
+      try {
+        final contracts = await _contractService.getAllContracts();
+        pendingContracts.value =
+            contracts.where((c) => c.status == 'pending').length;
+      } catch (e) {
+        pendingContracts.value = 0;
+      }
     } catch (e) {
+      // En cas d'erreur globale, réinitialiser tous les compteurs
       pendingLeaves.value = 0;
       pendingRecruitments.value = 0;
       pendingAttendance.value = 0;

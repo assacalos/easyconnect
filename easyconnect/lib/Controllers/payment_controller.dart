@@ -65,10 +65,13 @@ class PaymentController extends GetxController {
   // Charger les paiements
   Future<void> loadPayments() async {
     try {
+      print('🔵 [PAYMENT_CONTROLLER] loadPayments() appelé');
+      print('🔵 [PAYMENT_CONTROLLER] selectedStatus: ${selectedStatus.value}');
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) {
+        print('🔵 [PAYMENT_CONTROLLER] ⚠️ Utilisateur null');
         Get.snackbar(
           'Erreur',
           'Utilisateur non connecté',
@@ -78,11 +81,15 @@ class PaymentController extends GetxController {
         );
         return;
       }
+
+      print('🔵 [PAYMENT_CONTROLLER] Rôle utilisateur: ${user.role}');
       // Chargement direct des paiements (test de connectivité supprimé car non nécessaire)
       List<PaymentModel> paymentList;
 
-      if (user.role == 1) {
-        // Patron
+      // Patron (role 6) ou Admin (role 1) peuvent voir tous les paiements
+      if (user.role == 1 || user.role == 6) {
+        // Patron ou Admin
+        print('🔵 [PAYMENT_CONTROLLER] Appel getAllPayments pour Patron/Admin');
         paymentList = await _paymentService.getAllPayments(
           startDate: startDate.value,
           endDate: endDate.value,
@@ -90,7 +97,10 @@ class PaymentController extends GetxController {
           type: selectedType.value != 'all' ? selectedType.value : null,
         );
       } else {
-        // Comptable
+        // Comptable ou autre rôle
+        print(
+          '🔵 [PAYMENT_CONTROLLER] Appel getComptablePayments pour Comptable',
+        );
         paymentList = await _paymentService.getComptablePayments(
           comptableId: user.id,
           startDate: startDate.value,
@@ -99,9 +109,12 @@ class PaymentController extends GetxController {
           type: selectedType.value != 'all' ? selectedType.value : null,
         );
       }
+
+      print(
+        '🔵 [PAYMENT_CONTROLLER] ✅ ${paymentList.length} paiements chargés',
+      );
       // Filtrer par recherche
       if (searchQuery.value.isNotEmpty) {
-        final beforeCount = paymentList.length;
         paymentList =
             paymentList
                 .where(
@@ -124,7 +137,7 @@ class PaymentController extends GetxController {
       } else {
         // Ne pas afficher de snackbar automatiquement pour éviter le spam
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       // Ne pas vider la liste si elle contient déjà des paiements
       // (ils peuvent s'être chargés avant l'erreur)
       if (payments.isEmpty) {
@@ -158,8 +171,7 @@ class PaymentController extends GetxController {
       );
       // Convertir Map en PaymentStats si nécessaire
       paymentStats.value = PaymentStats.fromJson(statsData);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Créer un paiement
@@ -284,7 +296,7 @@ class PaymentController extends GetxController {
           duration: const Duration(seconds: 4),
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Erreur lors de la création du paiement: ${e.toString()}',
@@ -431,19 +443,33 @@ class PaymentController extends GetxController {
 
   // Obtenir la couleur du statut
   Color getPaymentStatusColor(String status) {
-    switch (status) {
+    final statusLower = status.toLowerCase().trim();
+    switch (statusLower) {
       case 'draft':
+      case 'drafts': // Gérer le pluriel
         return Colors.grey;
       case 'submitted':
+      case 'soumis':
         return Colors.orange;
       case 'approved':
+      case 'approuve':
+      case 'approuvé':
+      case 'valide':
         return Colors.blue;
       case 'rejected':
+      case 'rejete':
+      case 'rejeté':
         return Colors.red;
       case 'paid':
+      case 'paye':
+      case 'payé':
         return Colors.green;
       case 'overdue':
+      case 'en_retard':
         return Colors.red;
+      case 'pending':
+      case 'en_attente':
+        return Colors.orange;
       default:
         return Colors.grey;
     }
@@ -451,21 +477,43 @@ class PaymentController extends GetxController {
 
   // Obtenir le nom du statut
   String getPaymentStatusName(String status) {
-    switch (status) {
+    final statusLower = status.toLowerCase().trim();
+    switch (statusLower) {
       case 'draft':
+      case 'drafts': // Gérer le pluriel
         return 'Brouillon';
       case 'submitted':
+      case 'soumis':
         return 'Soumis';
       case 'approved':
+      case 'approuve':
+      case 'approuvé':
+      case 'valide':
         return 'Approuvé';
       case 'rejected':
+      case 'rejete':
+      case 'rejeté':
         return 'Rejeté';
       case 'paid':
+      case 'paye':
+      case 'payé':
         return 'Payé';
       case 'overdue':
+      case 'en_retard':
         return 'En retard';
+      case 'pending':
+      case 'en_attente':
+        return 'En attente';
       default:
-        return status;
+        // Si le statut n'est pas reconnu, essayer de le formater
+        return status
+            .replaceAll('_', ' ')
+            .split(' ')
+            .map((word) {
+              if (word.isEmpty) return '';
+              return word[0].toUpperCase() + word.substring(1).toLowerCase();
+            })
+            .join(' ');
     }
   }
 
@@ -502,7 +550,7 @@ class PaymentController extends GetxController {
   // Vérifier si l'utilisateur peut approuver
   bool get canApprovePayments {
     final user = _authController.userAuth.value;
-    return user?.role == 1; // Patron
+    return user?.role == 1 || user?.role == 6; // Patron ou Admin
   }
 
   // Vérifier si l'utilisateur peut soumettre
@@ -551,7 +599,16 @@ class PaymentController extends GetxController {
   // Méthodes pour gérer l'approbation des paiements
   Future<void> approvePayment(int paymentId, {String? comments}) async {
     try {
-      await _paymentService.approvePayment(paymentId, comments: comments);
+      print(
+        '🔵 [PAYMENT_CONTROLLER] approvePayment() appelé pour paymentId: $paymentId',
+      );
+      isLoading.value = true;
+
+      final result = await _paymentService.approvePayment(
+        paymentId,
+        comments: comments,
+      );
+      print('🔵 [PAYMENT_CONTROLLER] Résultat approvePayment: $result');
 
       // Recharger les paiements
       await loadPayments();
@@ -564,21 +621,34 @@ class PaymentController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [PAYMENT_CONTROLLER] Erreur approvePayment: $e');
+      print('❌ [PAYMENT_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le paiement: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 5),
       );
+    } finally {
+      isLoading.value = false;
     }
   }
 
   Future<void> rejectPayment(int paymentId, {required String reason}) async {
     try {
-      await _paymentService.rejectPayment(paymentId, reason: reason);
+      print(
+        '🔵 [PAYMENT_CONTROLLER] rejectPayment() appelé pour paymentId: $paymentId',
+      );
+      isLoading.value = true;
+
+      final result = await _paymentService.rejectPayment(
+        paymentId,
+        reason: reason,
+      );
+      print('🔵 [PAYMENT_CONTROLLER] Résultat rejectPayment: $result');
 
       // Recharger les paiements
       await loadPayments();
@@ -591,15 +661,19 @@ class PaymentController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [PAYMENT_CONTROLLER] Erreur rejectPayment: $e');
+      print('❌ [PAYMENT_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le paiement: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 5),
       );
+    } finally {
+      isLoading.value = false;
     }
   }
 

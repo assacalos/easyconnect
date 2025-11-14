@@ -17,8 +17,10 @@ class EmployeeLeave extends Model
         'total_days',
         'reason',
         'status',
+        'comments',
         'approved_by',
         'approved_at',
+        'approved_by_name',
         'rejection_reason',
         'created_by'
     ];
@@ -59,6 +61,11 @@ class EmployeeLeave extends Model
     public function scopeRejected($query)
     {
         return $query->where('status', 'rejected');
+    }
+
+    public function scopeCancelled($query)
+    {
+        return $query->where('status', 'cancelled');
     }
 
     public function scopeByType($query, $type)
@@ -106,6 +113,7 @@ class EmployeeLeave extends Model
             'maternity' => 'Congé maternité',
             'paternity' => 'Congé paternité',
             'personal' => 'Congé personnel',
+            'emergency' => 'Congé d\'urgence',
             'unpaid' => 'Congé sans solde'
         ];
 
@@ -117,7 +125,8 @@ class EmployeeLeave extends Model
         $statuses = [
             'pending' => 'En attente',
             'approved' => 'Approuvé',
-            'rejected' => 'Rejeté'
+            'rejected' => 'Rejeté',
+            'cancelled' => 'Annulé'
         ];
 
         return $statuses[$this->status] ?? $this->status;
@@ -148,6 +157,11 @@ class EmployeeLeave extends Model
         return $this->status === 'rejected';
     }
 
+    public function getIsCancelledAttribute()
+    {
+        return $this->status === 'cancelled';
+    }
+
     public function getIsCurrentAttribute()
     {
         $today = now()->toDateString();
@@ -175,24 +189,32 @@ class EmployeeLeave extends Model
     // Méthodes utilitaires
     public function approve($approvedBy, $notes = null)
     {
+        $approver = \App\Models\User::find($approvedBy);
+        $approverName = $approver ? ($approver->prenom . ' ' . $approver->nom) : null;
+
         $this->update([
             'status' => 'approved',
             'approved_by' => $approvedBy,
             'approved_at' => now(),
+            'approved_by_name' => $approverName,
             'rejection_reason' => null
         ]);
 
         if ($notes) {
-            $this->update(['reason' => $this->reason . "\n\nNotes d'approbation: " . $notes]);
+            $this->update(['comments' => ($this->comments ?? '') . "\n\nNotes d'approbation: " . $notes]);
         }
     }
 
     public function reject($rejectedBy, $reason)
     {
+        $rejecter = \App\Models\User::find($rejectedBy);
+        $rejecterName = $rejecter ? ($rejecter->prenom . ' ' . $rejecter->nom) : null;
+
         $this->update([
             'status' => 'rejected',
             'approved_by' => $rejectedBy,
             'approved_at' => now(),
+            'approved_by_name' => $rejecterName,
             'rejection_reason' => $reason
         ]);
     }
@@ -200,10 +222,8 @@ class EmployeeLeave extends Model
     public function cancel($cancelledBy, $reason = null)
     {
         $this->update([
-            'status' => 'rejected',
-            'approved_by' => $cancelledBy,
-            'approved_at' => now(),
-            'rejection_reason' => $reason ?? 'Annulé par l\'employé'
+            'status' => 'cancelled',
+            'rejection_reason' => $reason ?? 'Annulé par l\'utilisateur'
         ]);
     }
 

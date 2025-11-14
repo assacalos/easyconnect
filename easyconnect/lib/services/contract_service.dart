@@ -32,41 +32,54 @@ class ContractService extends GetxService {
     List<ContractClause>? clauses,
   }) async {
     try {
+      final requestBody = {
+        'employee_id': employeeId,
+        'contract_type': contractType,
+        'position': position,
+        'department': department,
+        'job_title': jobTitle,
+        'job_description': jobDescription,
+        'gross_salary': grossSalary,
+        'net_salary': netSalary,
+        'salary_currency': salaryCurrency,
+        'payment_frequency': paymentFrequency,
+        'start_date': startDate.toIso8601String(),
+        if (endDate != null) 'end_date': endDate.toIso8601String(),
+        'duration_months': durationMonths,
+        'work_location': workLocation,
+        'work_schedule': workSchedule,
+        'weekly_hours': weeklyHours,
+        'probation_period': probationPeriod,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+        'contract_template': contractTemplate,
+        if (clauses != null && clauses.isNotEmpty)
+          'clauses': clauses.map((c) => c.toJson()).toList(),
+      };
+
+      print('=== DEBUG CREATE CONTRACT SERVICE ===');
+      print('URL: $baseUrl/contracts');
+      print('Request Body: ${jsonEncode(requestBody)}');
+
       final response = await http.post(
         Uri.parse('$baseUrl/contracts'),
         headers: ApiService.headers(),
-        body: jsonEncode({
-          'employee_id': employeeId,
-          'contract_type': contractType,
-          'position': position,
-          'department': department,
-          'job_title': jobTitle,
-          'job_description': jobDescription,
-          'gross_salary': grossSalary,
-          'net_salary': netSalary,
-          'salary_currency': salaryCurrency,
-          'payment_frequency': paymentFrequency,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate?.toIso8601String(),
-          'duration_months': durationMonths,
-          'work_location': workLocation,
-          'work_schedule': workSchedule,
-          'weekly_hours': weeklyHours,
-          'probation_period': probationPeriod,
-          'notes': notes,
-          'contract_template': contractTemplate,
-          'clauses': clauses?.map((c) => c.toJson()).toList(),
-        }),
+        body: jsonEncode(requestBody),
       );
+
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
 
       if (response.statusCode == 201) {
         return jsonDecode(response.body);
       } else {
+        final errorBody = response.body;
+        print('Error Response: $errorBody');
         throw Exception(
-          'Erreur lors de la création du contrat: ${response.statusCode}',
+          'Erreur lors de la création du contrat: ${response.statusCode} - $errorBody',
         );
       }
     } catch (e) {
+      print('Exception in createContract: $e');
       rethrow;
     }
   }
@@ -106,9 +119,25 @@ class ContractService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['data'] as List)
-            .map((json) => Contract.fromJson(json))
-            .toList();
+
+        if (data['data'] != null) {
+          // Le backend peut retourner soit une liste directe, soit un objet paginé
+          List<dynamic> dataList;
+
+          if (data['data'] is List) {
+            // Format simple : {"success": true, "data": [...]}
+            dataList = data['data'] as List;
+          } else if (data['data'] is Map && data['data']['data'] != null) {
+            // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
+            dataList = data['data']['data'] as List;
+          } else {
+            return [];
+          }
+
+          return dataList.map((json) => Contract.fromJson(json)).toList();
+        } else {
+          return [];
+        }
       } else {
         throw Exception(
           'Erreur lors de la récupération des contrats: ${response.statusCode}',

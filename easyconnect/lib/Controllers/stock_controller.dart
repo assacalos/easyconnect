@@ -294,7 +294,6 @@ class StockController extends GetxController {
 
     // Filtrer par statut
     if (selectedStatus.value != 'all') {
-      final beforeCount = filteredStocks.length;
       filteredStocks =
           filteredStocks.where((stock) {
             // Comparer avec le statut réel du stock
@@ -306,42 +305,34 @@ class StockController extends GetxController {
                 (selectedStatus.value == 'valide' &&
                     stockStatus == 'approved') ||
                 (selectedStatus.value == 'rejete' && stockStatus == 'rejected');
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     // Filtrer par catégorie
     if (selectedCategoryFilter.value != 'all') {
-      final beforeCount = filteredStocks.length;
       filteredStocks =
           filteredStocks.where((stock) {
             final matches = stock.category == selectedCategoryFilter.value;
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     // Filtrer par recherche
     if (searchQuery.value.isNotEmpty) {
       final query = searchQuery.value.toLowerCase();
-      final beforeCount = filteredStocks.length;
       filteredStocks =
           filteredStocks.where((stock) {
             final matches =
                 stock.name.toLowerCase().contains(query) ||
                 stock.sku.toLowerCase().contains(query) ||
                 stock.category.toLowerCase().contains(query);
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     stocks.assignAll(filteredStocks);
   }
@@ -446,13 +437,39 @@ class StockController extends GetxController {
   // Créer un nouveau stock
   Future<bool> createStock() async {
     try {
+      print('🔵 [STOCK_CONTROLLER] createStock() appelé');
       isCreating.value = true;
 
       // Valider que category est fourni
       if (selectedCategoryForm.value.isEmpty) {
+        print('❌ [STOCK_CONTROLLER] Catégorie non sélectionnée');
         Get.snackbar(
           'Erreur',
           'Veuillez sélectionner une catégorie',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return false;
+      }
+
+      // Valider que le nom n'est pas vide
+      if (nameController.text.trim().isEmpty) {
+        print('❌ [STOCK_CONTROLLER] Nom non fourni');
+        Get.snackbar(
+          'Erreur',
+          'Veuillez saisir un nom pour le produit',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return false;
+      }
+
+      // Valider que le SKU n'est pas vide
+      if (skuController.text.trim().isEmpty) {
+        print('❌ [STOCK_CONTROLLER] SKU non fourni');
+        Get.snackbar(
+          'Erreur',
+          'Veuillez saisir un SKU pour le produit',
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -480,7 +497,9 @@ class StockController extends GetxController {
         status: 'en_attente',
       );
 
+      print('🔵 [STOCK_CONTROLLER] Stock créé, appel du service...');
       await _stockService.createStock(stock);
+      print('🔵 [STOCK_CONTROLLER] Stock créé avec succès');
 
       Get.snackbar(
         'Succès',
@@ -493,13 +512,22 @@ class StockController extends GetxController {
       loadStocks();
       loadStockStats();
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [STOCK_CONTROLLER] Erreur createStock: $e');
+      print('❌ [STOCK_CONTROLLER] Stack trace: $stackTrace');
+
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Erreur lors de la création du stock: $e',
+        'Erreur lors de la création du stock: $errorMessage',
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 5),
       );
       return false;
     } finally {
@@ -702,6 +730,33 @@ class StockController extends GetxController {
   // Sélectionner un stock
   void selectStock(Stock stock) {
     selectedStock.value = stock;
+  }
+
+  // Approuver/Valider un stock
+  Future<void> approveStock(Stock stock, {String? validationComment}) async {
+    try {
+      isLoading.value = true;
+      await _stockService.approveStock(
+        stockId: stock.id!,
+        validationComment: validationComment,
+      );
+      await loadStocks();
+      Get.snackbar(
+        'Succès',
+        'Stock approuvé avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de l\'approbation: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // Rejeter un stock (selon la doc API)

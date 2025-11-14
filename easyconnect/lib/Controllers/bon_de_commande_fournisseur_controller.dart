@@ -49,7 +49,7 @@ class BonDeCommandeFournisseurController extends GetxController
     tabController = TabController(length: 5, vsync: this);
     tabController.addListener(_onTabChanged);
     loadBonDeCommandes();
-    loadClients();
+    // Ne charger que les fournisseurs, pas les clients
     loadSuppliers();
   }
 
@@ -84,24 +84,70 @@ class BonDeCommandeFournisseurController extends GetxController
   }
 
   List<BonDeCommande> getFilteredBonDeCommandes() {
-    if (selectedStatus.value == null) {
+    // Si aucun statut sélectionné, retourner tous les bons de commande
+    if (selectedStatus.value == null || selectedStatus.value == 'all') {
       return bonDeCommandes;
     }
-    return bonDeCommandes
-        .where((bc) => bc.statut == selectedStatus.value)
-        .toList();
+
+    // Filtrer par statut (comparaison insensible à la casse)
+    final statusLower = selectedStatus.value!.toLowerCase().trim();
+    return bonDeCommandes.where((bc) {
+      final bcStatus = bc.statut.toLowerCase().trim();
+      // Gérer les différentes variantes de statuts
+      switch (statusLower) {
+        case 'en_attente':
+        case 'pending':
+          return bcStatus == 'en_attente' || bcStatus == 'pending';
+        case 'valide':
+        case 'approved':
+        case 'validated':
+          return bcStatus == 'valide' ||
+              bcStatus == 'approved' ||
+              bcStatus == 'validated';
+        case 'rejete':
+        case 'rejected':
+          return bcStatus == 'rejete' || bcStatus == 'rejected';
+        default:
+          return bcStatus == statusLower;
+      }
+    }).toList();
   }
 
   Future<void> loadBonDeCommandes({String? status}) async {
     try {
       isLoading.value = true;
+      print('🔄 Chargement des bons de commande fournisseur...');
+
+      // Mettre à jour le statut sélectionné
+      if (status != null) {
+        selectedStatus.value = status;
+      } else {
+        selectedStatus.value = 'all';
+      }
+
+      // Charger tous les bons de commande (le filtrage se fera côté client)
       final loadedBonDeCommandes = await _service.getBonDeCommandes();
       bonDeCommandes.value = loadedBonDeCommandes;
-    } catch (e) {
+      print('✅ ${loadedBonDeCommandes.length} bons de commande chargés');
+
+      // Afficher les statuts trouvés pour debug
+      final statuses = loadedBonDeCommandes.map((bc) => bc.statut).toSet();
+      print('📋 Statuts trouvés: $statuses');
+
+      if (loadedBonDeCommandes.isEmpty) {
+        print('⚠️ Aucun bon de commande trouvé');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Erreur lors du chargement des bons de commande: $e');
+      print('Stack trace: $stackTrace');
+      bonDeCommandes.value = [];
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les bons de commande',
+        'Impossible de charger les bons de commande: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -134,19 +180,43 @@ class BonDeCommandeFournisseurController extends GetxController
 
   Future<void> createBonDeCommande(Map<String, dynamic> data) async {
     try {
-      if (selectedClient.value == null && selectedSupplier.value == null) {
-        throw Exception('Veuillez sélectionner un client ou un fournisseur');
+      if (selectedSupplier.value == null) {
+        throw Exception('Veuillez sélectionner un fournisseur');
+      }
+
+      if (selectedSupplier.value!.id == null) {
+        throw Exception(
+          'L\'ID du fournisseur est manquant. Veuillez sélectionner un fournisseur valide.',
+        );
       }
 
       if (items.isEmpty) {
         throw Exception('Aucun article ajouté au bon de commande');
       }
 
+      // Valider les items
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        if (item.designation.isEmpty) {
+          throw Exception('La désignation de l\'article ${i + 1} est requise');
+        }
+        if (item.quantite <= 0) {
+          throw Exception(
+            'La quantité de l\'article ${i + 1} doit être supérieure à 0',
+          );
+        }
+        if (item.prixUnitaire <= 0) {
+          throw Exception(
+            'Le prix unitaire de l\'article ${i + 1} doit être supérieur à 0',
+          );
+        }
+      }
+
       isLoading.value = true;
 
       final newBonDeCommande = BonDeCommande(
-        clientId: selectedClient.value?.id,
-        fournisseurId: selectedSupplier.value?.id,
+        clientId: null, // Pas de client pour un bon de commande fournisseur
+        fournisseurId: selectedSupplier.value!.id!,
         numeroCommande: data['numero_commande'],
         dateCommande: data['date_commande'] ?? DateTime.now(),
         dateLivraisonPrevue: data['date_livraison_prevue'],
@@ -160,10 +230,16 @@ class BonDeCommandeFournisseurController extends GetxController
 
       await _service.createBonDeCommande(newBonDeCommande);
 
+      // Réinitialiser le formulaire
       clearForm();
+
+      // Recharger la liste des bons de commande
       await loadBonDeCommandes();
 
+      // Fermer automatiquement le formulaire
       Get.back();
+
+      // Afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bon de commande créé avec succès',
@@ -269,36 +345,27 @@ class BonDeCommandeFournisseurController extends GetxController
   Future<void> approveBonDeCommande(int bonDeCommandeId) async {
     try {
       isLoading.value = true;
-      final bonDeCommande = bonDeCommandes.firstWhere(
-        (b) => b.id == bonDeCommandeId,
-      );
-      final updated = BonDeCommande(
-        id: bonDeCommande.id,
-        clientId: bonDeCommande.clientId,
-        fournisseurId: bonDeCommande.fournisseurId,
-        numeroCommande: bonDeCommande.numeroCommande,
-        dateCommande: bonDeCommande.dateCommande,
-        dateLivraisonPrevue: bonDeCommande.dateLivraisonPrevue,
-        description: bonDeCommande.description,
-        statut: 'valide',
-        commentaire: bonDeCommande.commentaire,
-        conditionsPaiement: bonDeCommande.conditionsPaiement,
-        delaiLivraison: bonDeCommande.delaiLivraison,
-        items: bonDeCommande.items,
-      );
+      final success = await _service.validateBonDeCommande(bonDeCommandeId);
 
-      await _service.updateBonDeCommande(bonDeCommandeId, updated);
-      await loadBonDeCommandes();
-      Get.snackbar(
-        'Succès',
-        'Bon de commande approuvé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (success) {
+        await loadBonDeCommandes();
+        Get.snackbar(
+          'Succès',
+          'Bon de commande approuvé avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors de l\'approbation');
+      }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible d\'approuver le bon de commande',
+        'Impossible d\'approuver le bon de commande: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -311,36 +378,30 @@ class BonDeCommandeFournisseurController extends GetxController
   ) async {
     try {
       isLoading.value = true;
-      final bonDeCommande = bonDeCommandes.firstWhere(
-        (b) => b.id == bonDeCommandeId,
-      );
-      final updated = BonDeCommande(
-        id: bonDeCommande.id,
-        clientId: bonDeCommande.clientId,
-        fournisseurId: bonDeCommande.fournisseurId,
-        numeroCommande: bonDeCommande.numeroCommande,
-        dateCommande: bonDeCommande.dateCommande,
-        dateLivraisonPrevue: bonDeCommande.dateLivraisonPrevue,
-        description: bonDeCommande.description,
-        statut: 'rejete',
-        commentaire: commentaire,
-        conditionsPaiement: bonDeCommande.conditionsPaiement,
-        delaiLivraison: bonDeCommande.delaiLivraison,
-        items: bonDeCommande.items,
+      final success = await _service.rejectBonDeCommande(
+        bonDeCommandeId,
+        commentaire,
       );
 
-      await _service.updateBonDeCommande(bonDeCommandeId, updated);
-      await loadBonDeCommandes();
-      Get.snackbar(
-        'Succès',
-        'Bon de commande rejeté avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (success) {
+        await loadBonDeCommandes();
+        Get.snackbar(
+          'Succès',
+          'Bon de commande rejeté avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+      } else {
+        throw Exception('Erreur lors du rejet');
+      }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter le bon de commande',
+        'Impossible de rejeter le bon de commande: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;

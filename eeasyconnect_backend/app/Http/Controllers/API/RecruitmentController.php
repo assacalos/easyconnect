@@ -16,7 +16,8 @@ class RecruitmentController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = RecruitmentRequest::with(['creator', 'publisher', 'approver', 'applications']);
+            $query = RecruitmentRequest::with(['creator', 'publisher', 'approver', 'applications'])
+                ->withCount(['applications']);
 
             // Filtrage par statut
             if ($request->has('status')) {
@@ -76,8 +77,28 @@ class RecruitmentController extends Controller
                 }
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            // Pagination optionnelle
+            $perPage = $request->get('per_page');
+            $limit = $request->get('limit');
+            
+            // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
+            if (!$perPage && !$limit) {
+                $requests = $query->orderBy('created_at', 'desc')->get();
+                
+                // Transformer les données au format Flutter
+                $formattedRequests = $requests->map(function ($request) {
+                    return $this->formatRecruitmentRequest($request);
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $formattedRequests,
+                    'message' => 'Liste des demandes de recrutement récupérée avec succès'
+                ]);
+            }
+            
+            // Sinon, utiliser la pagination
+            $perPage = $perPage ?? $limit ?? 15;
             $requests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             // Transformer les données au format Flutter
@@ -479,22 +500,29 @@ class RecruitmentController extends Controller
             
             // Formater les statistiques au format Flutter
             $formattedStats = [
-                'total_requests' => $stats['total_requests'],
-                'draft_requests' => $stats['draft_requests'],
-                'published_requests' => $stats['published_requests'],
-                'closed_requests' => $stats['closed_requests'],
-                'total_applications' => $stats['total_applications'],
-                'pending_applications' => $stats['pending_applications'],
-                'shortlisted_applications' => $stats['shortlisted_applications'],
-                'interviewed_applications' => $stats['interviewed_applications'],
-                'hired_applications' => $stats['hired_applications'],
-                'rejected_applications' => $stats['rejected_applications'],
-                'average_application_time' => $stats['average_application_time'],
-                'applications_by_department' => $stats['applications_by_department']->toArray(),
-                'applications_by_position' => $stats['applications_by_position']->toArray(),
-                'recent_applications' => $stats['recent_applications']->map(function ($application) {
+                'total' => $stats['total_requests'] ?? 0,
+                'draft' => $stats['draft_requests'] ?? 0,
+                'published' => $stats['published_requests'] ?? 0,
+                'closed' => $stats['closed_requests'] ?? 0,
+                'cancelled' => $stats['cancelled_requests'] ?? 0,
+                // Garder aussi les clés détaillées pour compatibilité
+                'total_requests' => $stats['total_requests'] ?? 0,
+                'draft_requests' => $stats['draft_requests'] ?? 0,
+                'published_requests' => $stats['published_requests'] ?? 0,
+                'closed_requests' => $stats['closed_requests'] ?? 0,
+                'cancelled_requests' => $stats['cancelled_requests'] ?? 0,
+                'total_applications' => $stats['total_applications'] ?? 0,
+                'pending_applications' => $stats['pending_applications'] ?? 0,
+                'shortlisted_applications' => $stats['shortlisted_applications'] ?? 0,
+                'interviewed_applications' => $stats['interviewed_applications'] ?? 0,
+                'hired_applications' => $stats['hired_applications'] ?? 0,
+                'rejected_applications' => $stats['rejected_applications'] ?? 0,
+                'average_application_time' => $stats['average_application_time'] ?? 0,
+                'applications_by_department' => isset($stats['applications_by_department']) ? $stats['applications_by_department']->toArray() : [],
+                'applications_by_position' => isset($stats['applications_by_position']) ? $stats['applications_by_position']->toArray() : [],
+                'recent_applications' => isset($stats['recent_applications']) ? $stats['recent_applications']->map(function ($application) {
                     return $this->formatRecruitmentApplication($application);
-                })->toArray(),
+                })->toArray() : [],
             ];
 
             return response()->json([
@@ -795,14 +823,15 @@ class RecruitmentController extends Controller
             'application_deadline' => $request->application_deadline?->format('Y-m-d\TH:i:s\Z'),
             'status' => $request->status,
             'rejection_reason' => $request->rejection_reason,
-            'published_at' => $request->published_at?->format('Y-m-d\TH:i:s'),
+            'published_at' => $request->published_at?->format('Y-m-d\TH:i:s\Z'),
             'published_by' => $request->published_by,
-            'published_by_name' => $request->publisher_name,
-            'approved_at' => $request->approved_at?->format('Y-m-d\TH:i:s'),
+            'published_by_name' => $request->publisher_name ?? null,
+            'approved_at' => $request->approved_at?->format('Y-m-d\TH:i:s\Z'),
             'approved_by' => $request->approved_by,
-            'approved_by_name' => $request->approver_name,
-            'created_at' => $request->created_at->format('Y-m-d\TH:i:s'),
-            'updated_at' => $request->updated_at->format('Y-m-d\TH:i:s'),
+            'approved_by_name' => $request->approver_name ?? null,
+            'created_by' => $request->created_by,
+            'created_at' => $request->created_at->format('Y-m-d\TH:i:s\Z'),
+            'updated_at' => $request->updated_at->format('Y-m-d\TH:i:s\Z'),
         ];
 
         // Inclure les applications si demandé

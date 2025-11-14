@@ -28,6 +28,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
       label: 'Employés',
       icon: Icons.people,
       route: '/employees',
+      onTap: () => Get.toNamed('/employees'),
     ),
     FavoriteItem(
       id: 'leaves',
@@ -498,7 +499,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         title: const Text('Employés', style: TextStyle(color: Colors.white70)),
         onTap: () {
           Navigator.pop(context);
-          Get.toNamed('/admin/users');
+          Get.toNamed('/employees');
         },
       ),
       ListTile(
@@ -534,7 +535,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
   @override
   Widget? buildFloatingActionButton() {
     return FloatingActionButton(
-      onPressed: () => Get.toNamed('/employees/create'),
+      onPressed: () => Get.toNamed('/employees/new'),
       child: const Icon(Icons.add),
     );
   }

@@ -46,7 +46,18 @@ class EmployeeController extends Controller
                 $query->where('contract_type', $request->contract_type);
             }
 
-            // Filtrage par nom
+            // Filtrage par recherche (search) - recherche dans nom, prénom, email, poste
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('first_name', 'like', '%' . $search . '%')
+                      ->orWhere('last_name', 'like', '%' . $search . '%')
+                      ->orWhere('email', 'like', '%' . $search . '%')
+                      ->orWhere('position', 'like', '%' . $search . '%');
+                });
+            }
+
+            // Filtrage par nom (pour compatibilité)
             if ($request->has('name')) {
                 $query->where(function ($q) use ($request) {
                     $q->where('first_name', 'like', '%' . $request->name . '%')
@@ -54,7 +65,7 @@ class EmployeeController extends Controller
                 });
             }
 
-            // Filtrage par email
+            // Filtrage par email (pour compatibilité)
             if ($request->has('email')) {
                 $query->where('email', 'like', '%' . $request->email . '%');
             }
@@ -82,8 +93,8 @@ class EmployeeController extends Controller
                 $query->where('hire_date', '<=', $request->hire_date_to);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            // Pagination (support pour 'limit' et 'per_page')
+            $perPage = $request->get('limit', $request->get('per_page', 15));
             $employees = $query->orderBy('first_name')->paginate($perPage);
 
             // Transformer les données
@@ -97,7 +108,7 @@ class EmployeeController extends Controller
                     'email' => $employee->email,
                     'phone' => $employee->phone,
                     'address' => $employee->address,
-                    'birth_date' => $employee->birth_date?->format('Y-m-d'),
+                    'birth_date' => $employee->birth_date?->format('Y-m-d\TH:i:s\Z'),
                     'age' => $employee->age,
                     'gender' => $employee->gender,
                     'gender_libelle' => $employee->gender_libelle,
@@ -109,9 +120,9 @@ class EmployeeController extends Controller
                     'position' => $employee->position,
                     'department' => $employee->department,
                     'manager' => $employee->manager,
-                    'hire_date' => $employee->hire_date?->format('Y-m-d'),
-                    'contract_start_date' => $employee->contract_start_date?->format('Y-m-d'),
-                    'contract_end_date' => $employee->contract_end_date?->format('Y-m-d'),
+                    'hire_date' => $employee->hire_date?->format('Y-m-d\TH:i:s\Z'),
+                    'contract_start_date' => $employee->contract_start_date?->format('Y-m-d\TH:i:s\Z'),
+                    'contract_end_date' => $employee->contract_end_date?->format('Y-m-d\TH:i:s\Z'),
                     'contract_type' => $employee->contract_type,
                     'contract_type_libelle' => $employee->contract_type_libelle,
                     'salary' => $employee->salary,
@@ -142,30 +153,32 @@ class EmployeeController extends Controller
                             'file_path' => $document->file_path,
                             'file_size' => $document->file_size,
                             'formatted_file_size' => $document->formatted_file_size,
-                            'expiry_date' => $document->expiry_date?->format('Y-m-d'),
+                            'expiry_date' => $document->expiry_date?->format('Y-m-d\TH:i:s\Z'),
                             'is_required' => $document->is_required,
                             'is_expiring' => $document->is_expiring,
                             'is_expired' => $document->is_expired,
                             'creator_name' => $document->creator_name,
-                            'created_at' => $document->created_at->format('Y-m-d H:i:s')
+                            'created_at' => $document->created_at->format('Y-m-d\TH:i:s\Z')
                         ];
                     }),
                     'leaves' => $employee->leaves->map(function ($leave) {
                         return [
                             'id' => $leave->id,
+                            'employee_id' => $leave->employee_id,
                             'type' => $leave->type,
                             'type_libelle' => $leave->type_libelle,
-                            'start_date' => $leave->start_date?->format('Y-m-d'),
-                            'end_date' => $leave->end_date?->format('Y-m-d'),
+                            'start_date' => $leave->start_date?->format('Y-m-d\TH:i:s\Z'),
+                            'end_date' => $leave->end_date?->format('Y-m-d\TH:i:s\Z'),
                             'total_days' => $leave->total_days,
                             'duration' => $leave->duration,
                             'reason' => $leave->reason,
                             'status' => $leave->status,
                             'status_libelle' => $leave->status_libelle,
-                            'approved_by' => $leave->approved_by,
+                            'approved_by' => $leave->approved_by ? (string)$leave->approved_by : null,
                             'approver_name' => $leave->approver_name,
-                            'approved_at' => $leave->approved_at?->format('Y-m-d H:i:s'),
+                            'approved_at' => $leave->approved_at?->format('Y-m-d\TH:i:s\Z'),
                             'rejection_reason' => $leave->rejection_reason,
+                            'comments' => $leave->comments,
                             'is_pending' => $leave->is_pending,
                             'is_approved' => $leave->is_approved,
                             'is_rejected' => $leave->is_rejected,
@@ -173,7 +186,8 @@ class EmployeeController extends Controller
                             'is_upcoming' => $leave->is_upcoming,
                             'is_past' => $leave->is_past,
                             'creator_name' => $leave->creator_name,
-                            'created_at' => $leave->created_at->format('Y-m-d H:i:s')
+                            'created_by' => $leave->created_by ? (string)$leave->created_by : null,
+                            'created_at' => $leave->created_at->format('Y-m-d\TH:i:s\Z')
                         ];
                     }),
                     'performances' => $employee->performances->map(function ($performance) {
@@ -192,7 +206,7 @@ class EmployeeController extends Controller
                             'status_libelle' => $performance->status_libelle,
                             'reviewed_by' => $performance->reviewed_by,
                             'reviewer_name' => $performance->reviewer_name,
-                            'reviewed_at' => $performance->reviewed_at?->format('Y-m-d H:i:s'),
+                            'reviewed_at' => $performance->reviewed_at?->format('Y-m-d\TH:i:s\Z'),
                             'is_draft' => $performance->is_draft,
                             'is_submitted' => $performance->is_submitted,
                             'is_reviewed' => $performance->is_reviewed,
@@ -203,11 +217,11 @@ class EmployeeController extends Controller
                             'is_poor' => $performance->is_poor,
                             'needs_improvement' => $performance->needs_improvement,
                             'creator_name' => $performance->creator_name,
-                            'created_at' => $performance->created_at->format('Y-m-d H:i:s')
+                            'created_at' => $performance->created_at->format('Y-m-d\TH:i:s\Z')
                         ];
                     }),
-                    'created_at' => $employee->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $employee->updated_at->format('Y-m-d H:i:s')
+                    'created_at' => $employee->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'updated_at' => $employee->updated_at->format('Y-m-d\TH:i:s\Z')
                 ];
             });
 
@@ -242,7 +256,7 @@ class EmployeeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $employee,
+                'data' => $this->formatEmployee($employee),
                 'message' => 'Employé récupéré avec succès'
             ]);
 
@@ -264,7 +278,7 @@ class EmployeeController extends Controller
                 'first_name' => 'required|string|max:255',
                 'last_name' => 'required|string|max:255',
                 'email' => 'required|email|unique:employees,email',
-                'phone' => 'nullable|string|max:20',
+                'phone' => 'nullable|string|max:50',
                 'address' => 'nullable|string',
                 'birth_date' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
@@ -278,11 +292,11 @@ class EmployeeController extends Controller
                 'hire_date' => 'nullable|date',
                 'contract_start_date' => 'nullable|date',
                 'contract_end_date' => 'nullable|date|after:contract_start_date',
-                'contract_type' => 'nullable|in:permanent,temporary,intern,consultant',
+                'contract_type' => 'nullable|in:permanent,temporary,internship,consultant',
                 'salary' => 'nullable|numeric|min:0',
-                'currency' => 'nullable|string|max:10',
-                'work_schedule' => 'nullable|string|max:255',
-                'status' => 'required|in:active,inactive,terminated,on_leave',
+                'currency' => 'nullable|in:fcfa,eur,usd',
+                'work_schedule' => 'nullable|in:full_time,part_time,flexible,shift',
+                'status' => 'nullable|in:active,inactive,terminated,on_leave',
                 'profile_picture' => 'nullable|string|max:255',
                 'notes' => 'nullable|string'
             ]);
@@ -309,9 +323,9 @@ class EmployeeController extends Controller
                 'contract_end_date' => $validated['contract_end_date'] ?? null,
                 'contract_type' => $validated['contract_type'] ?? null,
                 'salary' => $validated['salary'] ?? null,
-                'currency' => $validated['currency'] ?? 'FCFA',
+                'currency' => $validated['currency'] ?? 'fcfa',
                 'work_schedule' => $validated['work_schedule'] ?? null,
-                'status' => $validated['status'],
+                'status' => $validated['status'] ?? 'active',
                 'profile_picture' => $validated['profile_picture'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'created_by' => $request->user()->id
@@ -321,7 +335,7 @@ class EmployeeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $employee->load(['creator']),
+                'data' => $this->formatEmployee($employee->load(['creator', 'documents', 'leaves', 'performances'])),
                 'message' => 'Employé créé avec succès'
             ], 201);
 
@@ -353,7 +367,7 @@ class EmployeeController extends Controller
                 'first_name' => 'sometimes|string|max:255',
                 'last_name' => 'sometimes|string|max:255',
                 'email' => 'sometimes|email|unique:employees,email,' . $id,
-                'phone' => 'nullable|string|max:20',
+                'phone' => 'nullable|string|max:50',
                 'address' => 'nullable|string',
                 'birth_date' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
@@ -367,10 +381,10 @@ class EmployeeController extends Controller
                 'hire_date' => 'nullable|date',
                 'contract_start_date' => 'nullable|date',
                 'contract_end_date' => 'nullable|date|after:contract_start_date',
-                'contract_type' => 'nullable|in:permanent,temporary,intern,consultant',
+                'contract_type' => 'nullable|in:permanent,temporary,internship,consultant',
                 'salary' => 'nullable|numeric|min:0',
-                'currency' => 'nullable|string|max:10',
-                'work_schedule' => 'nullable|string|max:255',
+                'currency' => 'nullable|in:fcfa,eur,usd',
+                'work_schedule' => 'nullable|in:full_time,part_time,flexible,shift',
                 'status' => 'sometimes|in:active,inactive,terminated,on_leave',
                 'profile_picture' => 'nullable|string|max:255',
                 'notes' => 'nullable|string'
@@ -734,6 +748,516 @@ class EmployeeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des employés avec contrat expiré: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Formater un employé au format attendu par le frontend
+     */
+    private function formatEmployee($employee)
+    {
+        return [
+            'id' => $employee->id,
+            'first_name' => $employee->first_name,
+            'last_name' => $employee->last_name,
+            'email' => $employee->email,
+            'phone' => $employee->phone,
+            'address' => $employee->address,
+            'birth_date' => $employee->birth_date?->format('Y-m-d\TH:i:s\Z'),
+            'gender' => $employee->gender,
+            'marital_status' => $employee->marital_status,
+            'nationality' => $employee->nationality,
+            'id_number' => $employee->id_number,
+            'social_security_number' => $employee->social_security_number,
+            'position' => $employee->position,
+            'department' => $employee->department,
+            'manager' => $employee->manager,
+            'hire_date' => $employee->hire_date?->format('Y-m-d\TH:i:s\Z'),
+            'contract_start_date' => $employee->contract_start_date?->format('Y-m-d\TH:i:s\Z'),
+            'contract_end_date' => $employee->contract_end_date?->format('Y-m-d\TH:i:s\Z'),
+            'contract_type' => $employee->contract_type,
+            'salary' => $employee->salary ? (float)$employee->salary : null,
+            'currency' => $employee->currency ?? 'fcfa',
+            'work_schedule' => $employee->work_schedule,
+            'status' => $employee->status,
+            'profile_picture' => $employee->profile_picture,
+            'notes' => $employee->notes,
+            'created_at' => $employee->created_at->format('Y-m-d\TH:i:s\Z'),
+            'updated_at' => $employee->updated_at->format('Y-m-d\TH:i:s\Z'),
+            'documents' => $employee->relationLoaded('documents') ? $employee->documents->map(function ($document) {
+                return [
+                    'id' => $document->id,
+                    'employee_id' => $document->employee_id,
+                    'name' => $document->name,
+                    'type' => $document->type,
+                    'description' => $document->description,
+                    'file_path' => $document->file_path,
+                    'file_size' => $document->file_size,
+                    'expiry_date' => $document->expiry_date?->format('Y-m-d\TH:i:s\Z'),
+                    'is_required' => $document->is_required,
+                    'created_at' => $document->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'created_by' => $document->creator_name ?? 'N/A'
+                ];
+            }) : [],
+            'leaves' => $employee->relationLoaded('leaves') ? $employee->leaves->map(function ($leave) {
+                return [
+                    'id' => $leave->id,
+                    'employee_id' => $leave->employee_id,
+                    'type' => $leave->type,
+                    'type_libelle' => $leave->type_libelle ?? null,
+                    'start_date' => $leave->start_date?->format('Y-m-d\TH:i:s\Z'),
+                    'end_date' => $leave->end_date?->format('Y-m-d\TH:i:s\Z'),
+                    'total_days' => $leave->total_days,
+                    'duration' => $leave->duration ?? null,
+                    'reason' => $leave->reason,
+                    'status' => $leave->status,
+                    'status_libelle' => $leave->status_libelle ?? null,
+                    'approved_by' => $leave->approved_by ? (string)$leave->approved_by : null,
+                    'approver_name' => $leave->approver_name ?? null,
+                    'approved_at' => $leave->approved_at?->format('Y-m-d\TH:i:s\Z'),
+                    'rejection_reason' => $leave->rejection_reason,
+                    'comments' => $leave->comments ?? null,
+                    'is_pending' => $leave->is_pending ?? false,
+                    'is_approved' => $leave->is_approved ?? false,
+                    'is_rejected' => $leave->is_rejected ?? false,
+                    'is_current' => $leave->is_current ?? false,
+                    'is_upcoming' => $leave->is_upcoming ?? false,
+                    'is_past' => $leave->is_past ?? false,
+                    'creator_name' => $leave->creator_name ?? null,
+                    'created_by' => $leave->created_by ? (string)$leave->created_by : null,
+                    'created_at' => $leave->created_at->format('Y-m-d\TH:i:s\Z')
+                ];
+            }) : [],
+            'performances' => $employee->relationLoaded('performances') ? $employee->performances->map(function ($performance) {
+                return [
+                    'id' => $performance->id,
+                    'employee_id' => $performance->employee_id,
+                    'period' => $performance->period,
+                    'rating' => $performance->rating ? (float)$performance->rating : null,
+                    'comments' => $performance->comments,
+                    'goals' => $performance->goals,
+                    'achievements' => $performance->achievements,
+                    'areas_for_improvement' => $performance->areas_for_improvement,
+                    'status' => $performance->status,
+                    'reviewed_by' => $performance->reviewed_by,
+                    'reviewed_at' => $performance->reviewed_at?->format('Y-m-d\TH:i:s\Z'),
+                    'created_at' => $performance->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'created_by' => $performance->creator_name ?? 'N/A'
+                ];
+            }) : []
+        ];
+    }
+
+    /**
+     * Recherche d'employés
+     */
+    public function search(Request $request)
+    {
+        try {
+            $query = $request->get('q', '');
+            
+            if (empty($query)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => []
+                ]);
+            }
+
+            $employees = Employee::where(function ($q) use ($query) {
+                $q->where('first_name', 'like', '%' . $query . '%')
+                  ->orWhere('last_name', 'like', '%' . $query . '%')
+                  ->orWhere('email', 'like', '%' . $query . '%')
+                  ->orWhere('position', 'like', '%' . $query . '%');
+            })
+            ->select('id', 'first_name', 'last_name', 'email', 'position', 'department')
+            ->limit(20)
+            ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $employees->map(function ($employee) {
+                    return [
+                        'id' => $employee->id,
+                        'first_name' => $employee->first_name,
+                        'last_name' => $employee->last_name,
+                        'email' => $employee->email,
+                        'position' => $employee->position,
+                        'department' => $employee->department
+                    ];
+                })
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la recherche: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les départements
+     */
+    public function departments()
+    {
+        try {
+            $departments = Employee::whereNotNull('department')
+                ->distinct()
+                ->orderBy('department')
+                ->pluck('department')
+                ->filter()
+                ->values();
+
+            // Si aucun département n'existe, retourner une liste par défaut
+            if ($departments->isEmpty()) {
+                $departments = collect([
+                    'Technique',
+                    'Ressources Humaines',
+                    'Commercial',
+                    'Comptabilité',
+                    'Direction',
+                    'Support'
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $departments
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des départements: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les postes
+     */
+    public function positions()
+    {
+        try {
+            $positions = Employee::whereNotNull('position')
+                ->distinct()
+                ->orderBy('position')
+                ->pluck('position')
+                ->filter()
+                ->values();
+
+            // Si aucun poste n'existe, retourner une liste par défaut
+            if ($positions->isEmpty()) {
+                $positions = collect([
+                    'Développeur',
+                    'Chef de projet',
+                    'Manager RH',
+                    'Comptable',
+                    'Directeur',
+                    'Commercial'
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $positions
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des postes: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Statistiques des employés (alias pour /employees/stats)
+     */
+    public function stats(Request $request)
+    {
+        return $this->statistics($request);
+    }
+
+    /**
+     * Approuver un congé
+     */
+    public function approveLeave(Request $request, $leaveId)
+    {
+        try {
+            $leave = EmployeeLeave::find($leaveId);
+
+            if (!$leave) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Congé non trouvé'
+                ], 404);
+            }
+
+            if ($leave->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce congé a déjà été traité'
+                ], 400);
+            }
+
+            $validated = $request->validate([
+                'comments' => 'nullable|string|max:1000'
+            ]);
+
+            $leave->approve($request->user()->id, $validated['comments'] ?? null);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Congé approuvé avec succès',
+                'data' => [
+                    'id' => $leave->id,
+                    'status' => $leave->status,
+                    'approved_by' => $leave->approved_by,
+                    'approved_at' => $leave->approved_at?->format('Y-m-d\TH:i:s\Z')
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'approbation du congé: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Rejeter un congé
+     */
+    public function rejectLeave(Request $request, $leaveId)
+    {
+        try {
+            $leave = EmployeeLeave::find($leaveId);
+
+            if (!$leave) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Congé non trouvé'
+                ], 404);
+            }
+
+            if ($leave->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce congé a déjà été traité'
+                ], 400);
+            }
+
+            $validated = $request->validate([
+                'reason' => 'required|string|max:1000'
+            ]);
+
+            $leave->reject($request->user()->id, $validated['reason']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Congé rejeté',
+                'data' => [
+                    'id' => $leave->id,
+                    'status' => $leave->status,
+                    'rejection_reason' => $leave->rejection_reason,
+                    'approved_by' => $leave->approved_by,
+                    'approved_at' => $leave->approved_at?->format('Y-m-d\TH:i:s\Z')
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du rejet du congé: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter un document à un employé
+     */
+    public function addDocument(Request $request, $employeeId)
+    {
+        try {
+            $employee = Employee::find($employeeId);
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employé non trouvé'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'type' => 'required|in:contract,id_card,passport,diploma,certificate,medical,other',
+                'description' => 'nullable|string',
+                'file_path' => 'nullable|string|max:500',
+                'file_size' => 'nullable|string|max:50',
+                'expiry_date' => 'nullable|date',
+                'is_required' => 'nullable|boolean'
+            ]);
+
+            $document = EmployeeDocument::create([
+                'employee_id' => $employee->id,
+                'name' => $validated['name'],
+                'type' => $validated['type'],
+                'description' => $validated['description'] ?? null,
+                'file_path' => $validated['file_path'] ?? null,
+                'file_size' => $validated['file_size'] ?? null,
+                'expiry_date' => $validated['expiry_date'] ?? null,
+                'is_required' => $validated['is_required'] ?? false,
+                'created_by' => $request->user()->id ?? null
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document ajouté avec succès',
+                'data' => [
+                    'id' => $document->id,
+                    'employee_id' => $document->employee_id,
+                    'name' => $document->name,
+                    'type' => $document->type,
+                    'description' => $document->description,
+                    'file_path' => $document->file_path,
+                    'file_size' => $document->file_size,
+                    'expiry_date' => $document->expiry_date?->format('Y-m-d\TH:i:s\Z'),
+                    'is_required' => $document->is_required,
+                    'created_at' => $document->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'created_by' => $document->creator_name ?? 'N/A'
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'ajout du document: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter un congé à un employé
+     */
+    public function addLeave(Request $request, $employeeId)
+    {
+        try {
+            $employee = Employee::find($employeeId);
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employé non trouvé'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'type' => 'required|in:annual,sick,maternity,paternity,personal,unpaid',
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'reason' => 'nullable|string'
+            ]);
+
+            // Calculer le nombre total de jours
+            $startDate = \Carbon\Carbon::parse($validated['start_date']);
+            $endDate = \Carbon\Carbon::parse($validated['end_date']);
+            $totalDays = $startDate->diffInDays($endDate) + 1;
+
+            $leave = EmployeeLeave::create([
+                'employee_id' => $employee->id,
+                'type' => $validated['type'],
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'total_days' => $totalDays,
+                'reason' => $validated['reason'] ?? null,
+                'status' => 'pending',
+                'created_by' => $request->user()->id ?? null
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Congé ajouté avec succès',
+                'data' => [
+                    'id' => $leave->id,
+                    'employee_id' => $leave->employee_id,
+                    'type' => $leave->type,
+                    'start_date' => $leave->start_date->format('Y-m-d\TH:i:s\Z'),
+                    'end_date' => $leave->end_date->format('Y-m-d\TH:i:s\Z'),
+                    'total_days' => $leave->total_days,
+                    'reason' => $leave->reason,
+                    'status' => $leave->status,
+                    'created_at' => $leave->created_at->format('Y-m-d\TH:i:s\Z')
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'ajout du congé: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter une performance à un employé
+     */
+    public function addPerformance(Request $request, $employeeId)
+    {
+        try {
+            $employee = Employee::find($employeeId);
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employé non trouvé'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'period' => 'required|string|max:100',
+                'rating' => 'required|numeric|min:0|max:5',
+                'comments' => 'nullable|string',
+                'goals' => 'nullable|string',
+                'achievements' => 'nullable|string',
+                'areas_for_improvement' => 'nullable|string'
+            ]);
+
+            $performance = EmployeePerformance::create([
+                'employee_id' => $employee->id,
+                'period' => $validated['period'],
+                'rating' => $validated['rating'],
+                'comments' => $validated['comments'] ?? null,
+                'goals' => $validated['goals'] ?? null,
+                'achievements' => $validated['achievements'] ?? null,
+                'areas_for_improvement' => $validated['areas_for_improvement'] ?? null,
+                'status' => 'draft',
+                'created_by' => $request->user()->id ?? null
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Performance ajoutée avec succès',
+                'data' => [
+                    'id' => $performance->id,
+                    'employee_id' => $performance->employee_id,
+                    'period' => $performance->period,
+                    'rating' => (float)$performance->rating,
+                    'comments' => $performance->comments,
+                    'goals' => $performance->goals,
+                    'achievements' => $performance->achievements,
+                    'areas_for_improvement' => $performance->areas_for_improvement,
+                    'status' => $performance->status,
+                    'created_at' => $performance->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'created_by' => $performance->creator_name ?? 'N/A'
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'ajout de la performance: ' . $e->getMessage()
             ], 500);
         }
     }

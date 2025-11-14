@@ -30,8 +30,8 @@ class BonDeCommandeItem {
   Map<String, dynamic> toJsonForCreate() => {
     if (ref != null && ref!.isNotEmpty) 'ref': ref,
     'designation': designation,
-    'quantite': quantite,
-    'prix_unitaire': prixUnitaire,
+    'quantite': quantite, // int
+    'prix_unitaire': prixUnitaire, // double
     if (description != null && description!.isNotEmpty)
       'description': description,
   };
@@ -125,7 +125,7 @@ class BonDeCommande {
   };
 
   Map<String, dynamic> toJsonForCreate() => {
-    if (clientId != null) 'client_id': clientId,
+    // Ne jamais envoyer client_id pour un bon de commande fournisseur
     if (fournisseurId != null) 'fournisseur_id': fournisseurId,
     'numero_commande': numeroCommande,
     'date_commande': dateCommande.toIso8601String().split('T')[0],
@@ -134,14 +134,19 @@ class BonDeCommande {
           dateLivraisonPrevue!.toIso8601String().split('T')[0],
     if (description != null && description!.isNotEmpty)
       'description': description,
-    if (statut.isNotEmpty) 'statut': statut,
+    // La colonne dans la base de données s'appelle 'status' (en anglais)
+    if (statut.isNotEmpty) 'status': statut,
     if (commentaire != null && commentaire!.isNotEmpty)
       'commentaire': commentaire,
     if (conditionsPaiement != null && conditionsPaiement!.isNotEmpty)
       'conditions_paiement': conditionsPaiement,
     if (delaiLivraison != null) 'delai_livraison': delaiLivraison,
-    if (montantTotal != null) 'montant_total': montantTotal,
-    'items': items.map((item) => item.toJsonForCreate()).toList(),
+    // Si items est fourni, ne pas envoyer montant_total (le backend le calcule automatiquement)
+    // Si items est vide, envoyer montant_total si fourni
+    if (items.isEmpty && montantTotal != null) 'montant_total': montantTotal,
+    // Envoyer items seulement s'il y en a (le backend calcule alors montant_total automatiquement)
+    if (items.isNotEmpty)
+      'items': items.map((item) => item.toJsonForCreate()).toList(),
   };
 
   factory BonDeCommande.fromJson(Map<String, dynamic> json) => BonDeCommande(
@@ -164,7 +169,11 @@ class BonDeCommande {
             ? DateTime.tryParse(json['date_livraison_prevue'])
             : null,
     description: json['description'],
-    statut: json['statut']?.toString() ?? 'en_attente',
+    // La colonne dans la base de données s'appelle 'status' (en anglais)
+    statut:
+        json['status']?.toString() ??
+        json['statut']?.toString() ??
+        'en_attente',
     commentaire: json['commentaire'],
     conditionsPaiement: json['conditions_paiement'],
     delaiLivraison:

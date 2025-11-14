@@ -360,60 +360,66 @@ class FournisseurController extends Controller
     /**
      * Approuver un fournisseur
      */
-    public function approve(Request $request, Supplier $supplier): JsonResponse
+    public function approve(Request $request, $id): JsonResponse
     {
-        // Validation
-        $validator = Validator::make($request->all(), [
-            'comments' => 'nullable|string|max:1000',
-        ], [
-            'comments.max' => 'Les commentaires ne peuvent pas dépasser 1000 caractères.',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreurs de validation',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
+            $fournisseur = Fournisseur::findOrFail($id);
+
+            // Validation
+            $validator = Validator::make($request->all(), [
+                'comments' => 'nullable|string|max:1000',
+            ], [
+                'comments.max' => 'Les commentaires ne peuvent pas dépasser 1000 caractères.',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erreurs de validation',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
             Log::info('API: Approbation du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id(),
                 'comments' => $request->comments
             ]);
 
             DB::beginTransaction();
 
-            $supplier->approve($request->comments);
+            // Utiliser la méthode validate() du modèle Fournisseur
+            $fournisseur->validate($request->comments);
 
             DB::commit();
 
+            // Recharger le fournisseur avec ses relations
+            $fournisseur->refresh();
+            $fournisseur->load(['createdBy', 'validatedBy']);
+
             Log::info('API: Fournisseur approuvé avec succès', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseur approuvé avec succès',
-                'data' => new SupplierResource($supplier->fresh())
+                'data' => $fournisseur
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             
             Log::error('API: Erreur lors de l\'approbation du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $id ?? null,
                 'error' => $e->getMessage(),
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'approbation du fournisseur',
-                'error' => $e->getMessage()
+                'message' => 'Erreur lors de l\'approbation du fournisseur: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -421,61 +427,67 @@ class FournisseurController extends Controller
     /**
      * Rejeter un fournisseur
      */
-    public function reject(Request $request, Supplier $supplier): JsonResponse
+    public function reject(Request $request, $id): JsonResponse
     {
-        // Validation
-        $validator = Validator::make($request->all(), [
-            'reason' => 'required|string|max:1000',
-        ], [
-            'reason.required' => 'Le motif du rejet est obligatoire.',
-            'reason.max' => 'Le motif du rejet ne peut pas dépasser 1000 caractères.',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreurs de validation',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
+            $fournisseur = Fournisseur::findOrFail($id);
+
+            // Validation
+            $validator = Validator::make($request->all(), [
+                'reason' => 'required|string|max:1000',
+            ], [
+                'reason.required' => 'Le motif du rejet est obligatoire.',
+                'reason.max' => 'Le motif du rejet ne peut pas dépasser 1000 caractères.',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erreurs de validation',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
             Log::info('API: Rejet du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id(),
                 'reason' => $request->reason
             ]);
 
             DB::beginTransaction();
 
-            $supplier->reject($request->reason);
+            // Utiliser la méthode reject() du modèle Fournisseur
+            $fournisseur->reject($request->reason, $request->get('comment'));
 
             DB::commit();
 
+            // Recharger le fournisseur avec ses relations
+            $fournisseur->refresh();
+            $fournisseur->load(['createdBy', 'rejectedBy']);
+
             Log::info('API: Fournisseur rejeté avec succès', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseur rejeté avec succès',
-                'data' => new SupplierResource($supplier->fresh())
+                'data' => $fournisseur
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             
             Log::error('API: Erreur lors du rejet du fournisseur', [
-                'supplier_id' => $supplier->id,
+                'fournisseur_id' => $id ?? null,
                 'error' => $e->getMessage(),
                 'user_id' => auth()->id()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du rejet du fournisseur',
-                'error' => $e->getMessage()
+                'message' => 'Erreur lors du rejet du fournisseur: ' . $e->getMessage()
             ], 500);
         }
     }

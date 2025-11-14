@@ -159,6 +159,11 @@ class StockService extends GetxService {
   // Créer un nouveau stock
   Future<Stock> createStock(Stock stock) async {
     try {
+      print('🔵 [STOCK_SERVICE] createStock() appelé');
+      print(
+        '🔵 [STOCK_SERVICE] Stock à créer: name=${stock.name}, category=${stock.category}, sku=${stock.sku}',
+      );
+
       // Validation des champs requis
       if (stock.name.isEmpty) {
         throw Exception('Le nom du produit est requis');
@@ -184,22 +189,70 @@ class StockService extends GetxService {
       }
 
       final stockData = stock.toJson();
-      final response = await http.post(
-        Uri.parse('$baseUrl/stocks'),
-        headers: ApiService.headers(),
-        body: jsonEncode(stockData),
+      print('🔵 [STOCK_SERVICE] Données JSON à envoyer: $stockData');
+
+      // Essayer d'abord la route stocks-create, puis stocks en fallback
+      String url = '$baseUrl/stocks-create';
+      print('🔵 [STOCK_SERVICE] Tentative avec route: $url');
+
+      http.Response response;
+      try {
+        response = await http.post(
+          Uri.parse(url),
+          headers: ApiService.headers(),
+          body: jsonEncode(stockData),
+        );
+        print(
+          '🔵 [STOCK_SERVICE] Réponse route stocks-create - Status: ${response.statusCode}',
+        );
+      } catch (e) {
+        print(
+          '⚠️ [STOCK_SERVICE] Route stocks-create échouée, essai route stocks: $e',
+        );
+        // Si la première route échoue, essayer la route standard
+        url = '$baseUrl/stocks';
+        print('🔵 [STOCK_SERVICE] Tentative avec route: $url');
+        response = await http.post(
+          Uri.parse(url),
+          headers: ApiService.headers(),
+          body: jsonEncode(stockData),
+        );
+        print(
+          '🔵 [STOCK_SERVICE] Réponse route stocks - Status: ${response.statusCode}',
+        );
+      }
+
+      print(
+        '🔵 [STOCK_SERVICE] Réponse finale - Status: ${response.statusCode}',
       );
+      print('🔵 [STOCK_SERVICE] Réponse body: ${response.body}');
+
       if (response.statusCode == 201 || response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
+        print('🔵 [STOCK_SERVICE] Réponse parsée avec succès');
         return Stock.fromJson(responseData['data'] ?? responseData);
       }
 
       // Afficher les détails de l'erreur
       final errorBody = response.body;
-      throw Exception(
-        'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
+      print(
+        '❌ [STOCK_SERVICE] Erreur lors de la création - Status: ${response.statusCode}',
       );
-    } catch (e) {
+      print('❌ [STOCK_SERVICE] Erreur body: $errorBody');
+
+      // Essayer de parser le message d'erreur du backend
+      try {
+        final errorData = jsonDecode(errorBody);
+        final message = errorData['message'] ?? errorBody;
+        throw Exception('Erreur ${response.statusCode}: $message');
+      } catch (e) {
+        throw Exception(
+          'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ [STOCK_SERVICE] Exception createStock: $e');
+      print('❌ [STOCK_SERVICE] Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -207,14 +260,13 @@ class StockService extends GetxService {
   // Mettre à jour un stock
   Future<Stock> updateStock(Stock stock) async {
     try {
-
       if (stock.id == null) {
         throw Exception('L\'ID du stock est requis pour la mise à jour');
       }
 
       final stockData = stock.toJson();
       final response = await http.put(
-        Uri.parse('$baseUrl/stocks/${stock.id}'),
+        Uri.parse('$baseUrl/stocks-update/${stock.id}'),
         headers: ApiService.headers(),
         body: jsonEncode(stockData),
       );
@@ -236,7 +288,7 @@ class StockService extends GetxService {
   Future<Map<String, dynamic>> deleteStock(int id) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/stocks/$id'),
+        Uri.parse('$baseUrl/stocks-destroy/$id'),
         headers: ApiService.headers(),
       );
 
@@ -262,9 +314,8 @@ class StockService extends GetxService {
     String? notes,
   }) async {
     try {
-
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/add-stock'),
+        Uri.parse('$baseUrl/stocks-add-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -296,9 +347,8 @@ class StockService extends GetxService {
     String? notes,
   }) async {
     try {
-
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/remove-stock'),
+        Uri.parse('$baseUrl/stocks-remove-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -328,9 +378,8 @@ class StockService extends GetxService {
     String? notes,
   }) async {
     try {
-
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/adjust-stock'),
+        Uri.parse('$baseUrl/stocks-adjust-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'new_quantity': newQuantity,
@@ -359,9 +408,8 @@ class StockService extends GetxService {
     String? notes,
   }) async {
     try {
-
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/transfer-stock'),
+        Uri.parse('$baseUrl/stocks-transfer-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -394,7 +442,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/movements'),
+        Uri.parse('$baseUrl/stocks-movements/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'type': type,
@@ -427,7 +475,7 @@ class StockService extends GetxService {
     int? limit,
   }) async {
     try {
-      String url = '$baseUrl/stocks/$stockId/movements';
+      String url = '$baseUrl/stocks-movements/$stockId';
       List<String> params = [];
 
       if (type != null && type.isNotEmpty) {
@@ -512,7 +560,7 @@ class StockService extends GetxService {
   Future<List<StockCategory>> getStockCategories() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/stock-categories'),
+        Uri.parse('$baseUrl/stocks-categories'),
         headers: ApiService.headers(),
       );
       if (response.statusCode == 200) {
@@ -646,12 +694,38 @@ class StockService extends GetxService {
   }
 
   // Rejeter un stock (endpoint selon la doc: POST /api/stocks/{id}/rejeter)
+  // Approuver/Valider un stock
+  Future<Stock> approveStock({
+    required int stockId,
+    String? validationComment,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/stocks/$stockId/valider'),
+        headers: ApiService.headers(),
+        body: jsonEncode({
+          if (validationComment != null && validationComment.isNotEmpty)
+            'validation_comment': validationComment,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return Stock.fromJson(responseData['data'] ?? responseData);
+      }
+
+      throw Exception(
+        'Erreur lors de l\'approbation du stock: ${response.statusCode} - ${response.body}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<Stock> rejectStock({
     required int stockId,
     required String commentaire,
   }) async {
     try {
-
       final response = await http.post(
         Uri.parse('$baseUrl/stocks/$stockId/rejeter'),
         headers: ApiService.headers(),

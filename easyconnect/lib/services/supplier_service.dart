@@ -54,8 +54,7 @@ class SupplierService extends GetxService {
           return [];
         }
 
-        if (data.isNotEmpty) {
-        }
+        if (data.isNotEmpty) {}
 
         try {
           final suppliers =
@@ -73,7 +72,6 @@ class SupplierService extends GetxService {
 
   // Récupérer un fournisseur par ID
   Future<Supplier> getSupplierById(int id) async {
-
     final token = storage.read('token');
     final response = await http.get(
       Uri.parse('$baseUrl/fournisseurs-show/$id'),
@@ -137,7 +135,6 @@ class SupplierService extends GetxService {
 
   // Mettre à jour un fournisseur
   Future<Supplier> updateSupplier(Supplier supplier) async {
-
     final token = storage.read('token');
     final response = await http.put(
       Uri.parse('$baseUrl/fournisseurs-update/${supplier.id}'),
@@ -161,7 +158,6 @@ class SupplierService extends GetxService {
 
   // Supprimer un fournisseur (soft delete)
   Future<bool> deleteSupplier(int supplierId) async {
-
     final token = storage.read('token');
     final response = await http.delete(
       Uri.parse('$baseUrl/fournisseurs-destroy/$supplierId'),
@@ -173,7 +169,6 @@ class SupplierService extends GetxService {
 
   // Récupérer les statistiques
   Future<SupplierStats> getSupplierStats() async {
-
     final token = storage.read('token');
     final response = await http.get(
       Uri.parse('$baseUrl/fournisseurs-stats'),
@@ -192,7 +187,6 @@ class SupplierService extends GetxService {
 
   // Récupérer les fournisseurs en attente
   Future<List<Supplier>> getPendingSuppliers() async {
-
     final token = storage.read('token');
     final response = await http.get(
       Uri.parse('$baseUrl/fournisseurs-list?statut=pending'),
@@ -215,21 +209,60 @@ class SupplierService extends GetxService {
     int supplierId, {
     String? validationComment,
   }) async {
-
-    final token = storage.read('token');
-    final response = await http.post(
-      Uri.parse('$baseUrl/fournisseurs-validate/$supplierId'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({
+    try {
+      print(
+        '🔵 [SUPPLIER_SERVICE] approveSupplier() appelé pour supplierId: $supplierId',
+      );
+      final token = storage.read('token');
+      final url = '$baseUrl/fournisseurs-validate/$supplierId';
+      final body = {
         if (validationComment != null && validationComment.isNotEmpty)
           'validation_comment': validationComment,
-      }),
-    );
-    return response.statusCode == 200;
+      };
+
+      print('🔵 [SUPPLIER_SERVICE] Appel POST $url');
+      print('🔵 [SUPPLIER_SERVICE] Body: ${json.encode(body)}');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(body),
+      );
+
+      print('🔵 [SUPPLIER_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [SUPPLIER_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Ce fournisseur ne peut pas être validé';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors de la validation';
+        throw Exception('Erreur serveur: $message');
+      }
+      return false;
+    } catch (e, stackTrace) {
+      print('❌ [SUPPLIER_SERVICE] Exception approveSupplier: $e');
+      print('❌ [SUPPLIER_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
+    }
   }
 
   // Rejeter un fournisseur
@@ -238,21 +271,61 @@ class SupplierService extends GetxService {
     required String rejectionReason,
     String? rejectionComment,
   }) async {
-    final token = storage.read('token');
-    final response = await http.post(
-      Uri.parse('$baseUrl/fournisseurs-reject/$supplierId'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({
+    try {
+      print(
+        '🔵 [SUPPLIER_SERVICE] rejectSupplier() appelé pour supplierId: $supplierId',
+      );
+      final token = storage.read('token');
+      final url = '$baseUrl/fournisseurs-reject/$supplierId';
+      final body = {
         'rejection_reason': rejectionReason,
         if (rejectionComment != null && rejectionComment.isNotEmpty)
           'rejection_comment': rejectionComment,
-      }),
-    );
-    return response.statusCode == 200;
+      };
+
+      print('🔵 [SUPPLIER_SERVICE] Appel POST $url');
+      print('🔵 [SUPPLIER_SERVICE] Body: ${json.encode(body)}');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(body),
+      );
+
+      print('🔵 [SUPPLIER_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [SUPPLIER_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Ce fournisseur ne peut pas être rejeté';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors du rejet';
+        throw Exception('Erreur serveur: $message');
+      }
+      return false;
+    } catch (e, stackTrace) {
+      print('❌ [SUPPLIER_SERVICE] Exception rejectSupplier: $e');
+      print('❌ [SUPPLIER_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
+    }
   }
 
   // Évaluer un fournisseur
@@ -261,7 +334,6 @@ class SupplierService extends GetxService {
     double rating, {
     String? comments,
   }) async {
-
     final token = storage.read('token');
     final response = await http.post(
       Uri.parse('$baseUrl/fournisseurs-rate/$supplierId'),
@@ -278,7 +350,6 @@ class SupplierService extends GetxService {
 
   // Soumettre un fournisseur
   Future<bool> submitSupplier(int supplierId) async {
-
     final token = storage.read('token');
     final response = await http.post(
       Uri.parse('$baseUrl/fournisseurs-submit/$supplierId'),

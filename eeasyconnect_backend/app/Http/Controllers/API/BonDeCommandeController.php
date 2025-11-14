@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\BonDeCommande;
 use App\Models\BonDeCommandeItem;
-use App\Models\Client;
 use App\Models\Fournisseur;
 use Illuminate\Support\Facades\DB;
 
@@ -20,11 +19,23 @@ class BonDeCommandeController extends Controller
     {
         try {
             $user = $request->user();
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur', 'items']);
+            $query = BonDeCommande::with(['fournisseur', 'createur', 'items']);
             
-            // Filtrage par statut
+            // Filtrage par rôle : Commercial ne voit que ses propres bons de commande
+            if ($user->role == 2) { // Commercial
+                $query->where('user_id', $user->id);
+            }
+            
+            // Filtrage par user_id (pour les autres rôles)
+            if ($request->has('user_id') && $user->role != 2) {
+                $query->where('user_id', $request->user_id);
+            }
+            
+            // Filtrage par statut (support des deux noms : statut et status)
             if ($request->has('statut')) {
                 $query->where('statut', $request->statut);
+            } elseif ($request->has('status')) {
+                $query->where('statut', $request->status);
             }
             
             // Filtrage par date de commande
@@ -34,11 +45,6 @@ class BonDeCommandeController extends Controller
             
             if ($request->has('date_fin')) {
                 $query->where('date_commande', '<=', $request->date_fin);
-            }
-            
-            // Filtrage par client
-            if ($request->has('client_id')) {
-                $query->where('client_id', $request->client_id);
             }
             
             // Filtrage par fournisseur
@@ -61,21 +67,19 @@ class BonDeCommandeController extends Controller
                       ->where('statut', '!=', 'livre');
             }
             
-            // Si commercial → filtre ses propres clients
-            if ($user->role == 2) { // Commercial
-                $query->whereHas('client', function($q) use ($user) {
-                    $q->where('user_id', $user->id);
-                });
+            // Pagination optionnelle
+            if ($request->has('per_page') || $request->has('page')) {
+                $perPage = $request->get('per_page', 15);
+                $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
+            } else {
+                // Si pas de pagination demandée, retourner tous les résultats
+                $bons = $query->orderBy('date_commande', 'desc')->get();
             }
-            
-            // Pagination
-            $perPage = $request->get('per_page', 15);
-            $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
                 'data' => $bons,
-                'message' => 'Liste des bons de commande récupérée avec succès'
+                'message' => 'Bons de commande récupérés avec succès'
             ]);
             
         } catch (\Exception $e) {
@@ -92,15 +96,7 @@ class BonDeCommandeController extends Controller
      */
     public function show($id)
     {
-        $bon = BonDeCommande::with(['client', 'fournisseur', 'createur', 'items'])->findOrFail($id);
-        
-        // Vérification des permissions pour les commerciaux
-        if (auth()->user()->isCommercial() && $bon->client->user_id !== auth()->id()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Accès refusé à ce bon de commande'
-            ], 403);
-        }
+        $bon = BonDeCommande::with(['fournisseur', 'createur', 'items'])->findOrFail($id);
         
         return response()->json([
             'success' => true,
@@ -116,7 +112,6 @@ class BonDeCommandeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'client_id' => 'required|exists:clients,id',
             'fournisseur_id' => 'required|exists:fournisseurs,id',
             'numero_commande' => 'required|string|unique:bon_de_commandes',
             'date_commande' => 'required|date',
@@ -155,7 +150,6 @@ class BonDeCommandeController extends Controller
             }
 
             $bon = BonDeCommande::create([
-                'client_id' => $request->client_id,
                 'fournisseur_id' => $request->fournisseur_id,
                 'numero_commande' => $request->numero_commande,
                 'date_commande' => $request->date_commande,
@@ -185,7 +179,7 @@ class BonDeCommandeController extends Controller
 
             DB::commit();
 
-            $bon->load(['client', 'fournisseur', 'createur', 'items']);
+            $bon->load(['fournisseur', 'createur', 'items']);
 
             return response()->json([
                 'success' => true,
@@ -279,7 +273,7 @@ class BonDeCommandeController extends Controller
 
             DB::commit();
 
-            $bon->load(['client', 'fournisseur', 'createur', 'items']);
+            $bon->load(['fournisseur', 'createur', 'items']);
 
             return response()->json([
                 'success' => true,
@@ -320,6 +314,39 @@ class BonDeCommandeController extends Controller
             'success' => true,
             'bon_de_commande' => $bon,
             'message' => 'Bon de commande validé avec succès'
+        ]);
+    }
+
+    /**
+     * Rejeter un bon de commande
+     * Accessible par Admin et Patron
+     */
+    public function reject(Request $request, $id)
+    {
+        $request->validate([
+            'commentaire' => 'required|string|max:500'
+        ]);
+
+        $bon = BonDeCommande::findOrFail($id);
+        
+        // Vérifier que le bon de commande est en attente
+        if ($bon->statut !== 'en_attente') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce bon de commande ne peut pas être rejeté'
+            ], 422);
+        }
+        
+        $bon->update([
+            'statut' => 'annule',
+            'commentaire' => $request->commentaire,
+            'date_annulation' => now()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'bon_de_commande' => $bon->load(['fournisseur', 'createur', 'items']),
+            'message' => 'Bon de commande rejeté avec succès'
         ]);
     }
 
@@ -411,7 +438,7 @@ class BonDeCommandeController extends Controller
 
     /**
      * Supprimer un bon de commande
-     * Accessible par Admin uniquement
+     * Accessible par Commercial, Comptable, Admin et Patron
      */
     public function destroy($id)
     {
@@ -439,7 +466,7 @@ class BonDeCommandeController extends Controller
      */
     public function reports(Request $request)
     {
-        $query = BonDeCommande::with(['client', 'fournisseur']);
+        $query = BonDeCommande::with(['fournisseur']);
         
         // Filtrage par période
         if ($request->has('date_debut')) {
@@ -465,14 +492,6 @@ class BonDeCommandeController extends Controller
             'montant_livre' => $bons->where('statut', 'livre')->sum('montant_total'),
             'bons_annules' => $bons->where('statut', 'annule')->count(),
             'montant_annule' => $bons->where('statut', 'annule')->sum('montant_total'),
-            'par_client' => $bons->groupBy('client_id')->map(function($group, $clientId) {
-                $client = Client::find($clientId);
-                return [
-                    'client' => $client ? $client->nom . ' ' . $client->prenom : 'Client inconnu',
-                    'total_bons' => $group->count(),
-                    'montant_total' => $group->sum('montant_total')
-                ];
-            }),
             'par_fournisseur' => $bons->groupBy('fournisseur_id')->map(function($group, $fournisseurId) {
                 $fournisseur = Fournisseur::find($fournisseurId);
                 return [
@@ -533,7 +552,7 @@ class BonDeCommandeController extends Controller
                            $bon->date_livraison_prevue < now() && 
                            !in_array($bon->statut, ['livre', 'annule']);
                 })->count(),
-                'bons_recents' => BonDeCommande::with(['client', 'fournisseur'])
+                'bons_recents' => BonDeCommande::with(['fournisseur'])
                     ->orderBy('created_at', 'desc')
                     ->limit(5)
                     ->get()
@@ -615,19 +634,11 @@ class BonDeCommandeController extends Controller
     {
         try {
             $user = $request->user();
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur']);
+            $query = BonDeCommande::with(['fournisseur', 'createur']);
             
             // Recherche par numéro de commande
             if ($request->has('numero')) {
                 $query->where('numero_commande', 'like', '%' . $request->numero . '%');
-            }
-            
-            // Recherche par nom de client
-            if ($request->has('client_nom')) {
-                $query->whereHas('client', function($q) use ($request) {
-                    $q->where('nom', 'like', '%' . $request->client_nom . '%')
-                      ->orWhere('prenom', 'like', '%' . $request->client_nom . '%');
-                });
             }
             
             // Recherche par nom de fournisseur
@@ -642,12 +653,6 @@ class BonDeCommandeController extends Controller
                 $query->where('description', 'like', '%' . $request->description . '%');
             }
             
-            // Si commercial → filtre ses propres clients
-            if ($user->role == 2) {
-                $query->whereHas('client', function($q) use ($user) {
-                    $q->where('user_id', $user->id);
-                });
-            }
             
             $bons = $query->orderBy('date_commande', 'desc')->get();
             
@@ -679,7 +684,6 @@ class BonDeCommandeController extends Controller
             $numero = 'BC-' . date('Y') . '-' . str_pad(BonDeCommande::count() + 1, 4, '0', STR_PAD_LEFT);
             
             $nouveauBon = BonDeCommande::create([
-                'client_id' => $originalBon->client_id,
                 'fournisseur_id' => $originalBon->fournisseur_id,
                 'numero_commande' => $numero,
                 'date_commande' => now()->toDateString(),
@@ -695,7 +699,7 @@ class BonDeCommandeController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => $nouveauBon->load(['client', 'fournisseur', 'createur']),
+                'data' => $nouveauBon->load(['fournisseur', 'createur']),
                 'message' => 'Bon de commande dupliqué avec succès'
             ], 201);
             
@@ -714,7 +718,7 @@ class BonDeCommandeController extends Controller
     public function export(Request $request)
     {
         try {
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur']);
+            $query = BonDeCommande::with(['fournisseur', 'createur']);
             
             // Appliquer les mêmes filtres que l'index
             if ($request->has('statut')) {
@@ -736,7 +740,6 @@ class BonDeCommandeController extends Controller
                 return [
                     'Numéro' => $bon->numero_commande,
                     'Date commande' => $bon->date_commande?->format('d/m/Y'),
-                    'Client' => $bon->client->nom . ' ' . $bon->client->prenom,
                     'Fournisseur' => $bon->fournisseur->nom,
                     'Montant' => $bon->montant_total,
                     'Statut' => $bon->statut_libelle,

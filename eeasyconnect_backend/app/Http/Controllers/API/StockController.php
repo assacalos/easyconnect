@@ -782,6 +782,57 @@ class StockController extends Controller
     }
 
     /**
+     * Valider un stock
+     */
+    public function valider(Request $request, $id)
+    {
+        try {
+            $stock = Stock::find($id);
+
+            if (!$stock) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Stock non trouvé'
+                ], 404);
+            }
+
+            // Vérifier que le stock est en attente
+            if ($stock->status !== 'en_attente' && $stock->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce stock ne peut pas être validé'
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            // Mettre à jour le statut du stock à 'valide'
+            DB::table('stocks')->where('id', $id)->update([
+                'status' => 'valide',
+                'updated_at' => now()
+            ]);
+
+            DB::commit();
+
+            // Recharger le stock
+            $stock = Stock::find($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->transformStockForFlutter($stock),
+                'message' => 'Stock validé avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la validation du stock: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Rejeter un stock avec commentaire
      */
     public function rejeter(Request $request, $id)

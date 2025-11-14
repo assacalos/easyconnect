@@ -71,22 +71,33 @@ class InvoiceController extends GetxController {
   // Charger les factures
   Future<void> loadInvoices() async {
     try {
+      print('🔵 [INVOICE_CONTROLLER] loadInvoices() appelé');
+      print('🔵 [INVOICE_CONTROLLER] selectedStatus: ${selectedStatus.value}');
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
-      if (user == null) return;
+      if (user == null) {
+        print('🔵 [INVOICE_CONTROLLER] ⚠️ Utilisateur null');
+        return;
+      }
 
+      print('🔵 [INVOICE_CONTROLLER] Rôle utilisateur: ${user.role}');
       List<InvoiceModel> invoiceList;
 
-      if (user.role == 1) {
-        // Patron
+      // Patron (role 6) ou Admin (role 1) peuvent voir toutes les factures
+      if (user.role == 1 || user.role == 6) {
+        // Patron ou Admin
+        print('🔵 [INVOICE_CONTROLLER] Appel getAllInvoices pour Patron/Admin');
         invoiceList = await _invoiceService.getAllInvoices(
           startDate: startDate.value,
           endDate: endDate.value,
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
         );
       } else {
-        // Comptable
+        // Comptable ou autre rôle
+        print(
+          '🔵 [INVOICE_CONTROLLER] Appel getCommercialInvoices pour Comptable',
+        );
         invoiceList = await _invoiceService.getCommercialInvoices(
           commercialId: user.id,
           startDate: startDate.value,
@@ -94,6 +105,10 @@ class InvoiceController extends GetxController {
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
         );
       }
+
+      print(
+        '🔵 [INVOICE_CONTROLLER] ✅ ${invoiceList.length} factures chargées',
+      );
 
       // Filtrer par recherche
       if (searchQuery.value.isNotEmpty) {
@@ -149,12 +164,12 @@ class InvoiceController extends GetxController {
   Future<void> loadPendingInvoices() async {
     try {
       final user = _authController.userAuth.value;
-      if (user == null || user.role != 1) return; // Seulement pour le patron
+      if (user == null || (user.role != 1 && user.role != 6))
+        return; // Seulement pour le patron ou admin
 
       final pendingList = await _invoiceService.getPendingInvoices();
       pendingInvoices.value = pendingList;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les statistiques
@@ -166,11 +181,10 @@ class InvoiceController extends GetxController {
       final stats = await _invoiceService.getInvoiceStats(
         startDate: startDate.value,
         endDate: endDate.value,
-        commercialId: user.role != 1 ? user.id : null,
+        commercialId: (user.role != 1 && user.role != 6) ? user.id : null,
       );
       invoiceStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les modèles
@@ -178,8 +192,7 @@ class InvoiceController extends GetxController {
     try {
       final templatesList = await _invoiceService.getInvoiceTemplates();
       templates.value = templatesList;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Créer une facture
@@ -313,43 +326,98 @@ class InvoiceController extends GetxController {
   // Approuver une facture (pour le patron)
   Future<void> approveInvoice(int invoiceId, {String? comments}) async {
     try {
+      print(
+        '🔵 [INVOICE_CONTROLLER] approveInvoice() appelé pour invoiceId: $invoiceId',
+      );
+      isLoading.value = true;
+
       final result = await _invoiceService.approveInvoice(
         invoiceId: invoiceId,
         comments: comments,
       );
+      print('🔵 [INVOICE_CONTROLLER] Résultat approveInvoice: $result');
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Facture approuvée');
+        Get.snackbar(
+          'Succès',
+          'Facture approuvée',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
         await loadInvoices();
         await loadPendingInvoices();
       } else {
         Get.snackbar(
           'Erreur',
           result['message'] ?? 'Erreur lors de l\'approbation',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
         );
       }
-    } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+    } catch (e, stackTrace) {
+      print('❌ [INVOICE_CONTROLLER] Erreur approveInvoice: $e');
+      print('❌ [INVOICE_CONTROLLER] Stack trace: $stackTrace');
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de l\'approbation: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 
   // Rejeter une facture (pour le patron)
   Future<void> rejectInvoice(int invoiceId, String reason) async {
     try {
+      print(
+        '🔵 [INVOICE_CONTROLLER] rejectInvoice() appelé pour invoiceId: $invoiceId',
+      );
+      isLoading.value = true;
+
       final result = await _invoiceService.rejectInvoice(
         invoiceId: invoiceId,
         reason: reason,
       );
+      print('🔵 [INVOICE_CONTROLLER] Résultat rejectInvoice: $result');
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Facture rejetée');
+        Get.snackbar(
+          'Succès',
+          'Facture rejetée',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
         await loadInvoices();
         await loadPendingInvoices();
       } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
+        Get.snackbar(
+          'Erreur',
+          result['message'] ?? 'Erreur lors du rejet',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
       }
-    } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+    } catch (e, stackTrace) {
+      print('❌ [INVOICE_CONTROLLER] Erreur rejectInvoice: $e');
+      print('❌ [INVOICE_CONTROLLER] Stack trace: $stackTrace');
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors du rejet: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -500,7 +568,7 @@ class InvoiceController extends GetxController {
   // Vérifier si l'utilisateur peut approuver
   bool get canApproveInvoices {
     final user = _authController.userAuth.value;
-    return user?.role == 1; // Patron
+    return user?.role == 1 || user?.role == 6; // Patron ou Admin
   }
 
   // Vérifier si l'utilisateur peut soumettre

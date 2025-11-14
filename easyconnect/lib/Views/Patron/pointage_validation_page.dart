@@ -46,17 +46,12 @@ class _PointageValidationPageState extends State<PointageValidationPage>
   }
 
   Future<void> _loadAttendanceData() async {
-    print('🔄 PointageValidationPage._loadAttendanceData - Début');
     try {
       await controller.loadAttendanceData();
-      print('✅ PointageValidationPage._loadAttendanceData - Terminé');
-      print(
-        '📊 Nombre de pointages après chargement: ${controller.attendanceHistory.length}',
-      );
       // Forcer la mise à jour de l'UI
       setState(() {});
     } catch (e) {
-      print('❌ Erreur lors du chargement: $e');
+      // Gérer l'erreur silencieusement
     }
   }
 
@@ -136,44 +131,18 @@ class _PointageValidationPageState extends State<PointageValidationPage>
 
   Widget _buildAttendanceList() {
     // Filtrer les pointages selon l'onglet et la recherche
-    print('🔍 _buildAttendanceList - Onglet: ${_tabController.index}');
-    print(
-      '🔍 Nombre total de pointages: ${controller.attendanceHistory.length}',
-    );
-
     List<AttendancePunchModel> filteredPointages;
 
     switch (_tabController.index) {
       case 0: // Tous
         filteredPointages = controller.attendanceHistory;
-        print('📋 Onglet "Tous": ${filteredPointages.length} pointages');
-        for (var p in filteredPointages) {
-          print('   - ID: ${p.id}, Status: "${p.status}", User: ${p.userName}');
-        }
         break;
       case 1: // En attente
-        print(
-          '🔍 Filtrage "En attente" - Total: ${controller.attendanceHistory.length}',
-        );
-        for (var p in controller.attendanceHistory) {
-          print(
-            '   - ID: ${p.id}, Status: "${p.status}" (lowercase: "${p.status.toLowerCase()}"), User: ${p.userName}',
-          );
-        }
         filteredPointages =
             controller.attendanceHistory.where((pointage) {
               final status = pointage.status.toLowerCase();
-              final matches = status == 'pending';
-              if (matches) {
-                print(
-                  '✅ Pointage ${pointage.id} correspond au filtre "pending"',
-                );
-              }
-              return matches;
+              return status == 'pending';
             }).toList();
-        print(
-          '📋 Onglet "En attente": ${filteredPointages.length} pointages filtrés',
-        );
         break;
       case 2: // Validés
         filteredPointages =

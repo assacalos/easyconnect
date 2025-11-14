@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/recruitment_service.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class RecruitmentController extends GetxController {
   final RecruitmentService _recruitmentService = RecruitmentService.to;
-  final AuthController _authController = Get.find<AuthController>();
 
   // Variables observables
   final RxBool isLoading = false.obs;
@@ -110,6 +108,7 @@ class RecruitmentController extends GetxController {
         'Erreur',
         'Impossible de charger les demandes de recrutement',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;

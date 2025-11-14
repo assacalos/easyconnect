@@ -211,6 +211,13 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
                 color: Colors.brown,
                 onTap: () => Get.toNamed('/pointage/validation'),
               ),
+              _buildValidationCard(
+                title: 'Employés',
+                count: 0, // TODO: Ajouter le compteur dans le contrôleur
+                icon: Icons.people,
+                color: Colors.cyan,
+                onTap: () => Get.toNamed('/employees/validation'),
+              ),
             ],
           ),
         ],
@@ -571,6 +578,38 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
         ),
         onTap: () => Get.toNamed('/pointage/validation'),
       ),
+      ListTile(
+        leading: const Icon(Icons.work, color: Colors.white70),
+        title: const Text(
+          'Validation Recrutements',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () => Get.toNamed('/recrutement/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.description, color: Colors.white70),
+        title: const Text(
+          'Validation Contrats',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () => Get.toNamed('/contrats/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.event_busy, color: Colors.white70),
+        title: const Text(
+          'Validation Congés',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () => Get.toNamed('/conges/validation'),
+      ),
+      ListTile(
+        leading: const Icon(Icons.people, color: Colors.white70),
+        title: const Text(
+          'Validation Employés',
+          style: TextStyle(color: Colors.white70),
+        ),
+        onTap: () => Get.toNamed('/employees/validation'),
+      ),
       // Section Navigation générale
       const Divider(color: Colors.white54),
       const Padding(
@@ -591,11 +630,6 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
           style: TextStyle(color: Colors.white70),
         ),
         onTap: () => Get.toNamed('/clients'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.people, color: Colors.white70),
-        title: const Text('Employés', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/admin/users'),
       ),
       ListTile(
         leading: const Icon(Icons.euro, color: Colors.white70),

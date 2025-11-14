@@ -5,6 +5,7 @@ import 'package:easyconnect/Controllers/equipment_controller.dart';
 import 'package:easyconnect/Controllers/expense_controller.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:easyconnect/Controllers/leave_controller.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Controllers/recruitment_controller.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
@@ -12,6 +13,7 @@ import 'package:easyconnect/Controllers/salary_controller.dart';
 import 'package:easyconnect/Controllers/stock_controller.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
+import 'package:easyconnect/services/leave_service.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/patron_dashboard_controller.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
@@ -66,6 +68,7 @@ class PatronBinding extends Bindings {
     Get.put(BonCommandeService(), permanent: true);
     Get.put(BonDeCommandeFournisseurService(), permanent: true);
     Get.put(RecruitmentService(), permanent: true);
+    Get.put(LeaveService(), permanent: true);
 
     // Contrôleur patron
     Get.put(PatronDashboardController(), permanent: true);
@@ -90,5 +93,6 @@ class PatronBinding extends Bindings {
     Get.put(ContractController(), permanent: true);
     Get.put(EquipmentController(), permanent: true);
     Get.put(RecruitmentController(), permanent: true);
+    Get.put(LeaveController(), permanent: true);
   }
 }

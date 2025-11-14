@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/services/contract_service.dart';
+import 'package:easyconnect/services/employee_service.dart';
+import 'package:easyconnect/Models/employee_model.dart';
 
 class ContractController extends GetxController {
   final ContractService _contractService = ContractService.to;
+  final EmployeeService _employeeService = EmployeeService.to;
 
   // Variables observables
   final RxBool isLoading = false.obs;
@@ -12,7 +15,8 @@ class ContractController extends GetxController {
   final RxList<Contract> filteredContracts = <Contract>[].obs;
   final Rx<Contract?> selectedContract = Rx<Contract?>(null);
   final Rx<ContractStats?> contractStats = Rx<ContractStats?>(null);
-  final RxList<Map<String, dynamic>> employees = <Map<String, dynamic>>[].obs;
+  final RxList<Employee> employees = <Employee>[].obs;
+  final RxList<String> departments = <String>[].obs;
   final RxList<ContractTemplate> contractTemplates = <ContractTemplate>[].obs;
 
   // Variables pour le formulaire
@@ -46,6 +50,10 @@ class ContractController extends GetxController {
   final TextEditingController attachmentsController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
 
+  // Liste des fichiers sélectionnés pour les pièces jointes
+  final RxList<Map<String, dynamic>> selectedAttachments =
+      <Map<String, dynamic>>[].obs;
+
   // Variables de filtrage
   final RxString selectedStatus = 'all'.obs;
   final RxString selectedContractType = 'all'.obs;
@@ -55,8 +63,11 @@ class ContractController extends GetxController {
 
   // Variables pour le formulaire de création
   final RxInt selectedEmployeeId = 0.obs;
+  final Rx<Employee?> selectedEmployee = Rx<Employee?>(null);
+  final RxString selectedDepartmentForm = ''.obs;
   final RxString selectedContractTypeForm = 'all'.obs;
   final RxString selectedPaymentFrequency = 'monthly'.obs;
+  final RxString selectedProbationPeriod = 'none'.obs;
 
   // Variables pour les permissions
   final RxBool canManageContracts =
@@ -70,6 +81,7 @@ class ContractController extends GetxController {
   void onInit() {
     super.onInit();
     loadEmployees();
+    loadDepartments();
     loadContractTemplates();
     loadContracts();
     loadContractStats();
@@ -91,9 +103,32 @@ class ContractController extends GetxController {
   // Charger les employés
   Future<void> loadEmployees() async {
     try {
-      final emp = await _contractService.getAvailableEmployees();
+      final emp = await _employeeService.getEmployees();
       employees.value = emp;
     } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible de charger les employés',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // Charger les départements
+  Future<void> loadDepartments() async {
+    try {
+      final depts = await _employeeService.getDepartments();
+      departments.value = depts;
+    } catch (e) {
+      // En cas d'erreur, utiliser les départements par défaut
+      departments.value = [
+        'Ressources Humaines',
+        'Commercial',
+        'Comptabilité',
+        'Technique',
+        'Support',
+        'Direction',
+      ];
     }
   }
 
@@ -102,8 +137,7 @@ class ContractController extends GetxController {
     try {
       final templates = await _contractService.getContractTemplates();
       contractTemplates.value = templates;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Générer un numéro de contrat
@@ -111,8 +145,7 @@ class ContractController extends GetxController {
     try {
       final number = await _contractService.generateContractNumber();
       contractNumberController.text = number;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les contrats
@@ -157,8 +190,7 @@ class ContractController extends GetxController {
                 : null,
       );
       contractStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Appliquer les filtres
@@ -216,21 +248,125 @@ class ContractController extends GetxController {
   // Créer un contrat
   Future<void> createContract() async {
     try {
-      if (selectedEmployeeId.value == 0 ||
-          selectedContractTypeForm.value.isEmpty ||
-          departmentController.text.trim().isEmpty ||
-          jobTitleController.text.trim().isEmpty ||
-          grossSalaryController.text.trim().isEmpty ||
-          selectedPaymentFrequency.value.isEmpty ||
-          startDateController.text.trim().isEmpty ||
-          workLocationController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      // Validation des champs obligatoires
+      final department =
+          selectedDepartmentForm.value.isNotEmpty
+              ? selectedDepartmentForm.value
+              : departmentController.text.trim();
+
+      if (selectedEmployeeId.value == 0) {
+        Get.snackbar('Erreur', 'Veuillez sélectionner un employé');
+        return;
+      }
+
+      if (selectedContractTypeForm.value.isEmpty ||
+          selectedContractTypeForm.value == 'all') {
+        Get.snackbar('Erreur', 'Veuillez sélectionner un type de contrat');
+        return;
+      }
+
+      // Validation spéciale pour les contrats fixed_term : end_date est obligatoire
+      if (selectedContractTypeForm.value == 'fixed_term') {
+        if (endDateController.text.trim().isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'La date de fin est obligatoire pour les contrats à durée déterminée (CDD)',
+          );
+          return;
+        }
+      }
+
+      if (department.isEmpty) {
+        Get.snackbar('Erreur', 'Veuillez sélectionner un département');
+        return;
+      }
+
+      if (jobTitleController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'Le poste est obligatoire');
+        return;
+      }
+
+      // Validation de longueur pour job_title et position (max 100 caractères)
+      // Note: position et job_title utilisent la même valeur (jobTitleController)
+      if (jobTitleController.text.trim().length > 100) {
+        Get.snackbar(
+          'Erreur',
+          'Le poste ne doit pas dépasser 100 caractères (actuellement: ${jobTitleController.text.trim().length})',
+        );
+        return;
+      }
+
+      // Validation de longueur pour department (max 100 caractères)
+      if (department.length > 100) {
+        Get.snackbar(
+          'Erreur',
+          'Le département ne doit pas dépasser 100 caractères (actuellement: ${department.length})',
+        );
+        return;
+      }
+
+      if (jobDescriptionController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'La description du poste est obligatoire');
+        return;
+      }
+
+      if (jobDescriptionController.text.trim().length < 50) {
+        Get.snackbar(
+          'Erreur',
+          'La description du poste doit contenir au moins 50 caractères (actuellement: ${jobDescriptionController.text.trim().length})',
+        );
+        return;
+      }
+
+      if (grossSalaryController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'Le salaire brut est obligatoire');
+        return;
+      }
+
+      if (selectedPaymentFrequency.value.isEmpty) {
+        Get.snackbar(
+          'Erreur',
+          'Veuillez sélectionner une fréquence de paiement',
+        );
+        return;
+      }
+
+      if (startDateController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'La date de début est obligatoire');
+        return;
+      }
+
+      if (workLocationController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'Le lieu de travail est obligatoire');
+        return;
+      }
+
+      // Validation de longueur pour work_location (max 255 caractères)
+      if (workLocationController.text.trim().length > 255) {
+        Get.snackbar(
+          'Erreur',
+          'Le lieu de travail ne doit pas dépasser 255 caractères (actuellement: ${workLocationController.text.trim().length})',
+        );
+        return;
+      }
+
+      if (workScheduleController.text.trim().isEmpty) {
+        Get.snackbar('Erreur', 'L\'horaire de travail est obligatoire');
+        return;
+      }
+
+      // Vérifier que work_schedule est une valeur valide
+      final validWorkSchedules = ['full_time', 'part_time', 'flexible'];
+      if (!validWorkSchedules.contains(workScheduleController.text.trim())) {
+        Get.snackbar(
+          'Erreur',
+          'L\'horaire de travail doit être : Temps plein, Temps partiel ou Flexible',
+        );
         return;
       }
 
       final grossSalary = double.tryParse(grossSalaryController.text);
       final weeklyHours = double.tryParse(weeklyHoursController.text) ?? 40.0;
-      final probationPeriod = int.tryParse(probationPeriodController.text);
 
       if (grossSalary == null) {
         Get.snackbar(
@@ -240,30 +376,122 @@ class ContractController extends GetxController {
         return;
       }
 
+      if (grossSalary < 0) {
+        Get.snackbar(
+          'Erreur',
+          'Le salaire brut doit être supérieur ou égal à 0',
+        );
+        return;
+      }
+
+      // Validation de weekly_hours (1-168)
+      final weeklyHoursInt = weeklyHours.toInt();
+      if (weeklyHoursInt < 1 || weeklyHoursInt > 168) {
+        Get.snackbar(
+          'Erreur',
+          'Les heures hebdomadaires doivent être entre 1 et 168 (actuellement: $weeklyHoursInt)',
+        );
+        return;
+      }
+
+      // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
+      final String probationPeriod = selectedProbationPeriod.value;
+
+      // Parser la date de début (format dd/MM/yyyy)
+      DateTime startDate;
+      try {
+        if (startDateController.text.contains('/')) {
+          // Format dd/MM/yyyy
+          final parts = startDateController.text.split('/');
+          if (parts.length == 3) {
+            startDate = DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
+          } else {
+            throw Exception('Format de date invalide');
+          }
+        } else {
+          // Format ISO
+          startDate = DateTime.parse(startDateController.text);
+        }
+      } catch (e) {
+        Get.snackbar(
+          'Erreur',
+          'Format de date de début invalide: ${startDateController.text}',
+        );
+        return;
+      }
+
+      // Parser la date de fin si présente
+      DateTime? endDate;
+      if (endDateController.text.isNotEmpty) {
+        try {
+          if (endDateController.text.contains('/')) {
+            // Format dd/MM/yyyy
+            final parts = endDateController.text.split('/');
+            if (parts.length == 3) {
+              endDate = DateTime(
+                int.parse(parts[2]),
+                int.parse(parts[1]),
+                int.parse(parts[0]),
+              );
+            } else {
+              throw Exception('Format de date invalide');
+            }
+          } else {
+            // Format ISO
+            endDate = DateTime.parse(endDateController.text);
+          }
+
+          // Vérifier que end_date est après start_date
+          if (endDate.isBefore(startDate)) {
+            Get.snackbar(
+              'Erreur',
+              'La date de fin doit être après la date de début',
+            );
+            return;
+          }
+        } catch (e) {
+          Get.snackbar(
+            'Erreur',
+            'Format de date de fin invalide: ${endDateController.text}',
+          );
+          return;
+        }
+      }
+
+      // Calculer la durée en mois si endDate est fourni
+      int? durationMonths;
+      if (endDate != null) {
+        final difference = endDate.difference(startDate);
+        durationMonths = (difference.inDays / 30).round();
+      }
+
       final result = await _contractService.createContract(
         employeeId: selectedEmployeeId.value,
         contractType: selectedContractTypeForm.value,
         position: jobTitleController.text.trim(),
-        department: departmentController.text.trim(),
+        department: department,
         jobTitle: jobTitleController.text.trim(),
         jobDescription: jobDescriptionController.text.trim(),
         grossSalary: grossSalary,
         netSalary: grossSalary * 0.8, // Calcul automatique du salaire net
         salaryCurrency: 'FCFA',
         paymentFrequency: selectedPaymentFrequency.value,
-        startDate: DateTime.parse(startDateController.text),
-        endDate:
-            endDateController.text.isNotEmpty
-                ? DateTime.parse(endDateController.text)
-                : null,
+        startDate: startDate,
+        endDate: endDate,
+        durationMonths: durationMonths,
         workLocation: workLocationController.text.trim(),
         workSchedule: workScheduleController.text.trim(),
         weeklyHours: weeklyHours.toInt(),
-        probationPeriod: probationPeriod.toString(),
+        probationPeriod: probationPeriod,
         notes:
             notesController.text.trim().isEmpty
                 ? null
                 : notesController.text.trim(),
+        contractTemplate: null, // Pas de template sélectionné pour l'instant
       );
 
       if (result['success'] == true) {
@@ -272,10 +500,8 @@ class ContractController extends GetxController {
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de la création',
-        );
+        final errorMessage = result['message'] ?? 'Erreur lors de la création';
+        Get.snackbar('Erreur', errorMessage);
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création du contrat: $e');
@@ -447,14 +673,33 @@ class ContractController extends GetxController {
   }
 
   // Sélectionner un employé
-  void setEmployee(int employeeId) {
+  void setEmployee(int? employeeId) {
+    if (employeeId == null) {
+      selectedEmployeeId.value = 0;
+      selectedEmployee.value = null;
+      employeeNameController.clear();
+      employeeEmailController.clear();
+      employeePhoneController.clear();
+      return;
+    }
+
     selectedEmployeeId.value = employeeId;
     // Mettre à jour les informations de l'employé
-    final employee = employees.firstWhereOrNull((e) => e['id'] == employeeId);
+    final employee = employees.firstWhereOrNull((e) => e.id == employeeId);
     if (employee != null) {
-      employeeNameController.text = employee['name'] ?? '';
-      employeeEmailController.text = employee['email'] ?? '';
-      employeePhoneController.text = employee['phone'] ?? '';
+      selectedEmployee.value = employee;
+      employeeNameController.text = employee.fullName;
+      employeeEmailController.text = employee.email;
+      employeePhoneController.text = employee.phone ?? '';
+      // Pré-remplir le département si disponible
+      if (employee.department != null && employee.department!.isNotEmpty) {
+        selectedDepartmentForm.value = employee.department!;
+        departmentController.text = employee.department!;
+      }
+      // Pré-remplir le poste si disponible
+      if (employee.position != null && employee.position!.isNotEmpty) {
+        jobTitleController.text = employee.position!;
+      }
     }
   }
 
@@ -488,11 +733,21 @@ class ContractController extends GetxController {
     }
   }
 
+  // Sélectionner un département
+  void setDepartment(String department) {
+    selectedDepartmentForm.value = department;
+    departmentController.text = department;
+  }
+
   // Réinitialiser le formulaire
   void clearForm() {
     selectedEmployeeId.value = 0;
+    selectedEmployee.value = null;
+    selectedDepartmentForm.value = '';
     selectedContractTypeForm.value = '';
-    selectedPaymentFrequency.value = '';
+    selectedPaymentFrequency.value =
+        'monthly'; // Réinitialiser à la valeur par défaut
+    selectedProbationPeriod.value = 'none';
     startDateController.clear();
     endDateController.clear();
     contractNumberController.clear();
@@ -515,7 +770,49 @@ class ContractController extends GetxController {
     otherBenefitsController.clear();
     notesController.clear();
     attachmentsController.clear();
+    selectedAttachments.clear();
     generateContractNumber();
+  }
+
+  // Sélectionner des fichiers pour les pièces jointes
+  Future<void> selectAttachments() async {
+    try {
+      // Note: file_picker nécessite d'être ajouté au pubspec.yaml
+      // Pour l'instant, on utilise image_picker comme solution temporaire
+      // TODO: Ajouter file_picker pour sélectionner tous types de fichiers
+
+      Get.snackbar(
+        'Info',
+        'Fonctionnalité de sélection de fichiers en cours de développement',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la sélection des fichiers: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // Supprimer un fichier de la liste
+  void removeAttachment(int index) {
+    if (index >= 0 && index < selectedAttachments.length) {
+      selectedAttachments.removeAt(index);
+      updateAttachmentsDisplay();
+    }
+  }
+
+  // Mettre à jour l'affichage des pièces jointes
+  void updateAttachmentsDisplay() {
+    if (selectedAttachments.isEmpty) {
+      attachmentsController.clear();
+    } else {
+      final fileNames = selectedAttachments
+          .map((file) => file['name'] ?? 'Fichier')
+          .join(', ');
+      attachmentsController.text = fileNames;
+    }
   }
 
   // Réinitialiser les filtres
@@ -532,7 +829,6 @@ class ContractController extends GetxController {
   // Obtenir les options de statut
   List<Map<String, String>> get statusOptions => [
     {'value': 'all', 'label': 'Tous'},
-    {'value': 'draft', 'label': 'Brouillon'},
     {'value': 'pending', 'label': 'En attente'},
     {'value': 'active', 'label': 'Actif'},
     {'value': 'expired', 'label': 'Expiré'},
@@ -540,20 +836,9 @@ class ContractController extends GetxController {
     {'value': 'cancelled', 'label': 'Annulé'},
   ];
 
-  // Obtenir les options d'employés
-  List<Map<String, dynamic>> get employeeOptions {
-    final options = <Map<String, dynamic>>[];
-    for (final emp in employees) {
-      options.add({
-        'id': emp['id'],
-        'name': '${emp['name']} - ${emp['position']}',
-      });
-    }
-    return options;
-  }
-
   // Obtenir les options de type de contrat
   List<Map<String, String>> get contractTypeOptions => [
+    {'value': 'all', 'label': 'Tous'},
     {'value': 'permanent', 'label': 'CDI'},
     {'value': 'fixed_term', 'label': 'CDD'},
     {'value': 'temporary', 'label': 'Intérim'},
@@ -561,23 +846,9 @@ class ContractController extends GetxController {
     {'value': 'consultant', 'label': 'Consultant'},
   ];
 
-  // Obtenir les options de département
-  List<Map<String, String>> get departmentOptions {
-    final options = [
-      {'value': 'all', 'label': 'Tous'},
-    ];
-    final departments = [
-      'Ressources Humaines',
-      'Commercial',
-      'Comptabilité',
-      'Technique',
-      'Support',
-      'Direction',
-    ];
-    for (final dept in departments) {
-      options.add({'value': dept, 'label': dept});
-    }
-    return options;
+  // Obtenir les options de département pour le formulaire
+  List<String> get departmentOptionsForForm {
+    return departments;
   }
 
   // Obtenir les options de fréquence de paiement
@@ -607,6 +878,7 @@ class ContractController extends GetxController {
   void fillForm(Contract contract) {
     contractNumberController.text = contract.contractNumber;
     departmentController.text = contract.department;
+    selectedDepartmentForm.value = contract.department;
     jobTitleController.text = contract.jobTitle;
     jobDescriptionController.text = contract.jobDescription;
     workLocationController.text = contract.workLocation;
@@ -615,7 +887,8 @@ class ContractController extends GetxController {
     grossSalaryController.text = contract.grossSalary.toString();
     netSalaryController.text = contract.netSalary.toString();
     weeklyHoursController.text = contract.weeklyHours.toString();
-    probationPeriodController.text = contract.probationPeriod.toString();
+    selectedProbationPeriod.value = contract.probationPeriod;
+    probationPeriodController.text = contract.probationPeriod;
     startDateController.text =
         contract.startDate.toIso8601String().split('T')[0];
     endDateController.text =
@@ -653,7 +926,6 @@ class ContractController extends GetxController {
 
       final grossSalary = double.tryParse(grossSalaryController.text);
       final weeklyHours = double.tryParse(weeklyHoursController.text) ?? 40.0;
-      final probationPeriod = int.tryParse(probationPeriodController.text);
 
       if (grossSalary == null) {
         Get.snackbar(
@@ -662,6 +934,9 @@ class ContractController extends GetxController {
         );
         return;
       }
+
+      // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
+      final String probationPeriod = selectedProbationPeriod.value;
 
       final result = await _contractService.updateContract(
         id: contract.id!,
@@ -682,7 +957,7 @@ class ContractController extends GetxController {
         workLocation: workLocationController.text.trim(),
         workSchedule: workScheduleController.text.trim(),
         weeklyHours: weeklyHours.toInt(),
-        probationPeriod: probationPeriod?.toString(),
+        probationPeriod: probationPeriod,
         notes:
             notesController.text.trim().isEmpty
                 ? null

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
+use App\Http\Controllers\Controller;
 use App\Models\Bordereau;
 use App\Models\BordereauItem;
 use Illuminate\Http\Request;
@@ -119,7 +120,7 @@ class BordereauController extends Controller
     }
 
     // ✅ NOUVELLE MÉTHODE : Valider un bordereau
-    public function accept(Request $request, $id)
+    public function validateBordereau(Request $request, $id)
     {
         try {
             $bordereau = Bordereau::findOrFail($id);
@@ -134,14 +135,23 @@ class BordereauController extends Controller
 
             $bordereau->update([
                 'status' => 2, // validé
-                'date_validation' => now(),
+                'date_validation' => now()->toDateString(),
                 'commentaire' => null // effacer tout commentaire de rejet
             ]);
+
+            // Recharger le bordereau avec ses relations
+            $bordereau->refresh();
+            $bordereau->load(['items', 'client', 'user']);
+            
+            // Charger devis seulement s'il existe
+            if ($bordereau->devis_id) {
+                $bordereau->load('devis');
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Bordereau validé avec succès',
-                'data' => $bordereau->load(['items', 'client', 'user', 'devis'])
+                'data' => $bordereau
             ], 200);
 
         } catch (\Exception $e) {

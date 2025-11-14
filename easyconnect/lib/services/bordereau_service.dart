@@ -227,6 +227,7 @@ class BordereauService {
       final token = storage.read('token');
       final url = '$baseUrl/bordereaux-validate/$bordereauId';
 
+      print('🔵 [BORDEREAU_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -235,49 +236,96 @@ class BordereauService {
         },
       );
 
+      print('🔵 [BORDEREAU_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [BORDEREAU_SERVICE] Réponse body: ${response.body}');
+
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
           return true;
         } else {
+          print('❌ [BORDEREAU_SERVICE] success == false dans la réponse');
           return false;
         }
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors de la validation';
+        throw Exception('Erreur serveur: $message');
       } else {
-        return false;
+        print('❌ [BORDEREAU_SERVICE] Status code: ${response.statusCode}');
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur lors de la validation';
+        throw Exception('Erreur ${response.statusCode}: $message');
       }
-    } catch (e) {
-      return false;
+    } catch (e, stackTrace) {
+      print('❌ [BORDEREAU_SERVICE] Exception approveBordereau: $e');
+      print('❌ [BORDEREAU_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 
   Future<bool> rejectBordereau(int bordereauId, String commentaire) async {
     try {
       final token = storage.read('token');
-      final url = '$baseUrl/bordereaux-reject/$bordereauId';
+      // Essayer d'abord la route avec le format /bordereaux/{id}/reject
+      String url = '$baseUrl/bordereaux/$bordereauId/reject';
       final body = {'commentaire': commentaire};
 
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(body),
-      );
+      http.Response response;
+      try {
+        response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: json.encode(body),
+        );
+      } catch (e) {
+        // Si la première route échoue, essayer l'ancienne route
+        url = '$baseUrl/bordereaux-reject/$bordereauId';
+        response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: json.encode(body),
+        );
+      }
+
+      print('🔵 [BORDEREAU_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [BORDEREAU_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
           return true;
         } else {
+          print('❌ [BORDEREAU_SERVICE] success == false dans la réponse');
           return false;
         }
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors du rejet';
+        throw Exception('Erreur serveur: $message');
       } else {
-        return false;
+        print('❌ [BORDEREAU_SERVICE] Status code: ${response.statusCode}');
+        final responseData = json.decode(response.body);
+        final message = responseData['message'] ?? 'Erreur lors du rejet';
+        throw Exception('Erreur ${response.statusCode}: $message');
       }
-    } catch (e) {
-      return false;
+    } catch (e, stackTrace) {
+      print('❌ [BORDEREAU_SERVICE] Exception rejectBordereau: $e');
+      print('❌ [BORDEREAU_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 

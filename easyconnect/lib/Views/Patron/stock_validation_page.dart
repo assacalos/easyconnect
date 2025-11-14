@@ -42,23 +42,8 @@ class _StockValidationPageState extends State<StockValidationPage>
   }
 
   Future<void> _loadStocks() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 'pending';
-        break;
-      case 2: // Validés
-        status = 'approved';
-        break;
-      case 3: // Rejetés
-        status = 'rejected';
-        break;
-    }
-
-    controller.selectedStatus.value = status ?? 'all';
+    // Charger tous les stocks, le filtrage se fera côté client
+    controller.selectedStatus.value = 'all';
     await controller.loadStocks();
   }
 
@@ -134,21 +119,43 @@ class _StockValidationPageState extends State<StockValidationPage>
   }
 
   Widget _buildStockList() {
+    // Filtrer les stocks selon l'onglet actif
+    List<Stock> filteredStocks;
+    switch (_tabController.index) {
+      case 0: // Tous
+        filteredStocks = controller.stocks;
+        break;
+      case 1: // En attente
+        filteredStocks =
+            controller.stocks.where((stock) => stock.isPending).toList();
+        break;
+      case 2: // Validés
+        filteredStocks =
+            controller.stocks.where((stock) => stock.isValidated).toList();
+        break;
+      case 3: // Rejetés
+        filteredStocks =
+            controller.stocks.where((stock) => stock.isRejected).toList();
+        break;
+      default:
+        filteredStocks = controller.stocks;
+    }
+
     // Filtrer les stocks selon la recherche
-    final filteredStocks =
-        _searchQuery.isEmpty
-            ? controller.stocks
-            : controller.stocks
-                .where(
-                  (stock) =>
-                      stock.name.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      stock.category.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ),
-                )
-                .toList();
+    if (_searchQuery.isNotEmpty) {
+      filteredStocks =
+          filteredStocks
+              .where(
+                (stock) =>
+                    stock.name.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    stock.category.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ),
+              )
+              .toList();
+    }
 
     if (filteredStocks.isEmpty) {
       return Center(
@@ -279,7 +286,8 @@ class _StockValidationPageState extends State<StockValidationPage>
   }
 
   Widget _buildActionButtons(Stock stock, Color statusColor) {
-    if (stock.status == 'pending') {
+    // Vérifier si le stock est en attente (pending ou en_attente)
+    if (stock.isPending) {
       // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
@@ -308,7 +316,7 @@ class _StockValidationPageState extends State<StockValidationPage>
           ),
         ],
       );
-    } else if (stock.status == 'approved') {
+    } else if (stock.isValidated) {
       // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
@@ -332,7 +340,7 @@ class _StockValidationPageState extends State<StockValidationPage>
           ],
         ),
       );
-    } else if (stock.status == 'rejected') {
+    } else if (stock.isRejected) {
       // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
@@ -431,12 +439,7 @@ class _StockValidationPageState extends State<StockValidationPage>
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        // Note: Approbation supprimée selon la nouvelle API (statuts: active/inactive/discontinued)
-        Get.snackbar(
-          'Info',
-          'Les statuts sont maintenant: active, inactive, discontinued',
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        controller.approveStock(stock);
         _loadStocks();
       },
     );

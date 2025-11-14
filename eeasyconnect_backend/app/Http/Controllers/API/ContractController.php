@@ -78,133 +78,40 @@ class ContractController extends Controller
                 }
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            // Pagination optionnelle
+            $perPage = $request->get('per_page');
+            $limit = $request->get('limit');
+            
+            // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
+            if (!$perPage && !$limit) {
+                $contracts = $query->orderBy('created_at', 'desc')->get();
+                
+                // Transformer les données
+                $formattedContracts = $contracts->map(function ($contract) {
+                    return $this->formatContract($contract);
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $formattedContracts,
+                    'message' => 'Liste des contrats récupérée avec succès'
+                ]);
+            }
+            
+            // Sinon, utiliser la pagination
+            $perPage = $perPage ?? $limit ?? 15;
             $contracts = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             // Transformer les données
             $contracts->getCollection()->transform(function ($contract) {
-                return [
-                    'id' => $contract->id,
-                    'contract_number' => $contract->contract_number,
-                    'employee_id' => $contract->employee_id,
-                    'employee_name' => $contract->employee_name,
-                    'employee_email' => $contract->employee_email,
-                    'contract_type' => $contract->contract_type,
-                    'contract_type_libelle' => $contract->contract_type_libelle,
-                    'position' => $contract->position,
-                    'department' => $contract->department,
-                    'job_title' => $contract->job_title,
-                    'job_description' => $contract->job_description,
-                    'gross_salary' => $contract->gross_salary,
-                    'net_salary' => $contract->net_salary,
-                    'formatted_gross_salary' => $contract->formatted_gross_salary,
-                    'formatted_net_salary' => $contract->formatted_net_salary,
-                    'salary_currency' => $contract->salary_currency,
-                    'payment_frequency' => $contract->payment_frequency,
-                    'payment_frequency_libelle' => $contract->payment_frequency_libelle,
-                    'start_date' => $contract->start_date?->format('Y-m-d'),
-                    'end_date' => $contract->end_date?->format('Y-m-d'),
-                    'duration_months' => $contract->duration_months,
-                    'duration_in_months' => $contract->duration_in_months,
-                    'remaining_days' => $contract->remaining_days,
-                    'work_location' => $contract->work_location,
-                    'work_schedule' => $contract->work_schedule,
-                    'work_schedule_libelle' => $contract->work_schedule_libelle,
-                    'weekly_hours' => $contract->weekly_hours,
-                    'probation_period' => $contract->probation_period,
-                    'probation_period_libelle' => $contract->probation_period_libelle,
-                    'status' => $contract->status,
-                    'status_libelle' => $contract->status_libelle,
-                    'termination_reason' => $contract->termination_reason,
-                    'termination_date' => $contract->termination_date?->format('Y-m-d'),
-                    'notes' => $contract->notes,
-                    'contract_template' => $contract->contract_template,
-                    'approved_at' => $contract->approved_at?->format('Y-m-d H:i:s'),
-                    'approved_by' => $contract->approved_by,
-                    'approver_name' => $contract->approver_name,
-                    'rejection_reason' => $contract->rejection_reason,
-                    'created_by' => $contract->created_by,
-                    'creator_name' => $contract->creator_name,
-                    'updated_by' => $contract->updated_by,
-                    'updater_name' => $contract->updater_name,
-                    'is_draft' => $contract->is_draft,
-                    'is_pending' => $contract->is_pending,
-                    'is_active' => $contract->is_active,
-                    'is_expired' => $contract->is_expired,
-                    'is_terminated' => $contract->is_terminated,
-                    'is_cancelled' => $contract->is_cancelled,
-                    'can_edit' => $contract->can_edit,
-                    'can_submit' => $contract->can_submit,
-                    'can_approve' => $contract->can_approve,
-                    'can_reject' => $contract->can_reject,
-                    'can_terminate' => $contract->can_terminate,
-                    'can_cancel' => $contract->can_cancel,
-                    'is_expiring_soon' => $contract->is_expiring_soon,
-                    'has_expired' => $contract->has_expired,
-                    'clauses' => $contract->clauses->map(function ($clause) {
-                        return [
-                            'id' => $clause->id,
-                            'title' => $clause->title,
-                            'content' => $clause->content,
-                            'type' => $clause->type,
-                            'type_libelle' => $clause->type_libelle,
-                            'is_mandatory' => $clause->is_mandatory,
-                            'order' => $clause->order,
-                            'created_at' => $clause->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'attachments' => $contract->attachments->map(function ($attachment) {
-                        return [
-                            'id' => $attachment->id,
-                            'file_name' => $attachment->file_name,
-                            'file_path' => $attachment->file_path,
-                            'file_type' => $attachment->file_type,
-                            'file_size' => $attachment->file_size,
-                            'formatted_file_size' => $attachment->formatted_file_size,
-                            'attachment_type' => $attachment->attachment_type,
-                            'attachment_type_libelle' => $attachment->attachment_type_libelle,
-                            'description' => $attachment->description,
-                            'uploaded_at' => $attachment->uploaded_at->format('Y-m-d H:i:s'),
-                            'uploaded_by' => $attachment->uploaded_by,
-                            'uploader_name' => $attachment->uploader_name
-                        ];
-                    }),
-                    'amendments' => $contract->amendments->map(function ($amendment) {
-                        return [
-                            'id' => $amendment->id,
-                            'amendment_type' => $amendment->amendment_type,
-                            'amendment_type_libelle' => $amendment->amendment_type_libelle,
-                            'reason' => $amendment->reason,
-                            'description' => $amendment->description,
-                            'changes' => $amendment->changes,
-                            'effective_date' => $amendment->effective_date?->format('Y-m-d'),
-                            'status' => $amendment->status,
-                            'status_libelle' => $amendment->status_libelle,
-                            'approval_notes' => $amendment->approval_notes,
-                            'approved_at' => $amendment->approved_at?->format('Y-m-d H:i:s'),
-                            'approved_by' => $amendment->approved_by,
-                            'approver_name' => $amendment->approver_name,
-                            'is_pending' => $amendment->is_pending,
-                            'is_approved' => $amendment->is_approved,
-                            'is_rejected' => $amendment->is_rejected,
-                            'can_approve' => $amendment->can_approve,
-                            'can_reject' => $amendment->can_reject,
-                            'creator_name' => $amendment->creator_name,
-                            'created_at' => $amendment->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'created_at' => $contract->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $contract->updated_at->format('Y-m-d H:i:s')
-                ];
+                return $this->formatContract($contract);
             });
-
+            
             return response()->json([
                 'success' => true,
                 'data' => $contracts,
                 'message' => 'Liste des contrats récupérée avec succès'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -230,7 +137,7 @@ class ContractController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $contract,
+                'data' => $this->formatContract($contract),
                 'message' => 'Contrat récupéré avec succès'
             ]);
 
@@ -243,6 +150,84 @@ class ContractController extends Controller
     }
 
     /**
+     * Formater un contrat au format attendu par le frontend
+     */
+    private function formatContract($contract)
+    {
+        $employee = $contract->relationLoaded('employee') ? $contract->employee : null;
+        
+        return [
+            'id' => $contract->id,
+            'contract_number' => $contract->contract_number,
+            'employee_id' => $contract->employee_id,
+            'employee_name' => $contract->employee_name,
+            'employee_email' => $contract->employee_email,
+            'employee_phone' => $employee->phone ?? null,
+            'contract_type' => $contract->contract_type,
+            'position' => $contract->position,
+            'department' => $contract->department,
+            'job_title' => $contract->job_title,
+            'job_description' => $contract->job_description,
+            'gross_salary' => (float)$contract->gross_salary,
+            'net_salary' => (float)$contract->net_salary,
+            'salary_currency' => $contract->salary_currency,
+            'payment_frequency' => $contract->payment_frequency,
+            'start_date' => $contract->start_date?->format('Y-m-d\TH:i:s\Z'),
+            'end_date' => $contract->end_date?->format('Y-m-d\TH:i:s\Z'),
+            'duration_months' => $contract->duration_months,
+            'work_location' => $contract->work_location,
+            'work_schedule' => $contract->work_schedule,
+            'weekly_hours' => $contract->weekly_hours,
+            'probation_period' => $contract->probation_period,
+            'reporting_manager' => $employee->manager ?? null,
+            'health_insurance' => null, // À implémenter si nécessaire
+            'retirement_plan' => null, // À implémenter si nécessaire
+            'vacation_days' => null, // À calculer selon le type de contrat
+            'other_benefits' => null, // À implémenter si nécessaire
+            'status' => $contract->status,
+            'termination_reason' => $contract->termination_reason,
+            'termination_date' => $contract->termination_date?->format('Y-m-d\TH:i:s\Z'),
+            'notes' => $contract->notes,
+            'contract_template' => $contract->contract_template,
+            'approved_at' => $contract->approved_at?->format('Y-m-d\TH:i:s\Z'),
+            'approved_by' => $contract->approved_by,
+            'approved_by_name' => $contract->approver_name ?? null,
+            'rejection_reason' => $contract->rejection_reason,
+            'created_at' => $contract->created_at->format('Y-m-d\TH:i:s\Z'),
+            'updated_at' => $contract->updated_at->format('Y-m-d\TH:i:s\Z'),
+            'clauses' => $contract->relationLoaded('clauses') ? $contract->clauses->map(function ($clause) {
+                return [
+                    'id' => $clause->id,
+                    'contract_id' => $clause->contract_id,
+                    'title' => $clause->title,
+                    'content' => $clause->content,
+                    'type' => $clause->type,
+                    'is_mandatory' => $clause->is_mandatory,
+                    'order' => $clause->order,
+                    'created_at' => $clause->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'updated_at' => $clause->updated_at->format('Y-m-d\TH:i:s\Z')
+                ];
+            }) : [],
+            'attachments' => $contract->relationLoaded('attachments') ? $contract->attachments->map(function ($attachment) {
+                return [
+                    'id' => $attachment->id,
+                    'contract_id' => $attachment->contract_id,
+                    'file_name' => $attachment->file_name,
+                    'file_path' => $attachment->file_path,
+                    'file_type' => $attachment->file_type,
+                    'file_size' => $attachment->file_size,
+                    'attachment_type' => $attachment->attachment_type,
+                    'description' => $attachment->description,
+                    'uploaded_at' => $attachment->uploaded_at->format('Y-m-d\TH:i:s\Z'),
+                    'uploaded_by' => $attachment->uploaded_by,
+                    'uploaded_by_name' => $attachment->uploader_name ?? null
+                ];
+            }) : [],
+            'history' => [] // À implémenter si nécessaire
+        ];
+    }
+
+    /**
      * Créer un nouveau contrat
      */
     public function store(Request $request)
@@ -251,29 +236,30 @@ class ContractController extends Controller
             $validated = $request->validate([
                 'employee_id' => 'required|exists:employees,id',
                 'contract_type' => 'required|in:permanent,fixed_term,temporary,internship,consultant',
-                'position' => 'required|string|max:255',
-                'department' => 'required|string|max:255',
-                'job_title' => 'required|string|max:255',
-                'job_description' => 'required|string',
+                'position' => 'required|string|max:100',
+                'department' => 'required|string|max:100',
+                'job_title' => 'required|string|max:100',
+                'job_description' => 'required|string|min:50',
                 'gross_salary' => 'required|numeric|min:0',
                 'net_salary' => 'required|numeric|min:0',
-                'salary_currency' => 'nullable|string|max:10',
+                'salary_currency' => 'required|string|max:10',
                 'payment_frequency' => 'required|in:monthly,weekly,daily,hourly',
                 'start_date' => 'required|date',
-                'end_date' => 'nullable|date|after:start_date',
+                'end_date' => 'nullable|date|after:start_date|required_if:contract_type,fixed_term',
                 'duration_months' => 'nullable|integer|min:1',
                 'work_location' => 'required|string|max:255',
                 'work_schedule' => 'required|in:full_time,part_time,flexible',
                 'weekly_hours' => 'required|integer|min:1|max:168',
                 'probation_period' => 'required|in:none,1_month,3_months,6_months',
                 'notes' => 'nullable|string',
-                'contract_template' => 'nullable|string|max:255'
+                'contract_template' => 'nullable|string|max:255',
+                'clauses' => 'nullable|array'
             ]);
 
             DB::beginTransaction();
 
-            // Générer le numéro de contrat
-            $contractNumber = 'CTR-' . date('Y') . '-' . str_pad(Contract::count() + 1, 6, '0', STR_PAD_LEFT);
+            // Générer le numéro de contrat au format CTR-YYYYMMDD-XXXXXX
+            $contractNumber = 'CTR-' . date('Ymd') . '-' . str_pad(Contract::count() + 1, 6, '0', STR_PAD_LEFT);
 
             // Récupérer les informations de l'employé
             $employee = \App\Models\Employee::find($validated['employee_id']);
@@ -290,7 +276,7 @@ class ContractController extends Controller
                 'job_description' => $validated['job_description'],
                 'gross_salary' => $validated['gross_salary'],
                 'net_salary' => $validated['net_salary'],
-                'salary_currency' => $validated['salary_currency'] ?? 'FCFA',
+                'salary_currency' => $validated['salary_currency'],
                 'payment_frequency' => $validated['payment_frequency'],
                 'start_date' => $validated['start_date'],
                 'end_date' => $validated['end_date'],
@@ -299,18 +285,35 @@ class ContractController extends Controller
                 'work_schedule' => $validated['work_schedule'],
                 'weekly_hours' => $validated['weekly_hours'],
                 'probation_period' => $validated['probation_period'],
-                'status' => 'draft',
+                'status' => 'pending',
                 'notes' => $validated['notes'],
                 'contract_template' => $validated['contract_template'],
                 'created_by' => $request->user()->id
             ]);
 
+            // Créer les clauses si fournies
+            if (isset($validated['clauses']) && is_array($validated['clauses'])) {
+                foreach ($validated['clauses'] as $clauseData) {
+                    ContractClause::create([
+                        'contract_id' => $contract->id,
+                        'title' => $clauseData['title'] ?? '',
+                        'content' => $clauseData['content'] ?? '',
+                        'type' => $clauseData['type'] ?? 'standard',
+                        'is_mandatory' => $clauseData['is_mandatory'] ?? false,
+                        'order' => $clauseData['order'] ?? 1
+                    ]);
+                }
+            }
+
             DB::commit();
+
+            // Recharger avec les relations nécessaires
+            $contract->load(['employee', 'creator', 'clauses', 'attachments']);
 
             return response()->json([
                 'success' => true,
-                'data' => $contract->load(['employee', 'creator']),
-                'message' => 'Contrat créé avec succès'
+                'message' => 'Contrat créé avec succès',
+                'data' => $this->formatContract($contract)
             ], 201);
 
         } catch (\Exception $e) {
@@ -337,7 +340,8 @@ class ContractController extends Controller
                 ], 404);
             }
 
-            if (!$contract->can_edit) {
+            // Seuls les contrats avec le statut "pending" peuvent être modifiés selon la documentation
+            if ($contract->status !== 'pending') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Ce contrat ne peut pas être modifié'
@@ -346,16 +350,16 @@ class ContractController extends Controller
 
             $validated = $request->validate([
                 'contract_type' => 'sometimes|in:permanent,fixed_term,temporary,internship,consultant',
-                'position' => 'sometimes|string|max:255',
-                'department' => 'sometimes|string|max:255',
-                'job_title' => 'sometimes|string|max:255',
-                'job_description' => 'sometimes|string',
+                'position' => 'sometimes|string|max:100',
+                'department' => 'sometimes|string|max:100',
+                'job_title' => 'sometimes|string|max:100',
+                'job_description' => 'sometimes|string|min:50',
                 'gross_salary' => 'sometimes|numeric|min:0',
                 'net_salary' => 'sometimes|numeric|min:0',
-                'salary_currency' => 'nullable|string|max:10',
+                'salary_currency' => 'sometimes|string|max:10',
                 'payment_frequency' => 'sometimes|in:monthly,weekly,daily,hourly',
                 'start_date' => 'sometimes|date',
-                'end_date' => 'nullable|date|after:start_date',
+                'end_date' => 'nullable|date|after:start_date|required_if:contract_type,fixed_term',
                 'duration_months' => 'nullable|integer|min:1',
                 'work_location' => 'sometimes|string|max:255',
                 'work_schedule' => 'sometimes|in:full_time,part_time,flexible',
@@ -398,7 +402,8 @@ class ContractController extends Controller
                 ], 404);
             }
 
-            if (!$contract->can_edit) {
+            // Seuls les contrats avec le statut "pending" ou "cancelled" peuvent être supprimés selon la documentation
+            if (!in_array($contract->status, ['pending', 'cancelled'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Ce contrat ne peut pas être supprimé'
@@ -460,7 +465,7 @@ class ContractController extends Controller
     /**
      * Approuver un contrat
      */
-    public function approve($id)
+    public function approve(Request $request, $id)
     {
         try {
             $contract = Contract::find($id);
@@ -479,11 +484,23 @@ class ContractController extends Controller
                 ], 403);
             }
 
+            $validated = $request->validate([
+                'notes' => 'nullable|string'
+            ]);
+
             $contract->approve(request()->user()->id);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contrat approuvé avec succès'
+                'message' => 'Contrat approuvé avec succès',
+                'data' => [
+                    'id' => $contract->id,
+                    'status' => $contract->status,
+                    'approved_at' => $contract->approved_at?->format('Y-m-d\TH:i:s\Z'),
+                    'approved_by' => $contract->approved_by,
+                    'approved_by_name' => $contract->approver_name,
+                    'updated_at' => $contract->updated_at->format('Y-m-d\TH:i:s\Z')
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -517,10 +534,13 @@ class ContractController extends Controller
             }
 
             $validated = $request->validate([
-                'reason' => 'required|string|max:1000'
+                'rejection_reason' => 'required|string|max:1000',
+                'reason' => 'nullable|string|max:1000' // Support pour les deux formats
             ]);
 
-            $contract->reject(request()->user()->id, $validated['reason']);
+            $rejectionReason = $validated['rejection_reason'] ?? $validated['reason'] ?? '';
+
+            $contract->reject(request()->user()->id, $rejectionReason);
 
             return response()->json([
                 'success' => true,
@@ -558,15 +578,27 @@ class ContractController extends Controller
             }
 
             $validated = $request->validate([
-                'reason' => 'required|string|max:1000',
-                'termination_date' => 'nullable|date'
+                'termination_reason' => 'required|string|max:1000',
+                'termination_date' => 'nullable|date',
+                'notes' => 'nullable|string'
             ]);
 
-            $contract->terminate(request()->user()->id, $validated['reason'], $validated['termination_date']);
+            $contract->terminate(
+                request()->user()->id, 
+                $validated['termination_reason'], 
+                $validated['termination_date'] ?? null
+            );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contrat résilié avec succès'
+                'message' => 'Contrat résilié avec succès',
+                'data' => [
+                    'id' => $contract->id,
+                    'status' => $contract->status,
+                    'termination_reason' => $contract->termination_reason,
+                    'termination_date' => $contract->termination_date?->format('Y-m-d\TH:i:s\Z'),
+                    'updated_at' => $contract->updated_at->format('Y-m-d\TH:i:s\Z')
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -603,11 +635,16 @@ class ContractController extends Controller
                 'reason' => 'nullable|string|max:1000'
             ]);
 
-            $contract->cancel(request()->user()->id, $validated['reason']);
+            $contract->cancel(request()->user()->id, $validated['reason'] ?? null);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contrat annulé avec succès'
+                'message' => 'Contrat annulé',
+                'data' => [
+                    'id' => $contract->id,
+                    'status' => $contract->status,
+                    'updated_at' => $contract->updated_at->format('Y-m-d\TH:i:s\Z')
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -693,7 +730,61 @@ class ContractController extends Controller
     public function statistics(Request $request)
     {
         try {
-            $stats = Contract::getContractStats();
+            $query = Contract::query();
+
+            // Filtrage par date
+            if ($request->has('start_date')) {
+                $query->where('start_date', '>=', $request->start_date);
+            }
+
+            if ($request->has('end_date')) {
+                $query->where('start_date', '<=', $request->end_date);
+            }
+
+            // Filtrage par département
+            if ($request->has('department')) {
+                $query->where('department', $request->department);
+            }
+
+            // Filtrage par type de contrat
+            if ($request->has('contract_type')) {
+                $query->where('contract_type', $request->contract_type);
+            }
+
+            $contracts = $query->get();
+
+            $stats = [
+                // Clés courtes pour le frontend
+                'total' => $contracts->count(),
+                'pending' => $contracts->where('status', 'pending')->count(),
+                'active' => $contracts->where('status', 'active')->count(),
+                'expired' => $contracts->where('status', 'expired')->count(),
+                'terminated' => $contracts->where('status', 'terminated')->count(),
+                'cancelled' => $contracts->where('status', 'cancelled')->count(),
+                // Clés détaillées pour compatibilité
+                'total_contracts' => $contracts->count(),
+                'pending_contracts' => $contracts->where('status', 'pending')->count(),
+                'active_contracts' => $contracts->where('status', 'active')->count(),
+                'expired_contracts' => $contracts->where('status', 'expired')->count(),
+                'terminated_contracts' => $contracts->where('status', 'terminated')->count(),
+                'cancelled_contracts' => $contracts->where('status', 'cancelled')->count(),
+                'contracts_expiring_soon' => $contracts->filter(function ($contract) {
+                    return $contract->is_expiring_soon;
+                })->count(),
+                'average_salary' => $contracts->where('status', 'active')->avg('gross_salary') ?? 0,
+                'contracts_by_type' => $contracts->groupBy('contract_type')->map->count()->toArray(),
+                'contracts_by_department' => $contracts->groupBy('department')->map->count()->toArray(),
+                'recent_contracts' => $contracts->sortByDesc('created_at')->take(10)->map(function ($contract) {
+                    return [
+                        'id' => $contract->id,
+                        'contract_number' => $contract->contract_number,
+                        'employee_name' => $contract->employee_name,
+                        'contract_type' => $contract->contract_type,
+                        'status' => $contract->status,
+                        'created_at' => $contract->created_at->format('Y-m-d\TH:i:s\Z')
+                    ];
+                })->values()->toArray()
+            ];
 
             return response()->json([
                 'success' => true,
@@ -776,17 +867,83 @@ class ContractController extends Controller
     }
 
     /**
-     * Récupérer les contrats expirant
+     * Récupérer les employés disponibles pour un contrat
      */
-    public function expiringSoon()
+    public function getAvailableEmployees()
     {
         try {
-            $contracts = Contract::getExpiringContracts();
+            // Récupérer tous les employés
+            $allEmployees = \App\Models\Employee::all();
+            
+            $availableEmployees = $allEmployees->map(function ($employee) {
+                // Récupérer le contrat actif de l'employé
+                $currentContract = Contract::where('employee_id', $employee->id)
+                    ->where('status', 'active')
+                    ->latest('start_date')
+                    ->first();
+
+                // L'employé est disponible si :
+                // - Il n'a pas de contrat actif
+                // - Son contrat actif est expiré
+                $isAvailable = !$currentContract || 
+                              ($currentContract->end_date && $currentContract->end_date < now());
+
+                if ($isAvailable) {
+                    return [
+                        'id' => $employee->id,
+                        'name' => $employee->full_name ?? ($employee->first_name . ' ' . $employee->last_name),
+                        'email' => $employee->email,
+                        'phone' => $employee->phone ?? null,
+                        'position' => $employee->position ?? null,
+                        'department' => $employee->department ?? null,
+                        'current_contract' => $currentContract ? [
+                            'id' => $currentContract->id,
+                            'contract_number' => $currentContract->contract_number,
+                            'status' => $currentContract->status,
+                            'end_date' => $currentContract->end_date?->format('Y-m-d\TH:i:s\Z')
+                        ] : null
+                    ];
+                }
+                return null;
+            })->filter();
 
             return response()->json([
                 'success' => true,
-                'data' => $contracts,
-                'message' => 'Contrats expirant récupérés avec succès'
+                'data' => $availableEmployees->values()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des employés disponibles: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les contrats expirant bientôt (avec paramètre days_ahead)
+     */
+    public function expiringSoon(Request $request)
+    {
+        try {
+            $daysAhead = $request->get('days_ahead', 30);
+            $contracts = Contract::expiringSoon($daysAhead)
+                ->with(['employee', 'creator', 'approver'])
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $contracts->map(function ($contract) {
+                    return [
+                        'id' => $contract->id,
+                        'contract_number' => $contract->contract_number,
+                        'employee_name' => $contract->employee_name,
+                        'contract_type' => $contract->contract_type,
+                        'end_date' => $contract->end_date?->format('Y-m-d\TH:i:s\Z'),
+                        'days_until_expiry' => $contract->remaining_days,
+                        'status' => $contract->status
+                    ];
+                })
             ]);
 
         } catch (\Exception $e) {
@@ -884,4 +1041,320 @@ class ContractController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Récupérer les clauses d'un contrat
+     */
+    public function getClauses($id)
+    {
+        try {
+            $contract = Contract::find($id);
+
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Contrat non trouvé'
+                ], 404);
+            }
+
+            $clauses = $contract->clauses()->orderBy('order')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $clauses->map(function ($clause) {
+                    return [
+                        'id' => $clause->id,
+                        'contract_id' => $clause->contract_id,
+                        'title' => $clause->title,
+                        'content' => $clause->content,
+                        'type' => $clause->type,
+                        'is_mandatory' => $clause->is_mandatory,
+                        'order' => $clause->order,
+                        'created_at' => $clause->created_at->format('Y-m-d\TH:i:s\Z'),
+                        'updated_at' => $clause->updated_at->format('Y-m-d\TH:i:s\Z')
+                    ];
+                })
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des clauses: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter une clause à un contrat
+     */
+    public function addClause(Request $request, $id)
+    {
+        try {
+            $contract = Contract::find($id);
+
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Contrat non trouvé'
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'content' => 'required|string',
+                'type' => 'required|in:standard,custom,legal,benefit',
+                'is_mandatory' => 'nullable|boolean',
+                'order' => 'nullable|integer|min:1'
+            ]);
+
+            $clause = ContractClause::create([
+                'contract_id' => $contract->id,
+                'title' => $validated['title'],
+                'content' => $validated['content'],
+                'type' => $validated['type'],
+                'is_mandatory' => $validated['is_mandatory'] ?? false,
+                'order' => $validated['order'] ?? (($contract->clauses()->max('order') ?? 0) + 1)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Clause ajoutée avec succès',
+                'data' => [
+                    'id' => $clause->id,
+                    'contract_id' => $clause->contract_id,
+                    'title' => $clause->title,
+                    'content' => $clause->content,
+                    'type' => $clause->type,
+                    'is_mandatory' => $clause->is_mandatory,
+                    'order' => $clause->order,
+                    'created_at' => $clause->created_at->format('Y-m-d\TH:i:s\Z'),
+                    'updated_at' => $clause->updated_at->format('Y-m-d\TH:i:s\Z')
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'ajout de la clause: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les pièces jointes d'un contrat
+     */
+    public function getAttachments($id)
+    {
+        try {
+            $contract = Contract::find($id);
+
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Contrat non trouvé'
+                ], 404);
+            }
+
+            $attachments = $contract->attachments()->orderBy('uploaded_at', 'desc')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $attachments->map(function ($attachment) {
+                    return [
+                        'id' => $attachment->id,
+                        'contract_id' => $attachment->contract_id,
+                        'file_name' => $attachment->file_name,
+                        'file_path' => $attachment->file_path,
+                        'file_type' => $attachment->file_type,
+                        'file_size' => $attachment->file_size,
+                        'attachment_type' => $attachment->attachment_type,
+                        'description' => $attachment->description,
+                        'uploaded_at' => $attachment->uploaded_at->format('Y-m-d\TH:i:s\Z'),
+                        'uploaded_by' => $attachment->uploaded_by,
+                        'uploaded_by_name' => $attachment->uploader_name ?? 'N/A'
+                    ];
+                })
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des pièces jointes: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter une pièce jointe à un contrat
+     */
+    public function addAttachment(Request $request, $id)
+    {
+        try {
+            $contract = Contract::findOrFail($id);
+
+            // Validation avec support pour multipart/form-data
+            $validated = $request->validate([
+                'file' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png,gif,webp,doc,docx,txt',
+                'attachment_type' => 'required|in:contract,addendum,amendment,termination,other',
+                'description' => 'nullable|string|max:500'
+            ]);
+
+            // Récupérer le fichier
+            $file = $request->file('file');
+            
+            // Générer un nom de fichier unique
+            $originalName = $file->getClientOriginalName();
+            $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+            
+            // Stocker le fichier dans storage/app/public/contracts/{id}/
+            $filePath = $file->storeAs('contracts/' . $id, $fileName, 'public');
+            
+            // Créer l'enregistrement de la pièce jointe
+            $attachment = ContractAttachment::create([
+                'contract_id' => $contract->id,
+                'file_name' => $originalName,
+                'file_path' => '/storage/' . $filePath,
+                'file_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'attachment_type' => $validated['attachment_type'],
+                'description' => $validated['description'] ?? null,
+                'uploaded_at' => now(),
+                'uploaded_by' => $request->user()->id
+            ]);
+
+            // Charger la relation uploader pour le nom
+            $attachment->load('uploader');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pièce jointe ajoutée avec succès',
+                'data' => [
+                    'id' => $attachment->id,
+                    'contract_id' => $attachment->contract_id,
+                    'file_name' => $attachment->file_name,
+                    'file_path' => $attachment->file_path,
+                    'file_type' => $attachment->file_type,
+                    'file_size' => $attachment->file_size,
+                    'attachment_type' => $attachment->attachment_type,
+                    'description' => $attachment->description,
+                    'uploaded_at' => $attachment->uploaded_at->format('Y-m-d\TH:i:s\Z'),
+                    'uploaded_by' => $attachment->uploaded_by,
+                    'uploaded_by_name' => $attachment->uploader_name ?? null
+                ]
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The given data was invalid.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'ajout de la pièce jointe: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Télécharger une pièce jointe
+     */
+    public function downloadAttachment($contractId, $attachmentId)
+    {
+        try {
+            $contract = Contract::findOrFail($contractId);
+            $attachment = ContractAttachment::where('contract_id', $contractId)
+                ->findOrFail($attachmentId);
+            
+            // Construire le chemin complet du fichier
+            $filePath = storage_path('app/public/' . str_replace('/storage/', '', $attachment->file_path));
+            
+            if (!file_exists($filePath)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Fichier non trouvé'
+                ], 404);
+            }
+            
+            return response()->download($filePath, $attachment->file_name);
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Contrat ou pièce jointe non trouvé(e)'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Récupérer les modèles de contrat
+     */
+    public function getTemplates(Request $request)
+    {
+        try {
+            $query = ContractTemplate::where('is_active', true);
+
+            if ($request->has('contract_type')) {
+                $query->where('contract_type', $request->contract_type);
+            }
+
+            if ($request->has('department')) {
+                $query->where('department', $request->department);
+            }
+
+            $templates = $query->orderBy('name')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $templates->map(function ($template) {
+                    return [
+                        'id' => $template->id,
+                        'name' => $template->name,
+                        'description' => $template->description,
+                        'contract_type' => $template->contract_type,
+                        'department' => $template->department,
+                        'content' => $template->content,
+                        'is_active' => $template->is_active,
+                        'default_clauses' => [], // À implémenter si nécessaire (peut être stocké en JSON ou dans une table séparée)
+                        'created_at' => $template->created_at->format('Y-m-d\TH:i:s\Z'),
+                        'updated_at' => $template->updated_at->format('Y-m-d\TH:i:s\Z')
+                    ];
+                })
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des modèles: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Générer un numéro de contrat unique
+     */
+    public function generateNumber()
+    {
+        try {
+            $contractNumber = 'CTR-' . date('Ymd') . '-' . str_pad(Contract::count() + 1, 6, '0', STR_PAD_LEFT);
+
+            return response()->json([
+                'success' => true,
+                'contract_number' => $contractNumber
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la génération du numéro: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

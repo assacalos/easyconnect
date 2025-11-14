@@ -193,7 +193,8 @@ class Employee extends Model
         $types = [
             'permanent' => 'Permanent',
             'temporary' => 'Temporaire',
-            'intern' => 'Stagiaire',
+            'internship' => 'Stagiaire',
+            'intern' => 'Stagiaire', // Support pour compatibilité
             'consultant' => 'Consultant'
         ];
 

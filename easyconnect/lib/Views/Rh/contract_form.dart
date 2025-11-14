@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/contract_controller.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 class ContractForm extends StatefulWidget {
   final Contract? contract;
@@ -21,6 +24,13 @@ class _ContractFormState extends State<ContractForm> {
   @override
   void initState() {
     super.initState();
+    // Charger les employés et départements si nécessaire
+    if (controller.employees.isEmpty) {
+      controller.loadEmployees();
+    }
+    if (controller.departments.isEmpty) {
+      controller.loadDepartments();
+    }
     if (widget.contract != null) {
       controller.fillForm(widget.contract!);
     }
@@ -132,46 +142,87 @@ class _ContractFormState extends State<ContractForm> {
               },
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => DropdownButtonFormField<String>(
-                value: controller.selectedContractType.value,
+            Obx(() {
+              final contractTypeOptionsFiltered =
+                  controller.contractTypeOptions
+                      .where((type) => type['value'] != 'all')
+                      .toList();
+              final currentValue = controller.selectedContractTypeForm.value;
+              final validValue =
+                  currentValue.isNotEmpty &&
+                          currentValue != 'all' &&
+                          contractTypeOptionsFiltered.any(
+                            (type) => type['value'] == currentValue,
+                          )
+                      ? currentValue
+                      : null;
+
+              return DropdownButtonFormField<String>(
+                value: validValue,
                 decoration: const InputDecoration(
                   labelText: 'Type de contrat *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.work),
                 ),
                 items:
-                    controller.contractTypeOptions
-                        .map<DropdownMenuItem<String>>((type) {
-                          return DropdownMenuItem<String>(
-                            value: type['value']!,
-                            child: Text(type['label']!),
-                          );
-                        })
-                        .toList(),
-                onChanged: (value) => controller.setContractType(value!),
+                    contractTypeOptionsFiltered.map<DropdownMenuItem<String>>((
+                      type,
+                    ) {
+                      return DropdownMenuItem<String>(
+                        value: type['value']!,
+                        child: Text(type['label']!),
+                      );
+                    }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.setContractType(value);
+                  }
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Le type de contrat est requis';
                   }
                   return null;
                 },
-              ),
-            ),
+              );
+            }),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: controller.departmentController,
-              decoration: const InputDecoration(
-                labelText: 'Département *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.business),
+            Obx(
+              () => DropdownButtonFormField<String>(
+                value:
+                    controller.selectedDepartmentForm.value.isNotEmpty
+                        ? controller.selectedDepartmentForm.value
+                        : null,
+                decoration: const InputDecoration(
+                  labelText: 'Département *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.business),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Sélectionner'),
+                  ),
+                  ...controller.departmentOptionsForForm
+                      .map<DropdownMenuItem<String>>((dept) {
+                        return DropdownMenuItem<String>(
+                          value: dept,
+                          child: Text(dept),
+                        );
+                      })
+                      .toList(),
+                ],
+                onChanged: (value) {
+                  controller.selectedDepartmentForm.value = value ?? '';
+                  controller.departmentController.text = value ?? '';
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Le département est requis';
+                  }
+                  return null;
+                },
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Le département est requis';
-                }
-                return null;
-              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -200,30 +251,46 @@ class _ContractFormState extends State<ContractForm> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Obx(
-              () => DropdownButtonFormField<int>(
-                value: controller.selectedEmployeeId.value,
+            Obx(() {
+              final employees = controller.employees;
+              final currentValue = controller.selectedEmployeeId.value;
+              // S'assurer que la valeur actuelle est dans la liste des employés
+              final validValue =
+                  employees.any((emp) => emp.id == currentValue) &&
+                          currentValue != 0
+                      ? currentValue
+                      : null;
+
+              return DropdownButtonFormField<int>(
+                value: validValue,
                 decoration: const InputDecoration(
                   labelText: 'Employé *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person),
                 ),
-                items:
-                    controller.employees.map<DropdownMenuItem<int>>((employee) {
-                      return DropdownMenuItem<int>(
-                        value: employee['id']!,
-                        child: Text(employee['name']!),
-                      );
-                    }).toList(),
-                onChanged: (value) => controller.setEmployee(value!),
+                items: [
+                  const DropdownMenuItem<int>(
+                    value: null,
+                    child: Text('Sélectionner un employé'),
+                  ),
+                  ...employees.map<DropdownMenuItem<int>>((employee) {
+                    return DropdownMenuItem<int>(
+                      value: employee.id,
+                      child: Text(
+                        '${employee.firstName} ${employee.lastName} - ${employee.email}',
+                      ),
+                    );
+                  }).toList(),
+                ],
+                onChanged: (value) => controller.setEmployee(value),
                 validator: (value) {
-                  if (value == null) {
+                  if (value == null || value == 0) {
                     return 'L\'employé est requis';
                   }
                   return null;
                 },
-              ),
-            ),
+              );
+            }),
             const SizedBox(height: 16),
             TextFormField(
               controller: controller.employeeNameController,
@@ -330,7 +397,20 @@ class _ContractFormState extends State<ContractForm> {
                 Expanded(
                   child: Obx(
                     () => DropdownButtonFormField<String>(
-                      value: controller.selectedPaymentFrequency.value,
+                      value:
+                          controller
+                                      .selectedPaymentFrequency
+                                      .value
+                                      .isNotEmpty &&
+                                  controller.paymentFrequencyOptions.any(
+                                    (freq) =>
+                                        freq['value'] ==
+                                        controller
+                                            .selectedPaymentFrequency
+                                            .value,
+                                  )
+                              ? controller.selectedPaymentFrequency.value
+                              : null,
                       decoration: const InputDecoration(
                         labelText: 'Fréquence de paiement *',
                         border: OutlineInputBorder(),
@@ -345,8 +425,11 @@ class _ContractFormState extends State<ContractForm> {
                                 );
                               })
                               .toList(),
-                      onChanged:
-                          (value) => controller.setPaymentFrequency(value!),
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.setPaymentFrequency(value);
+                        }
+                      },
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'La fréquence de paiement est requise';
@@ -383,14 +466,33 @@ class _ContractFormState extends State<ContractForm> {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    controller: controller.probationPeriodController,
-                    decoration: const InputDecoration(
-                      labelText: 'Période d\'essai (mois)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.timer),
+                  child: Obx(
+                    () => DropdownButtonFormField<String>(
+                      value:
+                          controller.selectedProbationPeriod.value.isNotEmpty
+                              ? controller.selectedProbationPeriod.value
+                              : 'none',
+                      decoration: const InputDecoration(
+                        labelText: 'Période d\'essai',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.timer),
+                      ),
+                      items:
+                          controller.probationPeriodOptions
+                              .map<DropdownMenuItem<String>>((option) {
+                                return DropdownMenuItem<String>(
+                                  value: option['value'],
+                                  child: Text(option['label']!),
+                                );
+                              })
+                              .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.selectedProbationPeriod.value = value;
+                          controller.selectProbationPeriod(value);
+                        }
+                      },
                     ),
-                    keyboardType: TextInputType.number,
                   ),
                 ),
               ],
@@ -422,13 +524,45 @@ class _ContractFormState extends State<ContractForm> {
               },
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: controller.workScheduleController,
+            DropdownButtonFormField<String>(
+              value:
+                  controller.workScheduleController.text.trim().isNotEmpty &&
+                          ['full_time', 'part_time', 'flexible'].contains(
+                            controller.workScheduleController.text.trim(),
+                          )
+                      ? controller.workScheduleController.text.trim()
+                      : null,
               decoration: const InputDecoration(
-                labelText: 'Horaires de travail',
+                labelText: 'Horaire de travail *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.schedule),
               ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: 'full_time',
+                  child: Text('Temps plein'),
+                ),
+                const DropdownMenuItem<String>(
+                  value: 'part_time',
+                  child: Text('Temps partiel'),
+                ),
+                const DropdownMenuItem<String>(
+                  value: 'flexible',
+                  child: Text('Flexible'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  controller.workScheduleController.text = value;
+                  controller.selectWorkSchedule(value);
+                }
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'L\'horaire de travail est requis';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -520,12 +654,71 @@ class _ContractFormState extends State<ContractForm> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: controller.attachmentsController,
-              decoration: const InputDecoration(
-                labelText: 'Pièces jointes',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.attach_file),
+            // Affichage des fichiers sélectionnés
+            Obx(() {
+              if (controller.selectedAttachments.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Fichiers sélectionnés:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  ...controller.selectedAttachments.asMap().entries.map((
+                    entry,
+                  ) {
+                    final index = entry.key;
+                    final file = entry.value;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          _getFileIcon(file['type'] ?? ''),
+                          color: Colors.blue,
+                        ),
+                        title: Text(
+                          file['name'] ?? 'Fichier',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        subtitle:
+                            file['size'] != null
+                                ? Text(
+                                  _formatFileSize(file['size']),
+                                  style: const TextStyle(fontSize: 12),
+                                )
+                                : null,
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: () => controller.removeAttachment(index),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  const SizedBox(height: 8),
+                ],
+              );
+            }),
+            // Bouton pour sélectionner des fichiers
+            ElevatedButton.icon(
+              onPressed: () => _selectFiles(controller),
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Sélectionner des fichiers'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Formats acceptés: PDF, Images, Documents (max 10 MB par fichier)',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
               ),
             ),
           ],
@@ -568,6 +761,164 @@ class _ContractFormState extends State<ContractForm> {
         await controller.updateContract(widget.contract!);
       }
       Get.back(); // Retour automatique à la liste
+    }
+  }
+
+  Future<void> _selectFiles(ContractController controller) async {
+    try {
+      // Proposer de choisir le type de sélection
+      final String? selectionType = await Get.dialog<String>(
+        AlertDialog(
+          title: const Text('Sélectionner des fichiers'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: const Text('Fichiers (PDF, Documents, etc.)'),
+                onTap: () => Get.back(result: 'file'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Image depuis la galerie'),
+                onTap: () => Get.back(result: 'gallery'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Prendre une photo'),
+                onTap: () => Get.back(result: 'camera'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (selectionType == null) return;
+
+      if (selectionType == 'file') {
+        // Sélectionner des fichiers avec file_picker
+        FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: true,
+        );
+
+        if (result != null && result.files.isNotEmpty) {
+          for (var platformFile in result.files) {
+            if (platformFile.path != null) {
+              final file = File(platformFile.path!);
+              final fileSize = await file.length();
+
+              // Vérifier la taille (max 10 MB)
+              if (fileSize > 10 * 1024 * 1024) {
+                Get.snackbar(
+                  'Erreur',
+                  'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                continue;
+              }
+
+              // Déterminer le type de fichier
+              String fileType = 'document';
+              final extension = platformFile.extension?.toLowerCase() ?? '';
+              if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+                fileType = 'image';
+              } else if (extension == 'pdf') {
+                fileType = 'pdf';
+              }
+
+              // Ajouter le fichier à la liste
+              controller.selectedAttachments.add({
+                'name': platformFile.name,
+                'path': platformFile.path!,
+                'size': fileSize,
+                'type': fileType,
+                'extension': extension,
+              });
+            }
+          }
+          controller.updateAttachmentsDisplay();
+
+          Get.snackbar(
+            'Succès',
+            '${result.files.length} fichier(s) sélectionné(s)',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      } else {
+        // Utiliser image_picker pour les images
+        final ImagePicker picker = ImagePicker();
+        final ImageSource source =
+            selectionType == 'camera'
+                ? ImageSource.camera
+                : ImageSource.gallery;
+
+        final XFile? pickedFile = await picker.pickImage(
+          source: source,
+          imageQuality: 85,
+        );
+
+        if (pickedFile != null) {
+          final file = File(pickedFile.path);
+          final fileSize = await file.length();
+
+          // Vérifier la taille (max 10 MB)
+          if (fileSize > 10 * 1024 * 1024) {
+            Get.snackbar(
+              'Erreur',
+              'Le fichier est trop volumineux (max 10 MB)',
+              snackPosition: SnackPosition.BOTTOM,
+            );
+            return;
+          }
+
+          // Ajouter le fichier à la liste
+          controller.selectedAttachments.add({
+            'name': pickedFile.name,
+            'path': pickedFile.path,
+            'size': fileSize,
+            'type': 'image',
+            'extension': 'jpg',
+          });
+          controller.updateAttachmentsDisplay();
+
+          Get.snackbar(
+            'Succès',
+            'Fichier sélectionné',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la sélection du fichier: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  IconData _getFileIcon(String fileType) {
+    if (fileType.contains('pdf')) {
+      return Icons.picture_as_pdf;
+    } else if (fileType.contains('image')) {
+      return Icons.image;
+    } else if (fileType.contains('word') || fileType.contains('document')) {
+      return Icons.description;
+    } else {
+      return Icons.insert_drive_file;
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    } else if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    } else {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
   }
 }

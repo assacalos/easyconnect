@@ -216,7 +216,7 @@ class Salary extends Model
 
     public function canBeApproved()
     {
-        return $this->status === 'calculated';
+        return in_array($this->status, ['pending', 'draft', 'calculated']);
     }
 
     public function canBePaid()

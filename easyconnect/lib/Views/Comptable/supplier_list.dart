@@ -361,19 +361,8 @@ class SupplierList extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (supplier.isPending) ...[
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(supplier, controller),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(supplier, controller),
-                    ),
-                  ],
+                  // Les boutons Approuver/Rejeter sont uniquement disponibles pour le Patron
+                  // Ils ont été retirés de la vue Comptable
                   if (supplier.isValidated) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.star, size: 16),
@@ -549,114 +538,9 @@ class SupplierList extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(Supplier supplier, SupplierController controller) {
-    final commentsController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Approuver le fournisseur'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Commentaires d\'approbation (optionnel) :'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: commentsController,
-              decoration: const InputDecoration(
-                hintText: 'Ajouter des commentaires...',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.approveSupplier(
-                supplier,
-                validationComment:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
-            },
-            child: const Text('Approuver'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectDialog(Supplier supplier, SupplierController controller) {
-    final reasonController = TextEditingController();
-    final commentController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le fournisseur'),
-        content: SingleChildScrollView(
-          child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Motif du rejet (obligatoire) :'),
-            const SizedBox(height: 8),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                hintText: 'Expliquez la raison du rejet...',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-              const SizedBox(height: 16),
-              const Text('Commentaire (optionnel) :'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: commentController,
-                decoration: const InputDecoration(
-                  hintText: 'Commentaire supplémentaire...',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectSupplier(
-                  supplier,
-                  rejectionReason: reasonController.text.trim(),
-                  rejectionComment:
-                      commentController.text.trim().isEmpty
-                          ? null
-                          : commentController.text.trim(),
-                );
-                Get.back();
-              } else {
-                Get.snackbar(
-                  'Erreur',
-                  'Le motif du rejet est obligatoire',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Les méthodes _showApproveDialog et _showRejectDialog ont été retirées
+  // car les boutons Approuver/Rejeter sont uniquement disponibles pour le Patron
+  // dans la page SupplierValidationPage
 
   void _showRatingDialog(Supplier supplier, SupplierController controller) {
     final commentsController = TextEditingController();

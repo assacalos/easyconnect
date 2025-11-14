@@ -48,23 +48,54 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   }
 
   Future<void> _loadInvoices() async {
+    print(
+      '🔵 [FACTURE_VALIDATION] _loadInvoices() appelé - Onglet: ${_tabController.index}',
+    );
+
     String? status;
     switch (_tabController.index) {
       case 0: // Tous
         status = null;
+        print('🔵 [FACTURE_VALIDATION] Onglet "Tous" sélectionné');
         break;
-      case 1: // En attente
-        status = 'en_attente';
+      case 1: // En attente - inclure tous les statuts en attente
+        // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
+        status = null;
+        print(
+          '🔵 [FACTURE_VALIDATION] Onglet "En attente" sélectionné - Chargement de toutes les factures',
+        );
         break;
       case 2: // Validés
         status = 'valide';
+        print(
+          '🔵 [FACTURE_VALIDATION] Onglet "Validés" sélectionné - Filtre: $status',
+        );
         break;
       case 3: // Rejetés
         status = 'rejete';
+        print(
+          '🔵 [FACTURE_VALIDATION] Onglet "Rejetés" sélectionné - Filtre: $status',
+        );
         break;
     }
 
+    print(
+      '🔵 [FACTURE_VALIDATION] Avant filterInvoices - Status: ${status ?? "all"}',
+    );
     controller.filterInvoices(status: status ?? 'all');
+
+    // Si on est sur l'onglet "En attente", recharger toutes les factures
+    // et filtrer côté client pour inclure tous les statuts en attente
+    if (_tabController.index == 1) {
+      print(
+        '🔵 [FACTURE_VALIDATION] Rechargement de toutes les factures pour l\'onglet "En attente"',
+      );
+      await controller.loadInvoices();
+    }
+
+    print(
+      '🔵 [FACTURE_VALIDATION] Après chargement - Nombre de factures dans controller: ${controller.invoices.length}',
+    );
   }
 
   @override
@@ -141,21 +172,109 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   Widget _buildInvoiceList() {
     // Utiliser Obx pour rendre réactif l'accès à controller.invoices
     return Obx(() {
-      // Filtrer selon la recherche (le filtrage par status se fait côté serveur)
-      final filteredInvoices =
-          _searchQuery.isEmpty
-              ? controller.invoices
-              : controller.invoices
-                  .where(
-                    (invoice) =>
-                        invoice.invoiceNumber.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ) ||
-                        invoice.clientName.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ),
-                  )
-                  .toList();
+      print(
+        '🟢 [FACTURE_VALIDATION] _buildInvoiceList() - Onglet: ${_tabController.index}',
+      );
+      print(
+        '🟢 [FACTURE_VALIDATION] Nombre total de factures dans controller: ${controller.invoices.length}',
+      );
+      print('🟢 [FACTURE_VALIDATION] isLoading: ${controller.isLoading.value}');
+
+      // Afficher tous les statuts pour debug
+      if (controller.invoices.isNotEmpty) {
+        final allStatuses =
+            controller.invoices.map((inv) => inv.status).toSet();
+        print('🟢 [FACTURE_VALIDATION] Statuts trouvés: $allStatuses');
+        for (var invoice in controller.invoices) {
+          print(
+            '🟢 [FACTURE_VALIDATION] Facture: ${invoice.invoiceNumber} - Status: ${invoice.status}',
+          );
+        }
+      } else {
+        print(
+          '🟢 [FACTURE_VALIDATION] ⚠️ Aucune facture dans controller.invoices',
+        );
+      }
+
+      // Filtrer selon l'onglet actif et la recherche
+      List<InvoiceModel> filteredInvoices = controller.invoices;
+      print(
+        '🟢 [FACTURE_VALIDATION] Avant filtrage: ${filteredInvoices.length} factures',
+      );
+
+      // Filtrer par statut selon l'onglet actif
+      if (_tabController.index == 1) {
+        // Onglet "En attente" - inclure tous les statuts en attente
+        final statusLower = (String status) => status.toLowerCase().trim();
+        final beforeCount = filteredInvoices.length;
+        filteredInvoices =
+            filteredInvoices.where((invoice) {
+              final status = statusLower(invoice.status);
+              final isPending =
+                  status == 'draft' ||
+                  status == 'en_attente' ||
+                  status == 'pending' ||
+                  status == 'en attente';
+              if (isPending) {
+                print(
+                  '🟢 [FACTURE_VALIDATION] ✅ Facture en attente trouvée: ${invoice.invoiceNumber} - Status: ${invoice.status}',
+                );
+              }
+              return isPending;
+            }).toList();
+        print(
+          '🟢 [FACTURE_VALIDATION] Après filtrage "En attente": ${filteredInvoices.length} sur $beforeCount',
+        );
+      } else if (_tabController.index == 2) {
+        // Onglet "Validés"
+        final beforeCount = filteredInvoices.length;
+        filteredInvoices =
+            filteredInvoices.where((invoice) {
+              final status = invoice.status.toLowerCase().trim();
+              return status == 'valide' ||
+                  status == 'validated' ||
+                  status == 'approved';
+            }).toList();
+        print(
+          '🟢 [FACTURE_VALIDATION] Après filtrage "Validés": ${filteredInvoices.length} sur $beforeCount',
+        );
+      } else if (_tabController.index == 3) {
+        // Onglet "Rejetés"
+        final beforeCount = filteredInvoices.length;
+        filteredInvoices =
+            filteredInvoices.where((invoice) {
+              final status = invoice.status.toLowerCase().trim();
+              return status == 'rejete' || status == 'rejected';
+            }).toList();
+        print(
+          '🟢 [FACTURE_VALIDATION] Après filtrage "Rejetés": ${filteredInvoices.length} sur $beforeCount',
+        );
+      }
+      // Onglet 0 (Tous) - pas de filtre supplémentaire
+
+      // Filtrer selon la recherche
+      if (_searchQuery.isNotEmpty) {
+        final beforeCount = filteredInvoices.length;
+        filteredInvoices =
+            filteredInvoices
+                .where(
+                  (invoice) =>
+                      invoice.invoiceNumber.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ) ||
+                      invoice.clientName.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ),
+                )
+                .toList();
+        print(
+          '🟢 [FACTURE_VALIDATION] Après filtrage recherche: ${filteredInvoices.length} sur $beforeCount',
+        );
+      }
+
+      print(
+        '🟢 [FACTURE_VALIDATION] ✅ Factures finales à afficher: ${filteredInvoices.length}',
+      );
 
       if (filteredInvoices.isEmpty) {
         return Center(
@@ -379,105 +498,125 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   }
 
   Widget _buildActionButtons(InvoiceModel invoice, Color statusColor) {
-    switch (invoice.status) {
-      case 'en_attente': // En attente - Afficher boutons Valider/Rejeter
-        return Column(
+    // Vérifier si la facture est en attente (gérer toutes les variantes)
+    final statusLower = invoice.status.toLowerCase().trim();
+    final isPending =
+        statusLower == 'en_attente' ||
+        statusLower == 'pending' ||
+        statusLower == 'draft' ||
+        statusLower == 'en attente';
+    final isValidated =
+        statusLower == 'valide' ||
+        statusLower == 'validated' ||
+        statusLower == 'approved';
+    final isRejected = statusLower == 'rejete' || statusLower == 'rejected';
+
+    if (isPending) {
+      // En attente - Afficher boutons Valider/Rejeter
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _showApproveConfirmation(invoice),
+                icon: const Icon(Icons.check),
+                label: const Text('Valider'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showRejectDialog(invoice),
+                icon: const Icon(Icons.close),
+                label: const Text('Rejeter'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    if (isValidated) {
+      // Validé - Afficher seulement info
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _showApproveConfirmation(invoice),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Valider'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _showRejectDialog(invoice),
-                  icon: const Icon(Icons.close),
-                  label: const Text('Rejeter'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(
+              'Facture validée',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
-        );
-      case 'valide': // Validé - Afficher seulement info
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green),
-              const SizedBox(width: 8),
-              Text(
-                'Facture validée',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      case 'rejete': // Rejeté - Afficher motif du rejet
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.red),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.cancel, color: Colors.red),
-              const SizedBox(width: 8),
-              Text(
-                'Facture rejetée',
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      default: // Autres statuts
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.help, color: Colors.grey[600]),
-              const SizedBox(width: 8),
-              Text(
-                'Statut: ${invoice.status}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
+        ),
+      );
     }
+
+    if (isRejected) {
+      // Rejeté - Afficher motif du rejet
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cancel, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(
+              'Facture rejetée',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Autres statuts
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.help, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            'Statut: ${invoice.status}',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _getStatusColor(String status) {

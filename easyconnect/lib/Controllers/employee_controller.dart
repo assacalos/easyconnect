@@ -13,6 +13,7 @@ class EmployeeController extends GetxController {
   final RxBool isDeleting = false.obs;
   final RxList<Employee> employees = <Employee>[].obs;
   final Rx<Employee?> selectedEmployee = Rx<Employee?>(null);
+  final Rx<Employee?> selectedEmployeeForForm = Rx<Employee?>(null);
   final Rx<EmployeeStats?> employeeStats = Rx<EmployeeStats?>(null);
   final RxList<String> departments = <String>[].obs;
   final RxList<String> positions = <String>[].obs;
@@ -189,23 +190,51 @@ class EmployeeController extends GetxController {
   }
 
   // Charger les employés
-  Future<void> loadEmployees() async {
+  Future<void> loadEmployees({bool loadAll = false}) async {
     try {
+      print('🔵 [EMPLOYEE_CONTROLLER] loadEmployees() appelé');
       isLoading.value = true;
+
+      // Charger avec pagination pour éviter les réponses trop grandes
       final employeesList = await _employeeService.getEmployees(
         search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
         department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+            selectedDepartment.value != 'all' &&
+                    selectedDepartment.value.isNotEmpty
+                ? selectedDepartment.value
+                : null,
         position:
-            selectedPosition.value != 'all' ? selectedPosition.value : null,
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+            selectedPosition.value != 'all' && selectedPosition.value.isNotEmpty
+                ? selectedPosition.value
+                : null,
+        // Ne pas filtrer par statut si loadAll est true ou si on veut charger tous les employés
+        status:
+            (loadAll || selectedStatus.value == 'all')
+                ? null
+                : selectedStatus.value,
+        page: 1, // Charger la première page
+        limit:
+            100, // Limite de 100 employés par page pour éviter les réponses trop grandes
       );
+      print('✅ [EMPLOYEE_CONTROLLER] ${employeesList.length} employés chargés');
       employees.value = employeesList;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [EMPLOYEE_CONTROLLER] Erreur loadEmployees: $e');
+      print('❌ [EMPLOYEE_CONTROLLER] Stack trace: $stackTrace');
+
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de charger les employés',
+        'Impossible de charger les employés: $errorMessage',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -217,8 +246,7 @@ class EmployeeController extends GetxController {
     try {
       final stats = await _employeeService.getEmployeeStats();
       employeeStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les départements
@@ -226,8 +254,7 @@ class EmployeeController extends GetxController {
     try {
       final departmentsList = await _employeeService.getDepartments();
       departments.value = departmentsList;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les postes
@@ -235,8 +262,7 @@ class EmployeeController extends GetxController {
     try {
       final positionsList = await _employeeService.getPositions();
       positions.value = positionsList;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Rechercher des employés
@@ -420,7 +446,7 @@ class EmployeeController extends GetxController {
 
       Get.snackbar('Succès', 'Employé créé avec succès');
       clearForm();
-      loadEmployees();
+      loadEmployees(loadAll: true);
       loadEmployeeStats();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de l\'employé: $e');
@@ -502,7 +528,7 @@ class EmployeeController extends GetxController {
 
       Get.snackbar('Succès', 'Employé mis à jour avec succès');
       clearForm();
-      loadEmployees();
+      loadEmployees(loadAll: true);
       loadEmployeeStats();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la mise à jour de l\'employé: $e');
@@ -519,7 +545,7 @@ class EmployeeController extends GetxController {
       await _employeeService.deleteEmployee(employee.id!);
 
       Get.snackbar('Succès', 'Employé supprimé avec succès');
-      loadEmployees();
+      loadEmployees(loadAll: true);
       loadEmployeeStats();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la suppression de l\'employé: $e');
@@ -636,6 +662,16 @@ class EmployeeController extends GetxController {
   // Sélectionner un employé
   void selectEmployee(Employee employee) {
     selectedEmployee.value = employee;
+  }
+
+  // Sélectionner un employé pour remplir le formulaire
+  void selectEmployeeForForm(Employee? employee) {
+    selectedEmployeeForForm.value = employee;
+    if (employee != null) {
+      fillForm(employee);
+    } else {
+      clearForm();
+    }
   }
 
   // Vérifier les permissions

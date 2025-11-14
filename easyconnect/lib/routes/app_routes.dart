@@ -23,8 +23,12 @@ import 'package:easyconnect/Views/Patron/pointage_validation_page.dart';
 import 'package:easyconnect/Views/Patron/stock_validation_page.dart';
 import 'package:easyconnect/Views/Patron/intervention_validation_page.dart';
 import 'package:easyconnect/Views/Patron/recruitment_validation_page.dart';
+import 'package:easyconnect/Views/Patron/contract_validation_page.dart';
+import 'package:easyconnect/Views/Patron/leave_validation_page.dart';
 import 'package:easyconnect/Views/Patron/taxe_validation_page.dart';
 import 'package:easyconnect/Views/Patron/reporting_validation_page.dart';
+import 'package:easyconnect/Views/Patron/supplier_validation_page.dart';
+import 'package:easyconnect/Views/Patron/employee_validation_page.dart';
 import 'package:easyconnect/Views/Patron/patron_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Admin/admin_dashboard.dart';
 import 'package:easyconnect/Views/Admin/user_management_page.dart';
@@ -372,6 +376,16 @@ class AppRoutes {
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
+      name: '/contrats/validation',
+      page: () => const ContractValidationPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/conges/validation',
+      page: () => const LeaveValidationPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
       name: '/pointage/validation',
       page: () => const PointageValidationPage(),
       middlewares: [AuthMiddleware()],
@@ -384,6 +398,12 @@ class AppRoutes {
     GetPage(
       name: '/reporting/validation',
       page: () => const ReportingValidationPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/employees/validation',
+      page: () => const EmployeeValidationPage(),
+      binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
     // Routes de reporting
@@ -445,10 +465,9 @@ class AppRoutes {
     ),
     GetPage(
       name: '/suppliers/validation',
-      page: () => const SupplierList(),
-      binding: ComptableBinding(),
+      page: () => const SupplierValidationPage(),
+      binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
-      arguments: 'pending',
     ),
     GetPage(
       name: '/suppliers/new',
@@ -595,6 +614,7 @@ class AppRoutes {
     GetPage(
       name: '/employees',
       page: () => const EmployeeList(),
+      binding: RhBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(

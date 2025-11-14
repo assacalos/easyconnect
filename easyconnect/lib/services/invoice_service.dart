@@ -109,7 +109,8 @@ class InvoiceService extends GetxService {
           try {
             final invoice = InvoiceModel.fromJson(json);
             invoices.add(invoice);
-          } catch (e, stackTrace) {
+          } catch (e) {
+            // Ignorer les erreurs de parsing individuelles
           }
         }
         return invoices;
@@ -118,7 +119,7 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération des factures commerciales: ${response.statusCode}',
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       throw Exception(
         'Erreur lors de la récupération des factures commerciales: $e',
       );
@@ -163,8 +164,29 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> invoiceList = data['data'] ?? [];
+        final responseData = jsonDecode(response.body);
+        List<dynamic> invoiceList = [];
+
+        // Gérer différents formats de réponse
+        if (responseData is List) {
+          invoiceList = responseData;
+        } else if (responseData['data'] != null) {
+          if (responseData['data'] is List) {
+            invoiceList = responseData['data'];
+          } else if (responseData['data']['data'] != null &&
+              responseData['data']['data'] is List) {
+            invoiceList = responseData['data']['data'];
+          }
+        } else if (responseData['factures'] != null &&
+            responseData['factures'] is List) {
+          invoiceList = responseData['factures'];
+        } else if (responseData['success'] == true &&
+            responseData['data'] != null) {
+          if (responseData['data'] is List) {
+            invoiceList = responseData['data'];
+          }
+        }
+
         if (invoiceList.isEmpty) {
           return [];
         }
@@ -174,7 +196,8 @@ class InvoiceService extends GetxService {
           try {
             final invoice = InvoiceModel.fromJson(json);
             invoices.add(invoice);
-          } catch (e, stackTrace) {
+          } catch (e) {
+            // Ignorer les erreurs de parsing individuelles
           }
         }
         return invoices;
@@ -183,7 +206,7 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération des factures: ${response.statusCode}',
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       throw Exception('Erreur lors de la récupération des factures: $e');
     }
   }

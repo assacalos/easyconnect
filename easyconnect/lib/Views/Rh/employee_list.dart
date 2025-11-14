@@ -12,6 +12,16 @@ class EmployeeList extends StatelessWidget {
   Widget build(BuildContext context) {
     final EmployeeController controller = Get.put(EmployeeController());
 
+    // Charger tous les employés au chargement de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Réinitialiser les filtres et charger tous les employés
+      controller.selectedStatus.value = 'all';
+      controller.selectedDepartment.value = 'all';
+      controller.selectedPosition.value = 'all';
+      controller.searchQuery.value = '';
+      controller.loadEmployees(loadAll: true);
+    });
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
@@ -31,7 +41,13 @@ class EmployeeList extends StatelessWidget {
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => controller.loadEmployees(),
+              onPressed: () {
+                controller.selectedStatus.value = 'all';
+                controller.selectedDepartment.value = 'all';
+                controller.selectedPosition.value = 'all';
+                controller.searchQuery.value = '';
+                controller.loadEmployees(loadAll: true);
+              },
             ),
           ],
         ),

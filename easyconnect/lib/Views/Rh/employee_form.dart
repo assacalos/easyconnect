@@ -14,9 +14,24 @@ class EmployeeForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final EmployeeController controller = Get.put(EmployeeController());
 
+    // Charger les départements si la liste est vide
+    if (controller.departments.isEmpty) {
+      controller.loadDepartments();
+    }
+
+    // Charger les employés si la liste est vide (pour le sélecteur)
+    if (employee == null && controller.employees.isEmpty) {
+      controller.loadEmployees(loadAll: true);
+    }
+
     // Si on édite un employé existant, remplir le formulaire
     if (employee != null) {
       controller.fillForm(employee!);
+      controller.selectedEmployeeForForm.value = employee;
+    } else {
+      // Si on crée un nouvel employé, réinitialiser le formulaire
+      controller.clearForm();
+      controller.selectedEmployeeForForm.value = null;
     }
 
     return Scaffold(
@@ -39,6 +54,44 @@ class EmployeeForm extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Sélection d'un employé existant (seulement si on crée un nouvel employé)
+              if (employee == null) ...[
+                Obx(
+                  () => DropdownButtonFormField<Employee?>(
+                    value: controller.selectedEmployeeForForm.value,
+                    decoration: const InputDecoration(
+                      labelText: 'Sélectionner un employé existant (optionnel)',
+                      hintText:
+                          'Choisir un employé pour pré-remplir le formulaire',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.search),
+                      helperText:
+                          'Sélectionnez un employé pour remplir automatiquement les champs',
+                    ),
+                    items: [
+                      const DropdownMenuItem<Employee?>(
+                        value: null,
+                        child: Text('Aucun (nouvel employé)'),
+                      ),
+                      ...controller.employees.map<DropdownMenuItem<Employee?>>((
+                        emp,
+                      ) {
+                        return DropdownMenuItem<Employee?>(
+                          value: emp,
+                          child: Text(
+                            '${emp.firstName} ${emp.lastName} - ${emp.email}',
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                    onChanged: (Employee? selectedEmp) {
+                      controller.selectEmployeeForForm(selectedEmp);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+
               // Informations personnelles
               _buildSectionTitle('Informations personnelles'),
               const SizedBox(height: 16),
@@ -245,12 +298,19 @@ class EmployeeForm extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value:
-                            controller.selectedDepartment.value.isNotEmpty
-                                ? controller.selectedDepartment.value
-                                : null,
+                    child: Obx(() {
+                      final departments = controller.departments;
+                      final currentValue = controller.selectedDepartment.value;
+                      // S'assurer que la valeur actuelle est valide (soit '', soit dans la liste des départements)
+                      final validValue =
+                          (currentValue == '' ||
+                                      departments.contains(currentValue)) &&
+                                  currentValue != 'all'
+                              ? currentValue
+                              : null;
+
+                      return DropdownButtonFormField<String>(
+                        value: validValue,
                         decoration: const InputDecoration(
                           labelText: 'Département',
                           border: OutlineInputBorder(),
@@ -261,20 +321,18 @@ class EmployeeForm extends StatelessWidget {
                             value: '',
                             child: Text('Sélectionner'),
                           ),
-                          ...controller.departments
-                              .map<DropdownMenuItem<String>>((dept) {
-                                return DropdownMenuItem<String>(
-                                  value: dept,
-                                  child: Text(dept),
-                                );
-                              })
-                              .toList(),
+                          ...departments.map<DropdownMenuItem<String>>((dept) {
+                            return DropdownMenuItem<String>(
+                              value: dept,
+                              child: Text(dept),
+                            );
+                          }).toList(),
                         ],
-                        onChanged:
-                            (value) =>
-                                controller.selectedDepartment.value = value!,
-                      ),
-                    ),
+                        onChanged: (value) {
+                          controller.selectedDepartment.value = value ?? '';
+                        },
+                      );
+                    }),
                   ),
                 ],
               ),

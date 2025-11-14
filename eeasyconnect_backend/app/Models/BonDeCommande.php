@@ -10,7 +10,6 @@ class BonDeCommande extends Model
     use HasFactory;
 
     protected $fillable = [
-        'client_id',
         'fournisseur_id',
         'numero_commande',
         'date_commande',
@@ -39,11 +38,6 @@ class BonDeCommande extends Model
     ];
 
     // Relations
-    public function client()
-    {
-        return $this->belongsTo(Client::class);
-    }
-
     public function fournisseur()
     {
         return $this->belongsTo(Fournisseur::class);

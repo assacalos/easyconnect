@@ -30,14 +30,7 @@ class BonDeCommandeFournisseurListPage extends StatelessWidget {
       body: Column(
         children: [
           _buildStatusTabs(),
-          Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildBonDeCommandeList(),
-            ),
-          ),
+          Expanded(child: _buildBonDeCommandeList()),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -127,17 +120,46 @@ class BonDeCommandeFournisseurListPage extends StatelessWidget {
     return Obx(() {
       final filteredBonDeCommandes = controller.getFilteredBonDeCommandes();
 
-      if (filteredBonDeCommandes.isEmpty) {
-        return const Center(child: Text('Aucun bon de commande trouvé'));
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
       }
 
-      return ListView.builder(
-        itemCount: filteredBonDeCommandes.length,
-        padding: const EdgeInsets.all(8),
-        itemBuilder: (context, index) {
-          final bonDeCommande = filteredBonDeCommandes[index];
-          return _buildBonDeCommandeCard(bonDeCommande);
+      if (filteredBonDeCommandes.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                'Aucun bon de commande trouvé',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                controller.bonDeCommandes.isEmpty
+                    ? 'Créez votre premier bon de commande fournisseur'
+                    : 'Aucun bon de commande ne correspond au filtre sélectionné',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      }
+
+      return RefreshIndicator(
+        onRefresh: () async {
+          await controller.loadBonDeCommandes();
         },
+        child: ListView.builder(
+          itemCount: filteredBonDeCommandes.length,
+          padding: const EdgeInsets.all(8),
+          itemBuilder: (context, index) {
+            final bonDeCommande = filteredBonDeCommandes[index];
+            return _buildBonDeCommandeCard(bonDeCommande);
+          },
+        ),
       );
     });
   }

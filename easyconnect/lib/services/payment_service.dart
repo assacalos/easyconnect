@@ -44,7 +44,8 @@ class PaymentService extends GetxService {
     try {
       final token = storage.read('token');
 
-      String url = '$baseUrl/payments';
+      // Essayer d'abord /paiements-list, puis /payments en fallback
+      String url = '$baseUrl/paiements-list';
       List<String> params = [];
 
       if (startDate != null) {
@@ -64,33 +65,59 @@ class PaymentService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      http.Response response;
+      try {
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+      } catch (e) {
+        // Si /paiements-list échoue, essayer /payments
+        url = url.replaceAll('/paiements-list', '/payments');
+        response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+      }
 
       if (response.statusCode == 200) {
         try {
           final responseData = jsonDecode(response.body);
           List<dynamic> data = [];
 
-          if (responseData['data'] != null) {
+          // Gérer différents formats de réponse
+          if (responseData is List) {
+            data = responseData;
+          } else if (responseData['data'] != null) {
             if (responseData['data'] is List) {
               data = responseData['data'];
-            } else if (responseData['data']['data'] != null) {
+            } else if (responseData['data']['data'] != null &&
+                responseData['data']['data'] is List) {
               data = responseData['data']['data'];
             }
           } else if (responseData['paiements'] != null) {
             if (responseData['paiements'] is List) {
               data = responseData['paiements'];
             }
-          } else if (responseData['success'] == true &&
-              responseData['paiements'] != null) {
-            if (responseData['paiements'] is List) {
+          } else if (responseData['payments'] != null) {
+            if (responseData['payments'] is List) {
+              data = responseData['payments'];
+            }
+          } else if (responseData['success'] == true) {
+            if (responseData['data'] != null && responseData['data'] is List) {
+              data = responseData['data'];
+            } else if (responseData['paiements'] != null &&
+                responseData['paiements'] is List) {
               data = responseData['paiements'];
+            } else if (responseData['payments'] != null &&
+                responseData['payments'] is List) {
+              data = responseData['payments'];
             }
           }
 
@@ -339,22 +366,65 @@ class PaymentService extends GetxService {
   }) async {
     try {
       final token = storage.read('token');
-      final response = await http.patch(
-        Uri.parse('$baseUrl/payments/$paymentId/approve'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: comments != null ? jsonEncode({'comments': comments}) : null,
-      );
 
+      // Essayer d'abord la route française (POST)
+      String url = '$baseUrl/paiements-validate/$paymentId';
+      http.Response response;
+
+      print(
+        '🔵 [PAYMENT_SERVICE] Tentative d\'approbation avec route française: $url',
+      );
+      try {
+        response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: comments != null ? jsonEncode({'comments': comments}) : '{}',
+        );
+        print(
+          '🔵 [PAYMENT_SERVICE] Réponse route française - Status: ${response.statusCode}',
+        );
+      } catch (e) {
+        print(
+          '⚠️ [PAYMENT_SERVICE] Route française échouée, essai route anglaise: $e',
+        );
+        // Si la route française échoue, essayer la route anglaise (PATCH)
+        url = '$baseUrl/payments/$paymentId/approve';
+        print('🔵 [PAYMENT_SERVICE] Tentative avec route anglaise: $url');
+        response = await http.patch(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: comments != null ? jsonEncode({'comments': comments}) : null,
+        );
+        print(
+          '🔵 [PAYMENT_SERVICE] Réponse route anglaise - Status: ${response.statusCode}',
+        );
+      }
+
+      print(
+        '🔵 [PAYMENT_SERVICE] Réponse finale - Status: ${response.statusCode}, Body: ${response.body}',
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = jsonDecode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors de l\'approbation';
+        throw Exception('Erreur serveur: $message');
       } else {
-        throw Exception(
-          'Erreur lors de l\'approbation: ${response.statusCode}',
-        );
+        // Autres erreurs (400, 401, 403, 422, etc.)
+        final responseData = jsonDecode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur lors de l\'approbation';
+        throw Exception('Erreur ${response.statusCode}: $message');
       }
     } catch (e) {
       rethrow;
@@ -367,22 +437,65 @@ class PaymentService extends GetxService {
     String? reason,
   }) async {
     try {
-
       final token = storage.read('token');
-      final response = await http.patch(
-        Uri.parse('$baseUrl/payments/$paymentId/reject'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: reason != null ? jsonEncode({'reason': reason}) : null,
-      );
 
+      // Essayer d'abord la route française (POST)
+      String url = '$baseUrl/paiements-reject/$paymentId';
+      http.Response response;
+
+      print(
+        '🔵 [PAYMENT_SERVICE] Tentative de rejet avec route française: $url',
+      );
+      try {
+        response = await http.post(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: reason != null ? jsonEncode({'reason': reason}) : '{}',
+        );
+        print(
+          '🔵 [PAYMENT_SERVICE] Réponse route française - Status: ${response.statusCode}',
+        );
+      } catch (e) {
+        print(
+          '⚠️ [PAYMENT_SERVICE] Route française échouée, essai route anglaise: $e',
+        );
+        // Si la route française échoue, essayer la route anglaise (PATCH)
+        url = '$baseUrl/payments/$paymentId/reject';
+        print('🔵 [PAYMENT_SERVICE] Tentative avec route anglaise: $url');
+        response = await http.patch(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: reason != null ? jsonEncode({'reason': reason}) : null,
+        );
+        print(
+          '🔵 [PAYMENT_SERVICE] Réponse route anglaise - Status: ${response.statusCode}',
+        );
+      }
+
+      print(
+        '🔵 [PAYMENT_SERVICE] Réponse finale - Status: ${response.statusCode}, Body: ${response.body}',
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = jsonDecode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors du rejet';
+        throw Exception('Erreur serveur: $message');
       } else {
-        throw Exception('Erreur lors du rejet: ${response.statusCode}');
+        // Autres erreurs (400, 401, 403, 422, etc.)
+        final responseData = jsonDecode(response.body);
+        final message = responseData['message'] ?? 'Erreur lors du rejet';
+        throw Exception('Erreur ${response.statusCode}: $message');
       }
     } catch (e) {
       rethrow;
@@ -396,7 +509,6 @@ class PaymentService extends GetxService {
     String? notes,
   }) async {
     try {
-
       final token = storage.read('token');
       final response = await http.patch(
         Uri.parse('$baseUrl/payments/$paymentId/mark-paid'),
@@ -424,7 +536,6 @@ class PaymentService extends GetxService {
   // Réactiver un paiement rejeté
   Future<Map<String, dynamic>> reactivatePayment(int paymentId) async {
     try {
-
       final token = storage.read('token');
       final response = await http.patch(
         Uri.parse('$baseUrl/payments/$paymentId/reactivate'),
@@ -451,7 +562,6 @@ class PaymentService extends GetxService {
   // Récupérer les plannings de paiement
   Future<List<Map<String, dynamic>>> getPaymentSchedules() async {
     try {
-
       final token = storage.read('token');
       final response = await http.get(
         Uri.parse('$baseUrl/payment-schedules'),
@@ -477,7 +587,6 @@ class PaymentService extends GetxService {
   // Mettre en pause un planning
   Future<Map<String, dynamic>> pauseSchedule(int scheduleId) async {
     try {
-
       final token = storage.read('token');
       final response = await http.post(
         Uri.parse('$baseUrl/payment-schedules/$scheduleId/pause'),
@@ -500,7 +609,6 @@ class PaymentService extends GetxService {
   // Reprendre un planning
   Future<Map<String, dynamic>> resumeSchedule(int scheduleId) async {
     try {
-
       final token = storage.read('token');
       final response = await http.post(
         Uri.parse('$baseUrl/payment-schedules/$scheduleId/resume'),
@@ -523,7 +631,6 @@ class PaymentService extends GetxService {
   // Annuler un planning
   Future<Map<String, dynamic>> cancelSchedule(int scheduleId) async {
     try {
-
       final token = storage.read('token');
       final response = await http.post(
         Uri.parse('$baseUrl/payment-schedules/$scheduleId/cancel'),
@@ -549,7 +656,6 @@ class PaymentService extends GetxService {
     int installmentId,
   ) async {
     try {
-
       final token = storage.read('token');
       final response = await http.post(
         Uri.parse(
@@ -578,7 +684,6 @@ class PaymentService extends GetxService {
   // Récupérer les statistiques des plannings
   Future<Map<String, dynamic>> getScheduleStats() async {
     try {
-
       final token = storage.read('token');
       final response = await http.get(
         Uri.parse('$baseUrl/payment-stats/schedules'),
@@ -603,7 +708,6 @@ class PaymentService extends GetxService {
   // Récupérer les paiements à venir
   Future<List<Map<String, dynamic>>> getUpcomingPayments() async {
     try {
-
       final token = storage.read('token');
       final response = await http.get(
         Uri.parse('$baseUrl/payment-stats/upcoming'),
@@ -629,7 +733,6 @@ class PaymentService extends GetxService {
   // Récupérer les paiements en retard
   Future<List<Map<String, dynamic>>> getOverduePayments() async {
     try {
-
       final token = storage.read('token');
       final response = await http.get(
         Uri.parse('$baseUrl/payment-stats/overdue'),

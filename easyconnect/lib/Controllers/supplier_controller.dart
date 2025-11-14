@@ -37,8 +37,7 @@ class SupplierController extends GetxController {
 
     try {
       _supplierService = Get.find<SupplierService>();
-    } catch (e) {
-    }
+    } catch (e) {}
 
     loadSuppliers();
     loadSupplierStats();
@@ -87,8 +86,7 @@ class SupplierController extends GetxController {
     try {
       final stats = await _supplierService.getSupplierStats();
       supplierStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Appliquer les filtres côté client
@@ -271,12 +269,17 @@ class SupplierController extends GetxController {
     String? validationComment,
   }) async {
     try {
+      print(
+        '🔵 [SUPPLIER_CONTROLLER] approveSupplier() appelé pour supplierId: ${supplier.id}',
+      );
       isLoading.value = true;
 
       final success = await _supplierService.approveSupplier(
         supplier.id!,
         validationComment: validationComment,
       );
+      print('🔵 [SUPPLIER_CONTROLLER] Résultat approveSupplier: $success');
+
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
         await loadSupplierStats();
@@ -289,15 +292,27 @@ class SupplierController extends GetxController {
           colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors de la validation');
+        throw Exception(
+          'Erreur lors de la validation - La réponse du serveur indique un échec',
+        );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [SUPPLIER_CONTROLLER] Erreur approveSupplier: $e');
+      print('❌ [SUPPLIER_CONTROLLER] Stack trace: $stackTrace');
+
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de valider le fournisseur: ${e.toString()}',
+        'Impossible de valider le fournisseur: $errorMessage',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -311,6 +326,9 @@ class SupplierController extends GetxController {
     String? rejectionComment,
   }) async {
     try {
+      print(
+        '🔵 [SUPPLIER_CONTROLLER] rejectSupplier() appelé pour supplierId: ${supplier.id}',
+      );
       isLoading.value = true;
 
       final success = await _supplierService.rejectSupplier(
@@ -318,6 +336,8 @@ class SupplierController extends GetxController {
         rejectionReason: rejectionReason,
         rejectionComment: rejectionComment,
       );
+      print('🔵 [SUPPLIER_CONTROLLER] Résultat rejectSupplier: $success');
+
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
         await loadSupplierStats();
@@ -330,15 +350,27 @@ class SupplierController extends GetxController {
           colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors du rejet');
+        throw Exception(
+          'Erreur lors du rejet - La réponse du serveur indique un échec',
+        );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [SUPPLIER_CONTROLLER] Erreur rejectSupplier: $e');
+      print('❌ [SUPPLIER_CONTROLLER] Stack trace: $stackTrace');
+
+      // Extraire le message d'erreur
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter le fournisseur: ${e.toString()}',
+        'Impossible de rejeter le fournisseur: $errorMessage',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;

@@ -91,17 +91,23 @@ class PaymentModel {
             json['comptableName']?.toString() ??
             'Comptable inconnu',
         paymentDate:
-            _parseDateTime(json['payment_date'] ?? json['paymentDate']) ??
+            _parseDateTime(
+              json['payment_date'] ??
+                  json['paymentDate'] ??
+                  json['date_paiement'],
+            ) ??
             DateTime.now(),
         dueDate: _parseDateTime(json['due_date'] ?? json['dueDate']),
-        status: json['status']?.toString() ?? 'pending',
-        amount: _parseDouble(json['amount']),
+        status: _normalizeStatus(json['status']?.toString() ?? 'pending'),
+        amount: _parseDouble(json['amount'] ?? json['montant']),
         currency: json['currency']?.toString() ?? 'FCFA',
         paymentMethod:
             json['payment_method']?.toString() ??
             json['paymentMethod']?.toString() ??
+            json['type_paiement']?.toString() ??
             'bank_transfer',
-        description: json['description']?.toString(),
+        description:
+            json['description']?.toString() ?? json['commentaire']?.toString(),
         notes: json['notes']?.toString(),
         reference: json['reference']?.toString(),
         schedule:
@@ -117,7 +123,9 @@ class PaymentModel {
         submittedAt: _parseDateTime(
           json['submitted_at'] ?? json['submittedAt'],
         ),
-        approvedAt: _parseDateTime(json['approved_at'] ?? json['approvedAt']),
+        approvedAt: _parseDateTime(
+          json['approved_at'] ?? json['approvedAt'] ?? json['validated_at'],
+        ),
         paidAt: _parseDateTime(json['paid_at'] ?? json['paidAt']),
       );
     } catch (e, stackTrace) {
@@ -155,6 +163,46 @@ class PaymentModel {
       'approved_at': approvedAt?.toIso8601String(),
       'paid_at': paidAt?.toIso8601String(),
     };
+  }
+
+  // Normaliser le statut vers les valeurs standard
+  static String _normalizeStatus(String? status) {
+    if (status == null || status.isEmpty) return 'pending';
+    final statusLower = status.toLowerCase().trim();
+
+    // Normaliser les variantes possibles
+    switch (statusLower) {
+      case 'drafts':
+      case 'draft':
+        return 'draft';
+      case 'submitted':
+      case 'soumis':
+        return 'submitted';
+      case 'approved':
+      case 'approuve':
+      case 'approuvé':
+      case 'valide':
+        return 'approved';
+      case 'rejected':
+      case 'rejete':
+      case 'rejeté':
+        return 'rejected';
+      case 'paid':
+      case 'paye':
+      case 'payé':
+        return 'paid';
+      case 'overdue':
+      case 'en_retard':
+        return 'overdue';
+      case 'pending':
+      case 'en_attente':
+        return 'pending';
+      default:
+        // Si le statut n'est pas reconnu, le retourner tel quel
+        // mais logger pour débogage
+        print('⚠️ PaymentModel: Statut non reconnu: $status');
+        return statusLower;
+    }
   }
 
   // Méthodes pour gérer le statut d'approbation

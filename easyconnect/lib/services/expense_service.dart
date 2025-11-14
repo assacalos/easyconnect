@@ -173,9 +173,11 @@ class ExpenseService {
   Future<bool> approveExpense(int expenseId, {String? notes}) async {
     try {
       final token = storage.read('token');
+      final url = '$baseUrl/expenses-validate/$expenseId';
 
+      print('🔵 [EXPENSE_SERVICE] Appel POST $url');
       final response = await http.post(
-        Uri.parse('$baseUrl/expenses-validate/$expenseId'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -184,9 +186,36 @@ class ExpenseService {
         body: json.encode({'notes': notes}),
       );
 
-      return response.statusCode == 200;
-    } catch (e) {
+      print('🔵 [EXPENSE_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [EXPENSE_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ??
+            'Cette dépense ne peut pas être approuvée';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors de l\'approbation';
+        throw Exception('Erreur serveur: $message');
+      }
       return false;
+    } catch (e, stackTrace) {
+      print('❌ [EXPENSE_SERVICE] Exception approveExpense: $e');
+      print('❌ [EXPENSE_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 
@@ -194,9 +223,11 @@ class ExpenseService {
   Future<bool> rejectExpense(int expenseId, {required String reason}) async {
     try {
       final token = storage.read('token');
+      final url = '$baseUrl/expenses-reject/$expenseId';
 
+      print('🔵 [EXPENSE_SERVICE] Appel POST $url');
       final response = await http.post(
-        Uri.parse('$baseUrl/expenses-reject/$expenseId'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -205,9 +236,35 @@ class ExpenseService {
         body: json.encode({'reason': reason}),
       );
 
-      return response.statusCode == 200;
-    } catch (e) {
+      print('🔵 [EXPENSE_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [EXPENSE_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Cette dépense ne peut pas être rejetée';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors du rejet';
+        throw Exception('Erreur serveur: $message');
+      }
       return false;
+    } catch (e, stackTrace) {
+      print('❌ [EXPENSE_SERVICE] Exception rejectExpense: $e');
+      print('❌ [EXPENSE_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 

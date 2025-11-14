@@ -14,6 +14,11 @@ class RecruitmentForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final RecruitmentController controller = Get.put(RecruitmentController());
 
+    // Charger les départements si la liste est vide
+    if (controller.departments.isEmpty) {
+      controller.loadDepartments();
+    }
+
     // Si on édite une demande existante, remplir le formulaire
     if (request != null) {
       // TODO: Implémenter la méthode fillForm

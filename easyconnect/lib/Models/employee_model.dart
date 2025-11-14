@@ -71,7 +71,10 @@ class Employee {
       email: json['email'] ?? '',
       phone: json['phone'],
       address: json['address'],
-      birthDate: json['birth_date'] != null ? DateTime.parse(json['birth_date']) : null,
+      birthDate:
+          json['birth_date'] != null
+              ? DateTime.parse(json['birth_date'])
+              : null,
       gender: json['gender'],
       maritalStatus: json['marital_status'],
       nationality: json['nationality'],
@@ -80,27 +83,52 @@ class Employee {
       position: json['position'],
       department: json['department'],
       manager: json['manager'],
-      hireDate: json['hire_date'] != null ? DateTime.parse(json['hire_date']) : null,
-      contractStartDate: json['contract_start_date'] != null ? DateTime.parse(json['contract_start_date']) : null,
-      contractEndDate: json['contract_end_date'] != null ? DateTime.parse(json['contract_end_date']) : null,
+      hireDate:
+          json['hire_date'] != null ? DateTime.parse(json['hire_date']) : null,
+      contractStartDate:
+          json['contract_start_date'] != null
+              ? DateTime.parse(json['contract_start_date'])
+              : null,
+      contractEndDate:
+          json['contract_end_date'] != null
+              ? DateTime.parse(json['contract_end_date'])
+              : null,
       contractType: json['contract_type'],
-      salary: json['salary'] != null ? (json['salary'] as num).toDouble() : null,
+      salary:
+          json['salary'] != null
+              ? (json['salary'] is String
+                  ? double.tryParse(json['salary'] as String)
+                  : (json['salary'] as num).toDouble())
+              : null,
       currency: json['currency'],
       workSchedule: json['work_schedule'],
       status: json['status'] ?? 'active',
       profilePicture: json['profile_picture'],
       notes: json['notes'],
-      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
-      updatedAt: DateTime.parse(json['updated_at'] ?? DateTime.now().toIso8601String()),
-      documents: json['documents'] != null 
-          ? (json['documents'] as List).map((d) => EmployeeDocument.fromJson(d)).toList()
-          : null,
-      leaves: json['leaves'] != null 
-          ? (json['leaves'] as List).map((l) => EmployeeLeave.fromJson(l)).toList()
-          : null,
-      performances: json['performances'] != null 
-          ? (json['performances'] as List).map((p) => EmployeePerformance.fromJson(p)).toList()
-          : null,
+      createdAt: DateTime.parse(
+        json['created_at'] ?? DateTime.now().toIso8601String(),
+      ),
+      updatedAt: DateTime.parse(
+        json['updated_at'] ?? DateTime.now().toIso8601String(),
+      ),
+      documents:
+          json['documents'] != null
+              ? (json['documents'] as List)
+                  .map((d) => EmployeeDocument.fromJson(d))
+                  .toList()
+              : null,
+      leaves:
+          json['leaves'] != null
+              ? (json['leaves'] as List)
+                  .map((l) => EmployeeLeave.fromJson(l))
+                  .toList()
+              : null,
+      performances:
+          json['performances'] != null
+              ? (json['performances'] as List)
+                  .map((p) => EmployeePerformance.fromJson(p))
+                  .toList()
+              : null,
     );
   }
 
@@ -142,13 +170,18 @@ class Employee {
   // Propriétés calculées
   String get fullName => '$firstName $lastName';
   String get initials => '${firstName[0]}${lastName[0]}'.toUpperCase();
-  
+
   int? get age {
     if (birthDate == null) return null;
     final now = DateTime.now();
-    return now.year - birthDate!.year - (now.month < birthDate!.month || (now.month == birthDate!.month && now.day < birthDate!.day) ? 1 : 0);
+    return now.year -
+        birthDate!.year -
+        (now.month < birthDate!.month ||
+                (now.month == birthDate!.month && now.day < birthDate!.day)
+            ? 1
+            : 0);
   }
-  
+
   String get statusText {
     switch (status) {
       case 'active':
@@ -163,7 +196,7 @@ class Employee {
         return status ?? 'Inconnu';
     }
   }
-  
+
   String get statusColor {
     switch (status) {
       case 'active':
@@ -178,7 +211,7 @@ class Employee {
         return 'grey';
     }
   }
-  
+
   String get statusIcon {
     switch (status) {
       case 'active':
@@ -193,19 +226,19 @@ class Employee {
         return 'help';
     }
   }
-  
+
   String get formattedSalary {
     if (salary == null) return 'Non défini';
     return '${salary!.toStringAsFixed(0)} ${currency ?? 'fcfa'}';
   }
-  
+
   bool get isContractExpiring {
     if (contractEndDate == null) return false;
     final now = DateTime.now();
     final daysUntilExpiry = contractEndDate!.difference(now).inDays;
     return daysUntilExpiry <= 30 && daysUntilExpiry >= 0;
   }
-  
+
   bool get isContractExpired {
     if (contractEndDate == null) return false;
     return DateTime.now().isAfter(contractEndDate!);
@@ -248,9 +281,14 @@ class EmployeeDocument {
       description: json['description'],
       filePath: json['file_path'],
       fileSize: json['file_size'],
-      expiryDate: json['expiry_date'] != null ? DateTime.parse(json['expiry_date']) : null,
+      expiryDate:
+          json['expiry_date'] != null
+              ? DateTime.parse(json['expiry_date'])
+              : null,
       isRequired: json['is_required'] ?? false,
-      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      createdAt: DateTime.parse(
+        json['created_at'] ?? DateTime.now().toIso8601String(),
+      ),
       createdBy: json['created_by'],
     );
   }
@@ -341,15 +379,24 @@ class EmployeeLeave {
       id: json['id'],
       employeeId: json['employee_id'] ?? 0,
       type: json['type'] ?? '',
-      startDate: DateTime.parse(json['start_date'] ?? DateTime.now().toIso8601String()),
-      endDate: DateTime.parse(json['end_date'] ?? DateTime.now().toIso8601String()),
+      startDate: DateTime.parse(
+        json['start_date'] ?? DateTime.now().toIso8601String(),
+      ),
+      endDate: DateTime.parse(
+        json['end_date'] ?? DateTime.now().toIso8601String(),
+      ),
       totalDays: json['total_days'] ?? 0,
       reason: json['reason'],
       status: json['status'] ?? 'pending',
       approvedBy: json['approved_by'],
-      approvedAt: json['approved_at'] != null ? DateTime.parse(json['approved_at']) : null,
+      approvedAt:
+          json['approved_at'] != null
+              ? DateTime.parse(json['approved_at'])
+              : null,
       rejectionReason: json['rejection_reason'],
-      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      createdAt: DateTime.parse(
+        json['created_at'] ?? DateTime.now().toIso8601String(),
+      ),
       createdBy: json['created_by'],
     );
   }
@@ -461,8 +508,13 @@ class EmployeePerformance {
       areasForImprovement: json['areas_for_improvement'],
       status: json['status'] ?? 'draft',
       reviewedBy: json['reviewed_by'],
-      reviewedAt: json['reviewed_at'] != null ? DateTime.parse(json['reviewed_at']) : null,
-      createdAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      reviewedAt:
+          json['reviewed_at'] != null
+              ? DateTime.parse(json['reviewed_at'])
+              : null,
+      createdAt: DateTime.parse(
+        json['created_at'] ?? DateTime.now().toIso8601String(),
+      ),
       createdBy: json['created_by'],
     );
   }
@@ -555,8 +607,12 @@ class EmployeeStats {
       newHiresThisMonth: json['new_hires_this_month'] ?? 0,
       departuresThisMonth: json['departures_this_month'] ?? 0,
       averageSalary: (json['average_salary'] ?? 0).toDouble(),
-      departments: json['departments'] != null ? List<String>.from(json['departments']) : [],
-      positions: json['positions'] != null ? List<String>.from(json['positions']) : [],
+      departments:
+          json['departments'] != null
+              ? List<String>.from(json['departments'])
+              : [],
+      positions:
+          json['positions'] != null ? List<String>.from(json['positions']) : [],
       expiringContracts: json['expiring_contracts'] ?? 0,
       expiringDocuments: json['expiring_documents'] ?? 0,
     );

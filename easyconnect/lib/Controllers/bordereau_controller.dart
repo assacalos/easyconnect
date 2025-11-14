@@ -71,8 +71,7 @@ class BordereauxController extends GetxController {
       bordereauAcceptes.value = stats['acceptes'] ?? 0;
       bordereauRefuses.value = stats['refuses'] ?? 0;
       montantTotal.value = stats['montant_total'] ?? 0.0;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   Future<void> createBordereau(Map<String, dynamic> data) async {
@@ -243,28 +242,42 @@ class BordereauxController extends GetxController {
 
   Future<void> approveBordereau(int bordereauId) async {
     try {
+      print(
+        '🔵 [BORDEREAU_CONTROLLER] approveBordereau() appelé pour bordereauId: $bordereauId',
+      );
       isLoading.value = true;
-      final success = await _bordereauService.approveBordereau(bordereauId);
+      try {
+        final success = await _bordereauService.approveBordereau(bordereauId);
+        print('🔵 [BORDEREAU_CONTROLLER] Résultat approveBordereau: $success');
 
-      if (success) {
-        await loadBordereaux();
-        Get.snackbar(
-          'Succès',
-          'Bordereau approuvé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
-      } else {
-        throw Exception('Erreur lors de l\'approbation');
+        if (success) {
+          await loadBordereaux();
+          Get.snackbar(
+            'Succès',
+            'Bordereau approuvé avec succès',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+          );
+        } else {
+          throw Exception(
+            'Erreur lors de l\'approbation - La réponse du serveur indique un échec',
+          );
+        }
+      } catch (e) {
+        // Si le service a lancé une exception, la propager
+        rethrow;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [BORDEREAU_CONTROLLER] Erreur approveBordereau: $e');
+      print('❌ [BORDEREAU_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bordereau: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -273,31 +286,45 @@ class BordereauxController extends GetxController {
 
   Future<void> rejectBordereau(int bordereauId, String commentaire) async {
     try {
-      isLoading.value = true;
-      final success = await _bordereauService.rejectBordereau(
-        bordereauId,
-        commentaire,
+      print(
+        '🔵 [BORDEREAU_CONTROLLER] rejectBordereau() appelé pour bordereauId: $bordereauId',
       );
-
-      if (success) {
-        await loadBordereaux();
-        Get.snackbar(
-          'Succès',
-          'Bordereau rejeté avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
+      isLoading.value = true;
+      try {
+        final success = await _bordereauService.rejectBordereau(
+          bordereauId,
+          commentaire,
         );
-      } else {
-        throw Exception('Erreur lors du rejet');
+        print('🔵 [BORDEREAU_CONTROLLER] Résultat rejectBordereau: $success');
+
+        if (success) {
+          await loadBordereaux();
+          Get.snackbar(
+            'Succès',
+            'Bordereau rejeté avec succès',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+          );
+        } else {
+          throw Exception(
+            'Erreur lors du rejet - La réponse du serveur indique un échec',
+          );
+        }
+      } catch (e) {
+        // Si le service a lancé une exception, la propager
+        rethrow;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [BORDEREAU_CONTROLLER] Erreur rejectBordereau: $e');
+      print('❌ [BORDEREAU_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bordereau: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -347,8 +374,7 @@ class BordereauxController extends GetxController {
         await loadValidatedClients();
       }
       // La recherche sera implémentée dans l'interface utilisateur
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   void selectClient(Client client) {

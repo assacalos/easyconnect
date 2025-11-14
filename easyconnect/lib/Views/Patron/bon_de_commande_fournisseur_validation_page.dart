@@ -132,9 +132,40 @@ class _BonDeCommandeFournisseurValidationPageState
                 return const Center(child: CircularProgressIndicator());
               }
 
-              var filteredBonDeCommandes =
-                  controller.getFilteredBonDeCommandes();
+              // Filtrer selon l'onglet actif
+              List<BonDeCommande> filteredBonDeCommandes;
+              switch (_tabController.index) {
+                case 0: // Tous
+                  filteredBonDeCommandes = controller.bonDeCommandes;
+                  break;
+                case 1: // En attente
+                  filteredBonDeCommandes =
+                      controller.bonDeCommandes.where((bc) {
+                        final status = bc.statut.toLowerCase().trim();
+                        return status == 'en_attente' || status == 'pending';
+                      }).toList();
+                  break;
+                case 2: // Validés
+                  filteredBonDeCommandes =
+                      controller.bonDeCommandes.where((bc) {
+                        final status = bc.statut.toLowerCase().trim();
+                        return status == 'valide' ||
+                            status == 'approved' ||
+                            status == 'validated';
+                      }).toList();
+                  break;
+                case 3: // Rejetés
+                  filteredBonDeCommandes =
+                      controller.bonDeCommandes.where((bc) {
+                        final status = bc.statut.toLowerCase().trim();
+                        return status == 'rejete' || status == 'rejected';
+                      }).toList();
+                  break;
+                default:
+                  filteredBonDeCommandes = controller.bonDeCommandes;
+              }
 
+              // Filtrer par recherche
               if (_searchQuery.isNotEmpty) {
                 filteredBonDeCommandes =
                     filteredBonDeCommandes
@@ -147,8 +178,22 @@ class _BonDeCommandeFournisseurValidationPageState
               }
 
               if (filteredBonDeCommandes.isEmpty) {
-                return const Center(
-                  child: Text('Aucun bon de commande trouvé'),
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.shopping_cart,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Aucun bon de commande trouvé',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
                 );
               }
 

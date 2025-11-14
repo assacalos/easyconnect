@@ -269,9 +269,11 @@ class SalaryService {
   Future<bool> approveSalary(int salaryId, {String? notes}) async {
     try {
       final token = storage.read('token');
+      final url = '$baseUrl/salaries-validate/$salaryId';
 
+      print('🔵 [SALARY_SERVICE] Appel POST $url');
       final response = await http.post(
-        Uri.parse('$baseUrl/salaries-validate/$salaryId'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -280,9 +282,35 @@ class SalaryService {
         body: json.encode({'notes': notes}),
       );
 
-      return response.statusCode == 200;
-    } catch (e) {
+      print('🔵 [SALARY_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [SALARY_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Ce salaire ne peut pas être approuvé';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors de l\'approbation';
+        throw Exception('Erreur serveur: $message');
+      }
       return false;
+    } catch (e, stackTrace) {
+      print('❌ [SALARY_SERVICE] Exception approveSalary: $e');
+      print('❌ [SALARY_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 
@@ -290,9 +318,11 @@ class SalaryService {
   Future<bool> rejectSalary(int salaryId, {required String reason}) async {
     try {
       final token = storage.read('token');
+      final url = '$baseUrl/salaries-reject/$salaryId';
 
+      print('🔵 [SALARY_SERVICE] Appel POST $url');
       final response = await http.post(
-        Uri.parse('$baseUrl/salaries-reject/$salaryId'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -301,9 +331,35 @@ class SalaryService {
         body: json.encode({'reason': reason}),
       );
 
-      return response.statusCode == 200;
-    } catch (e) {
+      print('🔵 [SALARY_SERVICE] Réponse status: ${response.statusCode}');
+      print('🔵 [SALARY_SERVICE] Réponse body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        // Vérifier si la réponse contient success == true
+        if (responseData is Map && responseData['success'] == true) {
+          return true;
+        }
+        // Si pas de champ success, considérer 200 comme succès
+        return true;
+      } else if (response.statusCode == 400) {
+        // Erreur 400 : message explicite du backend
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Ce salaire ne peut pas être rejeté';
+        throw Exception(message);
+      } else if (response.statusCode == 500) {
+        // Erreur 500 : problème serveur
+        final responseData = json.decode(response.body);
+        final message =
+            responseData['message'] ?? 'Erreur serveur lors du rejet';
+        throw Exception('Erreur serveur: $message');
+      }
       return false;
+    } catch (e, stackTrace) {
+      print('❌ [SALARY_SERVICE] Exception rejectSalary: $e');
+      print('❌ [SALARY_SERVICE] Stack trace: $stackTrace');
+      rethrow; // Propager l'exception au lieu de retourner false
     }
   }
 

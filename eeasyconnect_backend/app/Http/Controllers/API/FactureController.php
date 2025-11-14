@@ -50,15 +50,37 @@ class FactureController extends Controller
             $query->where('user_id', auth()->id());
         }
         
-        $factures = $query->orderBy('created_at', 'desc')->get();
+        // Pagination optionnelle
+        $perPage = $request->get('per_page');
+        $limit = $request->get('limit');
         
-        $formattedFactures = $factures->map(function ($facture) {
+        // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
+        if (!$perPage && !$limit) {
+            $factures = $query->orderBy('created_at', 'desc')->get();
+            
+            $formattedFactures = $factures->map(function ($facture) {
+                return $this->formatFactureForFrontend($facture);
+            });
+            
+            return response()->json([
+                'success' => true,
+                'data' => $formattedFactures,
+                'message' => 'Liste des factures récupérée avec succès'
+            ]);
+        }
+        
+        // Sinon, utiliser la pagination
+        $perPage = $perPage ?? $limit ?? 15;
+        $factures = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        
+        // Formater pour le frontend
+        $factures->getCollection()->transform(function ($facture) {
             return $this->formatFactureForFrontend($facture);
         });
         
         return response()->json([
             'success' => true,
-            'data' => $formattedFactures,
+            'data' => $factures,
             'message' => 'Liste des factures récupérée avec succès'
         ]);
     }

@@ -48,19 +48,34 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Future<void> _loadPayments() async {
+    print(
+      '🔵 [PAIEMENT_VALIDATION] _loadPayments() appelé - Onglet: ${_tabController.index}',
+    );
+
     String? status;
     switch (_tabController.index) {
       case 0: // Tous
         status = null;
+        print('🔵 [PAIEMENT_VALIDATION] Onglet "Tous" sélectionné');
         break;
-      case 1: // En attente
-        status = 'pending';
+      case 1: // En attente - inclure tous les statuts en attente
+        // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
+        status = null;
+        print(
+          '🔵 [PAIEMENT_VALIDATION] Onglet "En attente" sélectionné - Chargement de tous les paiements',
+        );
         break;
       case 2: // Validés
         status = 'approved';
+        print(
+          '🔵 [PAIEMENT_VALIDATION] Onglet "Validés" sélectionné - Filtre: $status',
+        );
         break;
       case 3: // Rejetés
         status = 'rejected';
+        print(
+          '🔵 [PAIEMENT_VALIDATION] Onglet "Rejetés" sélectionné - Filtre: $status',
+        );
         break;
     }
 
@@ -69,7 +84,13 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
     } else {
       controller.selectedStatus.value = 'all';
     }
+    print(
+      '🔵 [PAIEMENT_VALIDATION] selectedStatus défini à: ${controller.selectedStatus.value}',
+    );
     await controller.loadPayments();
+    print(
+      '🔵 [PAIEMENT_VALIDATION] Après loadPayments - Nombre de paiements: ${controller.payments.length}',
+    );
   }
 
   @override
@@ -146,21 +167,98 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   Widget _buildPaymentList() {
     // Utiliser Obx pour rendre réactif l'accès à controller.payments
     return Obx(() {
+      print(
+        '🟢 [PAIEMENT_VALIDATION] _buildPaymentList() - Onglet: ${_tabController.index}',
+      );
+      print(
+        '🟢 [PAIEMENT_VALIDATION] Nombre total de paiements dans controller: ${controller.payments.length}',
+      );
+      print(
+        '🟢 [PAIEMENT_VALIDATION] isLoading: ${controller.isLoading.value}',
+      );
+
+      // Afficher tous les statuts pour debug
+      if (controller.payments.isNotEmpty) {
+        final allStatuses = controller.payments.map((p) => p.status).toSet();
+        print('🟢 [PAIEMENT_VALIDATION] Statuts trouvés: $allStatuses');
+
+        // Afficher les détails de chaque paiement
+        for (var payment in controller.payments) {
+          print(
+            '🟢 [PAIEMENT_VALIDATION] Paiement: ${payment.paymentNumber} - Status: ${payment.status} - isPending: ${payment.isPending} - isApproved: ${payment.isApproved} - isRejected: ${payment.isRejected}',
+          );
+        }
+      } else {
+        print(
+          '🟢 [PAIEMENT_VALIDATION] ⚠️ Aucun paiement dans controller.payments',
+        );
+      }
+
+      // Filtrer selon l'onglet actif et la recherche
+      List<PaymentModel> filteredPayments = controller.payments;
+      print(
+        '🟢 [PAIEMENT_VALIDATION] Avant filtrage: ${filteredPayments.length} paiements',
+      );
+
+      // Filtrer par statut selon l'onglet actif
+      if (_tabController.index == 1) {
+        // Onglet "En attente" - inclure tous les statuts en attente (pending, submitted, draft)
+        final beforeCount = filteredPayments.length;
+        filteredPayments =
+            filteredPayments.where((payment) {
+              final isPending = payment.isPending;
+              if (isPending) {
+                print(
+                  '🟢 [PAIEMENT_VALIDATION] ✅ Paiement en attente trouvé: ${payment.paymentNumber} - Status: ${payment.status}',
+                );
+              }
+              return isPending;
+            }).toList();
+        print(
+          '🟢 [PAIEMENT_VALIDATION] Après filtrage "En attente": ${filteredPayments.length} sur $beforeCount',
+        );
+      } else if (_tabController.index == 2) {
+        // Onglet "Validés"
+        final beforeCount = filteredPayments.length;
+        filteredPayments =
+            filteredPayments.where((payment) => payment.isApproved).toList();
+        print(
+          '🟢 [PAIEMENT_VALIDATION] Après filtrage "Validés": ${filteredPayments.length} sur $beforeCount',
+        );
+      } else if (_tabController.index == 3) {
+        // Onglet "Rejetés"
+        final beforeCount = filteredPayments.length;
+        filteredPayments =
+            filteredPayments.where((payment) => payment.isRejected).toList();
+        print(
+          '🟢 [PAIEMENT_VALIDATION] Après filtrage "Rejetés": ${filteredPayments.length} sur $beforeCount',
+        );
+      }
+      // Onglet 0 (Tous) - pas de filtre supplémentaire
+
       // Appliquer la recherche
-      final filteredPayments =
-          _searchQuery.isEmpty
-              ? controller.payments
-              : controller.payments
-                  .where(
-                    (paiement) =>
-                        (paiement.reference ?? '').toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ) ||
-                        paiement.clientName.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ),
-                  )
-                  .toList();
+      if (_searchQuery.isNotEmpty) {
+        final beforeCount = filteredPayments.length;
+        filteredPayments =
+            filteredPayments
+                .where(
+                  (paiement) =>
+                      (paiement.reference ?? '').toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ) ||
+                      paiement.clientName.toLowerCase().contains(
+                        _searchQuery.toLowerCase(),
+                      ),
+                )
+                .toList();
+        print(
+          '🟢 [PAIEMENT_VALIDATION] Après filtrage recherche: ${filteredPayments.length} sur $beforeCount',
+        );
+      }
+
+      print(
+        '🟢 [PAIEMENT_VALIDATION] ✅ Paiements finaux à afficher: ${filteredPayments.length}',
+      );
 
       if (filteredPayments.isEmpty) {
         return Center(
@@ -331,105 +429,115 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Widget _buildActionButtons(PaymentModel payment, Color statusColor) {
-    switch (payment.status) {
-      case 'submitted': // En attente - Afficher boutons Valider/Rejeter
-        return Column(
+    // Vérifier si le paiement est en attente (pending, submitted, ou draft)
+    if (payment.isPending) {
+      // En attente - Afficher boutons Valider/Rejeter
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _showApproveConfirmation(payment),
+                icon: const Icon(Icons.check),
+                label: const Text('Valider'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showRejectDialog(payment),
+                icon: const Icon(Icons.close),
+                label: const Text('Rejeter'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Si le paiement est approuvé
+    if (payment.isApproved) {
+      // Validé - Afficher seulement info
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _showApproveConfirmation(payment),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Valider'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _showRejectDialog(payment),
-                  icon: const Icon(Icons.close),
-                  label: const Text('Rejeter'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(
+              'Paiement validé',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
-        );
-      case 'approved': // Validé - Afficher seulement info
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green),
-              const SizedBox(width: 8),
-              Text(
-                'Paiement validé',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      case 'rejected': // Rejeté - Afficher motif du rejet
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.red),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.cancel, color: Colors.red),
-              const SizedBox(width: 8),
-              Text(
-                'Paiement rejeté',
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      default: // Autres statuts
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.help, color: Colors.grey[600]),
-              const SizedBox(width: 8),
-              Text(
-                'Statut: ${payment.status}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
+        ),
+      );
     }
+
+    // Si le paiement est rejeté
+    if (payment.isRejected) {
+      // Rejeté - Afficher motif du rejet
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cancel, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(
+              'Paiement rejeté',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Autres statuts
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.help, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            'Statut: ${controller.getPaymentStatusName(payment.status)}',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _getStatusColor(String status) {

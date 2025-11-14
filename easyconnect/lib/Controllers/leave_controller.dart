@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/services/leave_service.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/services/employee_service.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class LeaveController extends GetxController {
   final LeaveService _leaveService = LeaveService.to;
@@ -71,25 +71,24 @@ class LeaveController extends GetxController {
     try {
       final types = await _leaveService.getLeaveTypes();
       leaveTypes.value = types;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les employés
   Future<void> loadEmployees() async {
     try {
-      // TODO: Implémenter la méthode getAllEmployees dans EmployeeService
-      // Pour l'instant, on utilise des données de test
-      employees.value = [
-        {'id': 1, 'name': 'Jean Dupont', 'email': 'jean.dupont@example.com'},
-        {'id': 2, 'name': 'Marie Martin', 'email': 'marie.martin@example.com'},
-        {
-          'id': 3,
-          'name': 'Pierre Durand',
-          'email': 'pierre.durand@example.com',
-        },
-      ];
+      final employeesList = await _employeeService.getEmployees();
+      employees.value =
+          employeesList.map((employee) {
+            return {
+              'id': employee.id,
+              'name': '${employee.firstName} ${employee.lastName}',
+              'email': employee.email,
+            };
+          }).toList();
     } catch (e) {
+      // En cas d'erreur, laisser la liste vide
+      employees.value = [];
     }
   }
 
@@ -112,7 +111,7 @@ class LeaveController extends GetxController {
       } else {
         // Employé : voir ses propres demandes
         requests = await _leaveService.getEmployeeLeaveRequests(
-          employeeId: user.id!,
+          employeeId: user.id,
           startDate: selectedStartDate.value,
           endDate: selectedEndDate.value,
         );
@@ -139,8 +138,7 @@ class LeaveController extends GetxController {
         endDate: selectedEndDate.value,
       );
       leaveStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Appliquer les filtres
@@ -214,12 +212,67 @@ class LeaveController extends GetxController {
   // Créer une demande de congé
   Future<void> createLeaveRequest() async {
     try {
+      // Validation des champs obligatoires
       if (selectedEmployeeForm.value.isEmpty ||
           selectedLeaveTypeForm.value.isEmpty ||
           selectedStartDateForm.value == null ||
           selectedEndDateForm.value == null ||
           reasonController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+        return;
+      }
+
+      // Validation de start_date (doit être aujourd'hui ou dans le futur)
+      final today = DateTime.now().copyWith(
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+      );
+      if (selectedStartDateForm.value!.isBefore(today)) {
+        Get.snackbar(
+          'Erreur',
+          'La date de début doit être aujourd\'hui ou dans le futur',
+        );
+        return;
+      }
+
+      // Validation de end_date (doit être après start_date)
+      if (selectedEndDateForm.value!.isBefore(selectedStartDateForm.value!) ||
+          selectedEndDateForm.value!.isAtSameMomentAs(
+            selectedStartDateForm.value!,
+          )) {
+        Get.snackbar(
+          'Erreur',
+          'La date de fin doit être après la date de début',
+        );
+        return;
+      }
+
+      // Validation de reason (min 10 caractères, max 1000 caractères)
+      final reasonText = reasonController.text.trim();
+      if (reasonText.length < 10) {
+        Get.snackbar(
+          'Erreur',
+          'La raison doit contenir au moins 10 caractères (actuellement: ${reasonText.length})',
+        );
+        return;
+      }
+      if (reasonText.length > 1000) {
+        Get.snackbar(
+          'Erreur',
+          'La raison ne doit pas dépasser 1000 caractères (actuellement: ${reasonText.length})',
+        );
+        return;
+      }
+
+      // Validation de comments (max 2000 caractères)
+      final commentsText = commentsController.text.trim();
+      if (commentsText.length > 2000) {
+        Get.snackbar(
+          'Erreur',
+          'Les commentaires ne doivent pas dépasser 2000 caractères (actuellement: ${commentsText.length})',
+        );
         return;
       }
 

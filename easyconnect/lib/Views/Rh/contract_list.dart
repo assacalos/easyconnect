@@ -14,260 +14,106 @@ class ContractList extends StatelessWidget {
   Widget build(BuildContext context) {
     final ContractController controller = Get.put(ContractController());
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gestion des Contrats'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => controller.loadContracts(),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              // Barre de recherche et filtres
-              _buildSearchAndFilters(controller),
+    // Charger les contrats au chargement de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // S'assurer de charger tous les contrats (sans filtre de statut)
+      controller.selectedStatus.value = 'all';
+      controller.loadContracts();
+    });
 
-              // Statistiques rapides
-              _buildQuickStats(controller),
-
-              // Liste des contrats
-              Expanded(child: _buildContractList(controller)),
-            ],
-          ),
-          // Bouton d'ajout uniforme en bas à droite
-          if (controller.canManageContracts.value)
-            UniformAddButton(
-              onPressed: () => Get.to(() => const ContractForm()),
-              label: 'Nouveau Contrat',
-              icon: Icons.description,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchAndFilters(ContractController controller) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-      ),
-      child: Column(
-        children: [
-          // Barre de recherche
-          TextField(
-            controller: controller.searchController,
-            decoration: InputDecoration(
-              hintText: 'Rechercher un contrat...',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-            onChanged: (value) => controller.searchContracts(value),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Filtres
-          Row(
-            children: [
-              Expanded(
-                child: Obx(
-                  () => DropdownButtonFormField<String>(
-                    value: controller.selectedStatus.value,
-                    decoration: const InputDecoration(
-                      labelText: 'Statut',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    items:
-                        controller.statusOptions.map<DropdownMenuItem<String>>((
-                          status,
-                        ) {
-                          return DropdownMenuItem<String>(
-                            value: status['value']!,
-                            child: Text(status['label']!),
-                          );
-                        }).toList(),
-                    onChanged: (value) => controller.filterByStatus(value!),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Obx(
-                  () => DropdownButtonFormField<String>(
-                    value: controller.selectedContractType.value,
-                    decoration: const InputDecoration(
-                      labelText: 'Type',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                    ),
-                    items:
-                        controller.contractTypeOptions
-                            .map<DropdownMenuItem<String>>((type) {
-                              return DropdownMenuItem<String>(
-                                value: type['value']!,
-                                child: Text(type['label']!),
-                              );
-                            })
-                            .toList(),
-                    onChanged:
-                        (value) => controller.filterByContractType(value!),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Bouton pour réinitialiser les filtres
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton.icon(
-                icon: const Icon(Icons.clear, size: 16),
-                label: const Text('Réinitialiser'),
-                onPressed: () => controller.clearFilters(),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickStats(ContractController controller) {
-    return Obx(() {
-      if (controller.contractStats.value == null) {
-        return const SizedBox.shrink();
-      }
-
-      final stats = controller.contractStats.value!;
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total',
-                '${stats.totalContracts}',
-                Icons.description,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Actifs',
-                '${stats.activeContracts}',
-                Icons.check_circle,
-                Colors.green,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'En attente',
-                '${stats.pendingContracts}',
-                Icons.schedule,
-                Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Expirant',
-                '${stats.contractsExpiringSoon}',
-                Icons.warning,
-                Colors.red,
-              ),
+    return DefaultTabController(
+      length: 5,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Contrats'),
+          backgroundColor: Colors.deepPurple,
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                controller.selectedStatus.value = 'all';
+                controller.loadContracts();
+              },
+              tooltip: 'Actualiser',
             ),
           ],
+          bottom: const TabBar(
+            isScrollable: true,
+            tabs: [
+              Tab(text: 'En attente'),
+              Tab(text: 'Actifs'),
+              Tab(text: 'Expirés'),
+              Tab(text: 'Résiliés'),
+              Tab(text: 'Annulés'),
+            ],
+          ),
         ),
-      );
-    });
-  }
-
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
+        body: Stack(
+          children: [
+            TabBarView(
+              children: [
+                _buildContractList('pending', controller), // En attente
+                _buildContractList('active', controller), // Actifs
+                _buildContractList('expired', controller), // Expirés
+                _buildContractList('terminated', controller), // Résiliés
+                _buildContractList('cancelled', controller), // Annulés
+              ],
             ),
-          ),
-          Text(
-            title,
-            style: TextStyle(fontSize: 10, color: color),
-            textAlign: TextAlign.center,
-          ),
-        ],
+            // Bouton d'ajout uniforme en bas à droite
+            if (controller.canManageContracts.value)
+              UniformAddButton(
+                onPressed: () => Get.to(() => const ContractForm()),
+                label: 'Nouveau Contrat',
+                icon: Icons.description,
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildContractList(ContractController controller) {
+  Widget _buildContractList(String status, ContractController controller) {
     return Obx(() {
       if (controller.isLoading.value) {
         return const Center(child: CircularProgressIndicator());
       }
 
-      final filteredContracts = controller.filteredContracts;
+      // Filtrer selon le statut
+      List<Contract> contractList;
+      contractList =
+          controller.contracts.where((c) => c.status == status).toList();
 
-      if (filteredContracts.isEmpty) {
+      if (contractList.isEmpty) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.description_outlined,
+                status == 'pending'
+                    ? Icons.pending
+                    : status == 'active'
+                    ? Icons.check_circle
+                    : status == 'expired'
+                    ? Icons.event_busy
+                    : status == 'terminated'
+                    ? Icons.block
+                    : Icons.cancel,
                 size: 64,
-                color: Colors.grey[400],
+                color: Colors.grey.shade400,
               ),
               const SizedBox(height: 16),
               Text(
-                'Aucun contrat trouvé',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Commencez par créer un contrat',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                status == 'pending'
+                    ? 'Aucun contrat en attente'
+                    : status == 'active'
+                    ? 'Aucun contrat actif'
+                    : status == 'expired'
+                    ? 'Aucun contrat expiré'
+                    : status == 'terminated'
+                    ? 'Aucun contrat résilié'
+                    : 'Aucun contrat annulé',
+                style: const TextStyle(fontSize: 18, color: Colors.grey),
               ),
             ],
           ),
@@ -276,9 +122,9 @@ class ContractList extends StatelessWidget {
 
       return ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: filteredContracts.length,
+        itemCount: contractList.length,
         itemBuilder: (context, index) {
-          final contract = filteredContracts[index];
+          final contract = contractList[index];
           return _buildContractCard(contract, controller);
         },
       );
@@ -286,24 +132,54 @@ class ContractList extends StatelessWidget {
   }
 
   Widget _buildContractCard(Contract contract, ContractController controller) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
     final formatDate = DateFormat('dd/MM/yyyy');
 
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    switch (contract.status) {
+      case 'pending':
+        statusColor = Colors.orange;
+        statusIcon = Icons.pending;
+        statusText = 'En attente';
+        break;
+      case 'active':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Actif';
+        break;
+      case 'expired':
+        statusColor = Colors.blue;
+        statusIcon = Icons.event_busy;
+        statusText = 'Expiré';
+        break;
+      case 'terminated':
+        statusColor = Colors.red;
+        statusIcon = Icons.block;
+        statusText = 'Résilié';
+        break;
+      case 'cancelled':
+        statusColor = Colors.grey;
+        statusIcon = Icons.cancel;
+        statusText = 'Annulé';
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.help;
+        statusText = 'Inconnu';
+    }
+
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () => Get.to(() => ContractDetail(contract: contract)),
-        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec numéro et statut
+              // En-tête avec numéro de contrat et statut
               Row(
                 children: [
                   Expanded(
@@ -313,179 +189,119 @@ class ContractList extends StatelessWidget {
                         Text(
                           contract.contractNumber,
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${contract.employeeName} - ${contract.jobTitle}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
+                          contract.employeeName,
+                          style: const TextStyle(
                             fontSize: 14,
+                            color: Colors.grey,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  _buildStatusChip(contract),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, size: 16, color: statusColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-
               const SizedBox(height: 12),
 
-              // Informations clés
+              // Informations du contrat
               Row(
                 children: [
-                  Icon(Icons.business, size: 16, color: Colors.grey[600]),
+                  const Icon(Icons.work, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    contract.department,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                  const SizedBox(width: 16),
-                  Icon(Icons.work, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    contract.contractTypeText,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Salaire et horaires
-              Row(
-                children: [
-                  Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${formatCurrency.format(contract.grossSalary)}/${contract.paymentFrequencyText}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                  const SizedBox(width: 16),
-                  Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${contract.weeklyHours}h/sem',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Dates
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Début: ${formatDate.format(contract.startDate)}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                  if (contract.endDate != null) ...[
-                    const SizedBox(width: 16),
-                    Icon(Icons.event, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Fin: ${formatDate.format(contract.endDate!)}',
-                      style: TextStyle(
-                        color:
-                            contract.hasExpired ? Colors.red : Colors.grey[600],
-                        fontSize: 14,
-                        fontWeight:
-                            contract.hasExpired
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                      ),
+                  Expanded(
+                    child: Text(
+                      contract.jobTitle,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              Row(
+                children: [
+                  const Icon(Icons.business, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Text(contract.department),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              Row(
+                children: [
+                  const Icon(Icons.attach_money, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${contract.grossSalary.toStringAsFixed(0)} ${contract.salaryCurrency}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 16,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Du ${formatDate.format(contract.startDate)}${contract.endDate != null ? ' au ${formatDate.format(contract.endDate!)}' : ''}',
+                  ),
                 ],
               ),
 
-              if (contract.isExpiringSoon) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.warning, size: 14, color: Colors.orange),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Expire bientôt',
-                        style: TextStyle(color: Colors.orange, fontSize: 12),
+              // Actions selon le statut
+              if (contract.status == 'active') ...[
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (controller.canManageContracts.value)
+                      TextButton.icon(
+                        onPressed:
+                            () => _showTerminateDialog(contract, controller),
+                        icon: const Icon(Icons.block, size: 18),
+                        label: const Text('Résilier'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ],
-
-              const SizedBox(height: 8),
-
-              // Actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (contract.isDraft &&
-                      controller.canManageContracts.value) ...[
-                    TextButton.icon(
-                      icon: const Icon(Icons.send, size: 16),
-                      label: const Text('Soumettre'),
-                      onPressed: () => _showSubmitDialog(contract, controller),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.edit, size: 16),
-                      label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(() => ContractForm(contract: contract)),
-                    ),
-                  ],
-                  if (contract.isPending &&
-                      controller.canApproveContracts.value) ...[
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(contract, controller),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(contract, controller),
-                    ),
-                  ],
-                  if (contract.isActive &&
-                      controller.canManageContracts.value) ...[
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Résilier'),
-                      onPressed:
-                          () => _showTerminateDialog(contract, controller),
-                    ),
-                  ],
-                  if (contract.canCancel) ...[
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.cancel, size: 16),
-                      label: const Text('Annuler'),
-                      onPressed: () => _showCancelDialog(contract, controller),
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
         ),
@@ -493,270 +309,102 @@ class ContractList extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusChip(Contract contract) {
-    Color color;
-    switch (contract.statusColor) {
-      case 'grey':
-        color = Colors.grey;
-        break;
-      case 'orange':
-        color = Colors.orange;
-        break;
-      case 'green':
-        color = Colors.green;
-        break;
-      case 'red':
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Text(
-        contract.statusText,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  void _showSubmitDialog(Contract contract, ContractController controller) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Soumettre le contrat'),
-        content: const Text(
-          'Êtes-vous sûr de vouloir soumettre ce contrat pour approbation ?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.submitContract(contract);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Soumettre'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showApproveDialog(Contract contract, ContractController controller) {
-    final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Approuver le contrat'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir approuver ce contrat ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optionnel)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.approveContract(
-                contract,
-                notes:
-                    notesController.text.trim().isEmpty
-                        ? null
-                        : notesController.text.trim(),
-              );
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Approuver'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectDialog(Contract contract, ContractController controller) {
-    final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le contrat'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir rejeter ce contrat ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectContract(
-                  contract,
-                  reasonController.text.trim(),
-                );
-                Get.back();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showTerminateDialog(Contract contract, ContractController controller) {
-    final reasonController = TextEditingController();
     DateTime? selectedDate;
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Résilier le contrat'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir résilier ce contrat ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison de la résiliation *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: Get.context!,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (date != null) {
-                  selectedDate = date;
-                }
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Date de résiliation *',
-                  border: OutlineInputBorder(),
-                ),
-                child: Text(
-                  selectedDate != null
-                      ? DateFormat('dd/MM/yyyy').format(selectedDate!)
-                      : 'Sélectionner une date',
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty &&
-                  selectedDate != null) {
-                controller.terminateContract(
-                  contract,
-                  reasonController.text.trim(),
-                  selectedDate!,
-                );
-                Get.back();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Résilier'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCancelDialog(Contract contract, ContractController controller) {
     final reasonController = TextEditingController();
 
     Get.dialog(
-      AlertDialog(
-        title: const Text('Annuler le contrat'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir annuler ce contrat ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison de l\'annulation (optionnel)',
-                border: OutlineInputBorder(),
+      StatefulBuilder(
+        builder:
+            (context, setState) => AlertDialog(
+              title: const Text('Résilier le contrat'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Veuillez indiquer la date et la raison de résiliation :',
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: contract.startDate,
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
+                        );
+                        if (date != null) {
+                          setState(() {
+                            selectedDate = date;
+                          });
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Date de résiliation',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.calendar_today),
+                        ),
+                        child: Text(
+                          selectedDate != null
+                              ? DateFormat('dd/MM/yyyy').format(selectedDate!)
+                              : 'Sélectionner une date',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: reasonController,
+                      decoration: const InputDecoration(
+                        labelText: 'Raison de résiliation',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
+                    ),
+                  ],
+                ),
               ),
-              maxLines: 3,
+              actions: [
+                TextButton(
+                  onPressed: () => Get.back(),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (selectedDate == null) {
+                      Get.snackbar(
+                        'Erreur',
+                        'Veuillez sélectionner une date',
+                        snackPosition: SnackPosition.BOTTOM,
+                      );
+                      return;
+                    }
+                    if (reasonController.text.trim().isEmpty) {
+                      Get.snackbar(
+                        'Erreur',
+                        'Veuillez indiquer la raison',
+                        snackPosition: SnackPosition.BOTTOM,
+                      );
+                      return;
+                    }
+                    controller.terminateContract(
+                      contract,
+                      reasonController.text.trim(),
+                      selectedDate!,
+                    );
+                    Get.back();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Résilier'),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Non')),
-          ElevatedButton(
-            onPressed: () {
-              controller.cancelContract(
-                contract,
-                reason:
-                    reasonController.text.trim().isEmpty
-                        ? null
-                        : reasonController.text.trim(),
-              );
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Oui, annuler'),
-          ),
-        ],
       ),
     );
   }

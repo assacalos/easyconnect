@@ -340,6 +340,9 @@ class SalaryController extends GetxController {
   // Approuver un salaire
   Future<void> approveSalary(Salary salary) async {
     try {
+      print(
+        '🔵 [SALARY_CONTROLLER] approveSalary() appelé pour salaryId: ${salary.id}',
+      );
       isLoading.value = true;
 
       final success = await _salaryService.approveSalary(
@@ -349,6 +352,7 @@ class SalaryController extends GetxController {
                 ? null
                 : notesController.text.trim(),
       );
+      print('🔵 [SALARY_CONTROLLER] Résultat approveSalary: $success');
 
       if (success) {
         await loadSalaries();
@@ -359,15 +363,24 @@ class SalaryController extends GetxController {
           'Succès',
           'Salaire approuvé',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors de l\'approbation');
+        throw Exception(
+          'Erreur lors de l\'approbation - La réponse du serveur indique un échec',
+        );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [SALARY_CONTROLLER] Erreur approveSalary: $e');
+      print('❌ [SALARY_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
-        'Impossible d\'approuver le salaire',
+        'Impossible d\'approuver le salaire: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -377,12 +390,16 @@ class SalaryController extends GetxController {
   // Rejeter un salaire
   Future<void> rejectSalary(Salary salary, String reason) async {
     try {
+      print(
+        '🔵 [SALARY_CONTROLLER] rejectSalary() appelé pour salaryId: ${salary.id}',
+      );
       isLoading.value = true;
 
       final success = await _salaryService.rejectSalary(
         salary.id!,
         reason: reason,
       );
+      print('🔵 [SALARY_CONTROLLER] Résultat rejectSalary: $success');
 
       if (success) {
         await loadSalaries();
@@ -393,15 +410,24 @@ class SalaryController extends GetxController {
           'Succès',
           'Salaire rejeté',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors du rejet');
+        throw Exception(
+          'Erreur lors du rejet - La réponse du serveur indique un échec',
+        );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [SALARY_CONTROLLER] Erreur rejectSalary: $e');
+      print('❌ [SALARY_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
-        'Impossible de rejeter le salaire',
+        'Impossible de rejeter le salaire: $e',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       isLoading.value = false;
@@ -520,12 +546,10 @@ class SalaryController extends GetxController {
       filteredSalaries =
           filteredSalaries.where((salary) {
             final matches = salary.status == selectedStatus.value;
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     // Filtrer par mois
     if (selectedMonth.value != 'all') {
@@ -533,12 +557,10 @@ class SalaryController extends GetxController {
       filteredSalaries =
           filteredSalaries.where((salary) {
             final matches = salary.month == selectedMonth.value;
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     // Filtrer par recherche
     if (searchQuery.value.isNotEmpty) {
@@ -549,19 +571,16 @@ class SalaryController extends GetxController {
             final matches =
                 (salary.employeeName?.toLowerCase().contains(query) ?? false) ||
                 (salary.employeeEmail?.toLowerCase().contains(query) ?? false);
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     salaries.assignAll(filteredSalaries);
     // Debug final
     if (salaries.isEmpty) {
       if (allSalaries.isNotEmpty) {
-        for (final salary in allSalaries) {
-        }
+        for (final salary in allSalaries) {}
       }
     }
   }

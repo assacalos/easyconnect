@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
-import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'package:intl/intl.dart';
 
 class BonDeCommandeFournisseurFormPage extends StatelessWidget {
@@ -20,6 +19,13 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Réinitialiser le formulaire si c'est une nouvelle création
+    if (!isEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.clearForm();
+      });
+    }
+
     final formKey = GlobalKey<FormState>();
     final numeroCommandeController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -64,7 +70,7 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Sélection client/fournisseur
+              // Sélection fournisseur
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -72,7 +78,7 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Client / Fournisseur',
+                        'Fournisseur *',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -80,26 +86,9 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       Obx(() {
-                        final selectedClient = controller.selectedClient.value;
                         final selectedSupplier =
                             controller.selectedSupplier.value;
-                        if (selectedClient != null) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Client: ${selectedClient.nom}'),
-                              Text(selectedClient.email ?? ''),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () {
-                                  controller.selectClient(null);
-                                  controller.selectSupplier(null);
-                                },
-                                child: const Text('Changer'),
-                              ),
-                            ],
-                          );
-                        } else if (selectedSupplier != null) {
+                        if (selectedSupplier != null) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -108,7 +97,6 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: () {
-                                  controller.selectClient(null);
                                   controller.selectSupplier(null);
                                 },
                                 child: const Text('Changer'),
@@ -116,25 +104,9 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                             ],
                           );
                         }
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () => _showClientSelection(context),
-                                child: const Text('Sélectionner un client'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed:
-                                    () => _showSupplierSelection(context),
-                                child: const Text(
-                                  'Sélectionner un fournisseur',
-                                ),
-                              ),
-                            ),
-                          ],
+                        return ElevatedButton(
+                          onPressed: () => _showSupplierSelection(context),
+                          child: const Text('Sélectionner un fournisseur'),
                         );
                       }),
                     ],
@@ -330,11 +302,23 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                           ? null
                           : () {
                             if (formKey.currentState!.validate()) {
+                              if (controller.selectedSupplier.value == null) {
+                                Get.snackbar(
+                                  'Erreur',
+                                  'Veuillez sélectionner un fournisseur',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.red,
+                                  colorText: Colors.white,
+                                );
+                                return;
+                              }
                               if (controller.items.isEmpty) {
                                 Get.snackbar(
                                   'Erreur',
                                   'Veuillez ajouter au moins un article',
                                   snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.red,
+                                  colorText: Colors.white,
                                 );
                                 return;
                               }
@@ -559,20 +543,6 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  void _showClientSelection(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => ClientSelectionDialog(
-            onClientSelected: (client) {
-              controller.selectClient(client);
-              controller.selectSupplier(null);
-              Get.back();
-            },
-          ),
     );
   }
 

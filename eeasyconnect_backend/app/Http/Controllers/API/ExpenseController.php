@@ -418,17 +418,34 @@ class ExpenseController extends Controller
                 ], 404);
             }
 
+            // Si la dépense est en draft, la soumettre d'abord
+            if ($expense->status === 'draft') {
+                if (!$expense->submit()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Impossible de soumettre cette dépense pour approbation'
+                    ], 400);
+                }
+                // Recharger la dépense après soumission
+                $expense->refresh();
+            }
+
             $comments = $request->get('comments');
 
             if ($expense->approve($request->user()->id, $comments)) {
+                // Recharger la dépense avec ses relations
+                $expense->refresh();
+                $expense->load(['employee', 'expenseCategory', 'comptable', 'approvals.approver']);
+
                 return response()->json([
                     'success' => true,
+                    'data' => $expense,
                     'message' => 'Dépense approuvée avec succès'
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cette dépense ne peut pas être approuvée'
+                    'message' => 'Cette dépense ne peut pas être approuvée. Statut actuel: ' . $expense->status . '. Les statuts acceptés sont: submitted, under_review'
                 ], 400);
             }
 
@@ -455,19 +472,36 @@ class ExpenseController extends Controller
                 ], 404);
             }
 
+            // Si la dépense est en draft, la soumettre d'abord
+            if ($expense->status === 'draft') {
+                if (!$expense->submit()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Impossible de soumettre cette dépense pour rejet'
+                    ], 400);
+                }
+                // Recharger la dépense après soumission
+                $expense->refresh();
+            }
+
             $validated = $request->validate([
                 'reason' => 'required|string|max:1000'
             ]);
 
             if ($expense->reject($request->user()->id, $validated['reason'])) {
+                // Recharger la dépense avec ses relations
+                $expense->refresh();
+                $expense->load(['employee', 'expenseCategory', 'comptable', 'approvals.approver']);
+
                 return response()->json([
                     'success' => true,
-                    'message' => 'Dépense rejetée'
+                    'data' => $expense,
+                    'message' => 'Dépense rejetée avec succès'
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cette dépense ne peut pas être rejetée'
+                    'message' => 'Cette dépense ne peut pas être rejetée. Statut actuel: ' . $expense->status . '. Les statuts acceptés sont: submitted, under_review'
                 ], 400);
             }
 
