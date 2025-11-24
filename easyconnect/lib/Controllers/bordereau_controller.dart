@@ -8,6 +8,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class BordereauxController extends GetxController {
   late int userId;
@@ -27,6 +28,9 @@ class BordereauxController extends GetxController {
   final availableDevis = <Devis>[].obs;
   final selectedDevis = Rxn<Devis>();
   final isLoadingDevis = false.obs;
+
+  // Référence générée automatiquement
+  final generatedReference = ''.obs;
 
   // Statistiques
   final totalBordereaux = 0.obs;
@@ -74,7 +78,7 @@ class BordereauxController extends GetxController {
     } catch (e) {}
   }
 
-  Future<void> createBordereau(Map<String, dynamic> data) async {
+  Future<bool> createBordereau(Map<String, dynamic> data) async {
     try {
       // Vérifications
       if (selectedClient.value == null) {
@@ -86,36 +90,26 @@ class BordereauxController extends GetxController {
 
       isLoading.value = true;
 
+      // Utiliser la référence générée si un devis est sélectionné, sinon utiliser celle fournie
+      final reference =
+          selectedDevis.value != null && generatedReference.value.isNotEmpty
+              ? generatedReference.value
+              : data['reference'];
+
       final newBordereau = Bordereau(
         clientId: selectedClient.value!.id!,
         devisId: selectedDevis.value?.id,
-        reference: data['reference'],
+        reference: reference,
         dateCreation: DateTime.now(),
         notes: data['notes'],
         status: 1, // Forcer le statut à 1 (En attente)
         items: items.toList(), // Convertir en liste
-        remiseGlobale:
-            data['remise_globale'] != null
-                ? double.tryParse(data['remise_globale'].toString())
-                : null,
-        tva:
-            data['tva'] != null
-                ? double.tryParse(data['tva'].toString()) ?? 20.0
-                : 20.0,
-        conditions: data['conditions'],
         commercialId: userId,
       );
 
       await _bordereauService.createBordereau(newBordereau);
 
-      // Effacer le formulaire
-      clearForm();
-
-      // Recharger la liste des bordereaux
-      await loadBordereaux();
-
-      // Fermer le formulaire et afficher le message de succès
-      Get.back();
+      // Si la création réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bordereau créé avec succès',
@@ -124,6 +118,19 @@ class BordereauxController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
+
+      // Effacer le formulaire
+      clearForm();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadBordereaux();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le bordereau a été créé avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       // Extraire le message d'erreur
       String errorMessage = e.toString();
@@ -142,12 +149,13 @@ class BordereauxController extends GetxController {
         isDismissible: true,
         shouldIconPulse: true,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> updateBordereau(
+  Future<bool> updateBordereau(
     int bordereauId,
     Map<String, dynamic> data,
   ) async {
@@ -164,27 +172,34 @@ class BordereauxController extends GetxController {
         notes: data['notes'] ?? bordereauToUpdate.notes,
         status: bordereauToUpdate.status,
         items: items.isEmpty ? bordereauToUpdate.items : items,
-        remiseGlobale:
-            data['remise_globale'] ?? bordereauToUpdate.remiseGlobale,
-        tva: data['tva'] ?? bordereauToUpdate.tva,
-        conditions: data['conditions'] ?? bordereauToUpdate.conditions,
         commercialId: bordereauToUpdate.commercialId,
       );
 
       await _bordereauService.updateBordereau(updatedBordereau);
-      Get.back();
+
+      // Si la mise à jour réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bordereau mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
-      loadBordereaux();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadBordereaux();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le bordereau a été mis à jour avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le bordereau',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -242,16 +257,16 @@ class BordereauxController extends GetxController {
 
   Future<void> approveBordereau(int bordereauId) async {
     try {
-      print(
-        '🔵 [BORDEREAU_CONTROLLER] approveBordereau() appelé pour bordereauId: $bordereauId',
-      );
       isLoading.value = true;
       try {
         final success = await _bordereauService.approveBordereau(bordereauId);
-        print('🔵 [BORDEREAU_CONTROLLER] Résultat approveBordereau: $success');
 
         if (success) {
           await loadBordereaux();
+
+          // Rafraîchir les compteurs du dashboard patron
+          DashboardRefreshHelper.refreshPatronCounter('bordereau');
+
           Get.snackbar(
             'Succès',
             'Bordereau approuvé avec succès',
@@ -269,8 +284,6 @@ class BordereauxController extends GetxController {
         rethrow;
       }
     } catch (e, stackTrace) {
-      print('❌ [BORDEREAU_CONTROLLER] Erreur approveBordereau: $e');
-      print('❌ [BORDEREAU_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bordereau: $e',
@@ -286,19 +299,19 @@ class BordereauxController extends GetxController {
 
   Future<void> rejectBordereau(int bordereauId, String commentaire) async {
     try {
-      print(
-        '🔵 [BORDEREAU_CONTROLLER] rejectBordereau() appelé pour bordereauId: $bordereauId',
-      );
       isLoading.value = true;
       try {
         final success = await _bordereauService.rejectBordereau(
           bordereauId,
           commentaire,
         );
-        print('🔵 [BORDEREAU_CONTROLLER] Résultat rejectBordereau: $success');
 
         if (success) {
           await loadBordereaux();
+
+          // Rafraîchir les compteurs du dashboard patron
+          DashboardRefreshHelper.refreshPatronCounter('bordereau');
+
           Get.snackbar(
             'Succès',
             'Bordereau rejeté avec succès',
@@ -316,8 +329,6 @@ class BordereauxController extends GetxController {
         rethrow;
       }
     } catch (e, stackTrace) {
-      print('❌ [BORDEREAU_CONTROLLER] Erreur rejectBordereau: $e');
-      print('❌ [BORDEREAU_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bordereau: $e',
@@ -416,9 +427,39 @@ class BordereauxController extends GetxController {
     }
   }
 
+  // Générer automatiquement la référence du bordereau basée sur le devis
+  Future<String> generateBordereauReference(int? devisId) async {
+    if (devisId == null) {
+      // Si pas de devis, générer une référence par défaut
+      return 'BL-${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    // Trouver le devis sélectionné
+    final devis = selectedDevis.value;
+    if (devis == null) {
+      return 'BL-${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    // Recharger les bordereaux pour avoir le comptage à jour
+    await loadBordereaux();
+
+    // Compter combien de bordereaux existent déjà pour ce devis
+    final existingBordereaux =
+        bordereaux.where((b) => b.devisId == devisId).toList();
+    final increment = existingBordereaux.length + 1;
+
+    // Générer la référence : [référence_devis]-BL[incrément]
+    return '${devis.reference}-BL$increment';
+  }
+
   // Sélection d'un devis
-  void selectDevis(Devis devis) {
+  Future<void> selectDevis(Devis devis) async {
     selectedDevis.value = devis;
+
+    // Générer automatiquement la référence
+    final ref = await generateBordereauReference(devis.id);
+    generatedReference.value = ref;
+    print('📋 [BORDEREAU] Référence générée: $ref');
 
     // Pré-remplir les items du bordereau avec les items du devis (sans les prix)
     items.clear();
@@ -427,7 +468,6 @@ class BordereauxController extends GetxController {
         designation: devisItem.designation,
         unite: 'unité', // Valeur par défaut
         quantite: devisItem.quantite,
-        prixUnitaire: 0.0, // Prix à saisir manuellement
         description: 'Basé sur le devis ${devis.reference}',
       );
       items.add(bordereauItem);
@@ -437,6 +477,7 @@ class BordereauxController extends GetxController {
   // Effacer la sélection du devis
   void clearSelectedDevis() {
     selectedDevis.value = null;
+    generatedReference.value = '';
     items.clear();
   }
 
@@ -469,7 +510,6 @@ class BordereauxController extends GetxController {
                   'designation': item.designation,
                   'unite': item.unite,
                   'quantite': item.quantite,
-                  'prix_unitaire': item.prixUnitaire,
                   'montant_total': item.montantTotal,
                 },
               )
@@ -481,7 +521,6 @@ class BordereauxController extends GetxController {
           'reference': bordereau.reference,
           'date_creation': bordereau.dateCreation,
           'montant_ht': bordereau.montantHT,
-          'tva': bordereau.tva,
           'total_ttc': bordereau.montantTTC,
         },
         items: items,

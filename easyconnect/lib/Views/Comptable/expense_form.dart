@@ -308,12 +308,15 @@ class ExpenseForm extends StatelessWidget {
   }
 
   void _saveExpense(ExpenseController controller) async {
+    bool success = false;
     if (expense == null) {
-      await controller.createExpense();
+      success = await controller.createExpense();
     } else {
-      await controller.updateExpense(expense!);
+      success = await controller.updateExpense(expense!);
     }
-    // Le retour automatique est géré dans le contrôleur après succès
+    if (success) {
+      Get.back();
+    }
   }
 
   void _selectReceipt(ExpenseController controller) {

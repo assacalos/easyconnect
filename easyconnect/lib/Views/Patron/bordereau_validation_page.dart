@@ -208,7 +208,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     for (final item in bordereau.items) {
       totalHT += item.montantTotal;
     }
-    final totalTTC = totalHT * (1 + (bordereau.tva ?? 0) / 100);
+    final totalTTC = totalHT;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -311,19 +311,6 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                           Text(formatCurrency.format(totalHT)),
                         ],
                       ),
-                      if (bordereau.tva != null && bordereau.tva! > 0) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('TVA (${bordereau.tva}%):'),
-                            Text(
-                              formatCurrency.format(
-                                totalHT * bordereau.tva! / 100,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                       const Divider(),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -379,7 +366,6 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
             ),
           ),
           Expanded(child: Text('${item.quantite} ${item.unite}')),
-          Expanded(child: Text(formatCurrency.format(item.prixUnitaire))),
           Expanded(
             child: Text(
               formatCurrency.format(item.montantTotal),

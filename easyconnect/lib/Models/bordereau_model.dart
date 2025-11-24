@@ -3,7 +3,6 @@ class BordereauItem {
   final String designation;
   final String unite;
   final int quantite;
-  final double prixUnitaire;
   final String? description;
 
   BordereauItem({
@@ -11,18 +10,16 @@ class BordereauItem {
     required this.designation,
     required this.unite,
     required this.quantite,
-    required this.prixUnitaire,
     this.description,
   });
 
-  double get montantTotal => quantite * prixUnitaire;
+  double get montantTotal => 0.0;
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'designation': designation,
     'unite': unite,
     'quantite': quantite,
-    'prix_unitaire': prixUnitaire,
     'description': description,
   };
 
@@ -43,12 +40,6 @@ class BordereauItem {
             : (json['quantite'] is int
                 ? json['quantite']
                 : (json['quantite'] is num ? json['quantite'].toInt() : 0)),
-    prixUnitaire:
-        json['prix_unitaire'] is String
-            ? double.tryParse(json['prix_unitaire']) ?? 0.0
-            : (json['prix_unitaire'] is num
-                ? json['prix_unitaire'].toDouble()
-                : 0.0),
     description: json['description']?.toString(),
   );
 }
@@ -63,9 +54,6 @@ class Bordereau {
   final DateTime? dateValidation;
   final String? notes;
   final List<BordereauItem> items;
-  final double? remiseGlobale;
-  final double? tva;
-  final String? conditions;
   final int status; // 1: soumis, 2: validé, 3: rejeté
   final String? commentaireRejet;
 
@@ -79,23 +67,14 @@ class Bordereau {
     this.dateValidation,
     this.notes,
     required this.items,
-    this.remiseGlobale,
-    this.tva = 20.0,
-    this.conditions,
     this.status = 1,
     this.commentaireRejet,
   });
 
-  double get montantHT {
-    double total = items.fold(0, (sum, item) => sum + item.montantTotal);
-    if (remiseGlobale != null) {
-      total = total * (1 - remiseGlobale! / 100);
-    }
-    return total;
-  }
+  double get montantHT => 0.0;
 
-  double get montantTVA => tva != null ? montantHT * (tva! / 100) : 0.0;
-  double get montantTTC => montantHT + montantTVA;
+  double get montantTVA => 0.0;
+  double get montantTTC => 0.0;
 
   String get statusText {
     switch (status) {
@@ -120,9 +99,6 @@ class Bordereau {
     'date_validation': dateValidation?.toIso8601String(),
     'notes': notes,
     'items': items.map((item) => item.toJson()).toList(),
-    'remise_globale': remiseGlobale?.toString(),
-    'tva': tva?.toString(),
-    'conditions': conditions,
     'status': status,
     'commentaire': commentaireRejet,
   };
@@ -179,9 +155,6 @@ class Bordereau {
                     )
                     .toList()
                 : [],
-        remiseGlobale: _parseDouble(json['remise_globale']),
-        tva: _parseDouble(json['tva']) ?? 20.0,
-        conditions: json['conditions']?.toString(),
         status: _parseInt(json['status']) ?? 1,
         commentaireRejet: json['commentaire']?.toString(),
       );

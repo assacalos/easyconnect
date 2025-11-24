@@ -4,40 +4,73 @@ import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.d
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:intl/intl.dart';
 
-class BonDeCommandeFournisseurFormPage extends StatelessWidget {
-  final BonDeCommandeFournisseurController controller = Get.put(
-    BonDeCommandeFournisseurController(),
-  );
+class BonDeCommandeFournisseurFormPage extends StatefulWidget {
   final bool isEditing;
   final int? bonDeCommandeId;
 
-  BonDeCommandeFournisseurFormPage({
+  const BonDeCommandeFournisseurFormPage({
     super.key,
     this.isEditing = false,
     this.bonDeCommandeId,
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<BonDeCommandeFournisseurFormPage> createState() =>
+      _BonDeCommandeFournisseurFormPageState();
+}
+
+class _BonDeCommandeFournisseurFormPageState
+    extends State<BonDeCommandeFournisseurFormPage> {
+  final BonDeCommandeFournisseurController controller = Get.put(
+    BonDeCommandeFournisseurController(),
+  );
+
+  final formKey = GlobalKey<FormState>();
+  late final TextEditingController numeroCommandeController;
+  late final TextEditingController descriptionController;
+  late final TextEditingController commentaireController;
+  late final TextEditingController conditionsPaiementController;
+  late final TextEditingController delaiLivraisonController;
+
+  @override
+  void initState() {
+    super.initState();
+    numeroCommandeController = TextEditingController();
+    descriptionController = TextEditingController();
+    commentaireController = TextEditingController();
+    conditionsPaiementController = TextEditingController();
+    delaiLivraisonController = TextEditingController();
+
     // Réinitialiser le formulaire si c'est une nouvelle création
-    if (!isEditing) {
+    if (!widget.isEditing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         controller.clearForm();
       });
     }
 
-    final formKey = GlobalKey<FormState>();
-    final numeroCommandeController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final commentaireController = TextEditingController();
-    final conditionsPaiementController = TextEditingController();
-    final delaiLivraisonController = TextEditingController();
-    final dateLivraisonController = TextEditingController();
-    DateTime? selectedDate;
+    // Écouter les changements de la référence générée pour mettre à jour le champ
+    ever(controller.generatedNumeroCommande, (String ref) {
+      if (ref.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (numeroCommandeController.text != ref) {
+            numeroCommandeController.text = ref;
+          }
+        });
+      }
+    });
 
-    if (isEditing && bonDeCommandeId != null) {
+    // Pré-remplir si édition
+    if (widget.isEditing && widget.bonDeCommandeId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadBonDeCommandeData();
+      });
+    }
+  }
+
+  void _loadBonDeCommandeData() {
+    try {
       final bonDeCommande = controller.bonDeCommandes.firstWhere(
-        (b) => b.id == bonDeCommandeId,
+        (b) => b.id == widget.bonDeCommandeId,
       );
       numeroCommandeController.text = bonDeCommande.numeroCommande;
       descriptionController.text = bonDeCommande.description ?? '';
@@ -46,19 +79,28 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
           bonDeCommande.conditionsPaiement ?? '';
       delaiLivraisonController.text =
           bonDeCommande.delaiLivraison?.toString() ?? '';
-      if (bonDeCommande.dateLivraisonPrevue != null) {
-        dateLivraisonController.text = DateFormat(
-          'dd/MM/yyyy',
-        ).format(bonDeCommande.dateLivraisonPrevue!);
-        selectedDate = bonDeCommande.dateLivraisonPrevue;
-      }
       controller.items.value = bonDeCommande.items;
+    } catch (e) {
+      // Le bon de commande n'est pas encore chargé
     }
+  }
 
+  @override
+  void dispose() {
+    numeroCommandeController.dispose();
+    descriptionController.dispose();
+    commentaireController.dispose();
+    conditionsPaiementController.dispose();
+    delaiLivraisonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isEditing
+          widget.isEditing
               ? 'Modifier le bon de commande'
               : 'Nouveau bon de commande fournisseur',
         ),
@@ -130,45 +172,44 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: numeroCommandeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Numéro de commande *',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Le numéro de commande est requis';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: dateLivraisonController,
-                        decoration: const InputDecoration(
-                          labelText: 'Date de livraison prévue',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.calendar_today),
-                        ),
-                        readOnly: true,
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: selectedDate ?? DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365),
-                            ),
-                          );
-                          if (date != null) {
-                            selectedDate = date;
-                            dateLivraisonController.text = DateFormat(
-                              'dd/MM/yyyy',
-                            ).format(date);
-                          }
-                        },
-                      ),
+                      Obx(() {
+                        // Mettre à jour le contrôleur avec le numéro généré si nécessaire
+                        final generatedRef =
+                            controller.generatedNumeroCommande.value;
+                        if (generatedRef.isNotEmpty &&
+                            numeroCommandeController.text != generatedRef) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted &&
+                                numeroCommandeController.text != generatedRef) {
+                              numeroCommandeController.text = generatedRef;
+                            }
+                          });
+                        }
+                        return TextFormField(
+                          controller: numeroCommandeController,
+                          decoration: const InputDecoration(
+                            labelText:
+                                'Numéro de commande (généré automatiquement) *',
+                            border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: Colors.grey,
+                            helperText: 'Numéro généré automatiquement',
+                          ),
+                          readOnly: true,
+                          enabled: false,
+                          validator: (value) {
+                            // Utiliser la valeur générée si le champ est vide
+                            final refValue =
+                                (value == null || value.isEmpty)
+                                    ? controller.generatedNumeroCommande.value
+                                    : value;
+                            if (refValue.isEmpty) {
+                              return 'Le numéro de commande est requis';
+                            }
+                            return null;
+                          },
+                        );
+                      }),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: descriptionController,
@@ -300,7 +341,7 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                   onPressed:
                       controller.isLoading.value
                           ? null
-                          : () {
+                          : () async {
                             if (formKey.currentState!.validate()) {
                               if (controller.selectedSupplier.value == null) {
                                 Get.snackbar(
@@ -324,9 +365,15 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                               }
                               final data = {
                                 'numero_commande':
-                                    numeroCommandeController.text,
+                                    controller
+                                            .generatedNumeroCommande
+                                            .value
+                                            .isNotEmpty
+                                        ? controller
+                                            .generatedNumeroCommande
+                                            .value
+                                        : numeroCommandeController.text,
                                 'date_commande': DateTime.now(),
-                                'date_livraison_prevue': selectedDate,
                                 'description':
                                     descriptionController.text.isEmpty
                                         ? null
@@ -346,13 +393,22 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                                           delaiLivraisonController.text,
                                         ),
                               };
-                              if (isEditing && bonDeCommandeId != null) {
-                                controller.updateBonDeCommande(
-                                  bonDeCommandeId!,
-                                  data,
-                                );
+                              if (widget.isEditing &&
+                                  widget.bonDeCommandeId != null) {
+                                final success = await controller
+                                    .updateBonDeCommande(
+                                      widget.bonDeCommandeId!,
+                                      data,
+                                    );
+                                if (success) {
+                                  Get.back();
+                                }
                               } else {
-                                controller.createBonDeCommande(data);
+                                final success = await controller
+                                    .createBonDeCommande(data);
+                                if (success) {
+                                  Get.back();
+                                }
                               }
                             }
                           },
@@ -362,7 +418,7 @@ class BonDeCommandeFournisseurFormPage extends StatelessWidget {
                   child:
                       controller.isLoading.value
                           ? const CircularProgressIndicator()
-                          : Text(isEditing ? 'Modifier' : 'Créer'),
+                          : Text(widget.isEditing ? 'Modifier' : 'Créer'),
                 ),
               ),
             ],

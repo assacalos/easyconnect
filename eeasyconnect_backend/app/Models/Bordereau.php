@@ -19,9 +19,6 @@ class Bordereau extends Model
         'date_creation',
         'date_validation',
         'notes',
-        'remise_globale',
-        'tva',
-        'conditions',
         'status',
         'commentaire',
     ];

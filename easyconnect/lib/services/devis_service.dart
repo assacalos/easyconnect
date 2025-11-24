@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class DevisService {
   final storage = GetStorage();
@@ -31,7 +32,10 @@ class DevisService {
           'Authorization': 'Bearer $token',
         },
       );
-      final url = '$baseUrl/devis-list$queryString';
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
 
@@ -64,10 +68,24 @@ class DevisService {
                 .toList();
         return devisList;
       }
+
+      // Si c'est une erreur 401, elle a déjà été gérée
+      if (response.statusCode == 401) {
+        throw Exception('Session expirée');
+      }
+
       throw Exception(
         'Erreur lors de la récupération des devis: ${response.statusCode}',
       );
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      await AuthErrorHandler.handleException(e);
+
+      // Si c'est une erreur d'authentification, ne pas la propager
+      if (AuthErrorHandler.shouldIgnoreError(e)) {
+        throw Exception('Session expirée');
+      }
+
       throw Exception('Erreur lors de la récupération des devis: $e');
     }
   }
@@ -76,9 +94,15 @@ class DevisService {
     try {
       final token = storage.read('token');
       final devisData = devis.toJson();
+      final url = '$baseUrl/devis-create';
+
+      print('🌐 [DEVIS SERVICE] Envoi de la requête POST');
+      print('🌐 [DEVIS SERVICE] URL: $url');
+      print('🌐 [DEVIS SERVICE] Token présent: ${token != null}');
+      print('🌐 [DEVIS SERVICE] Données JSON: ${json.encode(devisData)}');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/devis-create'),
+        Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -87,13 +111,39 @@ class DevisService {
         body: json.encode(devisData),
       );
 
+      print('🌐 [DEVIS SERVICE] Réponse reçue');
+      print('🌐 [DEVIS SERVICE] Status code: ${response.statusCode}');
+      print('🌐 [DEVIS SERVICE] Headers: ${response.headers}');
+      print('🌐 [DEVIS SERVICE] Body: ${response.body}');
+
       if (response.statusCode == 201) {
-        final responseData = json.decode(response.body);
-        return Devis.fromJson(responseData['data']);
+        try {
+          final responseData = json.decode(response.body);
+          print('✅ [DEVIS SERVICE] Réponse décodée avec succès');
+          print('✅ [DEVIS SERVICE] Response data: $responseData');
+
+          if (responseData['data'] != null) {
+            final createdDevis = Devis.fromJson(responseData['data']);
+            print('✅ [DEVIS SERVICE] Devis créé avec ID: ${createdDevis.id}');
+            return createdDevis;
+          } else {
+            print('❌ [DEVIS SERVICE] Pas de champ "data" dans la réponse');
+            throw Exception('Réponse invalide: pas de champ "data"');
+          }
+        } catch (e) {
+          print('❌ [DEVIS SERVICE] Erreur lors du décodage: $e');
+          print('❌ [DEVIS SERVICE] Body brut: ${response.body}');
+          throw Exception('Erreur lors du décodage de la réponse: $e');
+        }
+      } else {
+        print('❌ [DEVIS SERVICE] Erreur HTTP ${response.statusCode}');
+        print('❌ [DEVIS SERVICE] Body d\'erreur: ${response.body}');
+        throw Exception('Erreur HTTP ${response.statusCode}: ${response.body}');
       }
-      throw Exception('Erreur lors de la création du devis');
-    } catch (e) {
-      throw Exception('Erreur lors de la création du devis');
+    } catch (e, stackTrace) {
+      print('❌ [DEVIS SERVICE] Exception: $e');
+      print('❌ [DEVIS SERVICE] Stack trace: $stackTrace');
+      throw Exception('Erreur lors de la création du devis: $e');
     }
   }
 
@@ -174,7 +224,6 @@ class DevisService {
   Future<bool> acceptDevis(int devisId) async {
     try {
       final token = storage.read('token');
-
       final url = '$baseUrl/devis-validate/$devisId';
       final response = await http.post(
         Uri.parse(url),
@@ -183,15 +232,8 @@ class DevisService {
           'Authorization': 'Bearer $token',
         },
       );
-      // Log spécial pour les erreurs 500
-      if (response.statusCode == 500) {
-      }
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        return false;
-      }
+      return response.statusCode == 200;
     } catch (e) {
       return false;
     }
@@ -211,15 +253,8 @@ class DevisService {
         },
         body: body,
       );
-      // Log spécial pour les erreurs 500
-      if (response.statusCode == 500) {
-      }
 
-      if (response.statusCode == 200) {
-        return true;
-      } else {
-        return false;
-      }
+      return response.statusCode == 200;
     } catch (e) {
       return false;
     }

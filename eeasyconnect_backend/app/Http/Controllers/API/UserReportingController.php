@@ -49,8 +49,8 @@ class UserReportingController extends Controller
             $reportings = $query->orderBy('report_date', 'desc')->paginate($perPage);
 
             // Ajouter les informations utilisateur et les notes
-            $reportings->getCollection()->transform(function ($reporting) {
-                return [
+            $reportings->getCollection()->transform(function ($reporting) use ($user) {
+                $data = [
                     'id' => $reporting->id,
                     'user_id' => $reporting->user_id,
                     'user_name' => $reporting->user_name,
@@ -65,6 +65,13 @@ class UserReportingController extends Controller
                     'created_at' => $reporting->created_at->format('Y-m-d H:i:s'),
                     'updated_at' => $reporting->updated_at->format('Y-m-d H:i:s'),
                 ];
+                
+                // Ajouter patron_note uniquement pour Patron et Admin
+                if (in_array($user->role, [1, 6])) {
+                    $data['patron_note'] = $reporting->patron_note;
+                }
+                
+                return $data;
             });
 
             return response()->json([
@@ -96,6 +103,8 @@ class UserReportingController extends Controller
                 ], 404);
             }
 
+            $user = $request->user();
+            
             $data = [
                 'id' => $reporting->id,
                 'user_id' => $reporting->user_id,
@@ -111,6 +120,11 @@ class UserReportingController extends Controller
                 'created_at' => $reporting->created_at->format('Y-m-d H:i:s'),
                 'updated_at' => $reporting->updated_at->format('Y-m-d H:i:s'),
             ];
+            
+            // Ajouter patron_note uniquement pour Patron et Admin
+            if (in_array($user->role, [1, 6])) {
+                $data['patron_note'] = $reporting->patron_note;
+            }
 
             return response()->json([
                 'success' => true,
@@ -339,6 +353,79 @@ class UserReportingController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de l\'approbation du reporting: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ajouter ou modifier la note du patron sur un rapport
+     */
+    public function addPatronNote(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            
+            // Vérifier les permissions (Patron ou Admin uniquement)
+            if (!in_array($user->role, [1, 6])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Accès non autorisé'
+                ], 403);
+            }
+
+            // Valider les données
+            $request->validate([
+                'patron_note' => 'nullable|string|max:1000'
+            ]);
+
+            // Récupérer le rapport
+            $reporting = Reporting::findOrFail($id);
+
+            // Vérifier que le rapport est en attente de validation
+            if ($reporting->status !== 'submitted') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La note ne peut être ajoutée que sur les rapports en attente de validation'
+                ], 422);
+            }
+
+            // Mettre à jour la note (null ou chaîne vide supprime la note)
+            $patronNote = $request->input('patron_note');
+            if ($patronNote === '' || $patronNote === null) {
+                $reporting->patron_note = null;
+            } else {
+                $reporting->patron_note = $patronNote;
+            }
+            $reporting->save();
+
+            // Recharger avec les relations
+            $reporting->refresh();
+            $reporting->load(['user', 'approver']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Note enregistrée avec succès',
+                'data' => [
+                    'id' => $reporting->id,
+                    'user_id' => $reporting->user_id,
+                    'user_name' => $reporting->user_name,
+                    'user_role' => $reporting->user_role,
+                    'report_date' => $reporting->report_date?->format('Y-m-d\TH:i:s\Z'),
+                    'status' => $reporting->status,
+                    'patron_note' => $reporting->patron_note,
+                    'updated_at' => $reporting->updated_at->format('Y-m-d\TH:i:s\Z')
+                ]
+            ], 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rapport non trouvé'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'enregistrement de la note: ' . $e->getMessage()
             ], 500);
         }
     }

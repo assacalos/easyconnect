@@ -12,33 +12,15 @@ class CommandeEntreprise extends Model
     protected $table = 'commandes_entreprise';
 
     protected $fillable = [
-        'reference',
         'client_id',
         'user_id',
-        'date_creation',
-        'date_validation',
-        'date_livraison_prevue',
-        'adresse_livraison',
-        'notes',
-        'remise_globale',
-        'tva',
-        'conditions',
         'status',
-        'commentaire_rejet',
-        'numero_facture',
-        'est_facture',
-        'est_livre',
+        'fichiers_scannes',
     ];
 
     protected $casts = [
-        'date_creation' => 'datetime',
-        'date_validation' => 'datetime',
-        'date_livraison_prevue' => 'datetime',
-        'remise_globale' => 'decimal:2',
-        'tva' => 'decimal:2',
         'status' => 'integer',
-        'est_facture' => 'boolean',
-        'est_livre' => 'boolean',
+        'fichiers_scannes' => 'array',
     ];
 
     // Relations
@@ -58,29 +40,6 @@ class CommandeEntreprise extends Model
     }
 
     // Accesseurs
-    public function getMontantHtAttribute()
-    {
-        $total = $this->items->sum(function ($item) {
-            return $item->quantite * $item->prix_unitaire;
-        });
-
-        if ($this->remise_globale) {
-            $total = $total * (1 - $this->remise_globale / 100);
-        }
-
-        return round($total, 2);
-    }
-
-    public function getMontantTvaAttribute()
-    {
-        return $this->tva ? round($this->montant_ht * ($this->tva / 100), 2) : 0;
-    }
-
-    public function getMontantTtcAttribute()
-    {
-        return round($this->montant_ht + $this->montant_tva, 2);
-    }
-
     public function getStatusTextAttribute()
     {
         return match($this->status) {

@@ -42,10 +42,6 @@ class BonDeCommandeFournisseurService {
         try {
           final responseData = json.decode(response.body);
 
-          print(
-            '📥 Réponse getBonDeCommandes: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
-          );
-
           // Gérer différents formats de réponse
           List<dynamic> data;
           if (responseData is List) {
@@ -67,11 +63,8 @@ class BonDeCommandeFournisseurService {
           } else if (responseData['bon_de_commande'] != null) {
             data = [responseData['bon_de_commande']];
           } else {
-            print('⚠️ Aucune donnée trouvée dans la réponse');
             return [];
           }
-
-          print('📊 ${data.length} bons de commande trouvés');
 
           final List<BonDeCommande> bonDeCommandeList =
               data
@@ -79,11 +72,6 @@ class BonDeCommandeFournisseurService {
                     try {
                       return BonDeCommande.fromJson(json);
                     } catch (e, stackTrace) {
-                      print(
-                        '❌ Erreur lors du parsing d\'un bon de commande: $e',
-                      );
-                      print('📋 JSON: $json');
-                      print('Stack trace: $stackTrace');
                       return null;
                     }
                   })
@@ -91,13 +79,8 @@ class BonDeCommandeFournisseurService {
                   .cast<BonDeCommande>()
                   .toList();
 
-          print(
-            '✅ ${bonDeCommandeList.length} bons de commande parsés avec succès',
-          );
           return bonDeCommandeList;
         } catch (e, stackTrace) {
-          print('❌ Erreur lors du parsing de la réponse: $e');
-          print('Stack trace: $stackTrace');
           return [];
         }
       }
@@ -118,10 +101,6 @@ class BonDeCommandeFournisseurService {
 
       final bonDeCommandeJson = bonDeCommande.toJsonForCreate();
 
-      // Log pour déboguer
-      print('📤 JSON envoyé au backend:');
-      print(json.encode(bonDeCommandeJson));
-
       final response = await http.post(
         Uri.parse('$baseUrl/bons-de-commande-create'),
         headers: {
@@ -131,10 +110,6 @@ class BonDeCommandeFournisseurService {
         },
         body: json.encode(bonDeCommandeJson),
       );
-
-      // Log de la réponse
-      print('📥 Réponse du backend (${response.statusCode}):');
-      print(response.body);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         try {
@@ -237,9 +212,6 @@ class BonDeCommandeFournisseurService {
               errorMessage = errorData['errors'].toString();
             }
           }
-
-          print('❌ Erreur 500 détaillée: $errorMessage');
-          print('📋 Corps de la réponse: ${response.body}');
 
           throw Exception('Erreur serveur: $errorMessage');
         } catch (e) {

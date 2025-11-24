@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
-import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:image_picker/image_picker.dart';
 
 class BonCommandeController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -19,7 +22,9 @@ class BonCommandeController extends GetxController
   final isLoading = false.obs;
   final isLoadingClients = false.obs;
   final currentBonCommande = Rxn<BonCommande>();
-  final items = <BonCommandeItem>[].obs;
+
+  // Fichiers scannés (liste de chemins locaux)
+  final selectedFiles = <Map<String, dynamic>>[].obs;
 
   // Gestion des onglets
   late TabController tabController;
@@ -43,6 +48,148 @@ class BonCommandeController extends GetxController
     tabController.addListener(_onTabChanged);
     loadBonCommandes();
     loadStats();
+  }
+
+  // Sélectionner des fichiers (scan ou sélection)
+  Future<void> selectFiles() async {
+    try {
+      // Proposer de choisir le type de sélection
+      final String? selectionType = await Get.dialog<String>(
+        AlertDialog(
+          title: const Text('Sélectionner des fichiers'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: const Text('Fichiers (PDF, Documents, etc.)'),
+                onTap: () => Get.back(result: 'file'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Image depuis la galerie'),
+                onTap: () => Get.back(result: 'gallery'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Prendre une photo / Scanner'),
+                onTap: () => Get.back(result: 'camera'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (selectionType == null) return;
+
+      if (selectionType == 'file') {
+        // Sélectionner des fichiers avec file_picker
+        final FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: true,
+        );
+
+        if (result != null && result.files.isNotEmpty) {
+          for (var platformFile in result.files) {
+            if (platformFile.path != null) {
+              final file = File(platformFile.path!);
+              final fileSize = await file.length();
+
+              // Vérifier la taille (max 10 MB)
+              if (fileSize > 10 * 1024 * 1024) {
+                Get.snackbar(
+                  'Erreur',
+                  'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                continue;
+              }
+
+              // Déterminer le type de fichier
+              String fileType = 'document';
+              final extension = platformFile.extension?.toLowerCase() ?? '';
+              if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+                fileType = 'image';
+              } else if (extension == 'pdf') {
+                fileType = 'pdf';
+              }
+
+              // Ajouter le fichier à la liste
+              selectedFiles.add({
+                'name': platformFile.name,
+                'path': platformFile.path!,
+                'size': fileSize,
+                'type': fileType,
+                'extension': extension,
+              });
+            }
+          }
+
+          Get.snackbar(
+            'Succès',
+            '${result.files.length} fichier(s) sélectionné(s)',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      } else {
+        // Utiliser image_picker pour les images
+        final ImagePicker picker = ImagePicker();
+        final ImageSource source =
+            selectionType == 'camera'
+                ? ImageSource.camera
+                : ImageSource.gallery;
+
+        final XFile? pickedFile = await picker.pickImage(
+          source: source,
+          imageQuality: 85,
+        );
+
+        if (pickedFile != null) {
+          final file = File(pickedFile.path);
+          final fileSize = await file.length();
+
+          // Vérifier la taille (max 10 MB)
+          if (fileSize > 10 * 1024 * 1024) {
+            Get.snackbar(
+              'Erreur',
+              'Le fichier est trop volumineux (max 10 MB)',
+              snackPosition: SnackPosition.BOTTOM,
+            );
+            return;
+          }
+
+          // Ajouter le fichier à la liste
+          selectedFiles.add({
+            'name': pickedFile.name,
+            'path': pickedFile.path,
+            'size': fileSize,
+            'type': 'image',
+            'extension': 'jpg',
+          });
+
+          Get.snackbar(
+            'Succès',
+            'Fichier sélectionné',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la sélection du fichier: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // Supprimer un fichier de la liste
+  void removeFile(int index) {
+    if (index >= 0 && index < selectedFiles.length) {
+      selectedFiles.removeAt(index);
+    }
   }
 
   @override
@@ -100,7 +247,7 @@ class BonCommandeController extends GetxController
     }
   }
 
-  Future<void> createBonCommande(Map<String, dynamic> data) async {
+  Future<bool> createBonCommande() async {
     try {
       // Vérifications
       if (selectedClient.value == null) {
@@ -113,48 +260,28 @@ class BonCommandeController extends GetxController
         );
       }
 
-      if (items.isEmpty) {
-        throw Exception('Aucun article ajouté au bon de commande');
+      if (selectedFiles.isEmpty) {
+        throw Exception('Veuillez ajouter au moins un fichier scanné');
       }
 
       isLoading.value = true;
 
       final clientId = selectedClient.value!.id!;
 
+      // Extraire les chemins des fichiers
+      final fichiersPaths =
+          selectedFiles.map((file) => file['path'] as String).toList();
+
       final newBonCommande = BonCommande(
         clientId: clientId,
-        reference: data['reference'],
-        dateCreation: DateTime.now(),
-        dateLivraisonPrevue: data['date_livraison_prevue'],
-        adresseLivraison: data['adresse_livraison'],
-        notes: data['notes'],
-        items: items.toList(), // Convertir en liste
-        remiseGlobale:
-            data['remise_globale'] != null
-                ? (data['remise_globale'] is double
-                    ? data['remise_globale']
-                    : double.tryParse(data['remise_globale'].toString()))
-                : null,
-        tva:
-            data['tva'] != null
-                ? (data['tva'] is double
-                    ? data['tva']
-                    : double.tryParse(data['tva'].toString()) ?? 20.0)
-                : 20.0,
-        conditions: data['conditions'],
         commercialId: userId,
+        fichiers: fichiersPaths,
+        status: 1, // En attente
       );
 
       await _bonCommandeService.createBonCommande(newBonCommande);
 
-      // Effacer le formulaire
-      clearForm();
-
-      // Recharger la liste des bons de commande
-      await loadBonCommandes();
-
-      // Fermer le formulaire et afficher le message de succès
-      Get.back();
+      // Si la création réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bon de commande créé avec succès',
@@ -163,6 +290,19 @@ class BonCommandeController extends GetxController
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
+
+      // Effacer le formulaire
+      clearForm();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadBonCommandes();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le bon de commande a été créé avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       // Extraire le message d'erreur
       String errorMessage = e.toString();
@@ -178,54 +318,59 @@ class BonCommandeController extends GetxController
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> updateBonCommande(
-    int bonCommandeId,
-    Map<String, dynamic> data,
-  ) async {
+  Future<bool> updateBonCommande(int bonCommandeId) async {
     try {
       isLoading.value = true;
       final bonCommandeToUpdate = bonCommandes.firstWhere(
         (b) => b.id == bonCommandeId,
       );
+
+      // Extraire les chemins des fichiers
+      final fichiersPaths =
+          selectedFiles.map((file) => file['path'] as String).toList();
+
       final updatedBonCommande = BonCommande(
         id: bonCommandeId,
-        clientId: bonCommandeToUpdate.clientId,
-        reference: data['reference'] ?? bonCommandeToUpdate.reference,
-        dateCreation: bonCommandeToUpdate.dateCreation,
-        dateLivraisonPrevue:
-            data['date_livraison_prevue'] ??
-            bonCommandeToUpdate.dateLivraisonPrevue,
-        adresseLivraison:
-            data['adresse_livraison'] ?? bonCommandeToUpdate.adresseLivraison,
-        notes: data['notes'] ?? bonCommandeToUpdate.notes,
-        status: bonCommandeToUpdate.status,
-        items: items.isEmpty ? bonCommandeToUpdate.items : items,
-        remiseGlobale:
-            data['remise_globale'] ?? bonCommandeToUpdate.remiseGlobale,
-        tva: data['tva'] ?? bonCommandeToUpdate.tva,
-        conditions: data['conditions'] ?? bonCommandeToUpdate.conditions,
+        clientId: selectedClient.value?.id ?? bonCommandeToUpdate.clientId,
         commercialId: bonCommandeToUpdate.commercialId,
+        fichiers:
+            fichiersPaths.isNotEmpty
+                ? fichiersPaths
+                : bonCommandeToUpdate.fichiers,
+        status: bonCommandeToUpdate.status,
       );
 
       await _bonCommandeService.updateBonCommande(updatedBonCommande);
-      Get.back();
+
+      // Si la mise à jour réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bon de commande mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
-      loadBonCommandes();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadBonCommandes();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le bon de commande a été mis à jour avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le bon de commande',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -293,6 +438,10 @@ class BonCommandeController extends GetxController
       );
       if (success) {
         await loadBonCommandes();
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('boncommande');
+
         Get.snackbar(
           'Succès',
           'Bon de commande approuvé avec succès',
@@ -321,6 +470,10 @@ class BonCommandeController extends GetxController
       );
       if (success) {
         await loadBonCommandes();
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('boncommande');
+
         Get.snackbar(
           'Succès',
           'Bon de commande rejeté avec succès',
@@ -390,23 +543,6 @@ class BonCommandeController extends GetxController
     }
   }
 
-  // Gestion des items
-  void addItem(BonCommandeItem item) {
-    items.add(item);
-  }
-
-  void removeItem(int index) {
-    items.removeAt(index);
-  }
-
-  void updateItem(int index, BonCommandeItem item) {
-    items[index] = item;
-  }
-
-  void clearItems() {
-    items.clear();
-  }
-
   // Chargement des clients validés
   Future<void> loadValidatedClients() async {
     try {
@@ -449,68 +585,6 @@ class BonCommandeController extends GetxController
   /// Effacer toutes les données du formulaire
   void clearForm() {
     selectedClient.value = null;
-    items.clear();
-  }
-
-  /// Générer un PDF pour un bon de commande
-  Future<void> generatePDF(int bonCommandeId) async {
-    try {
-      isLoading.value = true;
-
-      // Trouver le bon de commande
-      final bonCommande = bonCommandes.firstWhere(
-        (bc) => bc.id == bonCommandeId,
-      );
-
-      // Charger les données nécessaires
-      final clients = await _clientService.getClients();
-      final client = clients.firstWhere((c) => c.id == bonCommande.clientId);
-      final items =
-          bonCommande.items
-              .map(
-                (item) => {
-                  'designation': item.designation,
-                  'unite': item.unite,
-                  'quantite': item.quantite,
-                  'prix_unitaire': item.prixUnitaire,
-                  'montant_total': item.montantTotal,
-                },
-              )
-              .toList();
-
-      // Générer le PDF
-      await PdfService().generateBonCommandePdf(
-        bonCommande: {
-          'reference': bonCommande.reference,
-          'date_creation': bonCommande.dateCreation,
-          'montant_ht': bonCommande.montantHT,
-          'tva': bonCommande.tva,
-          'total_ttc': bonCommande.montantTTC,
-        },
-        items: items,
-        fournisseur: {
-          'nom': client.nom ?? '',
-          'email': client.email,
-          'contact': client.contact,
-          'adresse': client.adresse,
-        },
-      );
-
-      Get.snackbar(
-        'Succès',
-        'PDF généré avec succès',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la génération du PDF: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isLoading.value = false;
-    }
+    selectedFiles.clear();
   }
 }

@@ -265,39 +265,6 @@ class ReportingForm extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        decoration: const InputDecoration(
-                          labelText: 'Chiffre d\'affaires (fcfa)',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) {
-                          controller.updateCommercialMetrics(
-                            chiffreAffaires: double.tryParse(value) ?? 0,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        decoration: const InputDecoration(
-                          labelText: 'Note chiffre d\'affaires',
-                          border: OutlineInputBorder(),
-                          hintText: 'Détails sur le CA...',
-                        ),
-                        maxLines: 2,
-                        onChanged: (value) {
-                          controller.updateCommercialMetrics(
-                            noteChiffreAffaires: value,
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
 

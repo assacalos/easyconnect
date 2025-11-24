@@ -6,6 +6,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
+import 'package:easyconnect/utils/reference_generator.dart';
 
 class InvoiceController extends GetxController {
   final InvoiceService _invoiceService = InvoiceService.to;
@@ -44,6 +45,10 @@ class InvoiceController extends GetxController {
   final TextEditingController clientAddressController = TextEditingController();
   final TextEditingController notesController = TextEditingController();
   final TextEditingController termsController = TextEditingController();
+  final TextEditingController invoiceNumberController = TextEditingController();
+
+  // Référence générée automatiquement
+  final generatedInvoiceNumber = ''.obs;
 
   // Variables pour les filtres
   final RxString selectedStatus = 'all'.obs;
@@ -56,6 +61,8 @@ class InvoiceController extends GetxController {
     super.onInit();
     loadInvoices();
     loadTemplates();
+    // Générer automatiquement le numéro de facture au démarrage
+    initializeGeneratedReference();
   }
 
   @override
@@ -65,29 +72,52 @@ class InvoiceController extends GetxController {
     clientAddressController.dispose();
     notesController.dispose();
     termsController.dispose();
+    invoiceNumberController.dispose();
     super.onClose();
+  }
+
+  // Générer automatiquement le numéro de facture
+  Future<String> generateInvoiceNumber() async {
+    // Recharger les factures pour avoir le comptage à jour
+    await loadInvoices();
+
+    // Extraire tous les numéros de facture existants
+    final existingNumbers =
+        invoices
+            .map((inv) => inv.invoiceNumber)
+            .where((num) => num.isNotEmpty)
+            .toList();
+
+    // Générer avec incrément
+    return ReferenceGenerator.generateReferenceWithIncrement(
+      'FACT',
+      existingNumbers,
+    );
+  }
+
+  // Initialiser la référence générée
+  Future<void> initializeGeneratedReference() async {
+    if (generatedInvoiceNumber.value.isEmpty) {
+      generatedInvoiceNumber.value = await generateInvoiceNumber();
+      invoiceNumberController.text = generatedInvoiceNumber.value;
+    }
   }
 
   // Charger les factures
   Future<void> loadInvoices() async {
     try {
-      print('🔵 [INVOICE_CONTROLLER] loadInvoices() appelé');
-      print('🔵 [INVOICE_CONTROLLER] selectedStatus: ${selectedStatus.value}');
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        print('🔵 [INVOICE_CONTROLLER] ⚠️ Utilisateur null');
         return;
       }
 
-      print('🔵 [INVOICE_CONTROLLER] Rôle utilisateur: ${user.role}');
       List<InvoiceModel> invoiceList;
 
       // Patron (role 6) ou Admin (role 1) peuvent voir toutes les factures
       if (user.role == 1 || user.role == 6) {
         // Patron ou Admin
-        print('🔵 [INVOICE_CONTROLLER] Appel getAllInvoices pour Patron/Admin');
         invoiceList = await _invoiceService.getAllInvoices(
           startDate: startDate.value,
           endDate: endDate.value,
@@ -95,9 +125,6 @@ class InvoiceController extends GetxController {
         );
       } else {
         // Comptable ou autre rôle
-        print(
-          '🔵 [INVOICE_CONTROLLER] Appel getCommercialInvoices pour Comptable',
-        );
         invoiceList = await _invoiceService.getCommercialInvoices(
           commercialId: user.id,
           startDate: startDate.value,
@@ -146,15 +173,21 @@ class InvoiceController extends GetxController {
 
       // Charger les statistiques
       await loadInvoiceStats();
-    } catch (e, stackTrace) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les factures: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 4),
-      );
+    } catch (e) {
+      // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les factures: ${e.toString()}',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 4),
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -196,14 +229,14 @@ class InvoiceController extends GetxController {
   }
 
   // Créer une facture
-  Future<void> createInvoice() async {
+  Future<bool> createInvoice() async {
     try {
       isCreating.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) {
         Get.snackbar('Erreur', 'Utilisateur non connecté');
-        return;
+        return false;
       }
 
       // Vérifier qu'un client validé est sélectionné
@@ -215,7 +248,7 @@ class InvoiceController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       // Vérifier que le client sélectionné est bien validé
@@ -227,12 +260,12 @@ class InvoiceController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       if (invoiceItems.isEmpty) {
         Get.snackbar('Erreur', 'Veuillez ajouter au moins un article');
-        return;
+        return false;
       }
 
       final result = await _invoiceService.createInvoice(
@@ -274,14 +307,16 @@ class InvoiceController extends GetxController {
         // Effacer le formulaire
         clearForm();
 
-        // Fermer le formulaire
-        if (Get.isDialogOpen ?? false || Navigator.canPop(Get.context!)) {
-          Get.back();
+        // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+        try {
+          await Future.delayed(const Duration(milliseconds: 300));
+          await loadInvoices();
+        } catch (e) {
+          // Si le rechargement échoue, on ne fait rien car la facture a été créée avec succès
+          // L'utilisateur peut recharger manuellement si nécessaire
         }
 
-        // Recharger les factures après un court délai
-        await Future.delayed(const Duration(milliseconds: 300));
-        await loadInvoices();
+        return true;
       } else {
         Get.snackbar(
           'Erreur',
@@ -291,9 +326,11 @@ class InvoiceController extends GetxController {
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
         );
+        return false;
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de la facture: $e');
+      return false;
     } finally {
       isCreating.value = false;
     }
@@ -335,7 +372,6 @@ class InvoiceController extends GetxController {
         invoiceId: invoiceId,
         comments: comments,
       );
-      print('🔵 [INVOICE_CONTROLLER] Résultat approveInvoice: $result');
 
       if (result['success'] == true) {
         Get.snackbar(
@@ -357,8 +393,6 @@ class InvoiceController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [INVOICE_CONTROLLER] Erreur approveInvoice: $e');
-      print('❌ [INVOICE_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Erreur lors de l\'approbation: $e',
@@ -384,7 +418,6 @@ class InvoiceController extends GetxController {
         invoiceId: invoiceId,
         reason: reason,
       );
-      print('🔵 [INVOICE_CONTROLLER] Résultat rejectInvoice: $result');
 
       if (result['success'] == true) {
         Get.snackbar(
@@ -406,8 +439,6 @@ class InvoiceController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [INVOICE_CONTROLLER] Erreur rejectInvoice: $e');
-      print('❌ [INVOICE_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Erreur lors du rejet: $e',
@@ -631,6 +662,10 @@ class InvoiceController extends GetxController {
     invoiceItems.clear();
     notes.value = '';
     terms.value = '';
+    generatedInvoiceNumber.value = '';
+    invoiceNumberController.clear();
+    // Régénérer une nouvelle référence
+    initializeGeneratedReference();
   }
 
   /// Générer un PDF pour une facture
@@ -802,7 +837,13 @@ class InvoiceController extends GetxController {
           Get.back();
         }
 
-        await loadInvoices();
+        // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+        try {
+          await loadInvoices();
+        } catch (e) {
+          // Si le rechargement échoue, on ne fait rien car la facture a été mise à jour avec succès
+          // L'utilisateur peut recharger manuellement si nécessaire
+        }
       } else {
         Get.snackbar(
           'Erreur',

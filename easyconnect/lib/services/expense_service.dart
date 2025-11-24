@@ -175,7 +175,6 @@ class ExpenseService {
       final token = storage.read('token');
       final url = '$baseUrl/expenses-validate/$expenseId';
 
-      print('🔵 [EXPENSE_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -185,9 +184,6 @@ class ExpenseService {
         },
         body: json.encode({'notes': notes}),
       );
-
-      print('🔵 [EXPENSE_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [EXPENSE_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -212,9 +208,7 @@ class ExpenseService {
         throw Exception('Erreur serveur: $message');
       }
       return false;
-    } catch (e, stackTrace) {
-      print('❌ [EXPENSE_SERVICE] Exception approveExpense: $e');
-      print('❌ [EXPENSE_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }
@@ -225,7 +219,6 @@ class ExpenseService {
       final token = storage.read('token');
       final url = '$baseUrl/expenses-reject/$expenseId';
 
-      print('🔵 [EXPENSE_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -235,9 +228,6 @@ class ExpenseService {
         },
         body: json.encode({'reason': reason}),
       );
-
-      print('🔵 [EXPENSE_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [EXPENSE_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -261,9 +251,7 @@ class ExpenseService {
         throw Exception('Erreur serveur: $message');
       }
       return false;
-    } catch (e, stackTrace) {
-      print('❌ [EXPENSE_SERVICE] Exception rejectExpense: $e');
-      print('❌ [EXPENSE_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }

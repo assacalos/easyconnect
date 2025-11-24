@@ -212,10 +212,6 @@ class BonDeCommandeFournisseurListPage extends StatelessWidget {
           children: [
             const SizedBox(height: 4),
             Text('Date: ${formatDate.format(bonDeCommande.dateCommande)}'),
-            if (bonDeCommande.dateLivraisonPrevue != null)
-              Text(
-                'Livraison prévue: ${formatDate.format(bonDeCommande.dateLivraisonPrevue!)}',
-              ),
             Text(
               'Montant: ${formatCurrency.format(bonDeCommande.montantTotalCalcule)}',
             ),

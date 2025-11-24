@@ -109,15 +109,6 @@ class ClientsPage extends StatelessWidget {
         return const Center(child: CircularProgressIndicator());
       }
 
-      // Debug: afficher tous les clients et leurs statuts
-      print('🔍 _buildClientList - Status recherché: $status');
-      print('📊 Total clients dans la liste: ${controller.clients.length}');
-      for (final client in controller.clients) {
-        print(
-          '   - Client: ${client.nomEntreprise ?? 'N/A'} - Status: ${client.status}',
-        );
-      }
-
       // Filtrer les clients par statut
       // Si status est null, on le traite comme 0 (en attente)
       final clientList =
@@ -125,8 +116,6 @@ class ClientsPage extends StatelessWidget {
             final clientStatus = c.status ?? 0; // null = en attente
             return clientStatus == status;
           }).toList();
-
-      print('📋 Clients filtrés pour status $status: ${clientList.length}');
 
       if (clientList.isEmpty) {
         return Center(
@@ -180,12 +169,18 @@ class ClientsPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec nom et statut
+            // En-tête avec nom entreprise (prioritaire) et statut
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    "${client.prenom} ${client.nom}",
+                    client.nomEntreprise?.isNotEmpty == true
+                        ? client.nomEntreprise!
+                        : "${client.prenom ?? ''} ${client.nom ?? ''}"
+                            .trim()
+                            .isNotEmpty
+                        ? "${client.prenom ?? ''} ${client.nom ?? ''}".trim()
+                        : 'Client #${client.id}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -222,6 +217,24 @@ class ClientsPage extends StatelessWidget {
             const SizedBox(height: 8),
 
             // Informations client
+            if (client.nomEntreprise?.isNotEmpty == true &&
+                "${client.prenom ?? ''} ${client.nom ?? ''}"
+                    .trim()
+                    .isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "${client.prenom ?? ''} ${client.nom ?? ''}".trim(),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
             Row(
               children: [
                 const Icon(Icons.email, size: 16, color: Colors.grey),

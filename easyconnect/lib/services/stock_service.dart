@@ -5,6 +5,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class StockService extends GetxService {
   static StockService get to => Get.find();
@@ -68,6 +69,10 @@ class StockService extends GetxService {
           'Authorization': 'Bearer $token',
         },
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       // Gérer les réponses avec différents codes de statut
       if (response.statusCode == 200) {
         try {
@@ -115,6 +120,11 @@ class StockService extends GetxService {
           throw Exception('Erreur de format des données: $e');
         }
       } else {
+        // Si c'est une erreur 401, elle a déjà été gérée
+        if (response.statusCode == 401) {
+          throw Exception('Session expirée');
+        }
+
         // Pour les erreurs 500, retourner une liste vide plutôt que de planter
         // Cela permet à l'application de continuer à fonctionner
         if (response.statusCode == 500) {
@@ -126,6 +136,11 @@ class StockService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -159,11 +174,6 @@ class StockService extends GetxService {
   // Créer un nouveau stock
   Future<Stock> createStock(Stock stock) async {
     try {
-      print('🔵 [STOCK_SERVICE] createStock() appelé');
-      print(
-        '🔵 [STOCK_SERVICE] Stock à créer: name=${stock.name}, category=${stock.category}, sku=${stock.sku}',
-      );
-
       // Validation des champs requis
       if (stock.name.isEmpty) {
         throw Exception('Le nom du produit est requis');
@@ -189,11 +199,9 @@ class StockService extends GetxService {
       }
 
       final stockData = stock.toJson();
-      print('🔵 [STOCK_SERVICE] Données JSON à envoyer: $stockData');
 
       // Essayer d'abord la route stocks-create, puis stocks en fallback
       String url = '$baseUrl/stocks-create';
-      print('🔵 [STOCK_SERVICE] Tentative avec route: $url');
 
       http.Response response;
       try {
@@ -202,43 +210,23 @@ class StockService extends GetxService {
           headers: ApiService.headers(),
           body: jsonEncode(stockData),
         );
-        print(
-          '🔵 [STOCK_SERVICE] Réponse route stocks-create - Status: ${response.statusCode}',
-        );
       } catch (e) {
-        print(
-          '⚠️ [STOCK_SERVICE] Route stocks-create échouée, essai route stocks: $e',
-        );
         // Si la première route échoue, essayer la route standard
         url = '$baseUrl/stocks';
-        print('🔵 [STOCK_SERVICE] Tentative avec route: $url');
         response = await http.post(
           Uri.parse(url),
           headers: ApiService.headers(),
           body: jsonEncode(stockData),
         );
-        print(
-          '🔵 [STOCK_SERVICE] Réponse route stocks - Status: ${response.statusCode}',
-        );
       }
-
-      print(
-        '🔵 [STOCK_SERVICE] Réponse finale - Status: ${response.statusCode}',
-      );
-      print('🔵 [STOCK_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        print('🔵 [STOCK_SERVICE] Réponse parsée avec succès');
         return Stock.fromJson(responseData['data'] ?? responseData);
       }
 
       // Afficher les détails de l'erreur
       final errorBody = response.body;
-      print(
-        '❌ [STOCK_SERVICE] Erreur lors de la création - Status: ${response.statusCode}',
-      );
-      print('❌ [STOCK_SERVICE] Erreur body: $errorBody');
 
       // Essayer de parser le message d'erreur du backend
       try {
@@ -250,9 +238,7 @@ class StockService extends GetxService {
           'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
         );
       }
-    } catch (e, stackTrace) {
-      print('❌ [STOCK_SERVICE] Exception createStock: $e');
-      print('❌ [STOCK_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow;
     }
   }

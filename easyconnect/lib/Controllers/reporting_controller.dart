@@ -35,7 +35,6 @@ class ReportingController extends GetxController {
   final noteClientsProspectesController = TextEditingController();
   final noteDevisCreesController = TextEditingController();
   final noteDevisAcceptesController = TextEditingController();
-  final noteChiffreAffairesController = TextEditingController();
   final noteNouveauxClientsController = TextEditingController();
   final noteAppelsEffectuesController = TextEditingController();
   final noteEmailsEnvoyesController = TextEditingController();
@@ -214,7 +213,6 @@ class ReportingController extends GetxController {
           rdvList: [],
           devisCrees: 0,
           devisAcceptes: 0,
-          chiffreAffaires: 0,
           nouveauxClients: 0,
           appelsEffectues: 0,
           emailsEnvoyes: 0,
@@ -229,7 +227,6 @@ class ReportingController extends GetxController {
       rdvList: updatedRdvList,
       devisCrees: currentMetrics.devisCrees,
       devisAcceptes: currentMetrics.devisAcceptes,
-      chiffreAffaires: currentMetrics.chiffreAffaires,
       nouveauxClients: currentMetrics.nouveauxClients,
       appelsEffectues: currentMetrics.appelsEffectues,
       emailsEnvoyes: currentMetrics.emailsEnvoyes,
@@ -256,7 +253,6 @@ class ReportingController extends GetxController {
           rdvList: [],
           devisCrees: 0,
           devisAcceptes: 0,
-          chiffreAffaires: 0,
           nouveauxClients: 0,
           appelsEffectues: 0,
           emailsEnvoyes: 0,
@@ -310,7 +306,6 @@ class ReportingController extends GetxController {
     int? clientsProspectes,
     int? devisCrees,
     int? devisAcceptes,
-    double? chiffreAffaires,
     int? nouveauxClients,
     int? appelsEffectues,
     int? emailsEnvoyes,
@@ -318,7 +313,6 @@ class ReportingController extends GetxController {
     String? noteClientsProspectes,
     String? noteDevisCrees,
     String? noteDevisAcceptes,
-    String? noteChiffreAffaires,
     String? noteNouveauxClients,
     String? noteAppelsEffectues,
     String? noteEmailsEnvoyes,
@@ -332,7 +326,6 @@ class ReportingController extends GetxController {
           rdvList: [],
           devisCrees: 0,
           devisAcceptes: 0,
-          chiffreAffaires: 0,
           nouveauxClients: 0,
           appelsEffectues: 0,
           emailsEnvoyes: 0,
@@ -345,7 +338,6 @@ class ReportingController extends GetxController {
       rdvList: current.rdvList,
       devisCrees: devisCrees ?? current.devisCrees,
       devisAcceptes: devisAcceptes ?? current.devisAcceptes,
-      chiffreAffaires: chiffreAffaires ?? current.chiffreAffaires,
       nouveauxClients: nouveauxClients ?? current.nouveauxClients,
       appelsEffectues: appelsEffectues ?? current.appelsEffectues,
       emailsEnvoyes: emailsEnvoyes ?? current.emailsEnvoyes,
@@ -355,7 +347,6 @@ class ReportingController extends GetxController {
       noteRdvObtenus: current.noteRdvObtenus,
       noteDevisCrees: noteDevisCrees ?? current.noteDevisCrees,
       noteDevisAcceptes: noteDevisAcceptes ?? current.noteDevisAcceptes,
-      noteChiffreAffaires: noteChiffreAffaires ?? current.noteChiffreAffaires,
       noteNouveauxClients: noteNouveauxClients ?? current.noteNouveauxClients,
       noteAppelsEffectues: noteAppelsEffectues ?? current.noteAppelsEffectues,
       noteEmailsEnvoyes: noteEmailsEnvoyes ?? current.noteEmailsEnvoyes,
@@ -518,5 +509,25 @@ class ReportingController extends GetxController {
   void filterByUserRole(String? role) {
     selectedUserRole.value = role;
     loadReports();
+  }
+
+  // Ajouter ou modifier la note du patron sur un rapport
+  Future<void> addPatronNote(int reportId, {String? note}) async {
+    try {
+      isLoading.value = true;
+
+      await _reportingService.addPatronNote(reportId, note: note);
+      Get.snackbar(
+        'Succès',
+        note != null && note.isNotEmpty
+            ? 'Note enregistrée avec succès'
+            : 'Note supprimée avec succès',
+      );
+      loadReports();
+    } catch (e) {
+      Get.snackbar('Erreur', 'Erreur lors de l\'enregistrement de la note: $e');
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

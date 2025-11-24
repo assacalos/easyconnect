@@ -202,23 +202,30 @@ class StockController extends GetxController {
       allStocks.value = [];
       stocks.value = [];
 
+      // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (errorString.contains('session expirée') ||
+          errorString.contains('401') ||
+          errorString.contains('unauthorized')) {
+        // Erreur d'authentification déjà gérée, ne rien afficher
+        return;
+      }
+
       // Message d'erreur spécifique selon le type d'erreur
       String errorMessage;
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('Connection refused')) {
+      if (errorString.contains('socketexception') ||
+          errorString.contains('connection refused')) {
         errorMessage =
             'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
-      } else if (e.toString().contains('401') ||
-          e.toString().contains('Unauthorized')) {
-        errorMessage = 'Session expirée. Veuillez vous reconnecter.';
-      } else if (e.toString().contains('500')) {
+      } else if (errorString.contains('500')) {
         errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.';
-      } else if (e.toString().contains('FormatException') ||
-          e.toString().contains('Unexpected end of input')) {
+      } else if (errorString.contains('formatexception') ||
+          errorString.contains('unexpected end of input')) {
         errorMessage =
             'Erreur de format des données. Contactez l\'administrateur.';
-      } else if (e.toString().contains('Null') ||
-          e.toString().contains('not a subtype')) {
+      } else if (errorString.contains('null') ||
+          errorString.contains('not a subtype')) {
         errorMessage =
             'Erreur de format des données. Contactez l\'administrateur.';
       } else {
@@ -437,12 +444,10 @@ class StockController extends GetxController {
   // Créer un nouveau stock
   Future<bool> createStock() async {
     try {
-      print('🔵 [STOCK_CONTROLLER] createStock() appelé');
       isCreating.value = true;
 
       // Valider que category est fourni
       if (selectedCategoryForm.value.isEmpty) {
-        print('❌ [STOCK_CONTROLLER] Catégorie non sélectionnée');
         Get.snackbar(
           'Erreur',
           'Veuillez sélectionner une catégorie',
@@ -454,7 +459,6 @@ class StockController extends GetxController {
 
       // Valider que le nom n'est pas vide
       if (nameController.text.trim().isEmpty) {
-        print('❌ [STOCK_CONTROLLER] Nom non fourni');
         Get.snackbar(
           'Erreur',
           'Veuillez saisir un nom pour le produit',
@@ -466,7 +470,6 @@ class StockController extends GetxController {
 
       // Valider que le SKU n'est pas vide
       if (skuController.text.trim().isEmpty) {
-        print('❌ [STOCK_CONTROLLER] SKU non fourni');
         Get.snackbar(
           'Erreur',
           'Veuillez saisir un SKU pour le produit',
@@ -497,9 +500,7 @@ class StockController extends GetxController {
         status: 'en_attente',
       );
 
-      print('🔵 [STOCK_CONTROLLER] Stock créé, appel du service...');
       await _stockService.createStock(stock);
-      print('🔵 [STOCK_CONTROLLER] Stock créé avec succès');
 
       Get.snackbar(
         'Succès',
@@ -513,9 +514,6 @@ class StockController extends GetxController {
       loadStockStats();
       return true;
     } catch (e, stackTrace) {
-      print('❌ [STOCK_CONTROLLER] Erreur createStock: $e');
-      print('❌ [STOCK_CONTROLLER] Stack trace: $stackTrace');
-
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {

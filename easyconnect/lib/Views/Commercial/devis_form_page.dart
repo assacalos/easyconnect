@@ -24,9 +24,12 @@ class DevisFormPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Charger les clients au démarrage
+    // Charger les clients au démarrage et initialiser la référence
     WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.searchClients('');
+      if (!isEditing) {
+        controller.initializeGeneratedReference();
+      }
     });
 
     // Pré-remplir le formulaire si édition
@@ -114,10 +117,19 @@ class DevisFormPage extends StatelessWidget {
               return ListTile(
                 leading: CircleAvatar(
                   child: Text(
-                    selectedClient.nom?.substring(0, 1).toUpperCase() ?? '',
+                    (selectedClient.nomEntreprise?.isNotEmpty == true
+                                ? selectedClient.nomEntreprise
+                                : selectedClient.nom)
+                            ?.substring(0, 1)
+                            .toUpperCase() ??
+                        '',
                   ),
                 ),
-                title: Text(selectedClient.nom ?? ''),
+                title: Text(
+                  selectedClient.nomEntreprise?.isNotEmpty == true
+                      ? selectedClient.nomEntreprise!
+                      : selectedClient.nom ?? '',
+                ),
                 subtitle: Text(selectedClient.email ?? ''),
                 trailing: IconButton(
                   icon: const Icon(Icons.close),
@@ -143,13 +155,26 @@ class DevisFormPage extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: referenceController,
-              decoration: const InputDecoration(
-                labelText: 'Référence',
-                border: OutlineInputBorder(),
-              ),
-            ),
+            Obx(() {
+              // Mettre à jour le contrôleur avec la référence générée
+              final generatedRef = controller.generatedReference.value;
+              if (generatedRef.isNotEmpty &&
+                  referenceController.text != generatedRef) {
+                referenceController.text = generatedRef;
+              }
+              return TextFormField(
+                controller: referenceController,
+                decoration: const InputDecoration(
+                  labelText: 'Référence (générée automatiquement)',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.grey,
+                  helperText: 'Référence générée automatiquement',
+                ),
+                readOnly: true,
+                enabled: false,
+              );
+            }),
             const SizedBox(height: 16),
             TextFormField(
               controller: dateValiditeController,
@@ -224,25 +249,6 @@ class DevisFormPage extends StatelessWidget {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (item.remise != null && item.remise! > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '-${item.remise}%',
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(width: 8),
                           Text(
                             formatCurrency.format(item.total),
                             style: const TextStyle(fontWeight: FontWeight.bold),
@@ -468,10 +474,20 @@ class DevisFormPage extends StatelessWidget {
                           size: 20,
                         ),
                       ),
-                      title: Text(client.nom ?? ''),
+                      title: Text(
+                        client.nomEntreprise?.isNotEmpty == true
+                            ? client.nomEntreprise!
+                            : client.nom ?? '',
+                      ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (client.nomEntreprise?.isNotEmpty == true &&
+                              client.nom?.isNotEmpty == true)
+                            Text(
+                              'Contact: ${client.nom}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           Text(client.email ?? ''),
                           const SizedBox(height: 2),
                           Container(
@@ -529,9 +545,6 @@ class DevisFormPage extends StatelessWidget {
     final prixUnitaireController = TextEditingController(
       text: item?.prixUnitaire.toString() ?? '',
     );
-    final remiseController = TextEditingController(
-      text: item?.remise?.toString() ?? '',
-    );
 
     Get.dialog(
       AlertDialog(
@@ -572,15 +585,6 @@ class DevisFormPage extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: remiseController,
-              decoration: const InputDecoration(
-                labelText: 'Remise (%)',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-            ),
           ],
         ),
         actions: [
@@ -592,7 +596,6 @@ class DevisFormPage extends StatelessWidget {
                 designation: designationController.text,
                 quantite: int.tryParse(quantiteController.text) ?? 0,
                 prixUnitaire: double.tryParse(prixUnitaireController.text) ?? 0,
-                remise: double.tryParse(remiseController.text),
               );
               if (index != null) {
                 controller.updateItem(index, newItem);
@@ -636,8 +639,13 @@ class DevisFormPage extends StatelessWidget {
     );
   }
 
-  void _saveDevis() {
+  void _saveDevis() async {
+    print('💾 [DEVIS FORM] Début de la sauvegarde du devis');
+    print('💾 [DEVIS FORM] Mode édition: $isEditing');
+    print('💾 [DEVIS FORM] Devis ID: $devisId');
+
     if (controller.selectedClient.value == null) {
+      print('❌ [DEVIS FORM] Aucun client sélectionné');
       Get.snackbar(
         'Erreur',
         'Veuillez sélectionner un client',
@@ -645,7 +653,12 @@ class DevisFormPage extends StatelessWidget {
       );
       return;
     }
+    print(
+      '✅ [DEVIS FORM] Client sélectionné: ${controller.selectedClient.value?.id} - ${controller.selectedClient.value?.nom}',
+    );
+
     if (controller.items.isEmpty) {
+      print('❌ [DEVIS FORM] Aucun article ajouté');
       Get.snackbar(
         'Erreur',
         'Veuillez ajouter au moins un article',
@@ -653,7 +666,22 @@ class DevisFormPage extends StatelessWidget {
       );
       return;
     }
-    if (referenceController.text.isEmpty) {
+    print('✅ [DEVIS FORM] Nombre d\'articles: ${controller.items.length}');
+
+    // Utiliser la référence générée si disponible, sinon celle saisie
+    final reference =
+        controller.generatedReference.value.isNotEmpty
+            ? controller.generatedReference.value
+            : referenceController.text;
+
+    print(
+      '💾 [DEVIS FORM] Référence générée: ${controller.generatedReference.value}',
+    );
+    print('💾 [DEVIS FORM] Référence saisie: ${referenceController.text}');
+    print('💾 [DEVIS FORM] Référence finale: $reference');
+
+    if (reference.isEmpty) {
+      print('❌ [DEVIS FORM] Référence vide');
       Get.snackbar(
         'Erreur',
         'Veuillez saisir une référence',
@@ -663,7 +691,7 @@ class DevisFormPage extends StatelessWidget {
     }
 
     final data = {
-      'reference': referenceController.text,
+      'reference': reference,
       'date_validite':
           dateValiditeController.text.isNotEmpty
               ? DateFormat('dd/MM/yyyy').parse(dateValiditeController.text)
@@ -674,13 +702,34 @@ class DevisFormPage extends StatelessWidget {
       'tva': double.tryParse(tvaController.text),
     };
 
+    print('💾 [DEVIS FORM] Données préparées:');
+    print('💾 [DEVIS FORM] - reference: ${data['reference']}');
+    print('💾 [DEVIS FORM] - date_validite: ${data['date_validite']}');
+    print('💾 [DEVIS FORM] - notes: ${data['notes']}');
+    print('💾 [DEVIS FORM] - conditions: ${data['conditions']}');
+    print('💾 [DEVIS FORM] - remise_globale: ${data['remise_globale']}');
+    print('💾 [DEVIS FORM] - tva: ${data['tva']}');
+
     if (isEditing && devisId != null) {
-      controller.updateDevis(devisId!, data);
-    } else {
-      // Pour la création, effacer le formulaire après la création
-      controller.createDevis(data).then((_) {
+      print('💾 [DEVIS FORM] Mise à jour du devis $devisId');
+      final success = await controller.updateDevis(devisId!, data);
+      if (success) {
+        print('✅ [DEVIS FORM] Devis mis à jour avec succès');
         _clearForm();
-      });
+        Get.back();
+      } else {
+        print('❌ [DEVIS FORM] Échec de la mise à jour');
+      }
+    } else {
+      print('💾 [DEVIS FORM] Création d\'un nouveau devis');
+      final success = await controller.createDevis(data);
+      if (success) {
+        print('✅ [DEVIS FORM] Devis créé avec succès');
+        _clearForm();
+        Get.back();
+      } else {
+        print('❌ [DEVIS FORM] Échec de la création');
+      }
     }
   }
 }

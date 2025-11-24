@@ -235,8 +235,15 @@ class InterventionForm extends StatelessWidget {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                        .trim(),
+                                    selectedClient.nomEntreprise?.isNotEmpty ==
+                                            true
+                                        ? selectedClient.nomEntreprise!
+                                        : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                            .trim()
+                                            .isNotEmpty
+                                        ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                            .trim()
+                                        : 'Client #${selectedClient.id}',
                                     style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
@@ -251,10 +258,15 @@ class InterventionForm extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            if (selectedClient.nomEntreprise != null) ...[
+                            if (selectedClient.nomEntreprise?.isNotEmpty ==
+                                    true &&
+                                '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                    .trim()
+                                    .isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
-                                'Entreprise: ${selectedClient.nomEntreprise}',
+                                'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                    .trim(),
                               ),
                             ],
                           ],
@@ -447,12 +459,15 @@ class InterventionForm extends StatelessWidget {
   }
 
   void _saveIntervention(InterventionController controller) async {
+    bool success = false;
     if (intervention == null) {
-      await controller.createIntervention();
+      success = await controller.createIntervention();
     } else {
-      await controller.updateIntervention(intervention!);
+      success = await controller.updateIntervention(intervention!);
     }
-    Get.back(); // Retour automatique à la liste
+    if (success) {
+      Get.back(); // Retour automatique à la liste après succès
+    }
   }
 
   void _showClientSelectionDialog(InterventionController controller) {

@@ -20,6 +20,7 @@ class Salary {
   final String? approvedAt;
   final String? paidAt;
   final String? rejectionReason;
+  final List<String> justificatifs; // Fichiers justificatifs
 
   Salary({
     this.id,
@@ -41,6 +42,7 @@ class Salary {
     this.approvedAt,
     this.paidAt,
     this.rejectionReason,
+    this.justificatifs = const [],
   });
 
   factory Salary.fromJson(Map<String, dynamic> json) {
@@ -104,6 +106,16 @@ class Salary {
         approvedAt: json['approved_at']?.toString(),
         paidAt: json['paid_at']?.toString(),
         rejectionReason: json['rejection_reason']?.toString(),
+        justificatifs:
+            json['justificatifs'] != null
+                ? (json['justificatifs'] is List
+                    ? (json['justificatifs'] as List)
+                        .map((f) => f.toString())
+                        .toList()
+                    : json['justificatifs'] is String
+                    ? [json['justificatifs']]
+                    : [])
+                : [],
       );
     } catch (e) {
       print('❌ Salary.fromJson: Erreur lors du parsing: $e');
@@ -133,6 +145,7 @@ class Salary {
       'approved_at': approvedAt,
       'paid_at': paidAt,
       'rejection_reason': rejectionReason,
+      'justificatifs': justificatifs,
     };
   }
 

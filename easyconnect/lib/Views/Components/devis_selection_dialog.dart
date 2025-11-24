@@ -5,7 +5,7 @@ import 'package:easyconnect/Models/devis_model.dart';
 
 class DevisSelectionDialog extends StatefulWidget {
   final List<Devis> devis;
-  final Function(Devis) onDevisSelected;
+  final Future<void> Function(Devis) onDevisSelected;
   final bool isLoading;
 
   const DevisSelectionDialog({
@@ -45,11 +45,12 @@ class _DevisSelectionDialogState extends State<DevisSelectionDialog> {
           _filteredDevis = widget.devis;
         });
       } else {
-        final filtered = widget.devis.where((devis) {
-          final searchLower = query.toLowerCase();
-          final referenceLower = devis.reference.toLowerCase();
-          return referenceLower.contains(searchLower);
-        }).toList();
+        final filtered =
+            widget.devis.where((devis) {
+              final searchLower = query.toLowerCase();
+              final referenceLower = devis.reference.toLowerCase();
+              return referenceLower.contains(searchLower);
+            }).toList();
         setState(() {
           _filteredDevis = filtered;
         });
@@ -112,45 +113,52 @@ class _DevisSelectionDialogState extends State<DevisSelectionDialog> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: widget.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredDevis.isEmpty
+              child:
+                  widget.isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredDevis.isEmpty
                       ? const Center(child: Text('Aucun devis trouvé'))
                       : ListView.builder(
-                          itemCount: _filteredDevis.length,
-                          itemBuilder: (context, index) {
-                            final devis = _filteredDevis[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.blue,
-                                  child: Icon(
-                                    Icons.description,
-                                    color: Colors.white,
-                                  ),
+                        itemCount: _filteredDevis.length,
+                        itemBuilder: (context, index) {
+                          final devis = _filteredDevis[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.blue,
+                                child: Icon(
+                                  Icons.description,
+                                  color: Colors.white,
                                 ),
-                                title: Text(
-                                  'Devis ${devis.reference}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Date: ${devis.dateCreation.day}/${devis.dateCreation.month}/${devis.dateCreation.year}'),
-                                    Text('Articles: ${devis.items.length}'),
-                                    Text('Total HT: ${devis.totalHT.toStringAsFixed(2)} FCFA'),
-                                    Text('Statut: ${devis.statusText}'),
-                                  ],
-                                ),
-                                onTap: () {
-                                  widget.onDevisSelected(devis);
-                                  Get.back();
-                                },
                               ),
-                            );
-                          },
-                        ),
+                              title: Text(
+                                'Devis ${devis.reference}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Date: ${devis.dateCreation.day}/${devis.dateCreation.month}/${devis.dateCreation.year}',
+                                  ),
+                                  Text('Articles: ${devis.items.length}'),
+                                  Text(
+                                    'Total HT: ${devis.totalHT.toStringAsFixed(2)} FCFA',
+                                  ),
+                                  Text('Statut: ${devis.statusText}'),
+                                ],
+                              ),
+                              onTap: () async {
+                                await widget.onDevisSelected(devis);
+                                Get.back();
+                              },
+                            ),
+                          );
+                        },
+                      ),
             ),
           ],
         ),

@@ -62,12 +62,6 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
                 'Date de commande',
                 formatDate.format(bon.dateCommande),
               ),
-              if (bon.dateLivraisonPrevue != null)
-                _row(
-                  Icons.local_shipping,
-                  'Livraison prévue',
-                  formatDate.format(bon.dateLivraisonPrevue!),
-                ),
               _row(Icons.info, 'Statut', bon.statusText),
               if (bon.description != null && bon.description!.isNotEmpty)
                 _row(Icons.description, 'Description', bon.description!),

@@ -4,6 +4,7 @@ import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/utils/reference_generator.dart';
 
 class PaymentController extends GetxController {
   final PaymentService _paymentService = PaymentService.to;
@@ -47,6 +48,9 @@ class PaymentController extends GetxController {
   final TextEditingController clientEmailController = TextEditingController();
   final TextEditingController clientAddressController = TextEditingController();
 
+  // Référence générée automatiquement
+  final generatedReference = ''.obs;
+
   // Pour les paiements mensuels
   final Rx<DateTime> scheduleStartDate = DateTime.now().obs;
   final Rx<DateTime> scheduleEndDate =
@@ -60,18 +64,45 @@ class PaymentController extends GetxController {
     super.onInit();
     loadPayments();
     loadPaymentStats();
+    // Générer automatiquement la référence au démarrage
+    initializeGeneratedReference();
+  }
+
+  // Générer automatiquement la référence de paiement
+  Future<String> generatePaymentReference() async {
+    // Recharger les paiements pour avoir le comptage à jour
+    await loadPayments();
+
+    // Extraire toutes les références existantes
+    final existingReferences =
+        payments
+            .map((pay) => pay.reference)
+            .where((ref) => ref != null && ref.isNotEmpty)
+            .map((ref) => ref!)
+            .toList();
+
+    // Générer avec incrément
+    return ReferenceGenerator.generateReferenceWithIncrement(
+      'PAY',
+      existingReferences,
+    );
+  }
+
+  // Initialiser la référence générée
+  Future<void> initializeGeneratedReference() async {
+    if (generatedReference.value.isEmpty) {
+      generatedReference.value = await generatePaymentReference();
+      referenceController.text = generatedReference.value;
+    }
   }
 
   // Charger les paiements
   Future<void> loadPayments() async {
     try {
-      print('🔵 [PAYMENT_CONTROLLER] loadPayments() appelé');
-      print('🔵 [PAYMENT_CONTROLLER] selectedStatus: ${selectedStatus.value}');
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        print('🔵 [PAYMENT_CONTROLLER] ⚠️ Utilisateur null');
         Get.snackbar(
           'Erreur',
           'Utilisateur non connecté',
@@ -82,14 +113,12 @@ class PaymentController extends GetxController {
         return;
       }
 
-      print('🔵 [PAYMENT_CONTROLLER] Rôle utilisateur: ${user.role}');
       // Chargement direct des paiements (test de connectivité supprimé car non nécessaire)
       List<PaymentModel> paymentList;
 
       // Patron (role 6) ou Admin (role 1) peuvent voir tous les paiements
       if (user.role == 1 || user.role == 6) {
         // Patron ou Admin
-        print('🔵 [PAYMENT_CONTROLLER] Appel getAllPayments pour Patron/Admin');
         paymentList = await _paymentService.getAllPayments(
           startDate: startDate.value,
           endDate: endDate.value,
@@ -98,9 +127,6 @@ class PaymentController extends GetxController {
         );
       } else {
         // Comptable ou autre rôle
-        print(
-          '🔵 [PAYMENT_CONTROLLER] Appel getComptablePayments pour Comptable',
-        );
         paymentList = await _paymentService.getComptablePayments(
           comptableId: user.id,
           startDate: startDate.value,
@@ -175,7 +201,7 @@ class PaymentController extends GetxController {
   }
 
   // Créer un paiement
-  Future<void> createPayment() async {
+  Future<bool> createPayment() async {
     try {
       isCreating.value = true;
 
@@ -187,7 +213,7 @@ class PaymentController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       // Validation des champs requis
@@ -202,7 +228,7 @@ class PaymentController extends GetxController {
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
         );
-        return;
+        return false;
       }
 
       if (amount.value <= 0) {
@@ -212,7 +238,7 @@ class PaymentController extends GetxController {
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
       // Calculer le montant des échéances pour les paiements mensuels
       if (paymentType.value == 'monthly') {
@@ -259,9 +285,11 @@ class PaymentController extends GetxController {
                 ? null
                 : notesController.text.trim(),
         reference:
-            referenceController.text.trim().isEmpty
-                ? null
-                : referenceController.text.trim(),
+            generatedReference.value.isNotEmpty
+                ? generatedReference.value
+                : (referenceController.text.trim().isEmpty
+                    ? null
+                    : referenceController.text.trim()),
         schedule: schedule,
       );
       if (result['success'] == true || result['success'] == 1) {
@@ -278,11 +306,7 @@ class PaymentController extends GetxController {
 
         // Réinitialiser le formulaire
         resetForm();
-
-        // Retourner à la liste
-        if (Navigator.canPop(Get.context!)) {
-          Get.back();
-        }
+        return true;
       } else {
         final errorMessage =
             result['message'] ??
@@ -295,6 +319,7 @@ class PaymentController extends GetxController {
           colorText: Colors.white,
           duration: const Duration(seconds: 4),
         );
+        return false;
       }
     } catch (e) {
       Get.snackbar(
@@ -304,6 +329,7 @@ class PaymentController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 4),
       );
+      return false;
     } finally {
       isCreating.value = false;
     }
@@ -412,6 +438,7 @@ class PaymentController extends GetxController {
 
     descriptionController.clear();
     notesController.clear();
+    generatedReference.value = '';
     referenceController.clear();
     clientNameController.clear();
     clientEmailController.clear();
@@ -422,6 +449,9 @@ class PaymentController extends GetxController {
     frequency.value = 30;
     totalInstallments.value = 12;
     installmentAmount.value = 0.0;
+
+    // Régénérer une nouvelle référence
+    initializeGeneratedReference();
   }
 
   // Sélectionner un client
@@ -608,7 +638,6 @@ class PaymentController extends GetxController {
         paymentId,
         comments: comments,
       );
-      print('🔵 [PAYMENT_CONTROLLER] Résultat approvePayment: $result');
 
       // Recharger les paiements
       await loadPayments();
@@ -622,8 +651,6 @@ class PaymentController extends GetxController {
         duration: const Duration(seconds: 2),
       );
     } catch (e, stackTrace) {
-      print('❌ [PAYMENT_CONTROLLER] Erreur approvePayment: $e');
-      print('❌ [PAYMENT_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le paiement: $e',
@@ -648,7 +675,6 @@ class PaymentController extends GetxController {
         paymentId,
         reason: reason,
       );
-      print('🔵 [PAYMENT_CONTROLLER] Résultat rejectPayment: $result');
 
       // Recharger les paiements
       await loadPayments();
@@ -662,8 +688,6 @@ class PaymentController extends GetxController {
         duration: const Duration(seconds: 2),
       );
     } catch (e, stackTrace) {
-      print('❌ [PAYMENT_CONTROLLER] Erreur rejectPayment: $e');
-      print('❌ [PAYMENT_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le paiement: $e',

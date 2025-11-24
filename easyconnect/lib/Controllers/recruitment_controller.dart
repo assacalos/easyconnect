@@ -180,7 +180,7 @@ class RecruitmentController extends GetxController {
   }
 
   // Créer une demande de recrutement
-  Future<void> createRecruitmentRequest() async {
+  Future<bool> createRecruitmentRequest() async {
     try {
       // Vérification des champs obligatoires
       final title = titleController.text.trim();
@@ -199,87 +199,87 @@ class RecruitmentController extends GetxController {
       // Validation des champs obligatoires
       if (title.isEmpty) {
         Get.snackbar('Erreur', 'Le titre est obligatoire');
-        return;
+        return false;
       }
 
       if (department.isEmpty) {
         Get.snackbar('Erreur', 'Le département est obligatoire');
-        return;
+        return false;
       }
 
       if (position.isEmpty) {
         Get.snackbar('Erreur', 'Le poste est obligatoire');
-        return;
+        return false;
       }
 
       // Validation de la description (minimum 50 caractères)
       if (description.isEmpty) {
         Get.snackbar('Erreur', 'La description est obligatoire');
-        return;
+        return false;
       }
       if (description.length < 50) {
         Get.snackbar(
           'Erreur',
           'La description doit contenir au moins 50 caractères (actuellement: ${description.length})',
         );
-        return;
+        return false;
       }
 
       // Validation des exigences (minimum 20 caractères)
       if (requirements.isEmpty) {
         Get.snackbar('Erreur', 'Les exigences sont obligatoires');
-        return;
+        return false;
       }
       if (requirements.length < 20) {
         Get.snackbar(
           'Erreur',
           'Les exigences doivent contenir au moins 20 caractères (actuellement: ${requirements.length})',
         );
-        return;
+        return false;
       }
 
       // Validation des responsabilités (minimum 20 caractères)
       if (responsibilities.isEmpty) {
         Get.snackbar('Erreur', 'Les responsabilités sont obligatoires');
-        return;
+        return false;
       }
       if (responsibilities.length < 20) {
         Get.snackbar(
           'Erreur',
           'Les responsabilités doivent contenir au moins 20 caractères (actuellement: ${responsibilities.length})',
         );
-        return;
+        return false;
       }
 
       if (employmentType.isEmpty) {
         Get.snackbar('Erreur', 'Le type d\'emploi est obligatoire');
-        return;
+        return false;
       }
 
       if (experienceLevel.isEmpty) {
         Get.snackbar('Erreur', 'Le niveau d\'expérience est obligatoire');
-        return;
+        return false;
       }
 
       if (salaryRange.isEmpty) {
         Get.snackbar('Erreur', 'La fourchette salariale est obligatoire');
-        return;
+        return false;
       }
 
       if (location.isEmpty) {
         Get.snackbar('Erreur', 'La localisation est obligatoire');
-        return;
+        return false;
       }
 
       if (deadline == null) {
         Get.snackbar('Erreur', 'La date limite est obligatoire');
-        return;
+        return false;
       }
 
       // Vérifier que la date limite est dans le futur
       if (deadline.isBefore(DateTime.now())) {
         Get.snackbar('Erreur', 'La date limite doit être dans le futur');
-        return;
+        return false;
       }
 
       final result = await _recruitmentService.createRecruitmentRequest(
@@ -331,9 +331,11 @@ class RecruitmentController extends GetxController {
         selectedStatus.value = 'all';
         await loadRecruitmentRequests();
         await loadRecruitmentStats();
+        return true;
       } else {
         final errorMessage = result['message'] ?? 'Erreur lors de la création';
         Get.snackbar('Erreur', errorMessage);
+        return false;
       }
     } catch (e) {
       // Extraire le message d'erreur du backend si disponible
@@ -367,6 +369,7 @@ class RecruitmentController extends GetxController {
       }
 
       Get.snackbar('Erreur', errorMessage);
+      return false;
     }
   }
 

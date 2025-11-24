@@ -25,30 +25,32 @@ class UserController extends GetxController {
     }
   }
 
-  void addUser(UserModel user, String password) async {
+  Future<bool> addUser(UserModel user, String password) async {
     try {
       isLoading.value = true;
       final newUser = await service.createUser(user, password);
       users.add(newUser);
-      Get.back();
       Get.snackbar("Succès", "Utilisateur créé avec succès");
+      return true;
     } catch (e) {
       Get.snackbar("Erreur", e.toString());
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  void updateUser(UserModel user) async {
+  Future<bool> updateUser(UserModel user) async {
     try {
       isLoading.value = true;
       final updated = await service.updateUser(user);
       int index = users.indexWhere((u) => u.id == updated.id);
       if (index != -1) users[index] = updated;
-      Get.back();
       Get.snackbar("Succès", "Utilisateur mis à jour");
+      return true;
     } catch (e) {
       Get.snackbar("Erreur", e.toString());
+      return false;
     } finally {
       isLoading.value = false;
     }

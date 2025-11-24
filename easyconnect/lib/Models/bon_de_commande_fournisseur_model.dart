@@ -59,7 +59,6 @@ class BonDeCommande {
   final int? fournisseurId;
   final String numeroCommande;
   final DateTime dateCommande;
-  final DateTime? dateLivraisonPrevue;
   final String? description;
   final String statut; // 'en_attente', 'valide', 'rejete', 'livre'
   final String? commentaire;
@@ -74,7 +73,6 @@ class BonDeCommande {
     this.fournisseurId,
     required this.numeroCommande,
     required this.dateCommande,
-    this.dateLivraisonPrevue,
     this.description,
     this.statut = 'en_attente',
     this.commentaire,
@@ -113,8 +111,6 @@ class BonDeCommande {
     'fournisseur_id': fournisseurId,
     'numero_commande': numeroCommande,
     'date_commande': dateCommande.toIso8601String().split('T')[0],
-    'date_livraison_prevue':
-        dateLivraisonPrevue?.toIso8601String().split('T')[0],
     'description': description,
     'statut': statut,
     'commentaire': commentaire,
@@ -129,9 +125,6 @@ class BonDeCommande {
     if (fournisseurId != null) 'fournisseur_id': fournisseurId,
     'numero_commande': numeroCommande,
     'date_commande': dateCommande.toIso8601String().split('T')[0],
-    if (dateLivraisonPrevue != null)
-      'date_livraison_prevue':
-          dateLivraisonPrevue!.toIso8601String().split('T')[0],
     if (description != null && description!.isNotEmpty)
       'description': description,
     // La colonne dans la base de données s'appelle 'status' (en anglais)
@@ -164,10 +157,6 @@ class BonDeCommande {
         json['date_commande'] != null
             ? DateTime.parse(json['date_commande'])
             : DateTime.now(),
-    dateLivraisonPrevue:
-        json['date_livraison_prevue'] != null
-            ? DateTime.tryParse(json['date_livraison_prevue'])
-            : null,
     description: json['description'],
     // La colonne dans la base de données s'appelle 'status' (en anglais)
     statut:

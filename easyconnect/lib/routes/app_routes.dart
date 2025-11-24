@@ -31,6 +31,8 @@ import 'package:easyconnect/Views/Patron/supplier_validation_page.dart';
 import 'package:easyconnect/Views/Patron/employee_validation_page.dart';
 import 'package:easyconnect/Views/Patron/patron_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Admin/admin_dashboard.dart';
+import 'package:easyconnect/Views/Components/global_search_page.dart';
+import 'package:easyconnect/Views/Components/profile_page.dart';
 import 'package:easyconnect/Views/Admin/user_management_page.dart';
 import 'package:easyconnect/Views/Admin/user_form_page.dart';
 import 'package:easyconnect/Views/Admin/app_settings_page.dart';
@@ -48,6 +50,7 @@ import 'package:easyconnect/bindings/patron_binding.dart';
 import 'package:easyconnect/bindings/comptable_binding.dart';
 import 'package:easyconnect/bindings/rh_binding.dart';
 import 'package:easyconnect/bindings/technicien_binding.dart';
+import 'package:easyconnect/bindings/global_search_binding.dart';
 import 'package:easyconnect/bindings/admin_binding.dart';
 import 'package:easyconnect/bindings/user_management_binding.dart';
 import 'package:easyconnect/Views/Components/reporting_list.dart';
@@ -704,6 +707,19 @@ class AppRoutes {
     GetPage(
       name: '/devis-page',
       page: () => DevisListPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    // Recherche globale
+    GetPage(
+      name: '/search',
+      page: () => const GlobalSearchPage(),
+      binding: GlobalSearchBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    // Page de profil
+    GetPage(
+      name: '/profile',
+      page: () => const ProfilePage(),
       middlewares: [AuthMiddleware()],
     ),
   ];

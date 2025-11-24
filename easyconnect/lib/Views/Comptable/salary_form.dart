@@ -240,6 +240,75 @@ class _SalaryFormState extends State<SalaryForm> {
 
               const SizedBox(height: 24),
 
+              // Justificatifs
+              _buildSectionTitle('Justificatifs'),
+              const SizedBox(height: 16),
+
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Fichiers justificatifs',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Obx(() {
+                        if (controller.selectedFiles.isEmpty) {
+                          return const Text('Aucun fichier sélectionné.');
+                        }
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: controller.selectedFiles.length,
+                          itemBuilder: (context, index) {
+                            final file = controller.selectedFiles[index];
+                            final String fileName =
+                                file['name'] ?? 'Fichier inconnu';
+                            final String fileType = file['type'] ?? 'document';
+                            final int fileSize = file['size'] ?? 0;
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                leading: Icon(_getFileIcon(fileType)),
+                                title: Text(fileName),
+                                subtitle: Text(_formatFileSize(fileSize)),
+                                trailing: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () => controller.removeFile(index),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () => controller.selectFiles(),
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Ajouter des justificatifs'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
               // Notes
               _buildSectionTitle('Informations supplémentaires'),
               const SizedBox(height: 16),
@@ -282,6 +351,27 @@ class _SalaryFormState extends State<SalaryForm> {
         color: Colors.deepPurple,
       ),
     );
+  }
+
+  IconData _getFileIcon(String fileType) {
+    switch (fileType) {
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'image':
+        return Icons.image;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    } else if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    } else {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
   }
 
   void _saveSalary(SalaryController controller) async {

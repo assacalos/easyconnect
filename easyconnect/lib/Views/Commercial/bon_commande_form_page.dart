@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
-import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
-import 'package:intl/intl.dart';
+import 'dart:io';
 
 class BonCommandeFormPage extends StatelessWidget {
   final BonCommandeController controller = Get.put(BonCommandeController());
@@ -15,32 +14,6 @@ class BonCommandeFormPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final formKey = GlobalKey<FormState>();
-    final referenceController = TextEditingController();
-    final notesController = TextEditingController();
-    final remiseController = TextEditingController();
-    final tvaController = TextEditingController(text: '20.0');
-    final conditionsController = TextEditingController();
-    final adresseLivraisonController = TextEditingController();
-    final dateLivraisonController = TextEditingController();
-
-    if (isEditing && bonCommandeId != null) {
-      final bonCommande = controller.bonCommandes.firstWhere(
-        (b) => b.id == bonCommandeId,
-      );
-      referenceController.text = bonCommande.reference;
-      notesController.text = bonCommande.notes ?? '';
-      remiseController.text = bonCommande.remiseGlobale?.toString() ?? '';
-      tvaController.text = bonCommande.tva?.toString() ?? '20.0';
-      conditionsController.text = bonCommande.conditions ?? '';
-      adresseLivraisonController.text = bonCommande.adresseLivraison ?? '';
-      if (bonCommande.dateLivraisonPrevue != null) {
-        dateLivraisonController.text = DateFormat(
-          'dd/MM/yyyy',
-        ).format(bonCommande.dateLivraisonPrevue!);
-      }
-      controller.items.value = bonCommande.items;
-      // TODO: Charger le client si nécessaire
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -101,11 +74,32 @@ class BonCommandeFormPage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${selectedClient.nom}',
-                                style: const TextStyle(fontSize: 16),
+                                selectedClient.nomEntreprise?.isNotEmpty == true
+                                    ? selectedClient.nomEntreprise!
+                                    : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                        .trim()
+                                        .isNotEmpty
+                                    ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                        .trim()
+                                    : 'Client #${selectedClient.id}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              Text(selectedClient.email ?? ''),
-                              Text(selectedClient.contact ?? ''),
+                              if (selectedClient.nomEntreprise?.isNotEmpty ==
+                                      true &&
+                                  '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                      .trim()
+                                      .isNotEmpty)
+                                Text(
+                                  'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                      .trim(),
+                                ),
+                              if (selectedClient.email != null)
+                                Text(selectedClient.email ?? ''),
+                              if (selectedClient.contact != null)
+                                Text(selectedClient.contact ?? ''),
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: controller.clearSelectedClient,
@@ -125,7 +119,7 @@ class BonCommandeFormPage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Informations générales
+              // Fichiers scannés
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -133,125 +127,46 @@ class BonCommandeFormPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Informations générales',
+                        'Fichiers scannés',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: referenceController,
-                        decoration: const InputDecoration(
-                          labelText: 'Référence',
-                          border: OutlineInputBorder(),
+                      ElevatedButton.icon(
+                        onPressed: () => controller.selectFiles(),
+                        icon: const Icon(Icons.add_photo_alternate),
+                        label: const Text('Ajouter des fichiers'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 48),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'La référence est requise';
-                          }
-                          return null;
-                        },
                       ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: dateLivraisonController,
-                        decoration: const InputDecoration(
-                          labelText: 'Date de livraison prévue',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.calendar_today),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Formats acceptés: PDF, Images, Documents (max 10 MB par fichier)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
                         ),
-                        readOnly: true,
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365),
-                            ),
-                          );
-                          if (date != null) {
-                            dateLivraisonController.text = DateFormat(
-                              'dd/MM/yyyy',
-                            ).format(date);
-                          }
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'La date de livraison est requise';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: adresseLivraisonController,
-                        decoration: const InputDecoration(
-                          labelText: 'Adresse de livraison',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'L\'adresse de livraison est requise';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: notesController,
-                        decoration: const InputDecoration(
-                          labelText: 'Notes',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Liste des items
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Articles',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: () => _showItemForm(context),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Ajouter'),
-                          ),
-                        ],
                       ),
                       const SizedBox(height: 16),
                       Obx(() {
-                        if (controller.items.isEmpty) {
+                        if (controller.selectedFiles.isEmpty) {
                           return const Center(
-                            child: Text('Aucun article ajouté'),
+                            child: Text('Aucun fichier sélectionné'),
                           );
                         }
                         return ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          itemCount: controller.items.length,
+                          itemCount: controller.selectedFiles.length,
                           itemBuilder: (context, index) {
-                            final item = controller.items[index];
-                            return _buildItemCard(item, index);
+                            final file = controller.selectedFiles[index];
+                            return _buildFileCard(file, index);
                           },
                         );
                       }),
@@ -259,176 +174,140 @@ class BonCommandeFormPage extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Totaux et conditions
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Totaux et conditions',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: remiseController,
-                        decoration: const InputDecoration(
-                          labelText: 'Remise globale (%)',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: tvaController,
-                        decoration: const InputDecoration(
-                          labelText: 'TVA (%)',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: conditionsController,
-                        decoration: const InputDecoration(
-                          labelText: 'Conditions',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              const SizedBox(height: 24),
+              _buildSaveButton(formKey),
             ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  if (controller.selectedClient.value == null) {
-                    Get.snackbar(
-                      'Erreur',
-                      'Veuillez sélectionner un client',
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
-                    return;
-                  }
-
-                  if (controller.items.isEmpty) {
-                    Get.snackbar(
-                      'Erreur',
-                      'Veuillez ajouter au moins un article',
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
-                    return;
-                  }
-
-                  final data = {
-                    'reference': referenceController.text,
-                    'date_livraison_prevue': DateFormat(
-                      'dd/MM/yyyy',
-                    ).parse(dateLivraisonController.text),
-                    'adresse_livraison': adresseLivraisonController.text,
-                    'notes': notesController.text,
-                    'remise_globale': double.tryParse(remiseController.text),
-                    'tva': double.tryParse(tvaController.text),
-                    'conditions': conditionsController.text,
-                  };
-
-                  if (isEditing && bonCommandeId != null) {
-                    controller.updateBonCommande(bonCommandeId!, data);
-                  } else {
-                    // Vérifier qu'un client validé est sélectionné
-                    if (controller.selectedClient.value == null) {
-                      Get.snackbar(
-                        'Erreur',
-                        'Veuillez sélectionner un client validé',
-                        snackPosition: SnackPosition.BOTTOM,
-                        backgroundColor: Colors.red,
-                        colorText: Colors.white,
-                      );
-                      return;
-                    }
-
-                    // Vérifier que le client sélectionné est bien validé
-                    if (controller.selectedClient.value!.status != 1) {
-                      Get.snackbar(
-                        'Erreur',
-                        'Seuls les clients validés peuvent être sélectionnés',
-                        snackPosition: SnackPosition.BOTTOM,
-                        backgroundColor: Colors.red,
-                        colorText: Colors.white,
-                      );
-                      return;
-                    }
-
-                    controller.createBonCommande(data);
-                  }
-                }
-              },
-              icon: const Icon(Icons.save),
-              label: const Text('Enregistrer'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildItemCard(BonCommandeItem item, int index) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
-    final formatDate = DateFormat('dd/MM/yyyy');
+  Widget _buildFileCard(Map<String, dynamic> file, int index) {
+    final fileName = file['name'] as String? ?? 'Fichier';
+    final filePath = file['path'] as String? ?? '';
+    final fileType = file['type'] as String? ?? 'document';
+    final fileSize = file['size'] as int? ?? 0;
+
+    IconData fileIcon;
+    if (fileType == 'pdf') {
+      fileIcon = Icons.picture_as_pdf;
+    } else if (fileType == 'image') {
+      fileIcon = Icons.image;
+    } else {
+      fileIcon = Icons.insert_drive_file;
+    }
 
     return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        title: Text(item.designation),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${item.quantite} ${item.unite}'),
-            Text('Prix unitaire: ${formatCurrency.format(item.prixUnitaire)}'),
-            Text('Total: ${formatCurrency.format(item.montantTotal)}'),
-            if (item.dateLivraison != null)
-              Text('Livraison: ${formatDate.format(item.dateLivraison!)}'),
-          ],
+        leading: Icon(fileIcon, color: Colors.blue),
+        title: Text(fileName),
+        subtitle: Text(_formatFileSize(fileSize)),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () => controller.removeFile(index),
         ),
-        trailing: Row(
+        onTap: () {
+          // Afficher un aperçu si c'est une image
+          if (fileType == 'image' && filePath.isNotEmpty) {
+            _showImagePreview(filePath);
+          }
+        },
+      ),
+    );
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  void _showImagePreview(String imagePath) {
+    Get.dialog(
+      Dialog(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed:
-                  () => _showItemForm(Get.context!, item: item, index: index),
+            AppBar(
+              title: const Text('Aperçu'),
+              automaticallyImplyLeading: false,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Get.back(),
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => controller.removeItem(index),
-            ),
+            Flexible(child: Image.file(File(imagePath), fit: BoxFit.contain)),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton(GlobalKey<FormState> formKey) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          if (formKey.currentState!.validate()) {
+            if (controller.selectedClient.value == null) {
+              Get.snackbar(
+                'Erreur',
+                'Veuillez sélectionner un client validé',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
+            if (controller.selectedClient.value!.status != 1) {
+              Get.snackbar(
+                'Erreur',
+                'Seuls les clients validés peuvent être sélectionnés',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
+            if (controller.selectedFiles.isEmpty) {
+              Get.snackbar(
+                'Erreur',
+                'Veuillez ajouter au moins un fichier scanné',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
+            if (isEditing && bonCommandeId != null) {
+              final success = await controller.updateBonCommande(
+                bonCommandeId!,
+              );
+              if (success) {
+                Get.back();
+              }
+            } else {
+              final success = await controller.createBonCommande();
+              if (success) {
+                Get.back();
+              }
+            }
+          }
+        },
+        icon: const Icon(Icons.save),
+        label: const Text('Enregistrer'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );
@@ -441,171 +320,7 @@ class BonCommandeFormPage extends StatelessWidget {
           (context) => ClientSelectionDialog(
             onClientSelected: (client) {
               controller.selectClient(client);
-              // Le dialog se ferme déjà automatiquement avec Navigator.of(context).pop()
-              // Pas besoin d'appeler Get.back() ici
             },
-          ),
-    );
-  }
-
-  void _showItemForm(
-    BuildContext context, {
-    BonCommandeItem? item,
-    int? index,
-  }) {
-    final formKey = GlobalKey<FormState>();
-    final designationController = TextEditingController(
-      text: item?.designation,
-    );
-    final uniteController = TextEditingController(text: item?.unite);
-    final quantiteController = TextEditingController(
-      text: item?.quantite.toString(),
-    );
-    final prixController = TextEditingController(
-      text: item?.prixUnitaire.toString(),
-    );
-    final descriptionController = TextEditingController(
-      text: item?.description,
-    );
-    final dateLivraisonController = TextEditingController(
-      text:
-          item?.dateLivraison != null
-              ? DateFormat('dd/MM/yyyy').format(item!.dateLivraison!)
-              : '',
-    );
-
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              item == null ? 'Ajouter un article' : 'Modifier l\'article',
-            ),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: designationController,
-                      decoration: const InputDecoration(
-                        labelText: 'Désignation',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'La désignation est requise';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: uniteController,
-                      decoration: const InputDecoration(labelText: 'Unité'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'L\'unité est requise';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: quantiteController,
-                      decoration: const InputDecoration(labelText: 'Quantité'),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'La quantité est requise';
-                        }
-                        if (int.tryParse(value) == null) {
-                          return 'La quantité doit être un nombre';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: prixController,
-                      decoration: const InputDecoration(
-                        labelText: 'Prix unitaire',
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Le prix unitaire est requis';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Le prix unitaire doit être un nombre';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: dateLivraisonController,
-                      decoration: const InputDecoration(
-                        labelText: 'Date de livraison',
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                      readOnly: true,
-                      onTap: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(
-                            const Duration(days: 365),
-                          ),
-                        );
-                        if (date != null) {
-                          dateLivraisonController.text = DateFormat(
-                            'dd/MM/yyyy',
-                          ).format(date);
-                        }
-                      },
-                    ),
-                    TextFormField(
-                      controller: descriptionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                      ),
-                      maxLines: 3,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Get.back(),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState!.validate()) {
-                    final newItem = BonCommandeItem(
-                      designation: designationController.text,
-                      unite: uniteController.text,
-                      quantite: int.parse(quantiteController.text),
-                      prixUnitaire: double.parse(prixController.text),
-                      description: descriptionController.text,
-                      dateLivraison:
-                          dateLivraisonController.text.isNotEmpty
-                              ? DateFormat(
-                                'dd/MM/yyyy',
-                              ).parse(dateLivraisonController.text)
-                              : null,
-                    );
-
-                    if (index != null) {
-                      controller.updateItem(index, newItem);
-                    } else {
-                      controller.addItem(newItem);
-                    }
-                    Get.back();
-                  }
-                },
-                child: Text(item == null ? 'Ajouter' : 'Modifier'),
-              ),
-            ],
           ),
     );
   }

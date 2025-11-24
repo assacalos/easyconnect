@@ -82,8 +82,7 @@ class DevisController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
-                'items.*.prix_unitaire' => 'required|numeric|min:0',
-                'items.*.remise' => 'nullable|numeric|min:0|max:100'
+                'items.*.prix_unitaire' => 'required|numeric|min:0'
             ]);
 
             DB::beginTransaction();
@@ -111,8 +110,7 @@ class DevisController extends Controller
                     'devis_id' => $devis->id,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
-                    'remise' => $item['remise'] ?? 0
+                    'prix_unitaire' => $item['prix_unitaire']
                 ]);
             }
 
@@ -181,8 +179,7 @@ class DevisController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
-                'items.*.prix_unitaire' => 'required|numeric|min:0',
-                'items.*.remise' => 'nullable|numeric|min:0|max:100'
+                'items.*.prix_unitaire' => 'required|numeric|min:0'
             ]);
 
             DB::beginTransaction();
@@ -204,8 +201,7 @@ class DevisController extends Controller
                     'devis_id' => $devis->id,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
-                    'remise' => $item['remise'] ?? 0
+                    'prix_unitaire' => $item['prix_unitaire']
                 ]);
             }
 
@@ -291,10 +287,6 @@ class DevisController extends Controller
     /**
      * Accepter un devis
      */
-    
-    /**
-     * Valider un devis (méthode pour les patrons)
-     */
     public function accept($id) {
         try {
             $devis = Devis::findOrFail($id);
@@ -303,24 +295,31 @@ class DevisController extends Controller
             if ($devis->status != 1) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seuls les devis envoyés peuvent être validés'
+                    'message' => 'Seuls les devis envoyés peuvent être acceptés'
                 ], 403);
             }
 
-            $devis->status = 2; // Validé par le patron
+            $devis->status = 2; // Accepté/Validé
             $devis->save();
             
             return response()->json([
                 'success' => true,
-                'message' => 'Devis validé avec succès par le patron',
+                'message' => 'Devis accepté avec succès',
                 'data' => $devis->load(['client', 'commercial', 'items'])
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la validation: ' . $e->getMessage()
+                'message' => 'Erreur lors de l\'acceptation: ' . $e->getMessage()
             ], 500);
         }
+    }
+    
+    /**
+     * Valider un devis (méthode pour les patrons) - alias de accept
+     */
+    public function validateDevis($id) {
+        return $this->accept($id);
     }
 
     /**
@@ -370,18 +369,14 @@ class DevisController extends Controller
             $devis = Devis::with('items')->findOrFail($id);
             
             $sous_total = 0;
-            $total_remise_items = 0;
 
             foreach ($devis->items as $item) {
                 $prix_item = $item->quantite * $item->prix_unitaire;
-                $remise_item = $prix_item * ($item->remise / 100);
                 $sous_total += $prix_item;
-                $total_remise_items += $remise_item;
             }
 
-            $sous_total_apres_remise_items = $sous_total - $total_remise_items;
-            $remise_globale = $sous_total_apres_remise_items * ($devis->remise_globale / 100);
-            $total_ht = $sous_total_apres_remise_items - $remise_globale;
+            $remise_globale = $sous_total * ($devis->remise_globale / 100);
+            $total_ht = $sous_total - $remise_globale;
             $tva = $total_ht * ($devis->tva / 100);
             $total_ttc = $total_ht + $tva;
 
@@ -389,8 +384,6 @@ class DevisController extends Controller
                 'success' => true,
                 'data' => [
                     'sous_total' => round($sous_total, 2),
-                    'total_remise_items' => round($total_remise_items, 2),
-                    'sous_total_apres_remise_items' => round($sous_total_apres_remise_items, 2),
                     'remise_globale' => round($remise_globale, 2),
                     'total_ht' => round($total_ht, 2),
                     'tva' => round($tva, 2),
@@ -439,8 +432,7 @@ class DevisController extends Controller
                     'devis_id' => $newDevis->id,
                     'designation' => $item->designation,
                     'quantite' => $item->quantite,
-                    'prix_unitaire' => $item->prix_unitaire,
-                    'remise' => $item->remise
+                    'prix_unitaire' => $item->prix_unitaire
                 ]);
             }
 

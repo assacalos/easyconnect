@@ -15,7 +15,6 @@ class BordereauItem extends Model
         'bordereau_id',
         'designation',
         'quantite',
-        'prix_unitaire',
         'description',
     ];
 

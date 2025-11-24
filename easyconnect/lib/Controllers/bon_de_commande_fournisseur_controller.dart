@@ -8,6 +8,7 @@ import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/utils/reference_generator.dart';
 
 class BonDeCommandeFournisseurController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -27,6 +28,9 @@ class BonDeCommandeFournisseurController extends GetxController
   final isLoadingSuppliers = false.obs;
   final currentBonDeCommande = Rxn<BonDeCommande>();
   final items = <BonDeCommandeItem>[].obs;
+
+  // Référence générée automatiquement
+  final generatedNumeroCommande = ''.obs;
 
   // Gestion des onglets
   late TabController tabController;
@@ -51,6 +55,34 @@ class BonDeCommandeFournisseurController extends GetxController
     loadBonDeCommandes();
     // Ne charger que les fournisseurs, pas les clients
     loadSuppliers();
+    // Générer automatiquement le numéro de commande au démarrage
+    initializeGeneratedNumeroCommande();
+  }
+
+  // Générer automatiquement le numéro de commande fournisseur
+  Future<String> generateNumeroCommande() async {
+    // Recharger les bons de commande pour avoir le comptage à jour
+    await loadBonDeCommandes();
+
+    // Extraire tous les numéros de commande existants
+    final existingNumbers =
+        bonDeCommandes
+            .map((bc) => bc.numeroCommande)
+            .where((num) => num.isNotEmpty)
+            .toList();
+
+    // Générer avec incrément
+    return ReferenceGenerator.generateReferenceWithIncrement(
+      'BCF',
+      existingNumbers,
+    );
+  }
+
+  // Initialiser le numéro de commande généré
+  Future<void> initializeGeneratedNumeroCommande() async {
+    if (generatedNumeroCommande.value.isEmpty) {
+      generatedNumeroCommande.value = await generateNumeroCommande();
+    }
   }
 
   @override
@@ -128,18 +160,7 @@ class BonDeCommandeFournisseurController extends GetxController
       // Charger tous les bons de commande (le filtrage se fera côté client)
       final loadedBonDeCommandes = await _service.getBonDeCommandes();
       bonDeCommandes.value = loadedBonDeCommandes;
-      print('✅ ${loadedBonDeCommandes.length} bons de commande chargés');
-
-      // Afficher les statuts trouvés pour debug
-      final statuses = loadedBonDeCommandes.map((bc) => bc.statut).toSet();
-      print('📋 Statuts trouvés: $statuses');
-
-      if (loadedBonDeCommandes.isEmpty) {
-        print('⚠️ Aucun bon de commande trouvé');
-      }
-    } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des bons de commande: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
       bonDeCommandes.value = [];
       Get.snackbar(
         'Erreur',
@@ -178,7 +199,7 @@ class BonDeCommandeFournisseurController extends GetxController
     }
   }
 
-  Future<void> createBonDeCommande(Map<String, dynamic> data) async {
+  Future<bool> createBonDeCommande(Map<String, dynamic> data) async {
     try {
       if (selectedSupplier.value == null) {
         throw Exception('Veuillez sélectionner un fournisseur');
@@ -214,12 +235,17 @@ class BonDeCommandeFournisseurController extends GetxController
 
       isLoading.value = true;
 
+      // Utiliser le numéro généré si disponible, sinon celui fourni
+      final numeroCommande =
+          generatedNumeroCommande.value.isNotEmpty
+              ? generatedNumeroCommande.value
+              : data['numero_commande'];
+
       final newBonDeCommande = BonDeCommande(
         clientId: null, // Pas de client pour un bon de commande fournisseur
         fournisseurId: selectedSupplier.value!.id!,
-        numeroCommande: data['numero_commande'],
+        numeroCommande: numeroCommande,
         dateCommande: data['date_commande'] ?? DateTime.now(),
-        dateLivraisonPrevue: data['date_livraison_prevue'],
         description: data['description'],
         statut: 'en_attente',
         commentaire: data['commentaire'],
@@ -236,9 +262,6 @@ class BonDeCommandeFournisseurController extends GetxController
       // Recharger la liste des bons de commande
       await loadBonDeCommandes();
 
-      // Fermer automatiquement le formulaire
-      Get.back();
-
       // Afficher le message de succès
       Get.snackbar(
         'Succès',
@@ -248,6 +271,7 @@ class BonDeCommandeFournisseurController extends GetxController
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
+      return true;
     } catch (e) {
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
@@ -262,12 +286,13 @@ class BonDeCommandeFournisseurController extends GetxController
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> updateBonDeCommande(
+  Future<bool> updateBonDeCommande(
     int bonDeCommandeId,
     Map<String, dynamic> data,
   ) async {
@@ -284,9 +309,6 @@ class BonDeCommandeFournisseurController extends GetxController
         numeroCommande:
             data['numero_commande'] ?? bonDeCommandeToUpdate.numeroCommande,
         dateCommande: bonDeCommandeToUpdate.dateCommande,
-        dateLivraisonPrevue:
-            data['date_livraison_prevue'] ??
-            bonDeCommandeToUpdate.dateLivraisonPrevue,
         description: data['description'] ?? bonDeCommandeToUpdate.description,
         statut: bonDeCommandeToUpdate.statut,
         commentaire: data['commentaire'] ?? bonDeCommandeToUpdate.commentaire,
@@ -299,19 +321,20 @@ class BonDeCommandeFournisseurController extends GetxController
       );
 
       await _service.updateBonDeCommande(bonDeCommandeId, updatedBonDeCommande);
-      Get.back();
       Get.snackbar(
         'Succès',
         'Bon de commande mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
       loadBonDeCommandes();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le bon de commande',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -437,6 +460,9 @@ class BonDeCommandeFournisseurController extends GetxController
     selectedClient.value = null;
     selectedSupplier.value = null;
     items.clear();
+    generatedNumeroCommande.value = '';
+    // Régénérer un nouveau numéro de commande
+    initializeGeneratedNumeroCommande();
   }
 
   Future<void> generatePDF(int bonDeCommandeId) async {

@@ -269,16 +269,12 @@ class SupplierController extends GetxController {
     String? validationComment,
   }) async {
     try {
-      print(
-        '🔵 [SUPPLIER_CONTROLLER] approveSupplier() appelé pour supplierId: ${supplier.id}',
-      );
       isLoading.value = true;
 
       final success = await _supplierService.approveSupplier(
         supplier.id!,
         validationComment: validationComment,
       );
-      print('🔵 [SUPPLIER_CONTROLLER] Résultat approveSupplier: $success');
 
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
@@ -297,9 +293,6 @@ class SupplierController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [SUPPLIER_CONTROLLER] Erreur approveSupplier: $e');
-      print('❌ [SUPPLIER_CONTROLLER] Stack trace: $stackTrace');
-
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
@@ -326,9 +319,6 @@ class SupplierController extends GetxController {
     String? rejectionComment,
   }) async {
     try {
-      print(
-        '🔵 [SUPPLIER_CONTROLLER] rejectSupplier() appelé pour supplierId: ${supplier.id}',
-      );
       isLoading.value = true;
 
       final success = await _supplierService.rejectSupplier(
@@ -336,7 +326,6 @@ class SupplierController extends GetxController {
         rejectionReason: rejectionReason,
         rejectionComment: rejectionComment,
       );
-      print('🔵 [SUPPLIER_CONTROLLER] Résultat rejectSupplier: $success');
 
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
@@ -355,9 +344,6 @@ class SupplierController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [SUPPLIER_CONTROLLER] Erreur rejectSupplier: $e');
-      print('❌ [SUPPLIER_CONTROLLER] Stack trace: $stackTrace');
-
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {

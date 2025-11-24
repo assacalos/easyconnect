@@ -121,38 +121,35 @@ class _EmployeeValidationPageState extends State<EmployeeValidationPage>
       List<Employee> filteredEmployees = controller.employees;
 
       // Filtrer selon l'onglet actif
-      // Note: Les employés n'ont pas de statut de validation explicite,
-      // on suppose que les employés avec status 'inactive' ou null sont en attente
+      // Statuts réels des employés : active, inactive, terminated, on_leave
+      // Pour la validation :
+      // - En attente : inactive, null (nouveaux employés non validés)
+      // - Validés : active
+      // - Rejetés : terminated
       switch (_tabController.index) {
         case 0: // Tous
           filteredEmployees = controller.employees;
           break;
-        case 1: // En attente - On considère les employés avec status 'inactive' ou null
+        case 1: // En attente - inactive ou null (nouveaux employés)
           filteredEmployees =
-              controller.employees
-                  .where(
-                    (employee) =>
-                        employee.status == null ||
-                        employee.status == 'inactive' ||
-                        employee.status == 'pending',
-                  )
-                  .toList();
+              controller.employees.where((employee) {
+                final status = employee.status?.toLowerCase().trim();
+                return status == null || status == 'inactive' || status == '';
+              }).toList();
           break;
-        case 2: // Validés - On considère les employés avec status 'active'
+        case 2: // Validés - active
           filteredEmployees =
-              controller.employees
-                  .where((employee) => employee.status == 'active')
-                  .toList();
+              controller.employees.where((employee) {
+                final status = employee.status?.toLowerCase().trim();
+                return status == 'active';
+              }).toList();
           break;
-        case 3: // Rejetés - On considère les employés avec status 'terminated' ou 'rejected'
+        case 3: // Rejetés - terminated
           filteredEmployees =
-              controller.employees
-                  .where(
-                    (employee) =>
-                        employee.status == 'terminated' ||
-                        employee.status == 'rejected',
-                  )
-                  .toList();
+              controller.employees.where((employee) {
+                final status = employee.status?.toLowerCase().trim();
+                return status == 'terminated';
+              }).toList();
           break;
         default:
           filteredEmployees = controller.employees;
@@ -314,14 +311,11 @@ class _EmployeeValidationPageState extends State<EmployeeValidationPage>
   }
 
   Widget _buildActionButtons(Employee employee, Color statusColor) {
-    // Vérifier si l'employé est en attente (inactive, null, ou pending)
-    final isPending =
-        employee.status == null ||
-        employee.status == 'inactive' ||
-        employee.status == 'pending';
-    final isValidated = employee.status == 'active';
-    final isRejected =
-        employee.status == 'terminated' || employee.status == 'rejected';
+    // Vérifier le statut réel de l'employé
+    final status = employee.status?.toLowerCase().trim();
+    final isPending = status == null || status == '' || status == 'inactive';
+    final isValidated = status == 'active';
+    final isRejected = status == 'terminated';
 
     if (isPending) {
       // En attente - Afficher boutons Valider/Rejeter
@@ -431,34 +425,38 @@ class _EmployeeValidationPageState extends State<EmployeeValidationPage>
   }
 
   Color _getStatusColor(String? status) {
-    switch (status?.toLowerCase()) {
+    final statusLower = status?.toLowerCase().trim();
+    switch (statusLower) {
       case 'active':
         return Colors.green;
       case 'inactive':
-      case 'pending':
         return Colors.orange;
       case 'terminated':
-      case 'rejected':
         return Colors.red;
       case 'on_leave':
         return Colors.blue;
+      case null:
+      case '':
+        return Colors.grey; // Statut non défini = en attente
       default:
         return Colors.grey;
     }
   }
 
   IconData _getStatusIcon(String? status) {
-    switch (status?.toLowerCase()) {
+    final statusLower = status?.toLowerCase().trim();
+    switch (statusLower) {
       case 'active':
         return Icons.check_circle;
       case 'inactive':
-      case 'pending':
         return Icons.pending;
       case 'terminated':
-      case 'rejected':
         return Icons.cancel;
       case 'on_leave':
         return Icons.event_busy;
+      case null:
+      case '':
+        return Icons.help; // Statut non défini = en attente
       default:
         return Icons.help;
     }

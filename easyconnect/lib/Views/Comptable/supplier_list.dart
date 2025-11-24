@@ -8,8 +8,6 @@ class SupplierList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('🏗️ SupplierList: build() appelé');
-
     final SupplierController controller = Get.find<SupplierController>();
     // Appliquer un statut initial si fourni via la navigation (ex: 'pending')
     final dynamic initialStatusArg = Get.arguments;
@@ -18,11 +16,6 @@ class SupplierList extends StatelessWidget {
         controller.filterByStatus(initialStatusArg);
       }
     }
-    print('✅ SupplierList: SupplierController trouvé');
-    print(
-      '📊 SupplierList: Nombre de fournisseurs: ${controller.suppliers.length}',
-    );
-    print('⏳ SupplierList: isLoading: ${controller.isLoading.value}');
 
     return Scaffold(
       appBar: AppBar(
@@ -107,16 +100,10 @@ class SupplierList extends StatelessWidget {
     SupplierController controller,
   ) {
     return Obx(() {
-      print('🔍 SupplierList: _buildFilterChip($label, $value) - Obx rebuild');
-      print(
-        '📊 SupplierList: selectedStatus = ${controller.selectedStatus.value}',
-      );
-
       return FilterChip(
         label: Text(label),
         selected: controller.selectedStatus.value == value,
         onSelected: (selected) {
-          print('🔘 SupplierList: FilterChip $label sélectionné: $selected');
           if (selected) {
             controller.filterByStatus(value);
           }
@@ -216,19 +203,11 @@ class SupplierList extends StatelessWidget {
 
   Widget _buildSupplierList(SupplierController controller) {
     return Obx(() {
-      print('🔄 SupplierList: _buildSupplierList() - Obx rebuild');
-      print('⏳ SupplierList: isLoading = ${controller.isLoading.value}');
-      print(
-        '📊 SupplierList: suppliers.length = ${controller.suppliers.length}',
-      );
-
       if (controller.isLoading.value) {
-        print('⏳ SupplierList: Affichage du loading...');
         return const Center(child: CircularProgressIndicator());
       }
 
       if (controller.suppliers.isEmpty) {
-        print('📭 SupplierList: Aucun fournisseur trouvé');
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -249,17 +228,11 @@ class SupplierList extends StatelessWidget {
         );
       }
 
-      print(
-        '📋 SupplierList: Affichage de la liste avec ${controller.suppliers.length} fournisseurs',
-      );
       return ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: controller.suppliers.length,
         itemBuilder: (context, index) {
           final supplier = controller.suppliers[index];
-          print(
-            '🏢 SupplierList: Affichage du fournisseur $index: ${supplier.nom}',
-          );
           return _buildSupplierCard(supplier, controller);
         },
       );

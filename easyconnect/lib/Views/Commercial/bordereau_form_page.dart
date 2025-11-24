@@ -25,9 +25,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   // Contrôleurs de formulaire
   late final TextEditingController referenceController;
   late final TextEditingController notesController;
-  late final TextEditingController remiseController;
-  late final TextEditingController tvaController;
-  late final TextEditingController conditionsController;
 
   final formKey = GlobalKey<FormState>();
   bool _isInitialized = false;
@@ -38,23 +35,28 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     // Toujours réinitialiser les contrôleurs pour avoir des champs vides
     referenceController = TextEditingController();
     notesController = TextEditingController();
-    remiseController = TextEditingController();
-    tvaController = TextEditingController(text: '20.0');
-    conditionsController = TextEditingController();
 
     // S'assurer que le formulaire du contrôleur est aussi réinitialisé
     if (!widget.isEditing) {
       controller.clearForm();
     }
+
+    // Écouter les changements de la référence générée pour mettre à jour le champ
+    ever(controller.generatedReference, (String ref) {
+      if (ref.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (referenceController.text != ref) {
+            referenceController.text = ref;
+          }
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     referenceController.dispose();
     notesController.dispose();
-    remiseController.dispose();
-    tvaController.dispose();
-    conditionsController.dispose();
     super.dispose();
   }
 
@@ -66,9 +68,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
         );
         referenceController.text = bordereau.reference;
         notesController.text = bordereau.notes ?? '';
-        remiseController.text = bordereau.remiseGlobale?.toString() ?? '';
-        tvaController.text = bordereau.tva?.toString() ?? '20.0';
-        conditionsController.text = bordereau.conditions ?? '';
         controller.items.value = bordereau.items;
         _isInitialized = true;
       } catch (e) {
@@ -140,11 +139,32 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${selectedClient.nom}',
-                                style: const TextStyle(fontSize: 16),
+                                selectedClient.nomEntreprise?.isNotEmpty == true
+                                    ? selectedClient.nomEntreprise!
+                                    : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                        .trim()
+                                        .isNotEmpty
+                                    ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                        .trim()
+                                    : 'Client #${selectedClient.id}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              Text(selectedClient.email ?? ''),
-                              Text(selectedClient.contact ?? ''),
+                              if (selectedClient.nomEntreprise?.isNotEmpty ==
+                                      true &&
+                                  '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                      .trim()
+                                      .isNotEmpty)
+                                Text(
+                                  'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                                      .trim(),
+                                ),
+                              if (selectedClient.email != null)
+                                Text(selectedClient.email ?? ''),
+                              if (selectedClient.contact != null)
+                                Text(selectedClient.contact ?? ''),
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: controller.clearSelectedClient,
@@ -278,19 +298,57 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: referenceController,
-                        decoration: const InputDecoration(
-                          labelText: 'Référence',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'La référence est requise';
+                      Obx(() {
+                        // Si un devis est sélectionné, générer automatiquement la référence
+                        if (controller.selectedDevis.value != null) {
+                          // Mettre à jour le contrôleur avec la référence générée
+                          final generatedRef =
+                              controller.generatedReference.value;
+                          if (generatedRef.isNotEmpty &&
+                              referenceController.text != generatedRef) {
+                            referenceController.text = generatedRef;
                           }
-                          return null;
-                        },
-                      ),
+                          return TextFormField(
+                            controller: referenceController,
+                            decoration: const InputDecoration(
+                              labelText: 'Référence (générée automatiquement)',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.grey,
+                              helperText: 'Référence générée automatiquement',
+                            ),
+                            readOnly: true,
+                            enabled: false,
+                            validator: (value) {
+                              // Utiliser la valeur générée si le champ est vide
+                              final refValue =
+                                  (value == null || value.isEmpty)
+                                      ? controller.generatedReference.value
+                                      : value;
+                              if (refValue.isEmpty) {
+                                return 'La référence est requise';
+                              }
+                              return null;
+                            },
+                          );
+                        }
+                        // Sinon, permettre la saisie manuelle
+                        return TextFormField(
+                          controller: referenceController,
+                          decoration: const InputDecoration(
+                            labelText: 'Référence',
+                            border: OutlineInputBorder(),
+                            helperText:
+                                'Saisissez une référence ou sélectionnez un devis',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'La référence est requise';
+                            }
+                            return null;
+                          },
+                        );
+                      }),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: notesController,
@@ -352,53 +410,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Totaux et conditions
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Totaux et conditions',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: remiseController,
-                        decoration: const InputDecoration(
-                          labelText: 'Remise globale (%)',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: tvaController,
-                        decoration: const InputDecoration(
-                          labelText: 'TVA (%)',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: conditionsController,
-                        decoration: const InputDecoration(
-                          labelText: 'Conditions',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
               _buildSaveButton(formKey),
             ],
           ),
@@ -411,7 +422,7 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
+        onPressed: () async {
           if (formKey.currentState!.validate()) {
             // Vérifier qu'un client validé est sélectionné
             if (controller.selectedClient.value == null) {
@@ -473,19 +484,41 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
               return;
             }
 
+            // Utiliser la référence générée si disponible, sinon celle du contrôleur
+            final reference =
+                controller.generatedReference.value.isNotEmpty
+                    ? controller.generatedReference.value
+                    : referenceController.text.trim();
+
+            if (reference.isEmpty) {
+              Get.snackbar(
+                'Erreur',
+                'La référence est requise',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+              );
+              return;
+            }
+
             final data = {
-              'reference': referenceController.text,
+              'reference': reference,
               'notes': notesController.text,
-              'remise_globale': double.tryParse(remiseController.text),
-              'tva': double.tryParse(tvaController.text),
-              'conditions': conditionsController.text,
             };
 
             if (widget.isEditing && widget.bordereauId != null) {
-              controller.updateBordereau(widget.bordereauId!, data);
+              final success = await controller.updateBordereau(
+                widget.bordereauId!,
+                data,
+              );
+              if (success) {
+                Get.back();
+              }
             } else {
-              // Pour la création, la page se fermera automatiquement après succès
-              controller.createBordereau(data);
+              final success = await controller.createBordereau(data);
+              if (success) {
+                Get.back();
+              }
             }
           }
         },
@@ -502,22 +535,10 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   }
 
   Widget _buildItemCard(BordereauItem item, int index) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
-
     return Card(
       child: ListTile(
         title: Text(item.designation),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${item.quantite} ${item.unite}'),
-            Text('Prix unitaire: ${formatCurrency.format(item.prixUnitaire)}'),
-            Text('Total: ${formatCurrency.format(item.montantTotal)}'),
-          ],
-        ),
+        subtitle: Text('${item.quantite} ${item.unite}'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -573,14 +594,27 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                           child: Icon(client.statusIcon, color: Colors.white),
                         ),
                         title: Text(
-                          '${client.nom ?? ''} ${client.prenom ?? ''}'.trim(),
+                          client.nomEntreprise?.isNotEmpty == true
+                              ? client.nomEntreprise!
+                              : '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                  .trim()
+                                  .isNotEmpty
+                              ? '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                  .trim()
+                              : 'Client #${client.id}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (client.nomEntreprise != null)
-                              Text('Entreprise: ${client.nomEntreprise}'),
+                            if (client.nomEntreprise?.isNotEmpty == true &&
+                                '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                    .trim()
+                                    .isNotEmpty)
+                              Text(
+                                'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
+                                    .trim(),
+                              ),
                             if (client.email != null)
                               Text('Email: ${client.email}'),
                             if (client.contact != null)
@@ -622,9 +656,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     final uniteController = TextEditingController(text: item?.unite);
     final quantiteController = TextEditingController(
       text: item?.quantite.toString(),
-    );
-    final prixController = TextEditingController(
-      text: item?.prixUnitaire.toString(),
     );
     final descriptionController = TextEditingController(
       text: item?.description,
@@ -680,22 +711,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                       },
                     ),
                     TextFormField(
-                      controller: prixController,
-                      decoration: const InputDecoration(
-                        labelText: 'Prix unitaire',
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Le prix unitaire est requis';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Le prix unitaire doit être un nombre';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
                       controller: descriptionController,
                       decoration: const InputDecoration(
                         labelText: 'Description',
@@ -718,7 +733,6 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                       designation: designationController.text,
                       unite: uniteController.text,
                       quantite: int.parse(quantiteController.text),
-                      prixUnitaire: double.parse(prixController.text),
                       description: descriptionController.text,
                     );
 
@@ -744,8 +758,8 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
           (context) => DevisSelectionDialog(
             devis: controller.availableDevis,
             isLoading: controller.isLoadingDevis.value,
-            onDevisSelected: (devis) {
-              controller.selectDevis(devis);
+            onDevisSelected: (devis) async {
+              await controller.selectDevis(devis);
               // Le dialog se ferme déjà automatiquement avec Get.back() dans DevisSelectionDialog
               // Pas besoin de fermer ici pour éviter de fermer la page principale
             },

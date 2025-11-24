@@ -112,8 +112,7 @@ class InterventionController extends GetxController {
     try {
       final pending = await _interventionService.getPendingInterventions();
       pendingInterventions.assignAll(pending);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Charger les statistiques
@@ -121,12 +120,11 @@ class InterventionController extends GetxController {
     try {
       final stats = await _interventionService.getInterventionStats();
       interventionStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Créer une intervention
-  Future<void> createIntervention() async {
+  Future<bool> createIntervention() async {
     try {
       isLoading.value = true;
 
@@ -189,6 +187,7 @@ class InterventionController extends GetxController {
       );
 
       clearForm();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -198,13 +197,14 @@ class InterventionController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
   // Mettre à jour une intervention
-  Future<void> updateIntervention(Intervention intervention) async {
+  Future<bool> updateIntervention(Intervention intervention) async {
     try {
       isLoading.value = true;
 
@@ -280,12 +280,14 @@ class InterventionController extends GetxController {
       );
 
       clearForm();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour l\'intervention',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -514,8 +516,7 @@ class InterventionController extends GetxController {
         final dashboardController = Get.find<TechnicienDashboardController>();
         dashboardController.refreshPendingEntities();
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Vider le formulaire
@@ -649,11 +650,14 @@ class InterventionController extends GetxController {
   void selectClientForIntervention(Client client) {
     selectedClient.value = client;
     // Remplir automatiquement les champs du formulaire
-    final displayName = '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
-    clientNameController.text =
-        displayName.isEmpty
-            ? (client.nomEntreprise ?? 'Client #${client.id}')
-            : displayName;
+    // Prioriser le nom de l'entreprise
+    final displayName =
+        client.nomEntreprise?.isNotEmpty == true
+            ? client.nomEntreprise!
+            : '${client.nom ?? ''} ${client.prenom ?? ''}'.trim().isNotEmpty
+            ? '${client.nom ?? ''} ${client.prenom ?? ''}'.trim()
+            : 'Client #${client.id}';
+    clientNameController.text = displayName;
     clientEmailController.text = client.email ?? '';
     clientPhoneController.text = client.contact ?? '';
     // Si le client a une adresse, on peut l'utiliser pour la localisation

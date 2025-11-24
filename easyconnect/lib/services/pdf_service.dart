@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -14,6 +12,31 @@ class PdfService {
   factory PdfService() => _instance;
   PdfService._internal();
 
+  // Cache pour les images
+  pw.MemoryImage? _logoImage;
+  pw.MemoryImage? _signatureImage;
+
+  // Charger les images depuis les assets
+  Future<void> _loadImages() async {
+    try {
+      // Charger le logo de l'entreprise (pour l'en-tête)
+      final logoBytes = await rootBundle.load(
+        'assets/images/logo_top_left.png',
+      );
+      _logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+
+      // Charger l'image de signature et coordonnées (pour le footer)
+      final signatureBytes = await rootBundle.load(
+        'assets/images/logo_bottom_right.jpg',
+      );
+      _signatureImage = pw.MemoryImage(signatureBytes.buffer.asUint8List());
+    } catch (e) {
+      // Si les images ne sont pas trouvées, on continue sans elles
+      print('Attention: Impossible de charger les images pour les PDF: $e');
+      print('Assurez-vous que les fichiers existent dans assets/images/');
+    }
+  }
+
   // Générer un PDF de devis
   Future<void> generateDevisPdf({
     required Map<String, dynamic> devis,
@@ -22,6 +45,7 @@ class PdfService {
     required Map<String, dynamic> commercial,
   }) async {
     try {
+      await _loadImages();
       final pdf = pw.Document();
 
       pdf.addPage(
@@ -60,6 +84,7 @@ class PdfService {
     required Map<String, dynamic> commercial,
   }) async {
     try {
+      await _loadImages();
       final pdf = pw.Document();
 
       pdf.addPage(
@@ -97,6 +122,7 @@ class PdfService {
     required Map<String, dynamic> fournisseur,
   }) async {
     try {
+      await _loadImages();
       final pdf = pw.Document();
 
       pdf.addPage(
@@ -140,6 +166,7 @@ class PdfService {
     required Map<String, dynamic> commercial,
   }) async {
     try {
+      await _loadImages();
       final pdf = pw.Document();
 
       pdf.addPage(
@@ -177,6 +204,7 @@ class PdfService {
     required Map<String, dynamic> client,
   }) async {
     try {
+      await _loadImages();
       final pdf = pw.Document();
 
       pdf.addPage(
@@ -219,15 +247,16 @@ class PdfService {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(
-                'EASYCONNECT',
-                style: pw.TextStyle(
-                  fontSize: 24,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue800,
+              // Logo de l'entreprise
+              if (_logoImage != null) ...[
+                pw.Image(
+                  _logoImage!,
+                  width: 80,
+                  height: 80,
+                  fit: pw.BoxFit.contain,
                 ),
-              ),
-              pw.SizedBox(height: 5),
+                pw.SizedBox(height: 10),
+              ],
               pw.Text(
                 documentType,
                 style: pw.TextStyle(
@@ -544,25 +573,44 @@ class PdfService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(15),
       decoration: pw.BoxDecoration(
-        color: PdfColors.blue50,
-        border: pw.Border.all(color: PdfColors.blue200),
+        color: PdfColors.white,
+        border: pw.Border.all(color: PdfColors.white),
       ),
-      child: pw.Column(
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
-          pw.Text(
-            'Merci pour votre confiance !',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blue800,
+          // Informations commerciales à gauche
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (commercial != null) ...[
+                  pw.Text(
+                    'Commercial: ${commercial['nom']} ${commercial['prenom']}',
+                  ),
+                  if (commercial['email'] != null)
+                    pw.Text('Email: ${commercial['email']}'),
+                ] else
+                  pw.Text(
+                    'Merci pour votre confiance !',
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.white,
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (commercial != null) ...[
-            pw.SizedBox(height: 10),
-            pw.Text('Commercial: ${commercial['nom']} ${commercial['prenom']}'),
-            if (commercial['email'] != null)
-              pw.Text('Email: ${commercial['email']}'),
-          ],
+          // Signature en bas à droite
+          if (_signatureImage != null)
+            pw.Image(
+              _signatureImage!,
+              width: 150,
+              height: 150,
+              fit: pw.BoxFit.contain,
+            ),
         ],
       ),
     );

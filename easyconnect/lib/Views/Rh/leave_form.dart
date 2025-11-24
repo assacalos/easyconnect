@@ -471,11 +471,13 @@ class LeaveForm extends StatelessWidget {
     }
 
     if (request == null) {
-      await controller.createLeaveRequest();
+      final success = await controller.createLeaveRequest();
+      if (success) {
+        Get.back(); // Retour automatique à la liste après succès
+      }
     } else {
       // TODO: Implémenter la mise à jour
       Get.snackbar('Info', 'Mise à jour à implémenter');
     }
-    Get.back(); // Retour automatique à la liste
   }
 }

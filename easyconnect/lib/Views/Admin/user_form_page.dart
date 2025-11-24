@@ -226,7 +226,7 @@ class UserFormPage extends StatelessWidget {
                               onPressed:
                                   controller.isCreating.value
                                       ? null
-                                      : () {
+                                      : () async {
                                         if (isEditing) {
                                           // TODO: Implémenter la mise à jour
                                           Get.snackbar(
@@ -235,7 +235,11 @@ class UserFormPage extends StatelessWidget {
                                             snackPosition: SnackPosition.BOTTOM,
                                           );
                                         } else {
-                                          controller.createUser();
+                                          final success =
+                                              await controller.createUser();
+                                          if (success) {
+                                            Get.back();
+                                          }
                                         }
                                       },
                               style: ElevatedButton.styleFrom(

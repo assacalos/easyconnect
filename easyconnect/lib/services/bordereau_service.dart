@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class BordereauService {
   final storage = GetStorage();
@@ -31,6 +32,9 @@ class BordereauService {
           'Authorization': 'Bearer $token',
         },
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -84,6 +88,9 @@ class BordereauService {
         },
         body: json.encode(bordereauJson),
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         try {
@@ -152,16 +159,22 @@ class BordereauService {
             'Accès refusé (403). Vous n\'avez pas les permissions pour créer un bordereau. Vérifiez vos droits d\'accès avec l\'administrateur.',
           );
         }
-      } else if (response.statusCode == 401) {
-        throw Exception(
-          'Non autorisé (401). Votre session a peut-être expiré. Veuillez vous reconnecter.',
-        );
+      }
+
+      // Si c'est une erreur 401, elle a déjà été gérée
+      if (response.statusCode == 401) {
+        throw Exception('Session expirée');
       } else {
         throw Exception(
           'Erreur lors de la création du bordereau: ${response.statusCode}',
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -227,7 +240,6 @@ class BordereauService {
       final token = storage.read('token');
       final url = '$baseUrl/bordereaux-validate/$bordereauId';
 
-      print('🔵 [BORDEREAU_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -236,15 +248,11 @@ class BordereauService {
         },
       );
 
-      print('🔵 [BORDEREAU_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [BORDEREAU_SERVICE] Réponse body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
           return true;
         } else {
-          print('❌ [BORDEREAU_SERVICE] success == false dans la réponse');
           return false;
         }
       } else if (response.statusCode == 500) {
@@ -254,15 +262,12 @@ class BordereauService {
             responseData['message'] ?? 'Erreur serveur lors de la validation';
         throw Exception('Erreur serveur: $message');
       } else {
-        print('❌ [BORDEREAU_SERVICE] Status code: ${response.statusCode}');
         final responseData = json.decode(response.body);
         final message =
             responseData['message'] ?? 'Erreur lors de la validation';
         throw Exception('Erreur ${response.statusCode}: $message');
       }
-    } catch (e, stackTrace) {
-      print('❌ [BORDEREAU_SERVICE] Exception approveBordereau: $e');
-      print('❌ [BORDEREAU_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }
@@ -299,15 +304,11 @@ class BordereauService {
         );
       }
 
-      print('🔵 [BORDEREAU_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [BORDEREAU_SERVICE] Réponse body: ${response.body}');
-
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['success'] == true) {
           return true;
         } else {
-          print('❌ [BORDEREAU_SERVICE] success == false dans la réponse');
           return false;
         }
       } else if (response.statusCode == 500) {
@@ -317,14 +318,11 @@ class BordereauService {
             responseData['message'] ?? 'Erreur serveur lors du rejet';
         throw Exception('Erreur serveur: $message');
       } else {
-        print('❌ [BORDEREAU_SERVICE] Status code: ${response.statusCode}');
         final responseData = json.decode(response.body);
         final message = responseData['message'] ?? 'Erreur lors du rejet';
         throw Exception('Erreur ${response.statusCode}: $message');
       }
-    } catch (e, stackTrace) {
-      print('❌ [BORDEREAU_SERVICE] Exception rejectBordereau: $e');
-      print('❌ [BORDEREAU_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }

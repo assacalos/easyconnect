@@ -6,6 +6,8 @@ import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/utils/reference_generator.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class DevisController extends GetxController {
   int userId = int.parse(
@@ -31,11 +33,16 @@ class DevisController extends GetxController {
 
   final clients = <Client>[].obs;
 
+  // Référence générée automatiquement
+  final generatedReference = ''.obs;
+
   @override
   void onInit() {
     super.onInit();
     loadDevis();
     // loadStats(); // Temporairement désactivé
+    // Générer automatiquement la référence au démarrage
+    initializeGeneratedReference();
   }
 
   Future<void> loadDevis({int? status}) async {
@@ -44,11 +51,17 @@ class DevisController extends GetxController {
       final loadedDevis = await _devisService.getDevis(status: status);
       devis.value = loadedDevis;
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les devis',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les devis',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -63,13 +76,21 @@ class DevisController extends GetxController {
       devisRefuses.value = stats['refuses'] ?? 0;
       tauxConversion.value = stats['taux_conversion'] ?? 0.0;
       montantTotal.value = stats['montant_total'] ?? 0.0;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
-  Future<void> createDevis(Map<String, dynamic> data) async {
+  Future<bool> createDevis(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
+
+      print('📝 [DEVIS] Début de la création du devis');
+      print('📝 [DEVIS] Données reçues: $data');
+      print('📝 [DEVIS] Client ID: ${selectedClient.value?.id}');
+      print('📝 [DEVIS] User ID: $userId');
+      print('📝 [DEVIS] Nombre d\'items: ${items.length}');
+      print(
+        '📝 [DEVIS] Items: ${items.map((i) => {'designation': i.designation, 'quantite': i.quantite, 'prixUnitaire': i.prixUnitaire, 'total': i.total}).toList()}',
+      );
 
       final newDevis = Devis(
         clientId: selectedClient.value!.id!,
@@ -85,30 +106,59 @@ class DevisController extends GetxController {
         commercialId: userId,
       );
 
+      print('📝 [DEVIS] Objet Devis créé:');
+      print('📝 [DEVIS] - clientId: ${newDevis.clientId}');
+      print('📝 [DEVIS] - reference: ${newDevis.reference}');
+      print('📝 [DEVIS] - dateCreation: ${newDevis.dateCreation}');
+      print('📝 [DEVIS] - dateValidite: ${newDevis.dateValidite}');
+      print('📝 [DEVIS] - notes: ${newDevis.notes}');
+      print('📝 [DEVIS] - status: ${newDevis.status}');
+      print('📝 [DEVIS] - remiseGlobale: ${newDevis.remiseGlobale}');
+      print('📝 [DEVIS] - tva: ${newDevis.tva}');
+      print('📝 [DEVIS] - conditions: ${newDevis.conditions}');
+      print('📝 [DEVIS] - commercialId: ${newDevis.commercialId}');
+      print('📝 [DEVIS] - items count: ${newDevis.items.length}');
+
+      print('📝 [DEVIS] JSON à envoyer: ${newDevis.toJson()}');
+
       final createdDevis = await _devisService.createDevis(newDevis);
-      await loadDevis();
 
-      // Effacer le formulaire
-      clearForm();
+      print('✅ [DEVIS] Devis créé avec succès: ${createdDevis.id}');
 
-      Get.back();
+      // Si la création réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Devis créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
-    } catch (e) {
+
+      // Effacer le formulaire
+      clearForm();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadDevis();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le devis a été créé avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
+    } catch (e, stackTrace) {
+      print('❌ [DEVIS] Erreur lors de la création: $e');
+      print('❌ [DEVIS] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
-        'Impossible de créer le devis',
+        'Impossible de créer le devis: $e',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> updateDevis(int devisId, Map<String, dynamic> data) async {
+  Future<bool> updateDevis(int devisId, Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
       final devisToUpdate = devis.firstWhere((d) => d.id == devisId);
@@ -128,19 +178,30 @@ class DevisController extends GetxController {
       );
 
       await _devisService.updateDevis(updatedDevis);
-      Get.back();
+
+      // Si la mise à jour réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Devis mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
-      loadDevis();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadDevis();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le devis a été mis à jour avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le devis',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -202,19 +263,33 @@ class DevisController extends GetxController {
       final success = await _devisService.acceptDevis(devisId);
       if (success) {
         await loadDevis();
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('devis');
+
         Get.snackbar(
           'Succès',
           'Devis accepté avec succès',
           snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
         );
       } else {
-        throw Exception('Erreur lors de l\'acceptation');
+        Get.snackbar(
+          'Erreur',
+          'Impossible d\'accepter le devis',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
       }
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible d\'accepter le devis',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
       );
     } finally {
       isLoading.value = false;
@@ -227,6 +302,10 @@ class DevisController extends GetxController {
       final success = await _devisService.rejectDevis(devisId, commentaire);
       if (success) {
         await loadDevis();
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('devis');
+
         Get.snackbar(
           'Succès',
           'Devis rejeté avec succès',
@@ -281,8 +360,7 @@ class DevisController extends GetxController {
       } else {
         clients.value = validatedClients;
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   void selectClient(Client client) {
@@ -293,10 +371,36 @@ class DevisController extends GetxController {
     selectedClient.value = null;
   }
 
+  /// Générer automatiquement la référence du devis
+  Future<String> generateReference() async {
+    // Recharger les devis pour avoir le comptage à jour
+    await loadDevis();
+
+    // Extraire toutes les références existantes
+    final existingReferences =
+        devis.map((d) => d.reference).where((ref) => ref.isNotEmpty).toList();
+
+    // Générer avec incrément
+    return ReferenceGenerator.generateReferenceWithIncrement(
+      'DEV',
+      existingReferences,
+    );
+  }
+
+  /// Initialiser la référence générée
+  Future<void> initializeGeneratedReference() async {
+    if (generatedReference.value.isEmpty) {
+      generatedReference.value = await generateReference();
+    }
+  }
+
   /// Effacer toutes les données du formulaire
   void clearForm() {
     selectedClient.value = null;
     items.clear();
+    generatedReference.value = '';
+    // Régénérer un nouveau numéro de référence
+    initializeGeneratedReference();
   }
 
   /// Générer un PDF pour un devis

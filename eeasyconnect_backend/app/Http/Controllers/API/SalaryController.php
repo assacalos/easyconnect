@@ -107,6 +107,7 @@ class SalaryController extends Controller
                     'status' => $statusFlutter, // Mappé pour Flutter
                     'status_libelle' => $salary->status_libelle,
                     'notes' => $salary->notes,
+                    'justificatif' => $salary->justificatif ?? [],
                     'created_by' => $salary->hr_id, // Compatibilité Flutter
                     'approved_by' => $salary->approved_by,
                     'approved_at' => $salary->approved_at?->format('Y-m-d H:i:s'),
@@ -217,6 +218,7 @@ class SalaryController extends Controller
                 'status' => $statusFlutter,
                 'status_libelle' => $salary->status_libelle,
                 'notes' => $salary->notes,
+                'justificatif' => $salary->justificatif ?? [],
                 'created_by' => $salary->hr_id,
                 'approved_by' => $salary->approved_by,
                 'approved_at' => $salary->approved_at?->format('Y-m-d H:i:s'),
@@ -279,6 +281,8 @@ class SalaryController extends Controller
                 'hr_id' => 'required|exists:users,id',
                 'base_salary' => 'required|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
+                'justificatif' => 'nullable|array',
+                'justificatif.*' => 'nullable|string', // Tableau de chemins de fichiers
                 'bonus' => 'nullable|numeric|min:0', // Compatibilité Flutter
                 'deductions' => 'nullable|numeric|min:0', // Compatibilité Flutter
                 'net_salary' => 'nullable|numeric|min:0', // Compatibilité Flutter (sera recalculé)
@@ -379,6 +383,7 @@ class SalaryController extends Controller
                 'net_salary' => $validated['net_salary'] ?? 0, // Accepter net_salary de Flutter (sera recalculé après)
                 'status' => 'draft',
                 'notes' => $validated['notes'] ?? null,
+                'justificatif' => $validated['justificatif'] ?? [],
             ]);
 
             DB::commit();
@@ -409,6 +414,7 @@ class SalaryController extends Controller
                 'year' => $year,
                 'status' => 'pending', // Mappé pour Flutter
                 'notes' => $salary->notes,
+                'justificatif' => $salary->justificatif ?? [],
                 'created_by' => $salary->hr_id,
                 'created_at' => $salary->created_at->format('Y-m-d H:i:s'),
                 'updated_at' => $salary->updated_at->format('Y-m-d H:i:s'),
@@ -469,7 +475,9 @@ class SalaryController extends Controller
             $validated = $request->validate([
                 'base_salary' => 'sometimes|numeric|min:0',
                 'salary_date' => 'sometimes|date',
-                'notes' => 'nullable|string|max:1000'
+                'notes' => 'nullable|string|max:1000',
+                'justificatif' => 'nullable|array',
+                'justificatif.*' => 'nullable|string', // Tableau de chemins de fichiers
             ]);
 
             $salary->update($validated);
@@ -882,6 +890,7 @@ class SalaryController extends Controller
                     'year' => $year,
                     'status' => $statusFlutter,
                     'notes' => $salary->notes,
+                    'justificatif' => $salary->justificatif ?? [],
                     'created_by' => $salary->hr_id,
                     'created_at' => $salary->created_at->format('Y-m-d H:i:s'),
                     'updated_at' => $salary->updated_at->format('Y-m-d H:i:s'),

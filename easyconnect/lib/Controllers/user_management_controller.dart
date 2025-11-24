@@ -69,12 +69,11 @@ class UserManagementController extends GetxController {
       totalUsers.value = stats['total'] ?? 0;
       activeUsers.value = stats['active'] ?? 0;
       newUsersThisMonth.value = stats['new_this_month'] ?? 0;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// Créer un nouvel utilisateur
-  Future<void> createUser() async {
+  Future<bool> createUser() async {
     try {
       isCreating.value = true;
 
@@ -90,7 +89,7 @@ class UserManagementController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       // Validation de l'email
@@ -102,7 +101,7 @@ class UserManagementController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       // Validation du mot de passe
@@ -114,7 +113,7 @@ class UserManagementController extends GetxController {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
-        return;
+        return false;
       }
 
       final newUser = UserModel(
@@ -143,8 +142,7 @@ class UserManagementController extends GetxController {
         colorText: Colors.white,
       );
 
-      // Retourner à la liste
-      Get.back();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -153,13 +151,14 @@ class UserManagementController extends GetxController {
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+      return false;
     } finally {
       isCreating.value = false;
     }
   }
 
   /// Mettre à jour un utilisateur
-  Future<void> updateUser(UserModel user) async {
+  Future<bool> updateUser(UserModel user) async {
     try {
       isLoading.value = true;
       await _userService.updateUser(user);
@@ -172,6 +171,7 @@ class UserManagementController extends GetxController {
         backgroundColor: Colors.green,
         colorText: Colors.white,
       );
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -180,6 +180,7 @@ class UserManagementController extends GetxController {
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }

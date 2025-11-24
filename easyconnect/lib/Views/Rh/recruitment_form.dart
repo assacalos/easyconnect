@@ -428,11 +428,13 @@ class RecruitmentForm extends StatelessWidget {
     }
 
     if (request == null) {
-      await controller.createRecruitmentRequest();
+      final success = await controller.createRecruitmentRequest();
+      if (success) {
+        Get.back(); // Retour automatique à la liste après succès
+      }
     } else {
       // TODO: Implémenter la mise à jour
       Get.snackbar('Info', 'Mise à jour à implémenter');
     }
-    Get.back(); // Retour automatique à la liste
   }
 }

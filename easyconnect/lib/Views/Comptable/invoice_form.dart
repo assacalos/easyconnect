@@ -114,18 +114,31 @@ class InvoiceForm extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                          .trim(),
+                      selectedClient.nomEntreprise?.isNotEmpty == true
+                          ? selectedClient.nomEntreprise!
+                          : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                              .trim()
+                              .isNotEmpty
+                          ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                              .trim()
+                          : 'Client #${selectedClient.id}',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (selectedClient.nomEntreprise != null) ...[
-                      Text('Entreprise: ${selectedClient.nomEntreprise}'),
+                    if (selectedClient.nomEntreprise?.isNotEmpty == true &&
+                        '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                            .trim()
+                            .isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
+                            .trim(),
+                      ),
                       const SizedBox(height: 4),
-                    ],
+                    ] else
+                      const SizedBox(height: 8),
                     if (selectedClient.email != null) ...[
                       Text('Email: ${selectedClient.email}'),
                       const SizedBox(height: 4),
@@ -466,7 +479,12 @@ class InvoiceForm extends StatelessWidget {
                   onPressed:
                       controller.isCreating.value
                           ? null
-                          : controller.createInvoice,
+                          : () async {
+                            final success = await controller.createInvoice();
+                            if (success) {
+                              Get.back();
+                            }
+                          },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     foregroundColor: Colors.white,

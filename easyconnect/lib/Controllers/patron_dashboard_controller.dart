@@ -375,9 +375,15 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadTotalRevenue() async {
     try {
       final factures = await _invoiceService.getAllInvoices();
-      // Calculer le total des factures payées
+      // Calculer le total des factures validées (chiffre d'affaires)
+      final statusLower = (String status) => status.toLowerCase().trim();
       totalRevenue.value = factures
-          .where((facture) => facture.status == 'paid')
+          .where((facture) {
+            final status = statusLower(facture.status);
+            return status == 'valide' ||
+                status == 'validated' ||
+                status == 'approved';
+          })
           .fold(0.0, (sum, facture) => sum + facture.totalAmount);
     } catch (e) {
       totalRevenue.value = 0.0;
@@ -473,7 +479,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<InvoiceService>()) {
-        print('⚠️ InvoiceService n\'est pas enregistré');
         pendingFactures.value = 0;
         return;
       }
@@ -490,15 +495,7 @@ class PatronDashboardController extends BaseDashboardController {
                   status == 'en attente';
             }, // draft, en_attente, pending ou en attente = en attente
           ).length;
-      print(
-        '📊 Factures en attente: ${pendingFactures.value} sur ${factures.length} factures totales',
-      );
-      // Debug: afficher les statuts uniques
-      final statusSet = factures.map((f) => f.status).toSet();
-      print('📋 Statuts de factures trouvés: $statusSet');
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des factures en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingFactures.value = 0;
     }
   }
@@ -507,7 +504,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<PaymentService>()) {
-        print('⚠️ PaymentService n\'est pas enregistré');
         pendingPaiements.value = 0;
         return;
       }
@@ -516,20 +512,7 @@ class PatronDashboardController extends BaseDashboardController {
       // Utiliser la propriété isPending du modèle qui gère tous les cas (pending, submitted, draft)
       pendingPaiements.value =
           paiements.where((paiement) => paiement.isPending).length;
-      print(
-        '💰 Paiements en attente: ${pendingPaiements.value} sur ${paiements.length} paiements totaux',
-      );
-      // Debug: afficher les statuts uniques
-      final statusSet = paiements.map((p) => p.status).toSet();
-      print('📋 Statuts de paiements trouvés: $statusSet');
-      // Debug: afficher les paiements en attente
-      final pendingList = paiements.where((p) => p.isPending).toList();
-      print(
-        '📝 Paiements en attente détaillés: ${pendingList.map((p) => '${p.paymentNumber}: ${p.status}').join(', ')}',
-      );
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des paiements en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingPaiements.value = 0;
     }
   }
@@ -595,7 +578,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<TaxService>()) {
-        print('⚠️ TaxService n\'est pas enregistré');
         pendingTaxes.value = 0;
         return;
       }
@@ -603,12 +585,7 @@ class PatronDashboardController extends BaseDashboardController {
       final taxes = await _taxService.getTaxes();
       // Utiliser la propriété isPending du modèle qui gère tous les cas
       pendingTaxes.value = taxes.where((tax) => tax.isPending).length;
-      print(
-        '💰 Taxes en attente: ${pendingTaxes.value} sur ${taxes.length} taxes totales',
-      );
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des taxes en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingTaxes.value = 0;
     }
   }
@@ -617,7 +594,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<RecruitmentService>()) {
-        print('⚠️ RecruitmentService n\'est pas enregistré');
         pendingRecruitments.value = 0;
         return;
       }
@@ -633,12 +609,7 @@ class PatronDashboardController extends BaseDashboardController {
                     recruitment.status.toLowerCase() == 'published',
               )
               .length;
-      print(
-        '👔 Recrutements en attente: ${pendingRecruitments.value} sur ${recruitments.length} recrutements totaux',
-      );
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des recrutements en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingRecruitments.value = 0;
     }
   }
@@ -657,7 +628,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<ContractService>()) {
-        print('⚠️ ContractService n\'est pas enregistré');
         pendingContracts.value = 0;
         return;
       }
@@ -671,12 +641,7 @@ class PatronDashboardController extends BaseDashboardController {
                     contract.status.toLowerCase() == 'draft',
               )
               .length;
-      print(
-        '📄 Contrats en attente: ${pendingContracts.value} sur ${contracts.length} contrats totaux',
-      );
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des contrats en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingContracts.value = 0;
     }
   }
@@ -685,7 +650,6 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Vérifier que le service est bien initialisé
       if (!Get.isRegistered<LeaveService>()) {
-        print('⚠️ LeaveService n\'est pas enregistré');
         pendingLeaves.value = 0;
         return;
       }
@@ -699,12 +663,7 @@ class PatronDashboardController extends BaseDashboardController {
                     leave.status.toLowerCase() == 'submitted',
               )
               .length;
-      print(
-        '🏖️ Congés en attente: ${pendingLeaves.value} sur ${leaves.length} congés totaux',
-      );
     } catch (e, stackTrace) {
-      print('❌ Erreur lors du chargement des congés en attente: $e');
-      print('Stack trace: $stackTrace');
       pendingLeaves.value = 0;
     }
   }
@@ -716,6 +675,100 @@ class PatronDashboardController extends BaseDashboardController {
           stocks.where((stock) => stock.status == 'pending').length;
     } catch (e) {
       pendingStocks.value = 0;
+    }
+  }
+
+  // Méthode publique pour rafraîchir uniquement les compteurs en attente
+  // À appeler après chaque validation/rejet d'une entité
+  Future<void> refreshPendingCounters() async {
+    try {
+      await _loadPendingValidations();
+    } catch (e) {
+      print(
+        '❌ [PATRON DASHBOARD] Erreur lors du rafraîchissement des compteurs: $e',
+      );
+    }
+  }
+
+  // Méthode pour rafraîchir un compteur spécifique
+  Future<void> refreshSpecificCounter(String entityType) async {
+    try {
+      switch (entityType.toLowerCase()) {
+        case 'client':
+        case 'clients':
+          await _loadPendingClients();
+          break;
+        case 'devis':
+          await _loadPendingDevis();
+          break;
+        case 'bordereau':
+        case 'bordereaux':
+          await _loadPendingBordereaux();
+          break;
+        case 'boncommande':
+        case 'bon_commandes':
+          await _loadPendingBonCommandes();
+          break;
+        case 'facture':
+        case 'factures':
+          await _loadPendingFactures();
+          break;
+        case 'paiement':
+        case 'paiements':
+          await _loadPendingPaiements();
+          break;
+        case 'depense':
+        case 'depenses':
+          await _loadPendingDepenses();
+          break;
+        case 'salaire':
+        case 'salaires':
+          await _loadPendingSalaires();
+          break;
+        case 'reporting':
+        case 'reports':
+          await _loadPendingReporting();
+          break;
+        case 'pointage':
+        case 'pointages':
+          await _loadPendingPointages();
+          break;
+        case 'intervention':
+        case 'interventions':
+          await _loadPendingInterventions();
+          break;
+        case 'taxe':
+        case 'taxes':
+          await _loadPendingTaxes();
+          break;
+        case 'recruitment':
+        case 'recruitments':
+          await _loadPendingRecruitments();
+          break;
+        case 'contract':
+        case 'contracts':
+          await _loadPendingContracts();
+          break;
+        case 'leave':
+        case 'leaves':
+          await _loadPendingLeaves();
+          break;
+        case 'supplier':
+        case 'suppliers':
+          await _loadPendingSuppliers();
+          break;
+        case 'stock':
+        case 'stocks':
+          await _loadPendingStocks();
+          break;
+        default:
+          // Si le type n'est pas reconnu, rafraîchir tous les compteurs
+          await _loadPendingValidations();
+      }
+    } catch (e) {
+      print(
+        '❌ [PATRON DASHBOARD] Erreur lors du rafraîchissement du compteur $entityType: $e',
+      );
     }
   }
 }

@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/services/user_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 class SalaryController extends GetxController {
   final SalaryService _salaryService = SalaryService();
@@ -39,6 +42,8 @@ class SalaryController extends GetxController {
   final RxString selectedMonthForm = ''.obs;
   final RxInt selectedYearForm = DateTime.now().year.obs;
   final RxDouble netSalary = 0.0.obs; // Salaire net calculé
+  final RxList<Map<String, dynamic>> selectedFiles =
+      <Map<String, dynamic>>[].obs; // Fichiers justificatifs
 
   @override
   void onInit() {
@@ -241,6 +246,8 @@ class SalaryController extends GetxController {
             notesController.text.trim().isEmpty
                 ? null
                 : notesController.text.trim(),
+        justificatifs:
+            selectedFiles.map((file) => file['path'] as String).toList(),
         // Ne pas inclure createdAt et updatedAt - le serveur les gère
       );
 
@@ -306,6 +313,10 @@ class SalaryController extends GetxController {
         approvedAt: salary.approvedAt,
         paidAt: salary.paidAt,
         rejectionReason: salary.rejectionReason,
+        justificatifs:
+            selectedFiles.isNotEmpty
+                ? selectedFiles.map((file) => file['path'] as String).toList()
+                : salary.justificatifs,
       );
 
       await _salaryService.updateSalary(updatedSalary);
@@ -352,7 +363,6 @@ class SalaryController extends GetxController {
                 ? null
                 : notesController.text.trim(),
       );
-      print('🔵 [SALARY_CONTROLLER] Résultat approveSalary: $success');
 
       if (success) {
         await loadSalaries();
@@ -371,9 +381,7 @@ class SalaryController extends GetxController {
           'Erreur lors de l\'approbation - La réponse du serveur indique un échec',
         );
       }
-    } catch (e, stackTrace) {
-      print('❌ [SALARY_CONTROLLER] Erreur approveSalary: $e');
-      print('❌ [SALARY_CONTROLLER] Stack trace: $stackTrace');
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le salaire: $e',
@@ -390,16 +398,12 @@ class SalaryController extends GetxController {
   // Rejeter un salaire
   Future<void> rejectSalary(Salary salary, String reason) async {
     try {
-      print(
-        '🔵 [SALARY_CONTROLLER] rejectSalary() appelé pour salaryId: ${salary.id}',
-      );
       isLoading.value = true;
 
       final success = await _salaryService.rejectSalary(
         salary.id!,
         reason: reason,
       );
-      print('🔵 [SALARY_CONTROLLER] Résultat rejectSalary: $success');
 
       if (success) {
         await loadSalaries();
@@ -418,9 +422,7 @@ class SalaryController extends GetxController {
           'Erreur lors du rejet - La réponse du serveur indique un échec',
         );
       }
-    } catch (e, stackTrace) {
-      print('❌ [SALARY_CONTROLLER] Erreur rejectSalary: $e');
-      print('❌ [SALARY_CONTROLLER] Stack trace: $stackTrace');
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le salaire: $e',
@@ -512,6 +514,19 @@ class SalaryController extends GetxController {
     selectedYearForm.value = salary.year ?? 0;
     notesController.text = salary.notes ?? '';
     selectedSalary.value = salary;
+    // Charger les justificatifs existants
+    selectedFiles.value =
+        salary.justificatifs
+            .map(
+              (path) => {
+                'name': path.split('/').last,
+                'path': path,
+                'size': 0,
+                'type': path.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+                'extension': path.split('.').last.toLowerCase(),
+              },
+            )
+            .toList();
   }
 
   // Mettre à jour le salaire net calculé
@@ -535,6 +550,141 @@ class SalaryController extends GetxController {
     selectedYearForm.value = DateTime.now().year;
     selectedSalary.value = null;
     netSalary.value = 0.0;
+    selectedFiles.clear();
+  }
+
+  // Sélectionner des fichiers justificatifs
+  Future<void> selectFiles() async {
+    try {
+      final String? selectionType = await Get.dialog<String>(
+        AlertDialog(
+          title: const Text('Sélectionner des justificatifs'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: const Text('Fichiers (PDF, Documents, etc.)'),
+                onTap: () => Get.back(result: 'file'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Image depuis la galerie'),
+                onTap: () => Get.back(result: 'gallery'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Prendre une photo / Scanner'),
+                onTap: () => Get.back(result: 'camera'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (selectionType == null) return;
+
+      if (selectionType == 'file') {
+        final FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: true,
+        );
+
+        if (result != null && result.files.isNotEmpty) {
+          for (var platformFile in result.files) {
+            if (platformFile.path != null) {
+              final file = File(platformFile.path!);
+              final fileSize = await file.length();
+
+              if (fileSize > 10 * 1024 * 1024) {
+                Get.snackbar(
+                  'Erreur',
+                  'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                continue;
+              }
+
+              String fileType = 'document';
+              final extension = platformFile.extension?.toLowerCase() ?? '';
+              if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+                fileType = 'image';
+              } else if (extension == 'pdf') {
+                fileType = 'pdf';
+              }
+
+              selectedFiles.add({
+                'name': platformFile.name,
+                'path': platformFile.path!,
+                'size': fileSize,
+                'type': fileType,
+                'extension': extension,
+              });
+            }
+          }
+
+          Get.snackbar(
+            'Succès',
+            '${result.files.length} fichier(s) sélectionné(s)',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      } else {
+        final ImagePicker picker = ImagePicker();
+        final ImageSource source =
+            selectionType == 'camera'
+                ? ImageSource.camera
+                : ImageSource.gallery;
+
+        final XFile? pickedFile = await picker.pickImage(
+          source: source,
+          imageQuality: 85,
+        );
+
+        if (pickedFile != null) {
+          final file = File(pickedFile.path);
+          final fileSize = await file.length();
+
+          if (fileSize > 10 * 1024 * 1024) {
+            Get.snackbar(
+              'Erreur',
+              'Le fichier est trop volumineux (max 10 MB)',
+              snackPosition: SnackPosition.BOTTOM,
+            );
+            return;
+          }
+
+          selectedFiles.add({
+            'name': pickedFile.name,
+            'path': pickedFile.path,
+            'size': fileSize,
+            'type': 'image',
+            'extension': 'jpg',
+          });
+
+          Get.snackbar(
+            'Succès',
+            'Fichier sélectionné',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la sélection du fichier: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // Supprimer un fichier de la liste
+  void removeFile(int index) {
+    if (index >= 0 && index < selectedFiles.length) {
+      selectedFiles.removeAt(index);
+    }
   }
 
   // Appliquer les filtres côté client
@@ -542,47 +692,32 @@ class SalaryController extends GetxController {
     List<Salary> filteredSalaries = List.from(allSalaries);
     // Filtrer par statut
     if (selectedStatus.value != 'all') {
-      final beforeCount = filteredSalaries.length;
       filteredSalaries =
           filteredSalaries.where((salary) {
-            final matches = salary.status == selectedStatus.value;
-            if (!matches) {}
-            return matches;
+            return salary.status == selectedStatus.value;
           }).toList();
-    } else {}
+    }
 
     // Filtrer par mois
     if (selectedMonth.value != 'all') {
-      final beforeCount = filteredSalaries.length;
       filteredSalaries =
           filteredSalaries.where((salary) {
-            final matches = salary.month == selectedMonth.value;
-            if (!matches) {}
-            return matches;
+            return salary.month == selectedMonth.value;
           }).toList();
-    } else {}
+    }
 
     // Filtrer par recherche
     if (searchQuery.value.isNotEmpty) {
       final query = searchQuery.value.toLowerCase();
-      final beforeCount = filteredSalaries.length;
       filteredSalaries =
           filteredSalaries.where((salary) {
-            final matches =
-                (salary.employeeName?.toLowerCase().contains(query) ?? false) ||
+            return (salary.employeeName?.toLowerCase().contains(query) ??
+                    false) ||
                 (salary.employeeEmail?.toLowerCase().contains(query) ?? false);
-            if (!matches) {}
-            return matches;
           }).toList();
-    } else {}
+    }
 
     salaries.assignAll(filteredSalaries);
-    // Debug final
-    if (salaries.isEmpty) {
-      if (allSalaries.isNotEmpty) {
-        for (final salary in allSalaries) {}
-      }
-    }
   }
 
   // Rechercher

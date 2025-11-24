@@ -55,7 +55,10 @@ class ClientDetailsPage extends StatelessWidget {
                       radius: 40,
                       backgroundColor: Colors.blue.shade100,
                       child: Text(
-                        client.nom?.substring(0, 1).toUpperCase() ?? '?',
+                        (client.nomEntreprise?.isNotEmpty == true
+                                ? client.nomEntreprise!.substring(0, 1)
+                                : client.nom?.substring(0, 1) ?? '?')
+                            .toUpperCase(),
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
@@ -65,20 +68,31 @@ class ClientDetailsPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      '${client.prenom} ${client.nom}',
+                      client.nomEntreprise?.isNotEmpty == true
+                          ? client.nomEntreprise!
+                          : '${client.prenom ?? ''} ${client.nom ?? ''}'
+                              .trim()
+                              .isNotEmpty
+                          ? '${client.prenom ?? ''} ${client.nom ?? ''}'.trim()
+                          : 'Client #${client.id}',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      client.nomEntreprise ?? '',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey.shade700,
+                    if (client.nomEntreprise?.isNotEmpty == true &&
+                        '${client.prenom ?? ''} ${client.nom ?? ''}'
+                            .trim()
+                            .isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${client.prenom ?? ''} ${client.nom ?? ''}'.trim(),
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey.shade700,
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(

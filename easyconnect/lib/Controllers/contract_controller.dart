@@ -246,7 +246,7 @@ class ContractController extends GetxController {
   }
 
   // Créer un contrat
-  Future<void> createContract() async {
+  Future<bool> createContract() async {
     try {
       // Validation des champs obligatoires
       final department =
@@ -256,13 +256,13 @@ class ContractController extends GetxController {
 
       if (selectedEmployeeId.value == 0) {
         Get.snackbar('Erreur', 'Veuillez sélectionner un employé');
-        return;
+        return false;
       }
 
       if (selectedContractTypeForm.value.isEmpty ||
           selectedContractTypeForm.value == 'all') {
         Get.snackbar('Erreur', 'Veuillez sélectionner un type de contrat');
-        return;
+        return false;
       }
 
       // Validation spéciale pour les contrats fixed_term : end_date est obligatoire
@@ -272,18 +272,18 @@ class ContractController extends GetxController {
             'Erreur',
             'La date de fin est obligatoire pour les contrats à durée déterminée (CDD)',
           );
-          return;
+          return false;
         }
       }
 
       if (department.isEmpty) {
         Get.snackbar('Erreur', 'Veuillez sélectionner un département');
-        return;
+        return false;
       }
 
       if (jobTitleController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Le poste est obligatoire');
-        return;
+        return false;
       }
 
       // Validation de longueur pour job_title et position (max 100 caractères)
@@ -293,7 +293,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Le poste ne doit pas dépasser 100 caractères (actuellement: ${jobTitleController.text.trim().length})',
         );
-        return;
+        return false;
       }
 
       // Validation de longueur pour department (max 100 caractères)
@@ -302,12 +302,12 @@ class ContractController extends GetxController {
           'Erreur',
           'Le département ne doit pas dépasser 100 caractères (actuellement: ${department.length})',
         );
-        return;
+        return false;
       }
 
       if (jobDescriptionController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'La description du poste est obligatoire');
-        return;
+        return false;
       }
 
       if (jobDescriptionController.text.trim().length < 50) {
@@ -315,12 +315,12 @@ class ContractController extends GetxController {
           'Erreur',
           'La description du poste doit contenir au moins 50 caractères (actuellement: ${jobDescriptionController.text.trim().length})',
         );
-        return;
+        return false;
       }
 
       if (grossSalaryController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Le salaire brut est obligatoire');
-        return;
+        return false;
       }
 
       if (selectedPaymentFrequency.value.isEmpty) {
@@ -328,17 +328,17 @@ class ContractController extends GetxController {
           'Erreur',
           'Veuillez sélectionner une fréquence de paiement',
         );
-        return;
+        return false;
       }
 
       if (startDateController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'La date de début est obligatoire');
-        return;
+        return false;
       }
 
       if (workLocationController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Le lieu de travail est obligatoire');
-        return;
+        return false;
       }
 
       // Validation de longueur pour work_location (max 255 caractères)
@@ -347,12 +347,12 @@ class ContractController extends GetxController {
           'Erreur',
           'Le lieu de travail ne doit pas dépasser 255 caractères (actuellement: ${workLocationController.text.trim().length})',
         );
-        return;
+        return false;
       }
 
       if (workScheduleController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'L\'horaire de travail est obligatoire');
-        return;
+        return false;
       }
 
       // Vérifier que work_schedule est une valeur valide
@@ -362,7 +362,7 @@ class ContractController extends GetxController {
           'Erreur',
           'L\'horaire de travail doit être : Temps plein, Temps partiel ou Flexible',
         );
-        return;
+        return false;
       }
 
       final grossSalary = double.tryParse(grossSalaryController.text);
@@ -373,7 +373,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Le montant du salaire doit être un nombre valide',
         );
-        return;
+        return false;
       }
 
       if (grossSalary < 0) {
@@ -381,7 +381,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Le salaire brut doit être supérieur ou égal à 0',
         );
-        return;
+        return false;
       }
 
       // Validation de weekly_hours (1-168)
@@ -391,7 +391,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Les heures hebdomadaires doivent être entre 1 et 168 (actuellement: $weeklyHoursInt)',
         );
-        return;
+        return false;
       }
 
       // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
@@ -421,7 +421,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Format de date de début invalide: ${startDateController.text}',
         );
-        return;
+        return false;
       }
 
       // Parser la date de fin si présente
@@ -451,14 +451,14 @@ class ContractController extends GetxController {
               'Erreur',
               'La date de fin doit être après la date de début',
             );
-            return;
+            return false;
           }
         } catch (e) {
           Get.snackbar(
             'Erreur',
             'Format de date de fin invalide: ${endDateController.text}',
           );
-          return;
+          return false;
         }
       }
 
@@ -499,12 +499,15 @@ class ContractController extends GetxController {
         clearForm();
         loadContracts();
         loadContractStats();
+        return true;
       } else {
         final errorMessage = result['message'] ?? 'Erreur lors de la création';
         Get.snackbar('Erreur', errorMessage);
+        return false;
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création du contrat: $e');
+      return false;
     }
   }
 
@@ -910,7 +913,7 @@ class ContractController extends GetxController {
   }
 
   // Mettre à jour un contrat
-  Future<void> updateContract(Contract contract) async {
+  Future<bool> updateContract(Contract contract) async {
     try {
       if (selectedEmployeeId.value == 0 ||
           selectedContractTypeForm.value.isEmpty ||
@@ -921,7 +924,7 @@ class ContractController extends GetxController {
           startDateController.text.trim().isEmpty ||
           workLocationController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
-        return;
+        return false;
       }
 
       final grossSalary = double.tryParse(grossSalaryController.text);
@@ -932,7 +935,7 @@ class ContractController extends GetxController {
           'Erreur',
           'Le montant du salaire doit être un nombre valide',
         );
-        return;
+        return false;
       }
 
       // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
@@ -969,14 +972,17 @@ class ContractController extends GetxController {
         clearForm();
         loadContracts();
         loadContractStats();
+        return true;
       } else {
         Get.snackbar(
           'Erreur',
           result['message'] ?? 'Erreur lors de la mise à jour',
         );
+        return false;
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la mise à jour du contrat: $e');
+      return false;
     }
   }
 }

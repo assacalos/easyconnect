@@ -97,8 +97,7 @@ class ReportingService extends GetxService {
           return [];
         }
 
-        if (reportsData.isNotEmpty) {
-        }
+        if (reportsData.isNotEmpty) {}
 
         final List<ReportingModel> reportsList =
             reportsData
@@ -147,12 +146,10 @@ class ReportingService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-
       final response = await http.get(
         Uri.parse(url),
         headers: ApiService.headers(),
       );
-
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -178,8 +175,7 @@ class ReportingService extends GetxService {
           return [];
         }
 
-        if (reportsData.isNotEmpty) {
-        }
+        if (reportsData.isNotEmpty) {}
 
         final List<ReportingModel> reportsList =
             reportsData
@@ -406,6 +402,30 @@ class ReportingService extends GetxService {
       } else {
         throw Exception(
           'Erreur lors du rejet du rapport: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Ajouter ou modifier la note du patron sur un rapport
+  Future<Map<String, dynamic>> addPatronNote(
+    int reportId, {
+    String? note,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/user-reportings-note/$reportId'),
+        headers: ApiService.headers(),
+        body: jsonEncode({'patron_note': note}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(
+          'Erreur lors de l\'ajout de la note: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {

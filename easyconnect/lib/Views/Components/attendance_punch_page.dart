@@ -88,19 +88,6 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
     }
   }
 
-  Future<void> _selectFromGallery() async {
-    try {
-      final image = await _cameraService.pickImageFromGallery();
-      if (image != null) {
-        setState(() {
-          _selectedImage = image;
-        });
-      }
-    } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de sélectionner l\'image: $e');
-    }
-  }
-
   Future<void> _submitPunch() async {
     if (_selectedImage == null) {
       Get.snackbar(
@@ -418,24 +405,13 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
                                 ),
                               ),
                             const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _takePicture,
-                                    icon: const Icon(Icons.camera_alt),
-                                    label: const Text('Prendre une photo'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _selectFromGallery,
-                                    icon: const Icon(Icons.photo_library),
-                                    label: const Text('Galerie'),
-                                  ),
-                                ),
-                              ],
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _takePicture,
+                                icon: const Icon(Icons.camera_alt),
+                                label: const Text('Prendre une photo'),
+                              ),
                             ),
                           ],
                         ),

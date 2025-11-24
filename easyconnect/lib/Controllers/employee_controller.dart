@@ -192,7 +192,6 @@ class EmployeeController extends GetxController {
   // Charger les employés
   Future<void> loadEmployees({bool loadAll = false}) async {
     try {
-      print('🔵 [EMPLOYEE_CONTROLLER] loadEmployees() appelé');
       isLoading.value = true;
 
       // Charger avec pagination pour éviter les réponses trop grandes
@@ -216,12 +215,8 @@ class EmployeeController extends GetxController {
         limit:
             100, // Limite de 100 employés par page pour éviter les réponses trop grandes
       );
-      print('✅ [EMPLOYEE_CONTROLLER] ${employeesList.length} employés chargés');
       employees.value = employeesList;
     } catch (e, stackTrace) {
-      print('❌ [EMPLOYEE_CONTROLLER] Erreur loadEmployees: $e');
-      print('❌ [EMPLOYEE_CONTROLLER] Stack trace: $stackTrace');
-
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
@@ -376,7 +371,7 @@ class EmployeeController extends GetxController {
   }
 
   // Créer un nouvel employé
-  Future<void> createEmployee() async {
+  Future<bool> createEmployee() async {
     try {
       isCreating.value = true;
 
@@ -448,15 +443,17 @@ class EmployeeController extends GetxController {
       clearForm();
       loadEmployees(loadAll: true);
       loadEmployeeStats();
+      return true;
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de l\'employé: $e');
+      return false;
     } finally {
       isCreating.value = false;
     }
   }
 
   // Mettre à jour un employé
-  Future<void> updateEmployee(Employee employee) async {
+  Future<bool> updateEmployee(Employee employee) async {
     try {
       isUpdating.value = true;
 
@@ -530,8 +527,10 @@ class EmployeeController extends GetxController {
       clearForm();
       loadEmployees(loadAll: true);
       loadEmployeeStats();
+      return true;
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la mise à jour de l\'employé: $e');
+      return false;
     } finally {
       isUpdating.value = false;
     }

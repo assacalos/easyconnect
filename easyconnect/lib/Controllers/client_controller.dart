@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class ClientController extends GetxController {
   final ClientService _clientService = ClientService();
@@ -17,16 +18,19 @@ class ClientController extends GetxController {
     try {
       isLoading.value = true;
       final loadedClients = await _clientService.getClients(status: status);
-      for (final client in loadedClients) {
-      }
-
       clients.assignAll(loadedClients);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les clients',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les clients',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -36,8 +40,16 @@ class ClientController extends GetxController {
     try {
       isLoading.value = true;
 
+      // Créer le client
       await _clientService.createClient(client);
-      await loadClients();
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadClients();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le client a été créé avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -49,45 +61,74 @@ class ClientController extends GetxController {
     }
   }
 
-  Future<void> createClientFromMap(Map<String, dynamic> data) async {
+  Future<bool> createClientFromMap(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
 
       // Transformer le Map en objet Client
       final client = Client.fromJson(data);
 
+      // Créer le client
       await _clientService.createClient(client);
-      await loadClients();
+
+      // Si la création réussit, afficher le message de succès
+      Get.snackbar(
+        'Succès',
+        'Client enregistré avec succès',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadClients();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le client a été créé avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de créer le client',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> updateClient(Map<String, dynamic> data) async {
+  Future<bool> updateClient(Map<String, dynamic> data) async {
     try {
       isLoading.value = true;
 
       final client = Client.fromJson(data); // ✅ conversion
       await _clientService.updateClient(client);
-      await loadClients();
 
+      // Si la mise à jour réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Client mis à jour avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
+
+      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
+      try {
+        await loadClients();
+      } catch (e) {
+        // Si le rechargement échoue, on ne fait rien car le client a été mis à jour avec succès
+        // L'utilisateur peut recharger manuellement si nécessaire
+      }
+
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le client',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -101,6 +142,10 @@ class ClientController extends GetxController {
         await loadClients(
           status: null,
         ); // ✅ recharge tous les clients pour mettre à jour le dashboard
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('client');
+
         Get.snackbar(
           'Succès',
           'Client validé avec succès',
@@ -130,6 +175,10 @@ class ClientController extends GetxController {
         await loadClients(
           status: null,
         ); // ✅ recharge tous les clients pour mettre à jour le dashboard
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('client');
+
         Get.snackbar(
           'Succès',
           'Client rejeté avec succès',
@@ -172,5 +221,11 @@ class ClientController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Réinitialiser le formulaire
+  void clearForm() {
+    // Cette méthode est vide car les contrôleurs sont dans le formulaire
+    // Mais elle peut être utilisée pour d'autres réinitialisations si nécessaire
   }
 }

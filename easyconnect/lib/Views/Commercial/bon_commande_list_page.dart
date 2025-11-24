@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:intl/intl.dart';
 
 class BonCommandeListPage extends StatelessWidget {
   final BonCommandeController controller = Get.find<BonCommandeController>();
@@ -140,12 +139,6 @@ class BonCommandeListPage extends StatelessWidget {
   }
 
   Widget _buildBonCommandeCard(BonCommande bonCommande) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
-    final formatDate = DateFormat('dd/MM/yyyy');
-
     Color statusColor;
     IconData statusIcon;
 
@@ -179,54 +172,23 @@ class BonCommandeListPage extends StatelessWidget {
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          bonCommande.reference,
+          'Bon de commande #${bonCommande.id ?? 'N/A'}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Date: ${formatDate.format(bonCommande.dateCreation)}'),
-            if (bonCommande.dateLivraisonPrevue != null)
-              Text(
-                'Livraison prévue: ${formatDate.format(bonCommande.dateLivraisonPrevue!)}',
-              ),
-            Text('Montant: ${formatCurrency.format(bonCommande.montantTTC)}'),
+            Text('Client ID: ${bonCommande.clientId}'),
             Text(
               'Status: ${bonCommande.statusText}',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
             ),
-            if (bonCommande.status == 3 &&
-                (bonCommande.commentaireRejet != null &&
-                    bonCommande.commentaireRejet!.isNotEmpty)) ...[
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'Raison du rejet: ${bonCommande.commentaireRejet}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            if (bonCommande.fichiers.isNotEmpty)
+              Text('Fichiers: ${bonCommande.fichiers.length}'),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: () => controller.generatePDF(bonCommande.id!),
-              tooltip: 'Générer PDF',
-            ),
-            _buildActionButton(bonCommande),
-          ],
-        ),
+        trailing: _buildActionButton(bonCommande),
         onTap: () => Get.toNamed('/bon-commandes/${bonCommande.id}'),
       ),
     );
@@ -270,7 +232,7 @@ class BonCommandeListPage extends StatelessWidget {
                   () => Get.toNamed('/bon-commandes/${bonCommande.id}/edit'),
               tooltip: 'Modifier',
             ),
-            if (bonCommande.status == 2 && !bonCommande.estLivre)
+            if (bonCommande.status == 2)
               IconButton(
                 icon: const Icon(Icons.local_shipping),
                 onPressed: () => _showDeliveryConfirmation(bonCommande),

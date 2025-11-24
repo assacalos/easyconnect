@@ -20,7 +20,7 @@ class UniformAddButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      bottom: 16,
+      bottom: 80,
       right: 16,
       child: FloatingActionButton.extended(
         onPressed: onPressed,

@@ -93,7 +93,7 @@ class _UserFormState extends State<UserForm> {
               SizedBox(height: 20),
               UniformFormButtons(
                 onCancel: () => Get.back(),
-                onSubmit: () {
+                onSubmit: () async {
                   if (_formKey.currentState!.validate()) {
                     final user = UserModel(
                       id: widget.user?.id ?? 0,
@@ -104,9 +104,18 @@ class _UserFormState extends State<UserForm> {
                       isActive: isActive,
                     );
                     if (widget.user == null) {
-                      controller.addUser(user, passwordController.text);
+                      final success = await controller.addUser(
+                        user,
+                        passwordController.text,
+                      );
+                      if (success) {
+                        Get.back();
+                      }
                     } else {
-                      controller.updateUser(user);
+                      final success = await controller.updateUser(user);
+                      if (success) {
+                        Get.back();
+                      }
                     }
                   }
                 },

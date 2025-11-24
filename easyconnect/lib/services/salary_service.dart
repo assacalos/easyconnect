@@ -173,6 +173,8 @@ class SalaryService {
         if (salary.deductions > 0) 'deductions': salary.deductions,
         if (salary.notes != null && salary.notes!.isNotEmpty)
           'notes': salary.notes,
+        if (salary.justificatifs.isNotEmpty)
+          'justificatifs': salary.justificatifs,
       };
       final response = await http.post(
         Uri.parse('$baseUrl/salaries-create'),
@@ -240,6 +242,8 @@ class SalaryService {
         if (salary.status != null) 'status': salary.status,
         if (salary.notes != null && salary.notes!.isNotEmpty)
           'notes': salary.notes,
+        if (salary.justificatifs.isNotEmpty)
+          'justificatifs': salary.justificatifs,
       };
       final response = await http.put(
         Uri.parse('$baseUrl/salaries-update/${salary.id}'),
@@ -271,7 +275,6 @@ class SalaryService {
       final token = storage.read('token');
       final url = '$baseUrl/salaries-validate/$salaryId';
 
-      print('🔵 [SALARY_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -281,9 +284,6 @@ class SalaryService {
         },
         body: json.encode({'notes': notes}),
       );
-
-      print('🔵 [SALARY_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [SALARY_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -307,9 +307,7 @@ class SalaryService {
         throw Exception('Erreur serveur: $message');
       }
       return false;
-    } catch (e, stackTrace) {
-      print('❌ [SALARY_SERVICE] Exception approveSalary: $e');
-      print('❌ [SALARY_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }
@@ -320,7 +318,6 @@ class SalaryService {
       final token = storage.read('token');
       final url = '$baseUrl/salaries-reject/$salaryId';
 
-      print('🔵 [SALARY_SERVICE] Appel POST $url');
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -330,9 +327,6 @@ class SalaryService {
         },
         body: json.encode({'reason': reason}),
       );
-
-      print('🔵 [SALARY_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [SALARY_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -356,9 +350,7 @@ class SalaryService {
         throw Exception('Erreur serveur: $message');
       }
       return false;
-    } catch (e, stackTrace) {
-      print('❌ [SALARY_SERVICE] Exception rejectSalary: $e');
-      print('❌ [SALARY_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }

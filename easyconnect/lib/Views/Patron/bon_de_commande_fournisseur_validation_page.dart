@@ -309,12 +309,6 @@ class _BonDeCommandeFournisseurValidationPageState
               'Date de commande',
               formatDate.format(bonDeCommande.dateCommande),
             ),
-            if (bonDeCommande.dateLivraisonPrevue != null)
-              _buildInfoRow(
-                Icons.local_shipping,
-                'Livraison prévue',
-                formatDate.format(bonDeCommande.dateLivraisonPrevue!),
-              ),
             _buildInfoRow(
               Icons.shopping_cart,
               'Nombre d\'articles',

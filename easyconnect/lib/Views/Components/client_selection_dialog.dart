@@ -71,10 +71,15 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
         final filteredClients =
             _clients.where((client) {
               final searchLower = query.toLowerCase();
-              final nomLower = client.nom?.toLowerCase() ?? '';
-              final emailLower = client.email?.toLowerCase() ?? '';
-              final contactLower = client.contact?.toLowerCase() ?? '';
-              return nomLower.contains(searchLower) ||
+              final nomEntrepriseLower =
+                  (client.nomEntreprise ?? '').toLowerCase();
+              final nomLower = (client.nom ?? '').toLowerCase();
+              final prenomLower = (client.prenom ?? '').toLowerCase();
+              final emailLower = (client.email ?? '').toLowerCase();
+              final contactLower = (client.contact ?? '').toLowerCase();
+              return nomEntrepriseLower.contains(searchLower) ||
+                  nomLower.contains(searchLower) ||
+                  prenomLower.contains(searchLower) ||
                   emailLower.contains(searchLower) ||
                   contactLower.contains(searchLower);
             }).toList();
@@ -184,12 +189,16 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
                   itemCount: _clients.length,
                   itemBuilder: (context, index) {
                     final client = _clients[index];
-                    final displayName =
-                        '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+                    // Prioriser nom entreprise
                     final nameToDisplay =
-                        displayName.isEmpty
-                            ? (client.nomEntreprise ?? 'Client #${client.id}')
-                            : displayName;
+                        client.nomEntreprise?.isNotEmpty == true
+                            ? client.nomEntreprise!
+                            : '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                .trim()
+                                .isNotEmpty
+                            ? '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                .trim()
+                            : 'Client #${client.id}';
 
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -206,10 +215,14 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (client.nomEntreprise != null &&
-                                displayName.isNotEmpty)
+                            // Afficher nom/prénom si nom entreprise est affiché en titre
+                            if (client.nomEntreprise?.isNotEmpty == true &&
+                                '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                    .trim()
+                                    .isNotEmpty)
                               Text(
-                                'Entreprise: ${client.nomEntreprise}',
+                                'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
+                                    .trim(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),

@@ -36,7 +36,6 @@ class BordereauController extends Controller
             'items' => 'required|array|min:1',
             'items.*.designation' => 'required|string',
             'items.*.quantite' => 'required|integer|min:1',
-            'items.*.prix_unitaire' => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -50,9 +49,6 @@ class BordereauController extends Controller
             'user_id' => $request->user_id,
             'date_creation' => $request->date_creation,
             'notes' => $request->notes,
-            'remise_globale' => $request->remise_globale,
-            'tva' => $request->tva ?? 20,
-            'conditions' => $request->conditions,
             'status' => 1, // soumis au patron
         ]);
 
@@ -61,7 +57,6 @@ class BordereauController extends Controller
                 'bordereau_id' => $bordereau->id,
                 'designation' => $item['designation'],
                 'quantite' => $item['quantite'],
-                'prix_unitaire' => $item['prix_unitaire'],
                 'description' => $item['description'] ?? null,
             ]);
         }
@@ -86,7 +81,7 @@ class BordereauController extends Controller
         }
 
         $bordereau->update($request->only([
-            'notes', 'remise_globale', 'tva', 'conditions', 'status', 'commentaire'
+            'notes', 'status', 'commentaire'
         ]));
 
         // Mise à jour des items si fournis
@@ -97,7 +92,6 @@ class BordereauController extends Controller
                     'bordereau_id' => $bordereau->id,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
                     'description' => $item['description'] ?? null,
                 ]);
             }

@@ -210,18 +210,12 @@ class SupplierService extends GetxService {
     String? validationComment,
   }) async {
     try {
-      print(
-        '🔵 [SUPPLIER_SERVICE] approveSupplier() appelé pour supplierId: $supplierId',
-      );
       final token = storage.read('token');
       final url = '$baseUrl/fournisseurs-validate/$supplierId';
       final body = {
         if (validationComment != null && validationComment.isNotEmpty)
           'validation_comment': validationComment,
       };
-
-      print('🔵 [SUPPLIER_SERVICE] Appel POST $url');
-      print('🔵 [SUPPLIER_SERVICE] Body: ${json.encode(body)}');
 
       final response = await http.post(
         Uri.parse(url),
@@ -232,9 +226,6 @@ class SupplierService extends GetxService {
         },
         body: json.encode(body),
       );
-
-      print('🔵 [SUPPLIER_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [SUPPLIER_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -259,8 +250,6 @@ class SupplierService extends GetxService {
       }
       return false;
     } catch (e, stackTrace) {
-      print('❌ [SUPPLIER_SERVICE] Exception approveSupplier: $e');
-      print('❌ [SUPPLIER_SERVICE] Stack trace: $stackTrace');
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }
@@ -272,9 +261,6 @@ class SupplierService extends GetxService {
     String? rejectionComment,
   }) async {
     try {
-      print(
-        '🔵 [SUPPLIER_SERVICE] rejectSupplier() appelé pour supplierId: $supplierId',
-      );
       final token = storage.read('token');
       final url = '$baseUrl/fournisseurs-reject/$supplierId';
       final body = {
@@ -282,9 +268,6 @@ class SupplierService extends GetxService {
         if (rejectionComment != null && rejectionComment.isNotEmpty)
           'rejection_comment': rejectionComment,
       };
-
-      print('🔵 [SUPPLIER_SERVICE] Appel POST $url');
-      print('🔵 [SUPPLIER_SERVICE] Body: ${json.encode(body)}');
 
       final response = await http.post(
         Uri.parse(url),
@@ -295,9 +278,6 @@ class SupplierService extends GetxService {
         },
         body: json.encode(body),
       );
-
-      print('🔵 [SUPPLIER_SERVICE] Réponse status: ${response.statusCode}');
-      print('🔵 [SUPPLIER_SERVICE] Réponse body: ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -322,8 +302,6 @@ class SupplierService extends GetxService {
       }
       return false;
     } catch (e, stackTrace) {
-      print('❌ [SUPPLIER_SERVICE] Exception rejectSupplier: $e');
-      print('❌ [SUPPLIER_SERVICE] Stack trace: $stackTrace');
       rethrow; // Propager l'exception au lieu de retourner false
     }
   }

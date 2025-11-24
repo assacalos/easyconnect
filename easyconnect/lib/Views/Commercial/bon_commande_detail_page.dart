@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 
@@ -15,8 +14,6 @@ class BonCommandeDetailPage extends StatelessWidget {
     final bon = controller.bonCommandes.firstWhereOrNull(
       (b) => b.id == bonCommandeId,
     );
-    final formatDate = DateFormat('dd/MM/yyyy');
-    final nf = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
 
     if (bon == null) {
       return Scaffold(
@@ -26,51 +23,41 @@ class BonCommandeDetailPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Bon ${bon.reference}')),
+      appBar: AppBar(title: Text('Bon de commande #${bon.id ?? 'N/A'}')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(bon, nf),
+            _header(bon),
             const SizedBox(height: 16),
             _card('Informations', [
+              _row(Icons.person, 'Client ID', bon.clientId.toString()),
               _row(
-                Icons.calendar_today,
-                'Date de création',
-                formatDate.format(bon.dateCreation),
+                Icons.person_outline,
+                'Commercial ID',
+                bon.commercialId.toString(),
               ),
-              if (bon.dateLivraisonPrevue != null)
-                _row(
-                  Icons.local_shipping,
-                  'Livraison prévue',
-                  formatDate.format(bon.dateLivraisonPrevue!),
-                ),
               _row(Icons.info, 'Statut', bon.statusText),
-              if (bon.adresseLivraison != null &&
-                  bon.adresseLivraison!.isNotEmpty)
-                _row(
-                  Icons.place,
-                  'Adresse de livraison',
-                  bon.adresseLivraison!,
-                ),
             ]),
-            const SizedBox(height: 16),
-            _card('Montants', [
-              _row(Icons.summarize, 'Montant HT', nf.format(bon.montantHT)),
-              _row(Icons.percent, 'TVA', nf.format(bon.montantTVA)),
-              _row(
-                Icons.calculate,
-                'Montant TTC',
-                nf.format(bon.montantTTC),
-                bold: true,
-              ),
-            ]),
-            if (bon.status == 3 &&
-                bon.commentaireRejet != null &&
-                bon.commentaireRejet!.isNotEmpty) ...[
+            if (bon.fichiers.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _rejection('Motif du rejet', bon.commentaireRejet!),
+              _card('Fichiers scannés', [
+                Text('Nombre de fichiers: ${bon.fichiers.length}'),
+                const SizedBox(height: 8),
+                ...bon.fichiers.map(
+                  (fichier) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.attach_file, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(fichier)),
+                      ],
+                    ),
+                  ),
+                ),
+              ]),
             ],
           ],
         ),
@@ -78,7 +65,7 @@ class BonCommandeDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _header(BonCommande b, NumberFormat nf) {
+  Widget _header(BonCommande b) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -94,7 +81,7 @@ class BonCommandeDetailPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    b.reference,
+                    'Bon de commande #${b.id ?? 'N/A'}',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -117,10 +104,6 @@ class BonCommandeDetailPage extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            Text(
-              nf.format(b.montantTTC),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
         ),
@@ -177,36 +160,4 @@ class BonCommandeDetailPage extends StatelessWidget {
       ),
     );
   }
-
-  Widget _rejection(String title, String reason) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.report, color: Colors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    reason,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
-

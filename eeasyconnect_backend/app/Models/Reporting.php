@@ -18,12 +18,12 @@ class Reporting extends Model
         'approved_at',
         'approved_by',
         'comments',
+        'patron_note',
         // Notes pour les métriques commerciales
         'notes_clients_prospectes',
         'notes_rdv_obtenus',
         'notes_devis_crees',
         'notes_devis_acceptes',
-        'notes_chiffre_affaires',
         'notes_nouveaux_clients',
         'notes_appels_effectues',
         'notes_emails_envoyes',
@@ -237,18 +237,12 @@ class Reporting extends Model
             ->whereBetween('created_at', [$startDate, $endDate])
             ->count();
 
-        $chiffreAffaires = Devis::where('user_id', $userId)
-            ->where('status', 2) // Accepté
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('montant_total');
-
         return [
             'clients_prospectes' => $clientsProspectes,
             'rdv_obtenus' => rand(5, 15), // À implémenter avec une vraie table RDV
             'rdv_list' => [], // À implémenter
             'devis_crees' => $devisCrees,
             'devis_acceptes' => $devisAcceptes,
-            'chiffre_affaires' => $chiffreAffaires,
             'nouveaux_clients' => $clientsProspectes,
             'appels_effectues' => rand(20, 50),
             'emails_envoyes' => rand(30, 80),
@@ -288,7 +282,6 @@ class Reporting extends Model
             'montant_encaissement' => $montantFacture * 0.8, // 80% encaissé
             'bordereaux_traites' => $bordereauxTraites,
             'bons_commande_traites' => $bonsCommandeTraites,
-            'chiffre_affaires' => $montantFacture,
             'clients_factures' => $facturesEmises,
             'relances_effectuees' => rand(5, 15),
             'encaissements' => $montantFacture * 0.8

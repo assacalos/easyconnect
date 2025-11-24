@@ -23,7 +23,6 @@ class EmployeeService extends GetxService {
     final effectiveLimit = limit ?? 50;
     final effectivePage = page ?? 1;
     try {
-      print('🔵 [EMPLOYEE_SERVICE] getEmployees() appelé');
       String url = '$baseUrl/employees';
       List<String> params = [];
 
@@ -46,7 +45,6 @@ class EmployeeService extends GetxService {
       // Construire l'URL avec les paramètres
       url += '?${params.join('&')}';
 
-      print('🔵 [EMPLOYEE_SERVICE] Appel GET $url');
       http.Response response;
       try {
         response = await http.get(
@@ -55,31 +53,15 @@ class EmployeeService extends GetxService {
         );
       } catch (e) {
         // Si la route /employees échoue, essayer /employees-list
-        print(
-          '⚠️ [EMPLOYEE_SERVICE] Route /employees échouée, essai /employees-list: $e',
-        );
         url = '$baseUrl/employees-list';
         if (params.isNotEmpty) {
           url += '?${params.join('&')}';
         }
-        print('🔵 [EMPLOYEE_SERVICE] Tentative avec route: $url');
         response = await http.get(
           Uri.parse(url),
           headers: ApiService.headers(),
         );
       }
-
-      print('🔵 [EMPLOYEE_SERVICE] Réponse status: ${response.statusCode}');
-      print(
-        '🔵 [EMPLOYEE_SERVICE] Réponse body length: ${response.body.length}',
-      );
-
-      // Afficher seulement un aperçu du body pour éviter de surcharger les logs
-      final bodyPreview =
-          response.body.length > 1000
-              ? '${response.body.substring(0, 1000)}... (tronqué)'
-              : response.body;
-      print('🔵 [EMPLOYEE_SERVICE] Réponse body (preview): $bodyPreview');
 
       if (response.statusCode == 200) {
         // Vérifier si le body est complet (se termine par } ou ])
@@ -88,10 +70,6 @@ class EmployeeService extends GetxService {
             bodyTrimmed.endsWith('}') || bodyTrimmed.endsWith(']');
 
         if (!isComplete) {
-          print('⚠️ [EMPLOYEE_SERVICE] Le body semble être tronqué');
-          print(
-            '⚠️ [EMPLOYEE_SERVICE] Derniers caractères: ${bodyTrimmed.substring(bodyTrimmed.length > 100 ? bodyTrimmed.length - 100 : 0)}',
-          );
           throw Exception(
             'La réponse du serveur est incomplète (JSON tronqué). Le backend a peut-être renvoyé trop de données.',
           );
@@ -100,15 +78,7 @@ class EmployeeService extends GetxService {
         Map<String, dynamic> data;
         try {
           data = jsonDecode(response.body) as Map<String, dynamic>;
-        } catch (e, stackTrace) {
-          print('❌ [EMPLOYEE_SERVICE] Erreur lors du parsing JSON: $e');
-          print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
-          // Afficher les derniers caractères pour debug
-          final lastChars =
-              response.body.length > 200
-                  ? response.body.substring(response.body.length - 200)
-                  : response.body;
-          print('❌ [EMPLOYEE_SERVICE] Derniers caractères du body: $lastChars');
+        } catch (e) {
           throw Exception(
             'Erreur lors du parsing JSON: $e. La réponse du serveur est peut-être mal formatée ou tronquée.',
           );
@@ -121,45 +91,29 @@ class EmployeeService extends GetxService {
           if (data['data'] is List) {
             // Format simple : {"success": true, "data": [...]}
             dataList = data['data'] as List;
-            print(
-              '🔵 [EMPLOYEE_SERVICE] Format simple - ${dataList.length} employés trouvés',
-            );
           } else if (data['data'] is Map && data['data']['data'] != null) {
             // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
             dataList = data['data']['data'] as List;
-            print(
-              '🔵 [EMPLOYEE_SERVICE] Format paginé - ${dataList.length} employés trouvés',
-            );
           } else {
-            print('⚠️ [EMPLOYEE_SERVICE] Format de données non reconnu');
             return [];
           }
 
           try {
             final employees =
                 dataList.map((json) => Employee.fromJson(json)).toList();
-            print(
-              '✅ [EMPLOYEE_SERVICE] ${employees.length} employés parsés avec succès',
-            );
             return employees;
-          } catch (e, stackTrace) {
-            print('❌ [EMPLOYEE_SERVICE] Erreur lors du parsing: $e');
-            print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
+          } catch (e) {
             rethrow;
           }
         } else {
-          print('⚠️ [EMPLOYEE_SERVICE] Pas de champ "data" dans la réponse');
           return [];
         }
       } else {
-        print('❌ [EMPLOYEE_SERVICE] Erreur HTTP ${response.statusCode}');
         throw Exception(
           'Erreur lors de la récupération des employés: ${response.statusCode} - ${response.body}',
         );
       }
-    } catch (e, stackTrace) {
-      print('❌ [EMPLOYEE_SERVICE] Exception getEmployees: $e');
-      print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       rethrow;
     }
   }

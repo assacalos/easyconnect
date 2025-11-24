@@ -136,18 +136,19 @@ class _ClientValidationPageState extends State<ClientValidationPage>
     final filteredClients =
         _searchQuery.isEmpty
             ? controller.clients
-            : controller.clients
-                .where(
-                  (client) =>
-                      '${client.nom ?? ''} ${client.prenom ?? ''}'
-                          .toLowerCase()
-                          .contains(_searchQuery.toLowerCase()) ||
-                      (client.email ?? '').toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      (client.contact ?? '').contains(_searchQuery),
-                )
-                .toList();
+            : controller.clients.where((client) {
+              final queryLower = _searchQuery.toLowerCase();
+              final nomEntreprise = (client.nomEntreprise ?? '').toLowerCase();
+              final nom = (client.nom ?? '').toLowerCase();
+              final prenom = (client.prenom ?? '').toLowerCase();
+              final email = (client.email ?? '').toLowerCase();
+              final contact = (client.contact ?? '').toLowerCase();
+              return nomEntreprise.contains(queryLower) ||
+                  nom.contains(queryLower) ||
+                  prenom.contains(queryLower) ||
+                  email.contains(queryLower) ||
+                  contact.contains(queryLower);
+            }).toList();
 
     if (filteredClients.isEmpty) {
       return Center(
@@ -203,7 +204,11 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          '${client.nom ?? ''} ${client.prenom ?? ''}'.trim(),
+          client.nomEntreprise?.isNotEmpty == true
+              ? client.nomEntreprise!
+              : '${client.nom ?? ''} ${client.prenom ?? ''}'.trim().isNotEmpty
+              ? '${client.nom ?? ''} ${client.prenom ?? ''}'.trim()
+              : 'Client #${client.id}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
@@ -254,14 +259,15 @@ class _ClientValidationPageState extends State<ClientValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Nom: ${client.nom ?? ''}'),
-                      Text('Prénom: ${client.prenom ?? ''}'),
+                      Text('Nom entreprise: ${client.nomEntreprise ?? 'N/A'}'),
+                      if (client.nom != null || client.prenom != null) ...[
+                        Text('Nom: ${client.nom ?? ''}'),
+                        Text('Prénom: ${client.prenom ?? ''}'),
+                      ],
                       Text('Email: ${client.email ?? ''}'),
                       Text('Téléphone: ${client.contact ?? ''}'),
                       if (client.adresse != null)
                         Text('Adresse: ${client.adresse}'),
-                      if (client.nomEntreprise != null)
-                        Text('Entreprise: ${client.nomEntreprise}'),
                       Text('Statut: $statusText'),
                     ],
                   ),

@@ -84,14 +84,9 @@ abstract class BaseDashboard<T extends BaseDashboardController>
   List<Widget> buildAppBarActions() {
     return [
       IconButton(
-        icon: const Icon(Icons.notifications, color: Colors.white),
-        onPressed: () {
-          // Afficher les notifications
-        },
-      ),
-      IconButton(
         icon: const Icon(Icons.refresh, color: Colors.white),
         onPressed: () => controller.loadInitialData(),
+        tooltip: 'Actualiser',
       ),
     ];
   }
@@ -120,6 +115,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
             break;
           case 1:
             // Rechercher
+            Get.toNamed('/search');
             break;
           case 2:
             // Notifications
@@ -129,6 +125,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
             break;
           case 4:
             // Profil
+            Get.toNamed('/profile');
             break;
         }
       },

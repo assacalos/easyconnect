@@ -48,34 +48,20 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Future<void> _loadPayments() async {
-    print(
-      '🔵 [PAIEMENT_VALIDATION] _loadPayments() appelé - Onglet: ${_tabController.index}',
-    );
-
     String? status;
     switch (_tabController.index) {
       case 0: // Tous
         status = null;
-        print('🔵 [PAIEMENT_VALIDATION] Onglet "Tous" sélectionné');
         break;
       case 1: // En attente - inclure tous les statuts en attente
         // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
         status = null;
-        print(
-          '🔵 [PAIEMENT_VALIDATION] Onglet "En attente" sélectionné - Chargement de tous les paiements',
-        );
         break;
       case 2: // Validés
         status = 'approved';
-        print(
-          '🔵 [PAIEMENT_VALIDATION] Onglet "Validés" sélectionné - Filtre: $status',
-        );
         break;
       case 3: // Rejetés
         status = 'rejected';
-        print(
-          '🔵 [PAIEMENT_VALIDATION] Onglet "Rejetés" sélectionné - Filtre: $status',
-        );
         break;
     }
 
@@ -84,13 +70,7 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
     } else {
       controller.selectedStatus.value = 'all';
     }
-    print(
-      '🔵 [PAIEMENT_VALIDATION] selectedStatus défini à: ${controller.selectedStatus.value}',
-    );
     await controller.loadPayments();
-    print(
-      '🔵 [PAIEMENT_VALIDATION] Après loadPayments - Nombre de paiements: ${controller.payments.length}',
-    );
   }
 
   @override
@@ -167,78 +147,27 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   Widget _buildPaymentList() {
     // Utiliser Obx pour rendre réactif l'accès à controller.payments
     return Obx(() {
-      print(
-        '🟢 [PAIEMENT_VALIDATION] _buildPaymentList() - Onglet: ${_tabController.index}',
-      );
-      print(
-        '🟢 [PAIEMENT_VALIDATION] Nombre total de paiements dans controller: ${controller.payments.length}',
-      );
-      print(
-        '🟢 [PAIEMENT_VALIDATION] isLoading: ${controller.isLoading.value}',
-      );
-
-      // Afficher tous les statuts pour debug
-      if (controller.payments.isNotEmpty) {
-        final allStatuses = controller.payments.map((p) => p.status).toSet();
-        print('🟢 [PAIEMENT_VALIDATION] Statuts trouvés: $allStatuses');
-
-        // Afficher les détails de chaque paiement
-        for (var payment in controller.payments) {
-          print(
-            '🟢 [PAIEMENT_VALIDATION] Paiement: ${payment.paymentNumber} - Status: ${payment.status} - isPending: ${payment.isPending} - isApproved: ${payment.isApproved} - isRejected: ${payment.isRejected}',
-          );
-        }
-      } else {
-        print(
-          '🟢 [PAIEMENT_VALIDATION] ⚠️ Aucun paiement dans controller.payments',
-        );
-      }
-
       // Filtrer selon l'onglet actif et la recherche
       List<PaymentModel> filteredPayments = controller.payments;
-      print(
-        '🟢 [PAIEMENT_VALIDATION] Avant filtrage: ${filteredPayments.length} paiements',
-      );
 
       // Filtrer par statut selon l'onglet actif
       if (_tabController.index == 1) {
         // Onglet "En attente" - inclure tous les statuts en attente (pending, submitted, draft)
-        final beforeCount = filteredPayments.length;
         filteredPayments =
-            filteredPayments.where((payment) {
-              final isPending = payment.isPending;
-              if (isPending) {
-                print(
-                  '🟢 [PAIEMENT_VALIDATION] ✅ Paiement en attente trouvé: ${payment.paymentNumber} - Status: ${payment.status}',
-                );
-              }
-              return isPending;
-            }).toList();
-        print(
-          '🟢 [PAIEMENT_VALIDATION] Après filtrage "En attente": ${filteredPayments.length} sur $beforeCount',
-        );
+            filteredPayments.where((payment) => payment.isPending).toList();
       } else if (_tabController.index == 2) {
         // Onglet "Validés"
-        final beforeCount = filteredPayments.length;
         filteredPayments =
             filteredPayments.where((payment) => payment.isApproved).toList();
-        print(
-          '🟢 [PAIEMENT_VALIDATION] Après filtrage "Validés": ${filteredPayments.length} sur $beforeCount',
-        );
       } else if (_tabController.index == 3) {
         // Onglet "Rejetés"
-        final beforeCount = filteredPayments.length;
         filteredPayments =
             filteredPayments.where((payment) => payment.isRejected).toList();
-        print(
-          '🟢 [PAIEMENT_VALIDATION] Après filtrage "Rejetés": ${filteredPayments.length} sur $beforeCount',
-        );
       }
       // Onglet 0 (Tous) - pas de filtre supplémentaire
 
       // Appliquer la recherche
       if (_searchQuery.isNotEmpty) {
-        final beforeCount = filteredPayments.length;
         filteredPayments =
             filteredPayments
                 .where(
@@ -251,14 +180,7 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
                       ),
                 )
                 .toList();
-        print(
-          '🟢 [PAIEMENT_VALIDATION] Après filtrage recherche: ${filteredPayments.length} sur $beforeCount',
-        );
       }
-
-      print(
-        '🟢 [PAIEMENT_VALIDATION] ✅ Paiements finaux à afficher: ${filteredPayments.length}',
-      );
 
       if (filteredPayments.isEmpty) {
         return Center(

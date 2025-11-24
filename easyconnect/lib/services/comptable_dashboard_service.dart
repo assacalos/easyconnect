@@ -33,8 +33,7 @@ class ComptableDashboardService {
                     .length; // 'draft' = en attente
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les paiements en attente
       try {
@@ -58,8 +57,7 @@ class ComptableDashboardService {
                     .length; // 'pending' ou 'submitted' = en attente
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les dépenses en attente
       try {
@@ -79,8 +77,7 @@ class ComptableDashboardService {
                     .length; // 'pending' = en attente
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les salaires en attente
       try {
@@ -100,8 +97,7 @@ class ComptableDashboardService {
                     .length; // 'pending' = en attente
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       return {
         'factures': pendingFactures,
@@ -145,8 +141,7 @@ class ComptableDashboardService {
                     .length; // 'sent' ou 'paid' = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les paiements validés
       try {
@@ -170,8 +165,7 @@ class ComptableDashboardService {
                     .length; // 'approved' ou 'paid' = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les dépenses validées
       try {
@@ -191,8 +185,7 @@ class ComptableDashboardService {
                     .length; // 'approved' = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les salaires validés
       try {
@@ -216,8 +209,7 @@ class ComptableDashboardService {
                     .length; // 'approved' ou 'paid' = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       return {
         'factures': validatedFactures,
@@ -239,7 +231,7 @@ class ComptableDashboardService {
       double totalExpenses = 0.0;
       double totalSalaries = 0.0;
 
-      // Calculer le chiffre d'affaires total à partir des factures payées
+      // Calculer le chiffre d'affaires total à partir des factures validées
       try {
         final facturesResponse = await http.get(
           Uri.parse('$baseUrl/factures-list'),
@@ -252,8 +244,12 @@ class ComptableDashboardService {
           final facturesData = json.decode(facturesResponse.body);
           if (facturesData is List) {
             for (var facture in facturesData) {
-              if (facture['status'] == 'paid') {
-                // Status payé
+              final status =
+                  facture['status']?.toString().toLowerCase().trim() ?? '';
+              if (status == 'valide' ||
+                  status == 'validated' ||
+                  status == 'approved') {
+                // Status validé
                 totalRevenue +=
                     double.tryParse(
                       facture['total_amount']?.toString() ?? '0',
@@ -263,8 +259,7 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Calculer le total des paiements
       try {
@@ -288,8 +283,7 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Calculer le total des dépenses
       try {
@@ -312,8 +306,7 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Calculer le total des salaires
       try {
@@ -337,8 +330,7 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       double netProfit = totalRevenue - totalExpenses - totalSalaries;
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/responsive_widgets.dart';
+import 'package:easyconnect/utils/responsive_helper.dart';
 import 'package:intl/intl.dart';
 
 class DevisListPage extends StatelessWidget {
@@ -36,9 +38,9 @@ class DevisListPage extends StatelessWidget {
           children: [
             TabBarView(
               children: [
-                _buildDevisList(1), // En attente
-                _buildDevisList(2), // Validés
-                _buildDevisList(3), // Rejetés
+                _buildDevisList(context, 1), // En attente
+                _buildDevisList(context, 2), // Validés
+                _buildDevisList(context, 3), // Rejetés
               ],
             ),
             // Bouton d'ajout uniforme en bas à droite
@@ -53,7 +55,7 @@ class DevisListPage extends StatelessWidget {
     );
   }
 
-  Widget _buildDevisList(int status) {
+  Widget _buildDevisList(BuildContext context, int status) {
     final DevisController controller = Get.find<DevisController>();
     return Obx(() {
       if (controller.isLoading.value) {
@@ -91,151 +93,249 @@ class DevisListPage extends StatelessWidget {
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: devisList.length,
-        itemBuilder: (context, index) {
-          final devis = devisList[index];
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                ListTile(
-                  title: Row(
-                    children: [
-                      Text(
-                        devis.reference,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: devis.statusColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: devis.statusColor.withOpacity(0.5),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              devis.statusIcon,
-                              size: 16,
-                              color: devis.statusColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              devis.statusText,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: devis.statusColor,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+      return ResponsiveScrollView(
+        padding: EdgeInsets.symmetric(
+          horizontal: ResponsiveHelper.getHorizontalPadding(context),
+          vertical: ResponsiveHelper.getVerticalPadding(context),
+        ),
+        child: Column(
+          children:
+              devisList.map((devis) {
+                return ResponsiveCard(
+                  padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context)),
+                  elevation: 2.0,
+                  child: _buildDevisCard(context, devis, status),
+                );
+              }).toList(),
+        ),
+      );
+    });
+  }
+
+  Widget _buildDevisCard(BuildContext context, devis, int status) {
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          isThreeLine:
+              status == 3 &&
+              (devis.rejectionComment != null &&
+                  devis.rejectionComment!.isNotEmpty),
+          title: Row(
+            children: [
+              Expanded(
+                child: ResponsiveText(
+                  devis.reference,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ResponsiveSpacing(width: 8),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveHelper.getSpacing(
+                    context,
+                    mobile: 6.0,
+                    tablet: 8.0,
+                    desktop: 10.0,
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            size: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Créé le ${formatDate.format(devis.dateCreation)}',
-                            style: TextStyle(color: Colors.grey.shade600),
-                          ),
-                          if (devis.dateValidite != null) ...[
-                            const SizedBox(width: 16),
-                            Icon(
-                              Icons.event,
-                              size: 14,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Valide jusqu\'au ${formatDate.format(devis.dateValidite!)}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ],
-                      ),
-                      if (status == 3 &&
-                          (devis.rejectionComment != null &&
-                              devis.rejectionComment!.isNotEmpty)) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.report,
-                              size: 14,
-                              color: Colors.red,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'Raison du rejet: ${devis.rejectionComment}',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: Text(
-                    formatCurrency.format(devis.totalTTC),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  vertical: ResponsiveHelper.getSpacing(
+                    context,
+                    mobile: 3.0,
+                    tablet: 4.0,
+                    desktop: 5.0,
                   ),
                 ),
-                const Divider(height: 1),
-                ButtonBar(
-                  alignment: MainAxisAlignment.end,
+                decoration: BoxDecoration(
+                  color: devis.statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: devis.statusColor.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Bouton Modifier pour les devis validés ou rejetés
-                    if (status == 2 || status == 3) ...[
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
-                        tooltip: 'Modifier',
+                    Icon(
+                      devis.statusIcon,
+                      size: ResponsiveHelper.getIconSize(
+                        context,
+                        mobile: 14.0,
+                        tablet: 16.0,
+                        desktop: 18.0,
+                      ),
+                      color: devis.statusColor,
+                    ),
+                    ResponsiveSpacing(width: 4),
+                    Flexible(
+                      child: ResponsiveText(
+                        devis.statusText,
+                        style: TextStyle(
+                          fontSize: ResponsiveHelper.getFontSize(
+                            context,
+                            mobile: 11.0,
+                            tablet: 12.0,
+                            desktop: 13.0,
+                          ),
+                          color: devis.statusColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ResponsiveSpacing(height: 8),
+              Wrap(
+                spacing: ResponsiveHelper.getSpacing(context),
+                runSpacing: 4,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: ResponsiveHelper.getIconSize(
+                          context,
+                          mobile: 12.0,
+                          tablet: 14.0,
+                          desktop: 16.0,
+                        ),
+                        color: Colors.grey.shade600,
+                      ),
+                      ResponsiveSpacing(width: 4),
+                      ResponsiveText(
+                        'Créé le ${formatDate.format(devis.dateCreation)}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: ResponsiveHelper.getFontSize(
+                            context,
+                            mobile: 11.0,
+                            tablet: 12.0,
+                            desktop: 13.0,
+                          ),
+                        ),
                       ),
                     ],
-                    // Bouton PDF seulement pour les devis validés
-                    if (status == 2) ...[
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf),
-                        onPressed: () => controller.generatePDF(devis.id!),
-                        tooltip: 'Générer PDF',
+                  ),
+                  if (devis.dateValidite != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.event,
+                          size: ResponsiveHelper.getIconSize(
+                            context,
+                            mobile: 12.0,
+                            tablet: 14.0,
+                            desktop: 16.0,
+                          ),
+                          color: Colors.grey.shade600,
+                        ),
+                        ResponsiveSpacing(width: 4),
+                        Flexible(
+                          child: ResponsiveText(
+                            'Valide jusqu\'au ${formatDate.format(devis.dateValidite!)}',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: ResponsiveHelper.getFontSize(
+                                context,
+                                mobile: 11.0,
+                                tablet: 12.0,
+                                desktop: 13.0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              if (status == 3 &&
+                  (devis.rejectionComment != null &&
+                      devis.rejectionComment!.isNotEmpty)) ...[
+                ResponsiveSpacing(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.report,
+                      size: ResponsiveHelper.getIconSize(
+                        context,
+                        mobile: 12.0,
+                        tablet: 14.0,
+                        desktop: 16.0,
                       ),
-                    ],
+                      color: Colors.red,
+                    ),
+                    ResponsiveSpacing(width: 4),
+                    Expanded(
+                      child: ResponsiveText(
+                        'Raison du rejet: ${devis.rejectionComment}',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: ResponsiveHelper.getFontSize(
+                            context,
+                            mobile: 12.0,
+                            tablet: 13.0,
+                            desktop: 14.0,
+                          ),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ),
                   ],
                 ),
               ],
+            ],
+          ),
+          trailing: Flexible(
+            child: ResponsiveText(
+              formatCurrency.format(devis.totalTTC),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: ResponsiveHelper.getFontSize(
+                  context,
+                  mobile: 14.0,
+                  tablet: 16.0,
+                  desktop: 18.0,
+                ),
+              ),
+              textAlign: TextAlign.end,
             ),
-          );
-        },
-      );
-    });
+          ),
+        ),
+        const Divider(height: 1),
+        ButtonBar(
+          alignment: MainAxisAlignment.end,
+          children: [
+            // Bouton Modifier pour les devis validés ou rejetés
+            if (status == 2 || status == 3) ...[
+              IconButton(
+                icon: Icon(
+                  Icons.edit,
+                  size: ResponsiveHelper.getIconSize(context),
+                ),
+                onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
+                tooltip: 'Modifier',
+              ),
+            ],
+            // Bouton PDF seulement pour les devis validés
+            if (status == 2) ...[
+              IconButton(
+                icon: Icon(
+                  Icons.picture_as_pdf,
+                  size: ResponsiveHelper.getIconSize(context),
+                ),
+                onPressed: () => controller.generatePDF(devis.id!),
+                tooltip: 'Générer PDF',
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
   }
 }

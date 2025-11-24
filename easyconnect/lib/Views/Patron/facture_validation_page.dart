@@ -48,54 +48,30 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   }
 
   Future<void> _loadInvoices() async {
-    print(
-      '🔵 [FACTURE_VALIDATION] _loadInvoices() appelé - Onglet: ${_tabController.index}',
-    );
-
     String? status;
     switch (_tabController.index) {
       case 0: // Tous
         status = null;
-        print('🔵 [FACTURE_VALIDATION] Onglet "Tous" sélectionné');
         break;
       case 1: // En attente - inclure tous les statuts en attente
         // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
         status = null;
-        print(
-          '🔵 [FACTURE_VALIDATION] Onglet "En attente" sélectionné - Chargement de toutes les factures',
-        );
         break;
       case 2: // Validés
         status = 'valide';
-        print(
-          '🔵 [FACTURE_VALIDATION] Onglet "Validés" sélectionné - Filtre: $status',
-        );
         break;
       case 3: // Rejetés
         status = 'rejete';
-        print(
-          '🔵 [FACTURE_VALIDATION] Onglet "Rejetés" sélectionné - Filtre: $status',
-        );
         break;
     }
 
-    print(
-      '🔵 [FACTURE_VALIDATION] Avant filterInvoices - Status: ${status ?? "all"}',
-    );
     controller.filterInvoices(status: status ?? 'all');
 
     // Si on est sur l'onglet "En attente", recharger toutes les factures
     // et filtrer côté client pour inclure tous les statuts en attente
     if (_tabController.index == 1) {
-      print(
-        '🔵 [FACTURE_VALIDATION] Rechargement de toutes les factures pour l\'onglet "En attente"',
-      );
       await controller.loadInvoices();
     }
-
-    print(
-      '🔵 [FACTURE_VALIDATION] Après chargement - Nombre de factures dans controller: ${controller.invoices.length}',
-    );
   }
 
   @override
@@ -172,62 +148,23 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   Widget _buildInvoiceList() {
     // Utiliser Obx pour rendre réactif l'accès à controller.invoices
     return Obx(() {
-      print(
-        '🟢 [FACTURE_VALIDATION] _buildInvoiceList() - Onglet: ${_tabController.index}',
-      );
-      print(
-        '🟢 [FACTURE_VALIDATION] Nombre total de factures dans controller: ${controller.invoices.length}',
-      );
-      print('🟢 [FACTURE_VALIDATION] isLoading: ${controller.isLoading.value}');
-
-      // Afficher tous les statuts pour debug
-      if (controller.invoices.isNotEmpty) {
-        final allStatuses =
-            controller.invoices.map((inv) => inv.status).toSet();
-        print('🟢 [FACTURE_VALIDATION] Statuts trouvés: $allStatuses');
-        for (var invoice in controller.invoices) {
-          print(
-            '🟢 [FACTURE_VALIDATION] Facture: ${invoice.invoiceNumber} - Status: ${invoice.status}',
-          );
-        }
-      } else {
-        print(
-          '🟢 [FACTURE_VALIDATION] ⚠️ Aucune facture dans controller.invoices',
-        );
-      }
-
       // Filtrer selon l'onglet actif et la recherche
       List<InvoiceModel> filteredInvoices = controller.invoices;
-      print(
-        '🟢 [FACTURE_VALIDATION] Avant filtrage: ${filteredInvoices.length} factures',
-      );
 
       // Filtrer par statut selon l'onglet actif
       if (_tabController.index == 1) {
         // Onglet "En attente" - inclure tous les statuts en attente
         final statusLower = (String status) => status.toLowerCase().trim();
-        final beforeCount = filteredInvoices.length;
         filteredInvoices =
             filteredInvoices.where((invoice) {
               final status = statusLower(invoice.status);
-              final isPending =
-                  status == 'draft' ||
+              return status == 'draft' ||
                   status == 'en_attente' ||
                   status == 'pending' ||
                   status == 'en attente';
-              if (isPending) {
-                print(
-                  '🟢 [FACTURE_VALIDATION] ✅ Facture en attente trouvée: ${invoice.invoiceNumber} - Status: ${invoice.status}',
-                );
-              }
-              return isPending;
             }).toList();
-        print(
-          '🟢 [FACTURE_VALIDATION] Après filtrage "En attente": ${filteredInvoices.length} sur $beforeCount',
-        );
       } else if (_tabController.index == 2) {
         // Onglet "Validés"
-        final beforeCount = filteredInvoices.length;
         filteredInvoices =
             filteredInvoices.where((invoice) {
               final status = invoice.status.toLowerCase().trim();
@@ -235,26 +172,18 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                   status == 'validated' ||
                   status == 'approved';
             }).toList();
-        print(
-          '🟢 [FACTURE_VALIDATION] Après filtrage "Validés": ${filteredInvoices.length} sur $beforeCount',
-        );
       } else if (_tabController.index == 3) {
         // Onglet "Rejetés"
-        final beforeCount = filteredInvoices.length;
         filteredInvoices =
             filteredInvoices.where((invoice) {
               final status = invoice.status.toLowerCase().trim();
               return status == 'rejete' || status == 'rejected';
             }).toList();
-        print(
-          '🟢 [FACTURE_VALIDATION] Après filtrage "Rejetés": ${filteredInvoices.length} sur $beforeCount',
-        );
       }
       // Onglet 0 (Tous) - pas de filtre supplémentaire
 
       // Filtrer selon la recherche
       if (_searchQuery.isNotEmpty) {
-        final beforeCount = filteredInvoices.length;
         filteredInvoices =
             filteredInvoices
                 .where(
@@ -267,14 +196,7 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                       ),
                 )
                 .toList();
-        print(
-          '🟢 [FACTURE_VALIDATION] Après filtrage recherche: ${filteredInvoices.length} sur $beforeCount',
-        );
       }
-
-      print(
-        '🟢 [FACTURE_VALIDATION] ✅ Factures finales à afficher: ${filteredInvoices.length}',
-      );
 
       if (filteredInvoices.isEmpty) {
         return Center(

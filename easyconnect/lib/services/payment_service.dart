@@ -371,9 +371,6 @@ class PaymentService extends GetxService {
       String url = '$baseUrl/paiements-validate/$paymentId';
       http.Response response;
 
-      print(
-        '🔵 [PAYMENT_SERVICE] Tentative d\'approbation avec route française: $url',
-      );
       try {
         response = await http.post(
           Uri.parse(url),
@@ -384,16 +381,9 @@ class PaymentService extends GetxService {
           },
           body: comments != null ? jsonEncode({'comments': comments}) : '{}',
         );
-        print(
-          '🔵 [PAYMENT_SERVICE] Réponse route française - Status: ${response.statusCode}',
-        );
       } catch (e) {
-        print(
-          '⚠️ [PAYMENT_SERVICE] Route française échouée, essai route anglaise: $e',
-        );
         // Si la route française échoue, essayer la route anglaise (PATCH)
         url = '$baseUrl/payments/$paymentId/approve';
-        print('🔵 [PAYMENT_SERVICE] Tentative avec route anglaise: $url');
         response = await http.patch(
           Uri.parse(url),
           headers: {
@@ -403,14 +393,7 @@ class PaymentService extends GetxService {
           },
           body: comments != null ? jsonEncode({'comments': comments}) : null,
         );
-        print(
-          '🔵 [PAYMENT_SERVICE] Réponse route anglaise - Status: ${response.statusCode}',
-        );
       }
-
-      print(
-        '🔵 [PAYMENT_SERVICE] Réponse finale - Status: ${response.statusCode}, Body: ${response.body}',
-      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else if (response.statusCode == 500) {
@@ -443,9 +426,6 @@ class PaymentService extends GetxService {
       String url = '$baseUrl/paiements-reject/$paymentId';
       http.Response response;
 
-      print(
-        '🔵 [PAYMENT_SERVICE] Tentative de rejet avec route française: $url',
-      );
       try {
         response = await http.post(
           Uri.parse(url),
@@ -456,16 +436,9 @@ class PaymentService extends GetxService {
           },
           body: reason != null ? jsonEncode({'reason': reason}) : '{}',
         );
-        print(
-          '🔵 [PAYMENT_SERVICE] Réponse route française - Status: ${response.statusCode}',
-        );
       } catch (e) {
-        print(
-          '⚠️ [PAYMENT_SERVICE] Route française échouée, essai route anglaise: $e',
-        );
         // Si la route française échoue, essayer la route anglaise (PATCH)
         url = '$baseUrl/payments/$paymentId/reject';
-        print('🔵 [PAYMENT_SERVICE] Tentative avec route anglaise: $url');
         response = await http.patch(
           Uri.parse(url),
           headers: {
@@ -475,14 +448,7 @@ class PaymentService extends GetxService {
           },
           body: reason != null ? jsonEncode({'reason': reason}) : null,
         );
-        print(
-          '🔵 [PAYMENT_SERVICE] Réponse route anglaise - Status: ${response.statusCode}',
-        );
       }
-
-      print(
-        '🔵 [PAYMENT_SERVICE] Réponse finale - Status: ${response.statusCode}, Body: ${response.body}',
-      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else if (response.statusCode == 500) {

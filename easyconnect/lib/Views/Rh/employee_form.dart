@@ -657,11 +657,14 @@ class EmployeeForm extends StatelessWidget {
   }
 
   void _saveEmployee(EmployeeController controller) async {
+    bool success = false;
     if (employee == null) {
-      await controller.createEmployee();
+      success = await controller.createEmployee();
     } else {
-      await controller.updateEmployee(employee!);
+      success = await controller.updateEmployee(employee!);
     }
-    Get.back(); // Retour automatique à la liste
+    if (success) {
+      Get.back(); // Retour automatique à la liste après succès
+    }
   }
 }

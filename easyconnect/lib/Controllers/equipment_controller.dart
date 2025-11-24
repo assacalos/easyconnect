@@ -130,7 +130,7 @@ class EquipmentController extends GetxController {
   }
 
   // Créer un équipement
-  Future<void> createEquipment() async {
+  Future<bool> createEquipment() async {
     try {
       isLoading.value = true;
 
@@ -201,8 +201,7 @@ class EquipmentController extends GetxController {
         duration: const Duration(seconds: 2),
       );
 
-      // Fermer automatiquement la page après la soumission
-      Get.back();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -210,13 +209,14 @@ class EquipmentController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
   // Mettre à jour un équipement
-  Future<void> updateEquipment(Equipment equipment) async {
+  Future<bool> updateEquipment(Equipment equipment) async {
     try {
       isLoading.value = true;
 
@@ -296,14 +296,14 @@ class EquipmentController extends GetxController {
         duration: const Duration(seconds: 2),
       );
 
-      // Fermer automatiquement la page après la mise à jour
-      Get.back();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour l\'équipement',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }

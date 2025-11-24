@@ -5,22 +5,16 @@ class DevisItem {
   final String designation;
   final int quantite;
   final double prixUnitaire;
-  final double? remise;
 
   DevisItem({
     this.id,
     required this.designation,
     required this.quantite,
     required this.prixUnitaire,
-    this.remise,
   });
 
   double get total {
-    final sousTotal = quantite * prixUnitaire;
-    if (remise != null && remise! > 0) {
-      return sousTotal * (1 - remise! / 100);
-    }
-    return sousTotal;
+    return quantite * prixUnitaire;
   }
 
   Map<String, dynamic> toJson() {
@@ -29,7 +23,6 @@ class DevisItem {
       'designation': designation,
       'quantite': quantite,
       'prix_unitaire': prixUnitaire,
-      'remise': remise,
     };
   }
 
@@ -42,7 +35,6 @@ class DevisItem {
               ? int.tryParse(json['quantite']) ?? 0
               : json['quantite'],
       prixUnitaire: _parseDouble(json['prix_unitaire']),
-      remise: json['remise'] != null ? _parseDouble(json['remise']) : null,
     );
   }
 

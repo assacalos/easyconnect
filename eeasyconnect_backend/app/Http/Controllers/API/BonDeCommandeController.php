@@ -61,11 +61,11 @@ class BonDeCommandeController extends Controller
                 $query->where('montant_total', '<=', $request->montant_max);
             }
             
-            // Filtrage par retard
-            if ($request->has('en_retard')) {
-                $query->where('date_livraison_prevue', '<', now())
-                      ->where('statut', '!=', 'livre');
-            }
+            // Filtrage par retard (désactivé - date_livraison_prevue supprimée)
+            // if ($request->has('en_retard')) {
+            //     $query->where('date_livraison_prevue', '<', now())
+            //           ->where('statut', '!=', 'livre');
+            // }
             
             // Pagination optionnelle
             if ($request->has('per_page') || $request->has('page')) {
@@ -115,7 +115,6 @@ class BonDeCommandeController extends Controller
             'fournisseur_id' => 'required|exists:fournisseurs,id',
             'numero_commande' => 'required|string|unique:bon_de_commandes',
             'date_commande' => 'required|date',
-            'date_livraison_prevue' => 'nullable|date|after:date_commande',
             'montant_total' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
             'statut' => 'nullable|in:en_attente,valide,en_cours,livre,annule',
@@ -153,7 +152,6 @@ class BonDeCommandeController extends Controller
                 'fournisseur_id' => $request->fournisseur_id,
                 'numero_commande' => $request->numero_commande,
                 'date_commande' => $request->date_commande,
-                'date_livraison_prevue' => $request->date_livraison_prevue,
                 'montant_total' => $montantTotal,
                 'description' => $request->description,
                 'statut' => $request->statut ?? 'en_attente',
@@ -215,7 +213,6 @@ class BonDeCommandeController extends Controller
         $request->validate([
             'numero_commande' => 'nullable|string|unique:bon_de_commandes,numero_commande,' . $bon->id,
             'date_commande' => 'nullable|date',
-            'date_livraison_prevue' => 'nullable|date',
             'montant_total' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
             'statut' => 'nullable|in:en_attente,valide,en_cours,livre,annule',
@@ -244,7 +241,7 @@ class BonDeCommandeController extends Controller
 
             // Mettre à jour le bon de commande
             $updateData = $request->only([
-                'numero_commande', 'date_commande', 'date_livraison_prevue',
+                'numero_commande', 'date_commande',
                 'description', 'statut', 'commentaire', 'conditions_paiement', 'delai_livraison'
             ]);
             $updateData['montant_total'] = $montantTotal;
@@ -394,7 +391,6 @@ class BonDeCommandeController extends Controller
         
         $bon->update([
             'statut' => 'livre',
-            'date_livraison' => now()
         ]);
 
         return response()->json([
@@ -547,11 +543,7 @@ class BonDeCommandeController extends Controller
                     'livre' => $bons->where('statut', 'livre')->sum('montant_total'),
                     'annule' => $bons->where('statut', 'annule')->sum('montant_total'),
                 ],
-                'bons_en_retard' => $bons->filter(function($bon) {
-                    return $bon->date_livraison_prevue && 
-                           $bon->date_livraison_prevue < now() && 
-                           !in_array($bon->statut, ['livre', 'annule']);
-                })->count(),
+                'bons_en_retard' => 0, // Désactivé - date_livraison_prevue supprimée
                 'bons_recents' => BonDeCommande::with(['fournisseur'])
                     ->orderBy('created_at', 'desc')
                     ->limit(5)
@@ -687,7 +679,6 @@ class BonDeCommandeController extends Controller
                 'fournisseur_id' => $originalBon->fournisseur_id,
                 'numero_commande' => $numero,
                 'date_commande' => now()->toDateString(),
-                'date_livraison_prevue' => $originalBon->date_livraison_prevue,
                 'montant_total' => $originalBon->montant_total,
                 'description' => $originalBon->description,
                 'statut' => 'en_attente',
@@ -743,8 +734,6 @@ class BonDeCommandeController extends Controller
                     'Fournisseur' => $bon->fournisseur->nom,
                     'Montant' => $bon->montant_total,
                     'Statut' => $bon->statut_libelle,
-                    'Date livraison prévue' => $bon->date_livraison_prevue ? $bon->date_livraison_prevue->format('d/m/Y') : '',
-                    'Date livraison' => $bon->date_livraison ? $bon->date_livraison->format('d/m/Y') : '',
                     'Description' => $bon->description,
                     'Créé par' => $bon->createur->nom . ' ' . $bon->createur->prenom
                 ];

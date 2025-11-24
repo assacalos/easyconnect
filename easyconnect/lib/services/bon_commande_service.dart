@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class BonCommandeService {
   final storage = GetStorage();
@@ -30,6 +31,9 @@ class BonCommandeService {
           'Authorization': 'Bearer $token',
         },
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         try {
@@ -181,10 +185,11 @@ class BonCommandeService {
             'Accès refusé (403). Vous n\'avez pas les permissions pour créer un bon de commande.',
           );
         }
-      } else if (response.statusCode == 401) {
-        throw Exception(
-          'Non autorisé (401). Votre session a peut-être expiré. Veuillez vous reconnecter.',
-        );
+      }
+
+      // Si c'est une erreur 401, elle a déjà été gérée
+      if (response.statusCode == 401) {
+        throw Exception('Session expirée');
       } else if (response.statusCode == 422) {
         // Gestion spécifique de l'erreur 422 (Validation échouée)
         try {

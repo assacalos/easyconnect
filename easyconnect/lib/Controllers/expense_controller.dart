@@ -100,7 +100,7 @@ class ExpenseController extends GetxController {
   }
 
   // Créer une dépense
-  Future<void> createExpense() async {
+  Future<bool> createExpense() async {
     try {
       isLoading.value = true;
 
@@ -191,11 +191,7 @@ class ExpenseController extends GetxController {
       );
 
       clearForm();
-
-      // Retour automatique après succès
-      await Future.delayed(const Duration(milliseconds: 500));
-      // Utiliser directement Get.back() sans vérification - GetX gère cela automatiquement
-      Get.back();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -204,13 +200,14 @@ class ExpenseController extends GetxController {
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
   }
 
   // Mettre à jour une dépense
-  Future<void> updateExpense(Expense expense) async {
+  Future<bool> updateExpense(Expense expense) async {
     try {
       isLoading.value = true;
 
@@ -301,11 +298,7 @@ class ExpenseController extends GetxController {
       );
 
       clearForm();
-
-      // Retour automatique après succès
-      await Future.delayed(const Duration(milliseconds: 500));
-      // Utiliser directement Get.back() sans vérification - GetX gère cela automatiquement
-      Get.back();
+      return true;
     } catch (e) {
       Get.snackbar(
         'Erreur',
@@ -314,6 +307,7 @@ class ExpenseController extends GetxController {
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -369,7 +363,6 @@ class ExpenseController extends GetxController {
                 ? null
                 : notesController.text.trim(),
       );
-      print('🔵 [EXPENSE_CONTROLLER] Résultat approveExpense: $success');
 
       if (success) {
         await loadExpenses();
@@ -389,8 +382,6 @@ class ExpenseController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [EXPENSE_CONTROLLER] Erreur approveExpense: $e');
-      print('❌ [EXPENSE_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver la dépense: $e',
@@ -407,16 +398,12 @@ class ExpenseController extends GetxController {
   // Rejeter une dépense
   Future<void> rejectExpense(Expense expense, String reason) async {
     try {
-      print(
-        '🔵 [EXPENSE_CONTROLLER] rejectExpense() appelé pour expenseId: ${expense.id}',
-      );
       isLoading.value = true;
 
       final success = await _expenseService.rejectExpense(
         expense.id!,
         reason: reason,
       );
-      print('🔵 [EXPENSE_CONTROLLER] Résultat rejectExpense: $success');
 
       if (success) {
         await loadExpenses();
@@ -436,8 +423,6 @@ class ExpenseController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
-      print('❌ [EXPENSE_CONTROLLER] Erreur rejectExpense: $e');
-      print('❌ [EXPENSE_CONTROLLER] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter la dépense: $e',

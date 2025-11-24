@@ -11,7 +11,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Les seeders ont été supprimés
-        // Vous pouvez maintenant enregistrer vos propres données de test
+        $this->call([
+            AdminSeeder::class,
+        ]);
     }
 }

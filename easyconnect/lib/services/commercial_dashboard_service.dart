@@ -43,8 +43,7 @@ class CommercialDashboardService {
                   )
                   .length; // 0 = en attente pour clients
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les devis en attente
       try {
@@ -71,8 +70,7 @@ class CommercialDashboardService {
                   .where((devis) => devis['status'] == 1)
                   .length; // 1 = en attente
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les bordereaux en attente
       try {
@@ -99,8 +97,7 @@ class CommercialDashboardService {
                   .where((bordereau) => bordereau['status'] == 1)
                   .length; // 1 = en attente
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les bons de commande en attente
       try {
@@ -121,8 +118,7 @@ class CommercialDashboardService {
                     .length; // 1 = en attente
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       return {
         'clients': pendingClients,
@@ -160,8 +156,7 @@ class CommercialDashboardService {
                 clientsData.where((client) => client['status'] == 1).length;
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les devis validés
       try {
@@ -181,8 +176,7 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les bordereaux validés
       try {
@@ -202,8 +196,7 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Récupérer les bons de commande validés
       try {
@@ -224,8 +217,7 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       return {
         'clients': validatedClients,
@@ -277,8 +269,7 @@ class CommercialDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Calculer le montant des devis en attente
       try {
@@ -311,8 +302,7 @@ class CommercialDashboardService {
             }
           }
         }
-      } catch (e) {
-      }
+      } catch (e) {}
 
       // Le montant des bordereaux payés est déjà calculé dans totalRevenue
       paidBordereauxAmount = totalRevenue;

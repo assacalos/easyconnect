@@ -755,12 +755,15 @@ class _ContractFormState extends State<ContractForm> {
 
   void _saveContract() async {
     if (_formKey.currentState!.validate()) {
+      bool success = false;
       if (widget.contract == null) {
-        await controller.createContract();
+        success = await controller.createContract();
       } else {
-        await controller.updateContract(widget.contract!);
+        success = await controller.updateContract(widget.contract!);
       }
-      Get.back(); // Retour automatique à la liste
+      if (success) {
+        Get.back(); // Retour automatique à la liste après succès
+      }
     }
   }
 

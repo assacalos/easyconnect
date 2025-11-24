@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class InvoiceService extends GetxService {
   static InvoiceService get to => Get.find();
@@ -51,6 +52,9 @@ class InvoiceService extends GetxService {
         }),
       );
 
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       final responseBody = jsonDecode(response.body);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -62,6 +66,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -96,6 +105,9 @@ class InvoiceService extends GetxService {
         Uri.parse(url),
         headers: ApiService.headers(),
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -163,6 +175,9 @@ class InvoiceService extends GetxService {
         headers: ApiService.headers(),
       );
 
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         List<dynamic> invoiceList = [];
@@ -228,6 +243,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -252,6 +272,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -273,6 +298,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -297,6 +327,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -321,6 +356,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -347,6 +387,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -371,6 +416,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -392,6 +442,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -425,6 +480,9 @@ class InvoiceService extends GetxService {
         headers: ApiService.headers(),
       );
 
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return InvoiceStats.fromJson(data);
@@ -434,6 +492,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -456,6 +519,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -478,6 +546,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }
@@ -503,6 +576,11 @@ class InvoiceService extends GetxService {
         );
       }
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
       rethrow;
     }
   }

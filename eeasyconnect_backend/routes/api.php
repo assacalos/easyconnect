@@ -160,10 +160,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Routes pour les devis
         Route::get('/devis-list', [DevisController::class, 'index']);
         Route::get('/devis-show/{id}', [DevisController::class, 'show']);
-        
+        Route::post('/devis-create', [DevisController::class, 'store']);
+        Route::put('/devis-update/{id}', [DevisController::class, 'update']);
+        Route::delete('/devis-destroy/{id}', [DevisController::class, 'destroy']);
+
         // Routes pour les bordereaux
         Route::get('/bordereaux-list', [BordereauController::class, 'index']);
         Route::get('/bordereaux-show/{id}', [BordereauController::class, 'show']);
+        Route::post('/bordereaux-create', [BordereauController::class, 'store']);
         Route::get('/bordereaux-update/{id}', [BordereauController::class, 'update']);
         Route::delete('/bordereaux/{id}', [BordereauController::class, 'destroy']);
         
@@ -190,6 +194,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Routes pour les reportings
         Route::post('/user-reportings-validate/{id}', [UserReportingController::class, 'approve']);
         Route::post('/user-reportings-reject/{id}', [UserReportingController::class, 'reject']);
+        Route::post('/user-reportings-note/{id}', [UserReportingController::class, 'addPatronNote']);
 
         // Routes pour les clients
         Route::post('/clients-validate/{id}', [ClientController::class, 'approve']);
@@ -209,6 +214,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         //Route pour les devis
         Route::post('/devis-validate/{id}', [DevisController::class, 'validateDevis']);
+        Route::post('/devis-accept/{id}', [DevisController::class, 'accept']);
         Route::post('/devis-reject/{id}', [DevisController::class, 'reject']);
 
         //Routes 

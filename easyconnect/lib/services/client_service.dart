@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class ClientService {
   final storage = GetStorage();
@@ -28,8 +29,6 @@ class ClientService {
           }
         }
 
-        for (final client in allClients) {
-        }
         return allClients;
       }
 
@@ -71,6 +70,10 @@ class ClientService {
         Uri.parse(url),
         headers: ApiService.headers(),
       );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
         try {
           final responseData = json.decode(response.body);
@@ -104,7 +107,6 @@ class ClientService {
 
           // Filtrer par statut (double vérification côté client)
           if (data.isNotEmpty) {
-            final beforeFilter = data.length;
             data =
                 data.where((item) {
                   if (item is Map) {
@@ -130,15 +132,23 @@ class ClientService {
         throw Exception(
           'Accès refusé (403). Vous n\'avez pas les permissions pour accéder aux clients. Vérifiez vos droits d\'accès.',
         );
-      } else if (response.statusCode == 401) {
-        throw Exception(
-          'Non autorisé (401). Votre session a peut-être expiré. Veuillez vous reconnecter.',
-        );
       }
+
+      // Si c'est une erreur 401, elle a déjà été gérée
+      if (response.statusCode == 401) {
+        throw Exception('Session expirée');
+      }
+
       throw Exception(
         'Erreur lors de la récupération des clients: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
+      // Gérer les erreurs d'authentification dans les exceptions
+      final isAuthError = await AuthErrorHandler.handleError(e);
+      if (isAuthError) {
+        throw Exception('Session expirée');
+      }
+
       throw Exception('Erreur lors de la récupération des clients: $e');
     }
   }
@@ -161,11 +171,31 @@ class ClientService {
         body: json.encode(clientData),
       );
       if (response.statusCode == 201) {
-        return Client.fromJson(json.decode(response.body)['data']);
+        final responseData = json.decode(response.body);
+        if (responseData['data'] != null) {
+          return Client.fromJson(responseData['data']);
+        }
+        // Si pas de data mais status 201, le client a été créé
+        // On retourne le client original
+        return client;
       }
-      throw Exception('Erreur lors de la création du client');
+      // Essayer d'extraire le message d'erreur de la réponse
+      String errorMessage = 'Erreur lors de la création du client';
+      try {
+        final errorData = json.decode(response.body);
+        if (errorData['message'] != null) {
+          errorMessage = errorData['message'];
+        }
+      } catch (_) {
+        // Si le parsing échoue, utiliser le message par défaut
+      }
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Erreur lors de la création du client');
+      // Si c'est déjà une Exception avec un message, la relancer
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Erreur lors de la création du client: $e');
     }
   }
 
@@ -228,8 +258,7 @@ class ClientService {
         body: body,
       );
       // Log spécial pour les erreurs 500
-      if (response.statusCode == 500) {
-      }
+      if (response.statusCode == 500) {}
 
       if (response.statusCode == 200) {
         return true;

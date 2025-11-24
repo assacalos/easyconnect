@@ -16,10 +16,24 @@ class PaymentForm extends StatefulWidget {
 
 class _PaymentFormState extends State<PaymentForm> {
   bool _isLoading = true;
+  late final PaymentController controller;
 
   @override
   void initState() {
     super.initState();
+    controller = Get.put(PaymentController());
+
+    // Écouter les changements de la référence générée pour mettre à jour le champ
+    ever(controller.generatedReference, (String ref) {
+      if (ref.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && controller.referenceController.text != ref) {
+            controller.referenceController.text = ref;
+          }
+        });
+      }
+    });
+
     if (widget.paymentId != null) {
       _loadPaymentForEdit();
     } else {
@@ -74,8 +88,6 @@ class _PaymentFormState extends State<PaymentForm> {
 
   @override
   Widget build(BuildContext context) {
-    final PaymentController controller = Get.put(PaymentController());
-
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -152,7 +164,14 @@ class _PaymentFormState extends State<PaymentForm> {
           width: double.infinity,
           child: ElevatedButton(
             onPressed:
-                controller.isCreating.value ? null : controller.createPayment,
+                controller.isCreating.value
+                    ? null
+                    : () async {
+                      final success = await controller.createPayment();
+                      if (success) {
+                        Get.back();
+                      }
+                    },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
@@ -629,13 +648,31 @@ class _PaymentFormState extends State<PaymentForm> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: controller.referenceController,
-              decoration: const InputDecoration(
-                labelText: 'Référence',
-                border: OutlineInputBorder(),
-              ),
-            ),
+            Obx(() {
+              // Mettre à jour le contrôleur avec la référence générée si nécessaire
+              final generatedRef = controller.generatedReference.value;
+              if (generatedRef.isNotEmpty &&
+                  controller.referenceController.text != generatedRef) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted &&
+                      controller.referenceController.text != generatedRef) {
+                    controller.referenceController.text = generatedRef;
+                  }
+                });
+              }
+              return TextField(
+                controller: controller.referenceController,
+                decoration: const InputDecoration(
+                  labelText: 'Référence (générée automatiquement)',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.grey,
+                  helperText: 'Référence générée automatiquement',
+                ),
+                readOnly: true,
+                enabled: false,
+              );
+            }),
           ],
         ),
       ),
@@ -732,13 +769,15 @@ class _PaymentFormState extends State<PaymentForm> {
       builder:
           (context) => ClientSelectionDialog(
             onClientSelected: (Client client) {
-              // Construire le nom complet
-              final displayName =
-                  '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+              // Prioriser nom entreprise
               final clientName =
-                  displayName.isEmpty
-                      ? (client.nomEntreprise ?? 'Client #${client.id}')
-                      : displayName;
+                  client.nomEntreprise?.isNotEmpty == true
+                      ? client.nomEntreprise!
+                      : '${client.nom ?? ''} ${client.prenom ?? ''}'
+                          .trim()
+                          .isNotEmpty
+                      ? '${client.nom ?? ''} ${client.prenom ?? ''}'.trim()
+                      : 'Client #${client.id}';
 
               // Construire l'adresse complète
               final addressParts = <String>[];

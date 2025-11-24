@@ -9,6 +9,7 @@ class ReportingModel {
   final DateTime? submittedAt;
   final DateTime? approvedAt;
   final String? comments;
+  final String? patronNote; // Note du patron avant validation
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,6 +24,7 @@ class ReportingModel {
     this.submittedAt,
     this.approvedAt,
     this.comments,
+    this.patronNote,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -42,6 +44,7 @@ class ReportingModel {
       submittedAt: _parseDateTime(json['submitted_at']),
       approvedAt: _parseDateTime(json['approved_at']),
       comments: json['comments'],
+      patronNote: json['patron_note'] ?? json['patronNote'],
       createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
     );
@@ -59,6 +62,7 @@ class ReportingModel {
       'submitted_at': submittedAt?.toIso8601String(),
       'approved_at': approvedAt?.toIso8601String(),
       'comments': comments,
+      'patron_note': patronNote,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -120,7 +124,6 @@ class CommercialMetrics {
   final List<RdvInfo> rdvList;
   final int devisCrees;
   final int devisAcceptes;
-  final double chiffreAffaires;
   final int nouveauxClients;
   final int appelsEffectues;
   final int emailsEnvoyes;
@@ -131,7 +134,6 @@ class CommercialMetrics {
   final String? noteRdvObtenus;
   final String? noteDevisCrees;
   final String? noteDevisAcceptes;
-  final String? noteChiffreAffaires;
   final String? noteNouveauxClients;
   final String? noteAppelsEffectues;
   final String? noteEmailsEnvoyes;
@@ -143,7 +145,6 @@ class CommercialMetrics {
     required this.rdvList,
     required this.devisCrees,
     required this.devisAcceptes,
-    required this.chiffreAffaires,
     required this.nouveauxClients,
     required this.appelsEffectues,
     required this.emailsEnvoyes,
@@ -152,7 +153,6 @@ class CommercialMetrics {
     this.noteRdvObtenus,
     this.noteDevisCrees,
     this.noteDevisAcceptes,
-    this.noteChiffreAffaires,
     this.noteNouveauxClients,
     this.noteAppelsEffectues,
     this.noteEmailsEnvoyes,
@@ -170,7 +170,6 @@ class CommercialMetrics {
           [],
       devisCrees: json['devis_crees'] ?? 0,
       devisAcceptes: json['devis_acceptes'] ?? 0,
-      chiffreAffaires: (json['chiffre_affaires'] ?? 0).toDouble(),
       nouveauxClients: json['nouveaux_clients'] ?? 0,
       appelsEffectues: json['appels_effectues'] ?? 0,
       emailsEnvoyes: json['emails_envoyes'] ?? 0,
@@ -179,7 +178,6 @@ class CommercialMetrics {
       noteRdvObtenus: json['note_rdv_obtenus'],
       noteDevisCrees: json['note_devis_crees'],
       noteDevisAcceptes: json['note_devis_acceptes'],
-      noteChiffreAffaires: json['note_chiffre_affaires'],
       noteNouveauxClients: json['note_nouveaux_clients'],
       noteAppelsEffectues: json['note_appels_effectues'],
       noteEmailsEnvoyes: json['note_emails_envoyes'],
@@ -194,7 +192,6 @@ class CommercialMetrics {
       'rdv_list': rdvList.map((e) => e.toJson()).toList(),
       'devis_crees': devisCrees,
       'devis_acceptes': devisAcceptes,
-      'chiffre_affaires': chiffreAffaires,
       'nouveaux_clients': nouveauxClients,
       'appels_effectues': appelsEffectues,
       'emails_envoyes': emailsEnvoyes,
@@ -203,7 +200,6 @@ class CommercialMetrics {
       'note_rdv_obtenus': noteRdvObtenus,
       'note_devis_crees': noteDevisCrees,
       'note_devis_acceptes': noteDevisAcceptes,
-      'note_chiffre_affaires': noteChiffreAffaires,
       'note_nouveaux_clients': noteNouveauxClients,
       'note_appels_effectues': noteAppelsEffectues,
       'note_emails_envoyes': noteEmailsEnvoyes,

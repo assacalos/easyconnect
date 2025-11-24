@@ -210,7 +210,7 @@ class LeaveController extends GetxController {
   }
 
   // Créer une demande de congé
-  Future<void> createLeaveRequest() async {
+  Future<bool> createLeaveRequest() async {
     try {
       // Validation des champs obligatoires
       if (selectedEmployeeForm.value.isEmpty ||
@@ -219,7 +219,7 @@ class LeaveController extends GetxController {
           selectedEndDateForm.value == null ||
           reasonController.text.trim().isEmpty) {
         Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
-        return;
+        return false;
       }
 
       // Validation de start_date (doit être aujourd'hui ou dans le futur)
@@ -234,7 +234,7 @@ class LeaveController extends GetxController {
           'Erreur',
           'La date de début doit être aujourd\'hui ou dans le futur',
         );
-        return;
+        return false;
       }
 
       // Validation de end_date (doit être après start_date)
@@ -246,7 +246,7 @@ class LeaveController extends GetxController {
           'Erreur',
           'La date de fin doit être après la date de début',
         );
-        return;
+        return false;
       }
 
       // Validation de reason (min 10 caractères, max 1000 caractères)
@@ -256,14 +256,14 @@ class LeaveController extends GetxController {
           'Erreur',
           'La raison doit contenir au moins 10 caractères (actuellement: ${reasonText.length})',
         );
-        return;
+        return false;
       }
       if (reasonText.length > 1000) {
         Get.snackbar(
           'Erreur',
           'La raison ne doit pas dépasser 1000 caractères (actuellement: ${reasonText.length})',
         );
-        return;
+        return false;
       }
 
       // Validation de comments (max 2000 caractères)
@@ -273,7 +273,7 @@ class LeaveController extends GetxController {
           'Erreur',
           'Les commentaires ne doivent pas dépasser 2000 caractères (actuellement: ${commentsText.length})',
         );
-        return;
+        return false;
       }
 
       final result = await _leaveService.createLeaveRequest(
@@ -295,14 +295,17 @@ class LeaveController extends GetxController {
         clearForm();
         loadLeaveRequests();
         loadLeaveStats();
+        return true;
       } else {
         Get.snackbar(
           'Erreur',
           result['message'] ?? 'Erreur lors de la création',
         );
+        return false;
       }
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la création de la demande: $e');
+      return false;
     }
   }
 

@@ -247,10 +247,6 @@ class ReportingList extends StatelessWidget {
               metrics['devis_acceptes']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'CA (fcfa)',
-              metrics['chiffre_affaires']?.toString() ?? '0',
-            ),
-            _buildMetricChip(
               'Nouveaux clients',
               metrics['nouveaux_clients']?.toString() ?? '0',
             ),

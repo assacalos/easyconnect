@@ -336,6 +336,74 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
                     ),
                   ),
                 ],
+                // Note du patron (uniquement pour les rapports soumis)
+                if (report.status == 'submitted') ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Note du patron',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          report.patronNote != null &&
+                                  report.patronNote!.isNotEmpty
+                              ? Icons.edit
+                              : Icons.note_add,
+                          color: Colors.blue,
+                        ),
+                        onPressed: () => _showPatronNoteDialog(report),
+                        tooltip:
+                            report.patronNote != null &&
+                                    report.patronNote!.isNotEmpty
+                                ? 'Modifier la note'
+                                : 'Ajouter une note',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color:
+                          report.patronNote != null &&
+                                  report.patronNote!.isNotEmpty
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color:
+                            report.patronNote != null &&
+                                    report.patronNote!.isNotEmpty
+                                ? Colors.blue
+                                : Colors.grey,
+                      ),
+                    ),
+                    child: Text(
+                      report.patronNote != null && report.patronNote!.isNotEmpty
+                          ? report.patronNote!
+                          : 'Aucune note ajoutée. Cliquez sur l\'icône pour ajouter une note.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontStyle:
+                            report.patronNote != null &&
+                                    report.patronNote!.isNotEmpty
+                                ? FontStyle.normal
+                                : FontStyle.italic,
+                        color:
+                            report.patronNote != null &&
+                                    report.patronNote!.isNotEmpty
+                                ? Colors.black87
+                                : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _buildActionButtons(report, statusColor),
               ],
@@ -539,6 +607,58 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
         controller.rejectReport(report.id, reason: commentController.text);
         _loadReports();
       },
+    );
+  }
+
+  void _showPatronNoteDialog(ReportingModel report) {
+    final noteController = TextEditingController(text: report.patronNote ?? '');
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Note du patron'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ajoutez une note sur ce rapport avant validation :',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: noteController,
+                decoration: const InputDecoration(
+                  labelText: 'Note',
+                  hintText: 'Entrez votre note sur ce rapport...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 5,
+                minLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () {
+              final note = noteController.text.trim();
+              Get.back();
+              controller.addPatronNote(
+                report.id,
+                note: note.isEmpty ? null : note,
+              );
+              _loadReports();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
     );
   }
 }

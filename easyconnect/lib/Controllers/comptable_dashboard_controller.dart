@@ -240,8 +240,15 @@ class ComptableDashboardController extends BaseDashboardController {
   Future<void> _loadStatistics() async {
     try {
       final factures = await _invoiceService.getAllInvoices();
+      // Calculer le total des factures validées (chiffre d'affaires)
+      final statusLower = (String status) => status.toLowerCase().trim();
       totalRevenue.value = factures
-          .where((f) => f.status == 'paid')
+          .where((f) {
+            final status = statusLower(f.status);
+            return status == 'valide' ||
+                status == 'validated' ||
+                status == 'approved';
+          })
           .fold(0.0, (sum, f) => sum + f.totalAmount);
 
       final paiements = await _paymentService.getAllPayments();

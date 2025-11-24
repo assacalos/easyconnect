@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
-import 'package:intl/intl.dart';
 
 class BonCommandeValidationPage extends StatefulWidget {
   const BonCommandeValidationPage({super.key});
@@ -102,7 +101,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Rechercher par référence...',
+                hintText: 'Rechercher par ID...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon:
                     _searchQuery.isNotEmpty
@@ -146,9 +145,9 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             ? controller.bonCommandes
             : controller.bonCommandes
                 .where(
-                  (bon) => bon.reference.toLowerCase().contains(
-                    _searchQuery.toLowerCase(),
-                  ),
+                  (bon) =>
+                      bon.id.toString().contains(_searchQuery) ||
+                      bon.clientId.toString().contains(_searchQuery),
                 )
                 .toList();
 
@@ -194,21 +193,9 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
   }
 
   Widget _buildBonCommandeCard(BuildContext context, BonCommande bonCommande) {
-    final formatDate = DateFormat('dd/MM/yyyy');
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
-    );
     final statusColor = _getStatusColor(bonCommande.status);
     final statusIcon = _getStatusIcon(bonCommande.status);
     final statusText = _getStatusText(bonCommande.status);
-
-    // Calculer le total
-    double totalHT = 0;
-    for (final item in bonCommande.items) {
-      totalHT += item.montantTotal;
-    }
-    final totalTTC = totalHT * (1 + (bonCommande.tva ?? 0) / 100);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -218,7 +205,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          bonCommande.reference,
+          'Bon de commande #${bonCommande.id ?? 'N/A'}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
@@ -226,8 +213,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
           children: [
             const SizedBox(height: 4),
             Text('Client ID: ${bonCommande.clientId}'),
-            Text('Date: ${formatDate.format(bonCommande.dateCreation)}'),
-            Text('Total: ${formatCurrency.format(totalTTC)}'),
+            Text('Fichiers: ${bonCommande.fichiers.length}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -269,130 +255,35 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Référence: ${bonCommande.reference}'),
+                      Text('ID: ${bonCommande.id ?? 'N/A'}'),
                       Text('Client ID: ${bonCommande.clientId}'),
                       Text('Commercial ID: ${bonCommande.commercialId}'),
-                      Text(
-                        'Date création: ${formatDate.format(bonCommande.dateCreation)}',
-                      ),
-                      if (bonCommande.dateValidation != null)
-                        Text(
-                          'Date validation: ${formatDate.format(bonCommande.dateValidation!)}',
+                      Text('Fichiers: ${bonCommande.fichiers.length}'),
+                      if (bonCommande.fichiers.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Liste des fichiers:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
                         ),
-                      if (bonCommande.dateLivraisonPrevue != null)
-                        Text(
-                          'Date livraison prévue: ${formatDate.format(bonCommande.dateLivraisonPrevue!)}',
-                        ),
-                      if (bonCommande.adresseLivraison != null)
-                        Text(
-                          'Adresse livraison: ${bonCommande.adresseLivraison}',
-                        ),
-                      if (bonCommande.notes != null)
-                        Text('Notes: ${bonCommande.notes}'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Détails des articles
-                const Text(
-                  'Détails des articles',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                if (bonCommande.items.isEmpty)
-                  const Text('Aucun article disponible')
-                else
-                  ...bonCommande.items.map((item) => _buildItemDetails(item)),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Sous-total HT:'),
-                          Text(formatCurrency.format(totalHT)),
-                        ],
-                      ),
-                      if (bonCommande.tva != null && bonCommande.tva! > 0) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('TVA (${bonCommande.tva}%):'),
-                            Text(
-                              formatCurrency.format(
-                                totalHT * bonCommande.tva! / 100,
-                              ),
+                        ...bonCommande.fichiers.map(
+                          (fichier) => Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.attach_file, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(fichier)),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ],
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total TTC:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            formatCurrency.format(totalTTC),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
                 _buildActionButtons(bonCommande, statusColor),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemDetails(BonCommandeItem item) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.designation,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                if (item.description != null)
-                  Text(
-                    item.description!,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(child: Text('${item.quantite} ${item.unite}')),
-          Expanded(child: Text(formatCurrency.format(item.prixUnitaire))),
-          Expanded(
-            child: Text(
-              formatCurrency.format(item.montantTotal),
-              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
         ],
