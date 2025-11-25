@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/employee_controller.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/Views/Rh/employee_form.dart';
+import 'package:easyconnect/Views/Rh/employee_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 
 class EmployeeList extends StatelessWidget {
@@ -132,89 +133,93 @@ class EmployeeList extends StatelessWidget {
   Widget _buildEmployeeCard(Employee employee) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête avec nom et statut
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "${employee.firstName} ${employee.lastName}",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(employee.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _getStatusIcon(employee.status),
-                        size: 16,
-                        color: _getStatusColor(employee.status),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _getStatusText(employee.status),
-                        style: TextStyle(
-                          color: _getStatusColor(employee.status),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Informations employé
-            Row(
-              children: [
-                const Icon(Icons.email, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    employee.email,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-
-            Row(
-              children: [
-                const Icon(Icons.work, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(employee.position ?? 'Non défini'),
-              ],
-            ),
-            const SizedBox(height: 4),
-
-            if (employee.department != null)
+      child: InkWell(
+        onTap: () => Get.to(() => EmployeeDetail(employee: employee)),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec nom et statut
               Row(
                 children: [
-                  const Icon(Icons.business, size: 16, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text(employee.department!),
+                  Expanded(
+                    child: Text(
+                      "${employee.firstName} ${employee.lastName}",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(employee.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _getStatusIcon(employee.status),
+                          size: 16,
+                          color: _getStatusColor(employee.status),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _getStatusText(employee.status),
+                          style: TextStyle(
+                            color: _getStatusColor(employee.status),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-          ],
+              const SizedBox(height: 8),
+
+              // Informations employé
+              Row(
+                children: [
+                  const Icon(Icons.email, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      employee.email,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              Row(
+                children: [
+                  const Icon(Icons.work, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Text(employee.position ?? 'Non défini'),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              if (employee.department != null)
+                Row(
+                  children: [
+                    const Icon(Icons.business, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(employee.department!),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );

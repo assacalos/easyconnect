@@ -3,8 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class InvoiceService extends GetxService {
   static InvoiceService get to => Get.find();
@@ -30,27 +33,36 @@ class InvoiceService extends GetxService {
       final taxAmount = subtotal * (taxRate / 100);
       final totalAmount = subtotal + taxAmount;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/factures-create'),
-        headers: ApiService.headers(),
-        body: jsonEncode({
-          'client_id': clientId,
-          'nom': clientName,
-          'email': clientEmail,
-          'adresse': clientAddress,
-          'user_id': commercialId,
-          'commercial_name': commercialName,
-          'invoice_date': invoiceDate.toIso8601String(),
-          'due_date': dueDate.toIso8601String(),
-          'items': items.map((item) => item.toJson()).toList(),
-          'subtotal': subtotal,
-          'tax_rate': taxRate,
-          'tax_amount': taxAmount,
-          'total_amount': totalAmount,
-          'notes': notes,
-          'terms': terms,
-        }),
+      final url = '${AppConfig.baseUrl}/factures-create';
+      AppLogger.httpRequest('POST', url, tag: 'INVOICE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: ApiService.headers(),
+              body: jsonEncode({
+                'client_id': clientId,
+                'nom': clientName,
+                'email': clientEmail,
+                'adresse': clientAddress,
+                'user_id': commercialId,
+                'commercial_name': commercialName,
+                'invoice_date': invoiceDate.toIso8601String(),
+                'due_date': dueDate.toIso8601String(),
+                'items': items.map((item) => item.toJson()).toList(),
+                'subtotal': subtotal,
+                'tax_rate': taxRate,
+                'tax_amount': taxAmount,
+                'total_amount': totalAmount,
+                'notes': notes,
+                'terms': terms,
+              }),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -65,12 +77,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la création de la facture: ${response.statusCode} - ${responseBody['message'] ?? response.body}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -83,7 +101,7 @@ class InvoiceService extends GetxService {
     String? status,
   }) async {
     try {
-      String url = '$baseUrl/factures-list';
+      String url = '${AppConfig.baseUrl}/factures-list';
       List<String> params = [];
 
       params.add('commercial_id=$commercialId');
@@ -101,10 +119,15 @@ class InvoiceService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -147,7 +170,16 @@ class InvoiceService extends GetxService {
     int? clientId,
   }) async {
     try {
-      String url = '$baseUrl/factures-list';
+      // OPTIMISATION : Vérifier le cache d'abord
+      final cacheKey =
+          'invoices_${startDate?.toIso8601String() ?? 'all'}_${endDate?.toIso8601String() ?? 'all'}_${status ?? 'all'}_${commercialId ?? 'all'}_${clientId ?? 'all'}';
+      final cached = CacheHelper.get<List<InvoiceModel>>(cacheKey);
+      if (cached != null) {
+        AppLogger.debug('Using cached invoices', tag: 'INVOICE_SERVICE');
+        return cached;
+      }
+
+      String url = '${AppConfig.baseUrl}/factures-list';
       List<String> params = [];
 
       if (startDate != null) {
@@ -170,10 +202,15 @@ class InvoiceService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -215,6 +252,14 @@ class InvoiceService extends GetxService {
             // Ignorer les erreurs de parsing individuelles
           }
         }
+
+        // Mettre en cache pour 5 minutes
+        CacheHelper.set(
+          cacheKey,
+          invoices,
+          duration: AppConfig.defaultCacheDuration,
+        );
+
         return invoices;
       } else {
         throw Exception(
@@ -230,7 +275,7 @@ class InvoiceService extends GetxService {
   Future<InvoiceModel> getInvoiceById(int invoiceId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/factures-show/$invoiceId'),
+        Uri.parse('${AppConfig.baseUrl}/factures-show/$invoiceId'),
         headers: ApiService.headers(),
       );
 
@@ -242,12 +287,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -259,7 +310,7 @@ class InvoiceService extends GetxService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/factures-update/$invoiceId'),
+        Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
         headers: ApiService.headers(),
         body: jsonEncode(data),
       );
@@ -271,12 +322,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la mise à jour de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -286,7 +343,7 @@ class InvoiceService extends GetxService {
     try {
       // Route non disponible dans Laravel - utiliser factures-create à la place
       final response = await http.post(
-        Uri.parse('$baseUrl/factures-create'),
+        Uri.parse('${AppConfig.baseUrl}/factures-create'),
         headers: ApiService.headers(),
       );
 
@@ -297,12 +354,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la soumission de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -314,7 +377,7 @@ class InvoiceService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/factures-validate/$invoiceId'),
+        Uri.parse('${AppConfig.baseUrl}/factures-validate/$invoiceId'),
         headers: ApiService.headers(),
         body: jsonEncode({'comments': comments}),
       );
@@ -326,12 +389,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de l\'approbation de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -343,7 +412,7 @@ class InvoiceService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/factures-reject/$invoiceId'),
+        Uri.parse('${AppConfig.baseUrl}/factures-reject/$invoiceId'),
         headers: ApiService.headers(),
         body: jsonEncode({'reason': reason}),
       );
@@ -355,12 +424,18 @@ class InvoiceService extends GetxService {
           'Erreur lors du rejet de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -374,7 +449,7 @@ class InvoiceService extends GetxService {
     try {
       // Route non disponible dans Laravel - utiliser factures-create à la place
       final response = await http.post(
-        Uri.parse('$baseUrl/factures-create'),
+        Uri.parse('${AppConfig.baseUrl}/factures-create'),
         headers: ApiService.headers(),
         body: jsonEncode({'email': email, 'message': message}),
       );
@@ -386,12 +461,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de l\'envoi de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -403,7 +484,7 @@ class InvoiceService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/factures/$invoiceId/mark-paid'),
+        Uri.parse('${AppConfig.baseUrl}/factures/$invoiceId/mark-paid'),
         headers: ApiService.headers(),
         body: jsonEncode(paymentInfo.toJson()),
       );
@@ -415,12 +496,18 @@ class InvoiceService extends GetxService {
           'Erreur lors du paiement de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -430,7 +517,7 @@ class InvoiceService extends GetxService {
     try {
       // Route de suppression non disponible dans Laravel
       final response = await http.delete(
-        Uri.parse('$baseUrl/factures-update/$invoiceId'),
+        Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
         headers: ApiService.headers(),
       );
 
@@ -441,12 +528,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la suppression de la facture: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -458,7 +551,7 @@ class InvoiceService extends GetxService {
     int? commercialId,
   }) async {
     try {
-      String url = '$baseUrl/factures-reports';
+      String url = '${AppConfig.baseUrl}/factures-reports';
       List<String> params = [];
 
       if (startDate != null) {
@@ -475,10 +568,15 @@ class InvoiceService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -491,12 +589,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération des statistiques: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -505,7 +609,7 @@ class InvoiceService extends GetxService {
   Future<List<InvoiceModel>> getPendingInvoices() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/factures-list?status=pending'),
+        Uri.parse('${AppConfig.baseUrl}/factures-list?status=pending'),
         headers: ApiService.headers(),
       );
 
@@ -518,12 +622,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération des factures en attente: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -533,7 +643,7 @@ class InvoiceService extends GetxService {
     try {
       // Route non disponible dans Laravel - générer côté client
       final response = await http.get(
-        Uri.parse('$baseUrl/factures-list'),
+        Uri.parse('${AppConfig.baseUrl}/factures-list'),
         headers: ApiService.headers(),
       );
 
@@ -545,12 +655,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la génération du numéro: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -560,7 +676,7 @@ class InvoiceService extends GetxService {
     try {
       // Route non disponible dans Laravel - utiliser factures-reports
       final response = await http.get(
-        Uri.parse('$baseUrl/factures-reports'),
+        Uri.parse('${AppConfig.baseUrl}/factures-reports'),
         headers: ApiService.headers(),
       );
 
@@ -575,12 +691,18 @@ class InvoiceService extends GetxService {
           'Erreur lors de la récupération des modèles: ${response.statusCode}',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+      AppLogger.error(
+        'Erreur lors de la création de la facture: $e',
+        tag: 'INVOICE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }

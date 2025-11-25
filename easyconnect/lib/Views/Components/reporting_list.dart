@@ -1,4 +1,5 @@
 import 'package:easyconnect/Views/Components/reporting_form.dart';
+import 'package:easyconnect/Views/Components/reporting_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -173,7 +174,8 @@ class ReportingList extends StatelessWidget {
 
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showReportDetails(context, report),
+                    onPressed:
+                        () => Get.to(() => ReportingDetail(reporting: report)),
                     icon: const Icon(Icons.visibility, size: 16),
                     label: const Text('Détails'),
                     style: OutlinedButton.styleFrom(
@@ -422,61 +424,6 @@ class ReportingList extends StatelessWidget {
                   },
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showReportDetails(BuildContext context, ReportingModel report) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Détails du rapport - ${_formatDate(report.reportDate)}',
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Utilisateur: ${report.userName}'),
-                  Text('Rôle: ${report.userRole}'),
-                  Text('Statut: ${report.status}'),
-                  if (report.submittedAt != null)
-                    Text('Soumis le: ${_formatDate(report.submittedAt!)}'),
-                  if (report.approvedAt != null)
-                    Text('Approuvé le: ${_formatDate(report.approvedAt!)}'),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Métriques:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  ...report.metrics.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('${entry.key}: ${entry.value}'),
-                    ),
-                  ),
-                  if (report.comments != null &&
-                      report.comments!.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Commentaires:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(report.comments!),
-                  ],
-                ],
-              ),
             ),
             actions: [
               TextButton(

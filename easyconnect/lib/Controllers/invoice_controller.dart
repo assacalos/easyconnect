@@ -7,6 +7,7 @@ import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class InvoiceController extends GetxController {
   final InvoiceService _invoiceService = InvoiceService.to;
@@ -133,8 +134,9 @@ class InvoiceController extends GetxController {
         );
       }
 
-      print(
-        '🔵 [INVOICE_CONTROLLER] ✅ ${invoiceList.length} factures chargées',
+      AppLogger.info(
+        '${invoiceList.length} factures chargées avec succès',
+        tag: 'INVOICE_CONTROLLER',
       );
 
       // Filtrer par recherche
@@ -363,8 +365,9 @@ class InvoiceController extends GetxController {
   // Approuver une facture (pour le patron)
   Future<void> approveInvoice(int invoiceId, {String? comments}) async {
     try {
-      print(
-        '🔵 [INVOICE_CONTROLLER] approveInvoice() appelé pour invoiceId: $invoiceId',
+      AppLogger.info(
+        'Approbation de la facture: $invoiceId',
+        tag: 'INVOICE_CONTROLLER',
       );
       isLoading.value = true;
 
@@ -393,6 +396,12 @@ class InvoiceController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de l\'approbation de la facture: $e',
+        tag: 'INVOICE_CONTROLLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
       Get.snackbar(
         'Erreur',
         'Erreur lors de l\'approbation: $e',
@@ -409,8 +418,9 @@ class InvoiceController extends GetxController {
   // Rejeter une facture (pour le patron)
   Future<void> rejectInvoice(int invoiceId, String reason) async {
     try {
-      print(
-        '🔵 [INVOICE_CONTROLLER] rejectInvoice() appelé pour invoiceId: $invoiceId',
+      AppLogger.info(
+        'Rejet de la facture: $invoiceId',
+        tag: 'INVOICE_CONTROLLER',
       );
       isLoading.value = true;
 
@@ -439,6 +449,12 @@ class InvoiceController extends GetxController {
         );
       }
     } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors du rejet de la facture: $e',
+        tag: 'INVOICE_CONTROLLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
       Get.snackbar(
         'Erreur',
         'Erreur lors du rejet: $e',
@@ -744,6 +760,12 @@ class InvoiceController extends GetxController {
         duration: const Duration(seconds: 2),
       );
     } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la génération du PDF: $e',
+        tag: 'INVOICE_CONTROLLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
       Get.snackbar(
         'Erreur',
         'Impossible de générer le PDF: ${e.toString()}',

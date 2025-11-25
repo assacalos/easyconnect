@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/services/stock_service.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class StockController extends GetxController {
   late final StockService _stockService;
@@ -173,6 +174,8 @@ class StockController extends GetxController {
   Future<void> loadStocks() async {
     try {
       isLoading.value = true;
+      AppLogger.info('Chargement des stocks', tag: 'STOCK_CONTROLLER');
+
       // Charger tous les stocks depuis l'API directement
       // (on ne teste plus la connectivité car ça peut échouer même si l'API fonctionne)
       final loadedStocks = await _stockService.getStocks(
@@ -186,6 +189,12 @@ class StockController extends GetxController {
       // Copier tous les stocks dans la liste filtrée par défaut
       // Le filtrage par onglet se fait dans la vue
       stocks.assignAll(loadedStocks);
+
+      AppLogger.info(
+        '${loadedStocks.length} stocks chargés avec succès',
+        tag: 'STOCK_CONTROLLER',
+      );
+
       // Afficher un message de succès si des stocks sont trouvés
       if (loadedStocks.isNotEmpty) {
         Get.snackbar(
@@ -209,8 +218,18 @@ class StockController extends GetxController {
           errorString.contains('401') ||
           errorString.contains('unauthorized')) {
         // Erreur d'authentification déjà gérée, ne rien afficher
+        AppLogger.warning(
+          'Erreur d\'authentification lors du chargement des stocks',
+          tag: 'STOCK_CONTROLLER',
+        );
         return;
       }
+
+      AppLogger.error(
+        'Erreur lors du chargement des stocks: $e',
+        tag: 'STOCK_CONTROLLER',
+        error: e,
+      );
 
       // Message d'erreur spécifique selon le type d'erreur
       String errorMessage;
@@ -514,6 +533,12 @@ class StockController extends GetxController {
       loadStockStats();
       return true;
     } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la suppression du stock: $e',
+        tag: 'STOCK_CONTROLLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {

@@ -8,6 +8,7 @@ import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class DevisController extends GetxController {
   int userId = int.parse(
@@ -48,14 +49,30 @@ class DevisController extends GetxController {
   Future<void> loadDevis({int? status}) async {
     try {
       isLoading.value = true;
+      AppLogger.info(
+        'Chargement des devis${status != null ? ' (status: $status)' : ''}',
+        tag: 'DEVIS_CONTROLLER',
+      );
+
       final loadedDevis = await _devisService.getDevis(status: status);
       devis.value = loadedDevis;
-    } catch (e) {
+
+      AppLogger.info(
+        '${loadedDevis.length} devis chargés avec succès',
+        tag: 'DEVIS_CONTROLLER',
+      );
+    } catch (e, stackTrace) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('session expirée') &&
           !errorString.contains('401')) {
+        AppLogger.error(
+          'Erreur lors du chargement des devis: $e',
+          tag: 'DEVIS_CONTROLLER',
+          error: e,
+          stackTrace: stackTrace,
+        );
         Get.snackbar(
           'Erreur',
           'Impossible de charger les devis',

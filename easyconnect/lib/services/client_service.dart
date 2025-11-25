@@ -2,9 +2,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/client_model.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class ClientService {
   final storage = GetStorage();
@@ -14,26 +17,39 @@ class ClientService {
     bool? isPending = false,
   }) async {
     try {
-      // Si status est null, on veut TOUS les statuts
-      // On fait plusieurs appels (un pour chaque statut) et on combine les résultats
-      if (status == null) {
-        final allClients = <Client>[];
-
-        // Récupérer les clients pour chaque statut (0, 1, 2)
-        for (int stat = 0; stat <= 2; stat++) {
-          try {
-            final clients = await _fetchClientsByStatus(stat, isPending);
-            allClients.addAll(clients);
-          } catch (e) {
-            // Continue avec les autres statuts même si un échoue
-          }
-        }
-
-        return allClients;
+      // OPTIMISATION : Vérifier le cache d'abord
+      final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
+      final cached = CacheHelper.get<List<Client>>(cacheKey);
+      if (cached != null) {
+        AppLogger.debug('Using cached clients', tag: 'CLIENT_SERVICE');
+        return cached;
       }
 
-      // Si un statut spécifique est demandé, faire un seul appel
-      return await _fetchClientsByStatus(status, isPending);
+      List<Client> allClients;
+
+      // Si status est null, on veut TOUS les statuts
+      // OPTIMISATION : Charger les 3 statuts en parallèle au lieu de séquentiellement
+      if (status == null) {
+        final results = await Future.wait([
+          _fetchClientsByStatus(0, isPending),
+          _fetchClientsByStatus(1, isPending),
+          _fetchClientsByStatus(2, isPending),
+        ], eagerError: false); // Continuer même si une requête échoue
+
+        allClients = results.expand((list) => list).toList();
+      } else {
+        // Si un statut spécifique est demandé, faire un seul appel
+        allClients = await _fetchClientsByStatus(status, isPending);
+      }
+
+      // Mettre en cache pour 5 minutes
+      CacheHelper.set(
+        cacheKey,
+        allClients,
+        duration: AppConfig.defaultCacheDuration,
+      );
+
+      return allClients;
     } catch (e) {
       throw Exception('Erreur lors de la récupération des clients: $e');
     }
@@ -58,18 +74,27 @@ class ClientService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final url = '$baseUrl/clients-list$queryString';
+      final url = '${AppConfig.baseUrl}/clients-list$queryString';
+      AppLogger.httpRequest('GET', url, tag: 'CLIENT_SERVICE');
+
       // Vérifier que le token existe
       if (token == null || token.toString().isEmpty) {
+        AppLogger.warning(
+          'Token d\'authentification manquant',
+          tag: 'CLIENT_SERVICE',
+        );
         throw Exception(
           'Token d\'authentification manquant. Veuillez vous reconnecter.',
         );
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -142,12 +167,19 @@ class ClientService {
       throw Exception(
         'Erreur lors de la récupération des clients: ${response.statusCode} - ${response.body}',
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
       final isAuthError = await AuthErrorHandler.handleError(e);
       if (isAuthError) {
         throw Exception('Session expirée');
       }
+
+      AppLogger.error(
+        'Erreur lors de la récupération des clients: $e',
+        tag: 'CLIENT_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
 
       throw Exception('Erreur lors de la récupération des clients: $e');
     }
@@ -157,22 +189,35 @@ class ClientService {
     try {
       final token = storage.read('token');
       final userId = storage.read('userId');
+      final url = '${AppConfig.baseUrl}/clients-create';
+
+      AppLogger.httpRequest('POST', url, tag: 'CLIENT_SERVICE');
 
       var clientData = client.toJson();
       clientData['user_id'] = userId;
       clientData['status'] = 0; // Toujours en attente à la création
-      final response = await http.post(
-        Uri.parse('$baseUrl/clients-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(clientData),
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: json.encode(clientData),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 201) {
         final responseData = json.decode(response.body);
         if (responseData['data'] != null) {
+          AppLogger.info('Client créé avec succès', tag: 'CLIENT_SERVICE');
           return Client.fromJson(responseData['data']);
         }
         // Si pas de data mais status 201, le client a été créé
@@ -190,7 +235,13 @@ class ClientService {
         // Si le parsing échoue, utiliser le message par défaut
       }
       throw Exception(errorMessage);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la création du client: $e',
+        tag: 'CLIENT_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Si c'est déjà une Exception avec un message, la relancer
       if (e is Exception) {
         rethrow;
@@ -203,7 +254,7 @@ class ClientService {
     try {
       final token = storage.read('token');
       final response = await http.put(
-        Uri.parse('$baseUrl/clients-update/${client.id}'),
+        Uri.parse('${AppConfig.baseUrl}/clients-update/${client.id}'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -225,7 +276,7 @@ class ClientService {
     try {
       final token = storage.read('token');
 
-      final url = '$baseUrl/clients-validate/$clientId';
+      final url = '${AppConfig.baseUrl}/clients-validate/$clientId';
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -246,7 +297,7 @@ class ClientService {
   Future<bool> rejectClient(int clientId, String comment) async {
     try {
       final token = storage.read('token');
-      final url = '$baseUrl/clients-reject/$clientId';
+      final url = '${AppConfig.baseUrl}/clients-reject/$clientId';
       final body = json.encode({'commentaire': comment});
       final response = await http.post(
         Uri.parse(url),
@@ -274,7 +325,7 @@ class ClientService {
     try {
       final token = storage.read('token');
       final response = await http.delete(
-        Uri.parse('$baseUrl/clients-delete/$clientId'),
+        Uri.parse('${AppConfig.baseUrl}/clients-delete/$clientId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -291,7 +342,7 @@ class ClientService {
     try {
       final token = storage.read('token');
       final response = await http.get(
-        Uri.parse('$baseUrl/clients/stats'),
+        Uri.parse('${AppConfig.baseUrl}/clients/stats'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',

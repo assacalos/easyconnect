@@ -75,6 +75,36 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
     
+    // Routes de liste (accessibles à tous les utilisateurs authentifiés)
+    Route::get('/clients-list', [ClientController::class, 'index']);
+    Route::get('/fournisseurs-list', [FournisseurController::class, 'index']);
+    Route::get('/users-list', [UserController::class, 'index']);
+    Route::get('/factures-list', [FactureController::class, 'index']);
+    Route::get('/bons-de-commande-list', [BonDeCommandeController::class, 'index']);
+    Route::get('/commandes-entreprise-list', [CommandeEntrepriseController::class, 'index']);
+    Route::get('/devis-list', [DevisController::class, 'index']);
+    Route::get('/bordereaux-list', [BordereauController::class, 'index']);
+    Route::get('/paiements-list', [PaiementController::class, 'index']);
+    Route::get('/payments', [PaiementController::class, 'index']);
+    Route::get('/payment-schedules', [PaymentScheduleController::class, 'index']);
+    Route::get('/taxes-list', [TaxController::class, 'index']);
+    Route::get('/salaires-list', [SalaryController::class, 'index']);
+    Route::get('/salaries-list', [SalaryController::class, 'index']);
+    Route::get('/depenses-list', [ExpenseController::class, 'index']);
+    Route::get('/expenses-list', [ExpenseController::class, 'index']);
+    Route::get('/stocks', [StockController::class, 'index']);
+    Route::get('/stocks-list', [StockController::class, 'index']);
+    Route::get('/interventions-list', [InterventionController::class, 'index']);
+    Route::get('/equipment-list', [EquipmentController::class, 'index']);
+    Route::get('/employees', [EmployeeController::class, 'index']);
+    Route::get('/employees-list', [EmployeeController::class, 'index']);
+    Route::get('/recruitment-requests', [RecruitmentController::class, 'index']);
+    Route::get('/recruitment-applications', [RecruitmentApplicationController::class, 'index']);
+    Route::get('/recruitment-documents', [RecruitmentDocumentController::class, 'index']);
+    Route::get('/recruitment-interviews', [RecruitmentInterviewController::class, 'index']);
+    Route::get('/contracts', [ContractController::class, 'index']);
+    Route::get('/leave-requests', [LeaveRequestController::class, 'index']);
+    
     // Routes pour les notifications (tous les utilisateurs)
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/{id}', [NotificationController::class, 'show']);
@@ -101,17 +131,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/my-evaluations/{id}/sign-employee', [EvaluationController::class, 'signByEmployee']);
 
     // Routes pour les clients (tous les utilisateurs authentifiés)
-    Route::get('/clients-list', [ClientController::class, 'index']);
     Route::get('/clients-show/{id}', [ClientController::class, 'show']);
 
     // Routes pour les fournisseurs (tous les utilisateurs authentifiés)
-    Route::get('/fournisseurs-list', [FournisseurController::class, 'index']);
     Route::get('/fournisseurs-show/{id}', [FournisseurController::class, 'show']);
 
     // Routes pour la liste et consultation (commercial, comptable, technicien, admin, patron)
     Route::middleware(['role:1,2,3,5,6'])->group(function () {
-        Route::get('/users-list', [UserController::class, 'index']);
-        Route::get('/factures-list', [FactureController::class, 'index']);
         Route::get('/factures-show/{id}', [FactureController::class, 'show']);
 
         // Routes pour les pointages
@@ -138,7 +164,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/clients-destroy/{id}', [ClientController::class, 'destroy']);
 
         // Routes pour les bons de commande
-        Route::get('/bons-de-commande-list', [BonDeCommandeController::class, 'index']);
         Route::get('/bons-de-commande-show/{id}', [BonDeCommandeController::class, 'show']);
         Route::post('/bons-de-commande-create', [BonDeCommandeController::class, 'store']);
         Route::put('/bons-de-commande-update/{id}', [BonDeCommandeController::class, 'update']);
@@ -149,7 +174,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/bons-de-commande-reports', [BonDeCommandeController::class, 'reports']);
 
         // Routes pour les commandes entreprise
-        Route::get('/commandes-entreprise-list', [CommandeEntrepriseController::class, 'index']);
         Route::get('/commandes-entreprise-show/{id}', [CommandeEntrepriseController::class, 'show']);
         Route::post('/commandes-entreprise-create', [CommandeEntrepriseController::class, 'store']);
         Route::put('/commandes-entreprise-update/{id}', [CommandeEntrepriseController::class, 'update']);
@@ -158,14 +182,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/commandes-entreprise-mark-invoiced/{id}', [CommandeEntrepriseController::class, 'markAsInvoiced']);
         
         // Routes pour les devis
-        Route::get('/devis-list', [DevisController::class, 'index']);
         Route::get('/devis-show/{id}', [DevisController::class, 'show']);
         Route::post('/devis-create', [DevisController::class, 'store']);
         Route::put('/devis-update/{id}', [DevisController::class, 'update']);
         Route::delete('/devis-destroy/{id}', [DevisController::class, 'destroy']);
 
         // Routes pour les bordereaux
-        Route::get('/bordereaux-list', [BordereauController::class, 'index']);
         Route::get('/bordereaux-show/{id}', [BordereauController::class, 'show']);
         Route::post('/bordereaux-create', [BordereauController::class, 'store']);
         Route::get('/bordereaux-update/{id}', [BordereauController::class, 'update']);
@@ -275,7 +297,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/factures/{id}/mark-paid', [FactureController::class, 'markAsPaid']);
         
         // Routes pour les paiements
-        Route::get('/paiements-list', [PaiementController::class, 'index']);
         Route::get('/paiements-show/{id}', [PaiementController::class, 'show']);
         Route::post('/paiements-create', [PaiementController::class, 'store']);
         Route::post('/paiements-create-with-number', [PaiementController::class, 'createWithNumber']);
@@ -286,7 +307,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/paiements-mark-overdue/{id}', [PaiementController::class, 'markAsOverdue']);
 
         // Routes alias en anglais pour compatibilité Flutter/Dart
-        Route::get('/payments', [PaiementController::class, 'index']);
         Route::get('/payments/{id}', [PaiementController::class, 'show']);
         Route::post('/payments', [PaiementController::class, 'store']);
         Route::put('/payments/{id}', [PaiementController::class, 'update']);
@@ -296,11 +316,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::patch('/payments/{id}/reactivate', [PaiementController::class, 'reactivate']);
         
         // Routes pour les plannings de paiement
-        Route::get('/payment-schedules', [PaymentScheduleController::class, 'index']);
         Route::get('/payment-schedules/{id}', [PaymentScheduleController::class, 'show']);
         
         // Routes pour les taxes
-        Route::get('/taxes-list', [TaxController::class, 'index']);
         Route::post('/taxes-create', [TaxController::class, 'store']);
 
         Route::put('/taxes-update/{id}', [TaxController::class, 'update']);
@@ -312,8 +330,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/tax-categories', [TaxController::class, 'categories']);
         
         // Routes pour les salaires
-        Route::get('/salaires-list', [SalaryController::class, 'index']);
-        Route::get('/salaries-list', [SalaryController::class, 'index']); // Alias en anglais
         Route::post('/salaries-create', [SalaryController::class, 'store']);
         Route::put('/salaries-update/{id}', [SalaryController::class, 'update']);
         Route::delete('/salaries-destroy/{id}', [SalaryController::class, 'destroy']);
@@ -332,16 +348,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
        
         
         // Routes pour les dépenses
-        Route::get('/depenses-list', [ExpenseController::class, 'index']);
-        Route::get('/expenses-list', [ExpenseController::class, 'index']); // Alias en anglais
         Route::post('/expenses-create', [ExpenseController::class, 'store']);
         Route::put('/expenses-update/{id}', [ExpenseController::class, 'update']);
         Route::delete('/expenses-destroy/{id}', [ExpenseController::class, 'destroy']);
        
         
         // Routes pour le stock
-        Route::get('/stocks', [StockController::class, 'index']);
-        Route::get('/stocks-list', [StockController::class, 'index']); // Alias
         Route::post('/stocks-create', [StockController::class, 'store']);
         Route::put('/stocks-update/{id}', [StockController::class, 'update']);
         Route::delete('/stocks-destroy/{id}', [StockController::class, 'destroy']);
@@ -361,7 +373,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::middleware(['role:1,5,6'])->group(function () {
         // Routes pour les interventions
-        Route::get('/interventions-list', [InterventionController::class, 'index']);
         Route::get('/interventions-show/{id}', [InterventionController::class, 'show']);
         Route::post('/interventions-create', [InterventionController::class, 'store']);
         Route::put('/interventions/{id}', [InterventionController::class, 'update']);
@@ -384,7 +395,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/equipment', [InterventionController::class, 'equipment']);
 
         // Routes pour les équipements
-        Route::get('/equipment-list', [EquipmentController::class, 'index']);
         Route::get('/equipment/{id}', [EquipmentController::class, 'show']);
         Route::post('/equipment-create', [EquipmentController::class, 'store']);
         Route::put('/equipment-update/{id}', [EquipmentController::class, 'update']);
@@ -395,10 +405,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     /* ROUTES POUR LES RH, ADMIN ET PATRON */
     /* -------------------------------------------------------------- */
 
-    Route::middleware(['role:1,4,6'])->group(function () {
+    Route::middleware(['role:1,3,4,6'])->group(function () {
         // Routes pour les employés
-        Route::get('/employees', [EmployeeController::class, 'index']);
-        Route::get('/employees-list', [EmployeeController::class, 'index']);
         Route::get('/employees/{id}', [EmployeeController::class, 'show']);
         Route::post('/employees', [EmployeeController::class, 'store']);
         Route::put('/employees/{id}', [EmployeeController::class, 'update']);
@@ -425,7 +433,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/leaves/{leaveId}/reject', [EmployeeController::class, 'rejectLeave']);
 
         // Routes pour les recrutements
-        Route::get('/recruitment-requests', [RecruitmentController::class, 'index']);
         Route::get('/recruitment-requests/{id}', [RecruitmentController::class, 'show']);
         Route::get('/recruitment-requests/{id}/applications', [RecruitmentController::class, 'applications']);
         Route::post('/recruitment-requests', [RecruitmentController::class, 'store']);
@@ -451,7 +458,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/recruitment-requests-drafts', [RecruitmentController::class, 'drafts']);
         
         // Routes pour les candidatures
-        Route::get('/recruitment-applications', [RecruitmentApplicationController::class, 'index']);
         Route::get('/recruitment-applications/{id}', [RecruitmentApplicationController::class, 'show']);
         Route::post('/recruitment-applications', [RecruitmentApplicationController::class, 'store']);
         Route::put('/recruitment-applications/{id}', [RecruitmentApplicationController::class, 'update']);
@@ -462,7 +468,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/recruitment-applications/{id}/hire', [RecruitmentApplicationController::class, 'hire']);
         
         // Routes pour les documents de recrutement
-        Route::get('/recruitment-documents', [RecruitmentDocumentController::class, 'index']);
         Route::get('/recruitment-documents/{id}', [RecruitmentDocumentController::class, 'show']);
         Route::post('/recruitment-documents', [RecruitmentDocumentController::class, 'store']);
         Route::put('/recruitment-documents/{id}', [RecruitmentDocumentController::class, 'update']);
@@ -470,7 +475,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/recruitment-documents/{id}/download', [RecruitmentDocumentController::class, 'download']);
         
         // Routes pour les entretiens
-        Route::get('/recruitment-interviews', [RecruitmentInterviewController::class, 'index']);
         Route::get('/recruitment-interviews/{id}', [RecruitmentInterviewController::class, 'show']);
         Route::post('/recruitment-interviews', [RecruitmentInterviewController::class, 'store']);
         Route::put('/recruitment-interviews/{id}', [RecruitmentInterviewController::class, 'update']);
@@ -479,7 +483,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/recruitment-interviews/{id}/reschedule', [RecruitmentInterviewController::class, 'reschedule']);
 
         // Routes pour les contrats
-        Route::get('/contracts', [ContractController::class, 'index']);
         Route::get('/contracts/{id}', [ContractController::class, 'show']);
         Route::post('/contracts', [ContractController::class, 'store']);
         Route::put('/contracts/{id}', [ContractController::class, 'update']);
@@ -499,7 +502,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/contracts/generate-number', [ContractController::class, 'generateNumber']);
 
         // Routes pour les demandes de congé
-        Route::get('/leave-requests', [LeaveRequestController::class, 'index']);
         Route::get('/leave-requests/employee/{employeeId}', [LeaveRequestController::class, 'getEmployeeRequests']);
         Route::get('/leave-requests/{id}', [LeaveRequestController::class, 'show']);
         Route::post('/leave-requests', [LeaveRequestController::class, 'store']);

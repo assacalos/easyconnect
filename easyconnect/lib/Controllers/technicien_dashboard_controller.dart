@@ -180,8 +180,7 @@ class TechnicienDashboardController extends BaseDashboardController {
           });
           _hasInterventionListener = true;
         }
-      } catch (e) {
-      }
+      } catch (e) {}
     }
 
     // Écouter les changements dans EquipmentController si disponible
@@ -195,8 +194,7 @@ class TechnicienDashboardController extends BaseDashboardController {
           });
           _hasEquipmentListener = true;
         }
-      } catch (e) {
-      }
+      } catch (e) {}
     }
   }
 
@@ -276,11 +274,18 @@ class TechnicienDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingEntities() async {
     try {
+      // OPTIMISATION : Charger toutes les entités en parallèle
+      final results = await Future.wait([
+        _interventionService.getInterventions(),
+        _reportingService.getAllReports(),
+        _equipmentService.getEquipments(),
+      ], eagerError: false);
+
       // Charger depuis les services directement pour avoir les données les plus récentes
-      final interventions = await _interventionService.getInterventions();
+      final interventions = results[0] as List;
       final pendingCount =
           interventions
-              .where((i) => i.status.toLowerCase() == 'pending')
+              .where((i) => (i as dynamic).status.toLowerCase() == 'pending')
               .length;
       pendingInterventions.value = pendingCount;
 
@@ -288,24 +293,25 @@ class TechnicienDashboardController extends BaseDashboardController {
       pendingMaintenance.value = 0;
 
       try {
-        final reports = await _reportingService.getAllReports();
+        final reports = results[1] as List;
         pendingReports.value =
-            reports
-                .where((r) => r.status == 'pending' || r.status == 'submitted')
-                .length;
+            reports.where((r) {
+              final status = (r as dynamic).status;
+              return status == 'pending' || status == 'submitted';
+            }).length;
       } catch (e) {
         pendingReports.value = 0;
       }
 
       try {
-        final equipments = await _equipmentService.getEquipments();
+        final equipments = results[2] as List;
         // Équipements en attente = ceux qui nécessitent une attention (en maintenance, broken, etc.)
         pendingEquipments.value =
             equipments.where((e) {
-              final status = e.status.toLowerCase();
+              final status = (e as dynamic).status.toLowerCase();
               return status == 'maintenance' ||
                   status == 'broken' ||
-                  e.needsMaintenance == true;
+                  (e as dynamic).needsMaintenance == true;
             }).length;
       } catch (e) {
         pendingEquipments.value = 0;

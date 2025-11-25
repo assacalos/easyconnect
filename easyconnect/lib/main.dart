@@ -5,9 +5,11 @@ import 'package:easyconnect/bindings/auth_binding.dart';
 import 'package:easyconnect/Views/Components/app_lifecycle_wrapper.dart';
 import 'package:get_storage/get_storage.dart';
 
+import 'package:easyconnect/utils/logger.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  print('=== DÉMARRAGE DE L\'APPLICATION ===');
+  AppLogger.info('=== DÉMARRAGE DE L\'APPLICATION ===', tag: 'MAIN');
   // Assurer l'initialisation du stockage avant de lancer l'app
   await GetStorage.init();
 

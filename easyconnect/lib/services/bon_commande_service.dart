@@ -2,8 +2,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
 
 class BonCommandeService {
   final storage = GetStorage();
@@ -22,14 +24,25 @@ class BonCommandeService {
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
-      final url = '$baseUrl/commandes-entreprise-list$queryString';
+      final url = '${AppConfig.baseUrl}/commandes-entreprise-list$queryString';
+      AppLogger.httpRequest('GET', url, tag: 'BON_COMMANDE_SERVICE');
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BON_COMMANDE_SERVICE',
       );
 
       // Gérer les erreurs d'authentification
@@ -122,7 +135,13 @@ class BonCommandeService {
       throw Exception(
         'Erreur lors de la récupération des bons de commande: ${response.statusCode}',
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la récupération des bons de commande: $e',
+        tag: 'BON_COMMANDE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw Exception(
         'Erreur lors de la récupération des bons de commande: $e',
       );
@@ -132,19 +151,32 @@ class BonCommandeService {
   Future<BonCommande> createBonCommande(BonCommande bonCommande) async {
     try {
       final token = storage.read('token');
+      final url = '${AppConfig.baseUrl}/commandes-entreprise-create';
+      AppLogger.httpRequest('POST', url, tag: 'BON_COMMANDE_SERVICE');
 
       // Utiliser toJsonForCreate() pour n'envoyer que les champs nécessaires
       final bonCommandeJson = bonCommande.toJsonForCreate();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/commandes-entreprise-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(bonCommandeJson),
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: json.encode(bonCommandeJson),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BON_COMMANDE_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         try {
@@ -240,7 +272,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.put(
-        Uri.parse('$baseUrl/commandes-entreprise-update/${bonCommande.id}'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-update/${bonCommande.id}',
+        ),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -262,7 +296,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.delete(
-        Uri.parse('$baseUrl/commandes-entreprise-destroy/$bonCommandeId'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-destroy/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -279,7 +315,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/commandes-entreprise-submit/$bonCommandeId'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-submit/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -296,7 +334,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/commandes-entreprise-validate/$bonCommandeId'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-validate/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -313,7 +353,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/commandes-entreprise-reject/$bonCommandeId'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-reject/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -333,7 +375,7 @@ class BonCommandeService {
       final token = storage.read('token');
       final response = await http.post(
         Uri.parse(
-          '$baseUrl/commandes-entreprise-mark-delivered/$bonCommandeId',
+          '${AppConfig.baseUrl}/commandes-entreprise-mark-delivered/$bonCommandeId',
         ),
         headers: {
           'Accept': 'application/json',
@@ -351,7 +393,9 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/commandes-entreprise-mark-invoiced/$bonCommandeId'),
+        Uri.parse(
+          '${AppConfig.baseUrl}/commandes-entreprise-mark-invoiced/$bonCommandeId',
+        ),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -368,7 +412,7 @@ class BonCommandeService {
     try {
       final token = storage.read('token');
       final response = await http.get(
-        Uri.parse('$baseUrl/bon-commandes/stats'),
+        Uri.parse('${AppConfig.baseUrl}/bon-commandes/stats'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',

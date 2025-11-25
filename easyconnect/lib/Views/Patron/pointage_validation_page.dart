@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
+import 'package:easyconnect/Views/Rh/pointage_detail.dart';
 import 'package:intl/intl.dart';
 
 class PointageValidationPage extends StatefulWidget {
@@ -228,131 +229,136 @@ class _PointageValidationPageState extends State<PointageValidationPage>
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: statusColor.withOpacity(0.1),
-          child: Icon(statusIcon, color: statusColor),
-        ),
-        title: Text(
-          pointage.userName ?? 'Utilisateur inconnu',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('Type: ${pointage.type}'),
-            Text('Date: ${formatDateTime.format(pointage.timestamp)}'),
-            Text('Lieu: ${pointage.address}'),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: statusColor),
-              ),
-              child: Text(
-                statusText,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+      child: InkWell(
+        onTap: () => Get.to(() => PointageDetail(pointage: pointage)),
+        borderRadius: BorderRadius.circular(8),
+        child: ExpansionTile(
+          leading: CircleAvatar(
+            backgroundColor: statusColor.withOpacity(0.1),
+            child: Icon(statusIcon, color: statusColor),
+          ),
+          title: Text(
+            pointage.userName ?? 'Utilisateur inconnu',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 4),
+              Text('Type: ${pointage.type}'),
+              Text('Date: ${formatDateTime.format(pointage.timestamp)}'),
+              Text('Lieu: ${pointage.address}'),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: statusColor),
                 ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Informations employé
+                  const Text(
+                    'Informations employé',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Employé: ${pointage.userName ?? 'Inconnu'}'),
+                        Text('ID Employé: ${pointage.userId}'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Détails du pointage
+                  const Text(
+                    'Détails du pointage',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [const Text('Type:'), Text(pointage.type)],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Heure:'),
+                            Text(formatDateTime.format(pointage.timestamp)),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Lieu:'),
+                            Text(pointage.address ?? 'Inconnu'),
+                          ],
+                        ),
+                        if (pointage.photoPath != null)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Photo:'),
+                              Text(pointage.photoPath!),
+                            ],
+                          ),
+                        if (pointage.notes != null &&
+                            pointage.notes!.isNotEmpty)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Notes:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(pointage.notes!),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildActionButtons(pointage, statusColor),
+                ],
               ),
             ),
           ],
         ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Informations employé
-                const Text(
-                  'Informations employé',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Employé: ${pointage.userName ?? 'Inconnu'}'),
-                      Text('ID Employé: ${pointage.userId}'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Détails du pointage
-                const Text(
-                  'Détails du pointage',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [const Text('Type:'), Text(pointage.type)],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Heure:'),
-                          Text(formatDateTime.format(pointage.timestamp)),
-                        ],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Lieu:'),
-                          Text(pointage.address ?? 'Inconnu'),
-                        ],
-                      ),
-                      if (pointage.photoPath != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Photo:'),
-                            Text(pointage.photoPath!),
-                          ],
-                        ),
-                      if (pointage.notes != null && pointage.notes!.isNotEmpty)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Notes:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            Text(pointage.notes!),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildActionButtons(pointage, statusColor),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

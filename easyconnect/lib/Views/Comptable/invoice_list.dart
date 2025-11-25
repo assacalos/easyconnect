@@ -5,9 +5,13 @@ import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/Views/Comptable/invoice_form.dart';
 import 'package:easyconnect/Views/Comptable/invoice_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/utils/roles.dart';
 
 class InvoiceList extends StatelessWidget {
-  const InvoiceList({super.key});
+  final int? clientId;
+
+  const InvoiceList({super.key, this.clientId});
 
   @override
   Widget build(BuildContext context) {
@@ -66,23 +70,48 @@ class InvoiceList extends StatelessWidget {
 
                 // Liste des factures
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: controller.invoices.length,
-                    itemBuilder: (context, index) {
-                      final invoice = controller.invoices[index];
-                      return _buildInvoiceCard(invoice, controller);
+                  child: Builder(
+                    builder: (context) {
+                      // Récupérer clientId depuis les arguments
+                      final args = Get.arguments as Map<String, dynamic>?;
+                      final filterClientId =
+                          clientId ?? args?['clientId'] as int?;
+
+                      // Filtrer les factures par clientId si fourni
+                      var filteredInvoices = controller.invoices;
+                      if (filterClientId != null) {
+                        filteredInvoices =
+                            filteredInvoices
+                                .where(
+                                  (invoice) =>
+                                      invoice.clientId == filterClientId,
+                                )
+                                .toList()
+                                .obs;
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredInvoices.length,
+                        itemBuilder: (context, index) {
+                          final invoice = filteredInvoices[index];
+                          return _buildInvoiceCard(invoice, controller);
+                        },
+                      );
                     },
                   ),
                 ),
               ],
             );
           }),
-          // Bouton d'ajout uniforme en bas à droite
-          UniformAddButton(
-            onPressed: () => Get.to(() => const InvoiceForm()),
-            label: 'Nouvelle Facture',
-            icon: Icons.receipt,
+          // Bouton d'ajout uniforme en bas à droite (masqué pour les commerciaux)
+          RoleBasedWidget(
+            allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
+            child: UniformAddButton(
+              onPressed: () => Get.to(() => const InvoiceForm()),
+              label: 'Nouvelle Facture',
+              icon: Icons.receipt,
+            ),
           ),
         ],
       ),
@@ -93,6 +122,7 @@ class InvoiceList extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: InkWell(
         onTap: () => Get.to(() => InvoiceDetail(invoice: invoice)),
         borderRadius: BorderRadius.circular(8),
@@ -108,7 +138,7 @@ class InvoiceList extends StatelessWidget {
                     child: Text(
                       'Facture #${invoice.invoiceNumber}',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -123,6 +153,11 @@ class InvoiceList extends StatelessWidget {
                           .getInvoiceStatusColor(invoice.status)
                           .withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: controller
+                            .getInvoiceStatusColor(invoice.status)
+                            .withOpacity(0.5),
+                      ),
                     ),
                     child: Text(
                       controller.getInvoiceStatusText(invoice.status),
@@ -140,38 +175,42 @@ class InvoiceList extends StatelessWidget {
               // Informations client
               Row(
                 children: [
-                  const Icon(Icons.person, size: 16, color: Colors.grey),
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       invoice.clientName,
-                      style: const TextStyle(fontSize: 14),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
 
-              // Date et montant
+              // Date
               Row(
                 children: [
-                  const Icon(
-                    Icons.calendar_today,
-                    size: 16,
-                    color: Colors.grey,
-                  ),
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Text(
                     '${invoice.invoiceDate.day}/${invoice.invoiceDate.month}/${invoice.invoiceDate.year}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
-                  const Spacer(),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Montant
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
                   Text(
-                    '${invoice.totalAmount.toStringAsFixed(2)} fcfa',
-                    style: const TextStyle(
+                    '${invoice.totalAmount.toStringAsFixed(0)} fcfa',
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                      color: Colors.green[700],
                     ),
                   ),
                 ],
@@ -225,6 +264,27 @@ class InvoiceList extends StatelessWidget {
                             () => _showRejectionDialog(controller, invoice.id),
                         icon: const Icon(Icons.close, size: 16),
                         label: const Text('Rejeter'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Bouton PDF pour les factures validées (sent, paid)
+              if (invoice.status == 'sent' || invoice.status == 'paid') ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => controller.generatePDF(invoice.id),
+                        icon: const Icon(Icons.picture_as_pdf, size: 16),
+                        label: const Text('Générer PDF'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,

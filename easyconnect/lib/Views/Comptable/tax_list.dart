@@ -194,6 +194,7 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
               return _filteredTaxes.isEmpty
                   ? const Center(child: Text('Aucune taxe trouvée'))
                   : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _filteredTaxes.length,
                     itemBuilder: (context, index) {
                       final tax = _filteredTaxes[index];
@@ -216,156 +217,178 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
 
   Widget _buildTaxCard(Tax tax, NumberFormat formatCurrency) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStatusColor(tax.status),
-          child: Icon(_getStatusIcon(tax.status), color: Colors.white),
-        ),
-        title: Text(
-          tax.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Montant: ${formatCurrency.format(tax.amount)}'),
-            Text('Date d\'échéance: ${_formatDate(tax.dueDateTime)}'),
-            if (tax.description != null && tax.description!.isNotEmpty)
-              Text('Description: ${tax.description}'),
-            if (tax.status == 'rejected' &&
-                tax.rejectionReason != null &&
-                tax.rejectionReason!.isNotEmpty) ...[
-              const SizedBox(height: 4),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell(
+        onTap: () => Get.toNamed('/taxes/${tax.id}'),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec nom et statut
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Raison du rejet: ${tax.rejectionReason}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      tax.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(tax.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _getStatusColor(tax.status).withOpacity(0.5),
+                      ),
+                    ),
+                    child: Text(
+                      tax.statusText,
+                      style: TextStyle(
+                        color: _getStatusColor(tax.status),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Bouton Détail
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.blue),
-              onPressed: () => _showTaxDetails(tax),
-              tooltip: 'Voir détails',
-            ),
-            // Bouton Modifier
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.orange),
-              onPressed: () => _showEditDialog(tax),
-              tooltip: 'Modifier',
-            ),
-            // Menu pour actions supplémentaires
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'validate') {
-                  _showValidateDialog(tax);
-                } else if (value == 'reject') {
-                  _showRejectDialog(tax);
-                } else if (value == 'mark_paid') {
-                  _showMarkPaidDialog(tax);
-                } else if (value == 'delete') {
-                  _showDeleteDialog(tax);
-                }
-              },
-              itemBuilder: (context) {
-                final items = <PopupMenuEntry<String>>[];
-                // Afficher les options selon le statut normalisé
-                if (tax.isPending) {
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'validate',
-                      child: ListTile(
-                        leading: Icon(Icons.check, color: Colors.green),
-                        title: Text('Valider'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'reject',
-                      child: ListTile(
-                        leading: Icon(Icons.close, color: Colors.red),
-                        title: Text('Rejeter'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                }
-                if (tax.isValidated && !tax.isPaid) {
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'mark_paid',
-                      child: ListTile(
-                        leading: Icon(Icons.payment, color: Colors.blue),
-                        title: Text('Marquer payé'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                }
-                items.add(
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete, color: Colors.red),
-                      title: Text('Supprimer'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                );
-                return items;
-              },
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(tax.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    tax.statusText,
+              const SizedBox(height: 8),
+
+              // Montant
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    formatCurrency.format(tax.amount),
                     style: TextStyle(
-                      color: _getStatusColor(tax.status),
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.green[700],
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  formatCurrency.format(tax.amount),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              // Date d'échéance
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Échéance: ${_formatDate(tax.dueDateTime)}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
+                ],
+              ),
+
+              // Description si disponible
+              if (tax.description != null && tax.description!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.description, size: 16, color: Colors.grey[600]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tax.description!,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+
+              // Raison du rejet si rejeté
+              if (tax.isRejected &&
+                  tax.rejectionReason != null &&
+                  tax.rejectionReason!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.report, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison: ${tax.rejectionReason}',
+                        style: TextStyle(color: Colors.red[700], fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Actions
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Détails'),
+                    onPressed: () => Get.toNamed('/taxes/${tax.id}'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Modifier'),
+                    onPressed: () => _showEditDialog(tax),
+                  ),
+                  if (tax.isPending) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Valider'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.green,
+                      ),
+                      onPressed: () => _showValidateDialog(tax),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Rejeter'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      onPressed: () => _showRejectDialog(tax),
+                    ),
+                  ],
+                  if (tax.isValidated && !tax.isPaid) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.payment, size: 16),
+                      label: const Text('Marquer payé'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                      onPressed: () => _showMarkPaidDialog(tax),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.delete, size: 16),
+                    label: const Text('Supprimer'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    onPressed: () => _showDeleteDialog(tax),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        onTap: () => _showTaxDetails(tax),
       ),
     );
   }
@@ -391,56 +414,8 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
     return Colors.grey;
   }
 
-  IconData _getStatusIcon(String status) {
-    final statusLower = status.toLowerCase();
-    if (statusLower == 'en_attente' ||
-        statusLower == 'pending' ||
-        statusLower == 'draft' ||
-        statusLower == 'declared' ||
-        statusLower == 'calculated') {
-      return Icons.pending;
-    }
-    if (statusLower == 'valide' || statusLower == 'validated') {
-      return Icons.check_circle;
-    }
-    if (statusLower == 'rejete' || statusLower == 'rejected') {
-      return Icons.cancel;
-    }
-    if (statusLower == 'paid' || statusLower == 'paye') {
-      return Icons.payment;
-    }
-    return Icons.help;
-  }
-
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
-  }
-
-  void _showTaxDetails(Tax tax) {
-    Get.dialog(
-      AlertDialog(
-        title: Text(tax.name),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Montant: ${tax.amount.toStringAsFixed(2)} €'),
-              Text('Date d\'échéance: ${_formatDate(tax.dueDateTime)}'),
-              Text('Statut: ${tax.statusText}'),
-              if (tax.description != null && tax.description!.isNotEmpty)
-                Text('Description: ${tax.description}'),
-              if (tax.rejectionReason != null &&
-                  tax.rejectionReason!.isNotEmpty)
-                Text('Raison du rejet: ${tax.rejectionReason}'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
-        ],
-      ),
-    );
   }
 
   void _showEditDialog(Tax tax) {

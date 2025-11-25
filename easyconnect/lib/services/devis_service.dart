@@ -2,14 +2,25 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/devis_model.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class DevisService {
   final storage = GetStorage();
 
   Future<List<Devis>> getDevis({int? status}) async {
     try {
+      // OPTIMISATION : Vérifier le cache d'abord
+      final cacheKey = 'devis_${status ?? 'all'}';
+      final cached = CacheHelper.get<List<Devis>>(cacheKey);
+      if (cached != null) {
+        AppLogger.debug('Using cached devis', tag: 'DEVIS_SERVICE');
+        return cached;
+      }
+
       final token = storage.read('token');
 
       var queryParams = <String, String>{};
@@ -24,14 +35,22 @@ class DevisService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/devis-list$queryString'),
+      final url = '${AppConfig.baseUrl}/devis-list$queryString';
+      AppLogger.httpRequest('GET', url, tag: 'DEVIS_SERVICE');
 
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -66,6 +85,14 @@ class DevisService {
                 .where((devis) => devis != null)
                 .cast<Devis>()
                 .toList();
+
+        // Mettre en cache pour 5 minutes
+        CacheHelper.set(
+          cacheKey,
+          devisList,
+          duration: AppConfig.defaultCacheDuration,
+        );
+
         return devisList;
       }
 
@@ -94,55 +121,75 @@ class DevisService {
     try {
       final token = storage.read('token');
       final devisData = devis.toJson();
-      final url = '$baseUrl/devis-create';
+      final url = '${AppConfig.baseUrl}/devis-create';
 
-      print('🌐 [DEVIS SERVICE] Envoi de la requête POST');
-      print('🌐 [DEVIS SERVICE] URL: $url');
-      print('🌐 [DEVIS SERVICE] Token présent: ${token != null}');
-      print('🌐 [DEVIS SERVICE] Données JSON: ${json.encode(devisData)}');
-
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(devisData),
+      AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
+      AppLogger.debug('Token présent: ${token != null}', tag: 'DEVIS_SERVICE');
+      AppLogger.debug(
+        'Données: ${json.encode(devisData)}',
+        tag: 'DEVIS_SERVICE',
       );
 
-      print('🌐 [DEVIS SERVICE] Réponse reçue');
-      print('🌐 [DEVIS SERVICE] Status code: ${response.statusCode}');
-      print('🌐 [DEVIS SERVICE] Headers: ${response.headers}');
-      print('🌐 [DEVIS SERVICE] Body: ${response.body}');
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: json.encode(devisData),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 201) {
         try {
           final responseData = json.decode(response.body);
-          print('✅ [DEVIS SERVICE] Réponse décodée avec succès');
-          print('✅ [DEVIS SERVICE] Response data: $responseData');
+          AppLogger.info('Réponse décodée avec succès', tag: 'DEVIS_SERVICE');
 
           if (responseData['data'] != null) {
             final createdDevis = Devis.fromJson(responseData['data']);
-            print('✅ [DEVIS SERVICE] Devis créé avec ID: ${createdDevis.id}');
+            AppLogger.info(
+              'Devis créé avec ID: ${createdDevis.id}',
+              tag: 'DEVIS_SERVICE',
+            );
             return createdDevis;
           } else {
-            print('❌ [DEVIS SERVICE] Pas de champ "data" dans la réponse');
+            AppLogger.error(
+              'Pas de champ "data" dans la réponse',
+              tag: 'DEVIS_SERVICE',
+            );
             throw Exception('Réponse invalide: pas de champ "data"');
           }
         } catch (e) {
-          print('❌ [DEVIS SERVICE] Erreur lors du décodage: $e');
-          print('❌ [DEVIS SERVICE] Body brut: ${response.body}');
+          AppLogger.error(
+            'Erreur lors du décodage: $e',
+            tag: 'DEVIS_SERVICE',
+            error: e,
+          );
           throw Exception('Erreur lors du décodage de la réponse: $e');
         }
       } else {
-        print('❌ [DEVIS SERVICE] Erreur HTTP ${response.statusCode}');
-        print('❌ [DEVIS SERVICE] Body d\'erreur: ${response.body}');
+        AppLogger.error(
+          'Erreur HTTP ${response.statusCode}: ${response.body}',
+          tag: 'DEVIS_SERVICE',
+        );
         throw Exception('Erreur HTTP ${response.statusCode}: ${response.body}');
       }
     } catch (e, stackTrace) {
-      print('❌ [DEVIS SERVICE] Exception: $e');
-      print('❌ [DEVIS SERVICE] Stack trace: $stackTrace');
+      AppLogger.error(
+        'Erreur lors de la création du devis: $e',
+        tag: 'DEVIS_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       throw Exception('Erreur lors de la création du devis: $e');
     }
   }
@@ -150,38 +197,70 @@ class DevisService {
   Future<Devis> updateDevis(Devis devis) async {
     try {
       final token = storage.read('token');
-      final response = await http.put(
-        Uri.parse('$baseUrl/devis-update/${devis.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(devis.toJson()),
+      final url = '${AppConfig.baseUrl}/devis-update/${devis.id}';
+      AppLogger.httpRequest('PUT', url, tag: 'DEVIS_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.put(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: json.encode(devis.toJson()),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         return Devis.fromJson(json.decode(response.body)['data']);
       }
       throw Exception('Erreur lors de la mise à jour du devis');
-    } catch (e) {
-      throw Exception('Erreur lors de la mise à jour du devis');
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la mise à jour du devis: $e',
+        tag: 'DEVIS_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      throw Exception('Erreur lors de la mise à jour du devis: $e');
     }
   }
 
   Future<bool> deleteDevis(int devisId) async {
     try {
       final token = storage.read('token');
-      final response = await http.delete(
-        Uri.parse('$baseUrl/devis-delete/$devisId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final url = '${AppConfig.baseUrl}/devis-delete/$devisId';
+      AppLogger.httpRequest('DELETE', url, tag: 'DEVIS_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.delete(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
 
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
       return response.statusCode == 200;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la suppression du devis: $e',
+        tag: 'DEVIS_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return false;
     }
   }
@@ -189,16 +268,32 @@ class DevisService {
   Future<bool> sendDevis(int devisId) async {
     try {
       final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/devis/$devisId/send'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final url = '${AppConfig.baseUrl}/devis/$devisId/send';
+      AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
 
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
       return response.statusCode == 200;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de l\'envoi du devis: $e',
+        tag: 'DEVIS_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return false;
     }
   }
@@ -208,7 +303,7 @@ class DevisService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/devis-submit/$devisId'),
+        Uri.parse('${AppConfig.baseUrl}/devis-submit/$devisId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -224,7 +319,7 @@ class DevisService {
   Future<bool> acceptDevis(int devisId) async {
     try {
       final token = storage.read('token');
-      final url = '$baseUrl/devis-validate/$devisId';
+      final url = '${AppConfig.baseUrl}/devis-validate/$devisId';
       final response = await http.post(
         Uri.parse(url),
         headers: {
@@ -242,7 +337,7 @@ class DevisService {
   Future<bool> rejectDevis(int devisId, String commentaire) async {
     try {
       final token = storage.read('token');
-      final url = '$baseUrl/devis-reject/$devisId';
+      final url = '${AppConfig.baseUrl}/devis-reject/$devisId';
       final body = json.encode({'commentaire': commentaire});
       final response = await http.post(
         Uri.parse(url),
@@ -264,7 +359,7 @@ class DevisService {
     try {
       final token = storage.read('token');
       final response = await http.get(
-        Uri.parse('$baseUrl/devis/$devisId/pdf'),
+        Uri.parse('${AppConfig.baseUrl}/devis/$devisId/pdf'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -284,7 +379,7 @@ class DevisService {
     try {
       final token = storage.read('token');
       final response = await http.get(
-        Uri.parse('$baseUrl/devis/stats'),
+        Uri.parse('${AppConfig.baseUrl}/devis/stats'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',

@@ -6,11 +6,12 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
 class BonDeCommandeFournisseurListPage extends StatelessWidget {
+  final int? supplierId;
   final BonDeCommandeFournisseurController controller = Get.put(
     BonDeCommandeFournisseurController(),
   );
 
-  BonDeCommandeFournisseurListPage({super.key});
+  BonDeCommandeFournisseurListPage({super.key, this.supplierId});
 
   @override
   Widget build(BuildContext context) {

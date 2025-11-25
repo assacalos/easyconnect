@@ -4,8 +4,10 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
 
 class StockService extends GetxService {
   static StockService get to => Get.find();
@@ -15,17 +17,30 @@ class StockService extends GetxService {
   Future<bool> testConnection() async {
     try {
       final token = storage.read('token');
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/stocks'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(const Duration(seconds: 10));
+      final url = '${AppConfig.baseUrl}/stocks';
+      AppLogger.httpRequest('GET', url, tag: 'STOCK_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      ).timeout(AppConfig.shortTimeout);
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
       return response.statusCode == 200;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors du test de connexion: $e',
+        tag: 'STOCK_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return false;
     }
   }
@@ -40,7 +55,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final token = storage.read('token');
-      String url = '$baseUrl/stocks';
+      String url = '${AppConfig.baseUrl}/stocks';
       List<String> params = [];
 
       if (search != null && search.isNotEmpty) {
@@ -62,13 +77,21 @@ class StockService extends GetxService {
       if (params.isNotEmpty) {
         url += '?${params.join('&')}';
       }
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      AppLogger.httpRequest('GET', url, tag: 'STOCK_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
 
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
@@ -151,7 +174,7 @@ class StockService extends GetxService {
       final token = storage.read('token');
 
       final response = await http.get(
-        Uri.parse('$baseUrl/stocks/$id'),
+        Uri.parse('${AppConfig.baseUrl}/stocks/$id'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -201,26 +224,44 @@ class StockService extends GetxService {
       final stockData = stock.toJson();
 
       // Essayer d'abord la route stocks-create, puis stocks en fallback
-      String url = '$baseUrl/stocks-create';
+      String url = '${AppConfig.baseUrl}/stocks-create';
+      AppLogger.httpRequest('POST', url, tag: 'STOCK_SERVICE');
 
       http.Response response;
       try {
-        response = await http.post(
-          Uri.parse(url),
-          headers: ApiService.headers(),
-          body: jsonEncode(stockData),
+        response = await RetryHelper.retryNetwork(
+          operation:
+              () => http.post(
+                Uri.parse(url),
+                headers: ApiService.headers(),
+                body: jsonEncode(stockData),
+              ),
+          maxRetries: AppConfig.defaultMaxRetries,
         );
+        AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
       } catch (e) {
         // Si la première route échoue, essayer la route standard
-        url = '$baseUrl/stocks';
-        response = await http.post(
-          Uri.parse(url),
-          headers: ApiService.headers(),
-          body: jsonEncode(stockData),
+        url = '${AppConfig.baseUrl}/stocks';
+        AppLogger.warning(
+          'Tentative avec route alternative: $url',
+          tag: 'STOCK_SERVICE',
         );
+        response = await RetryHelper.retryNetwork(
+          operation:
+              () => http.post(
+                Uri.parse(url),
+                headers: ApiService.headers(),
+                body: jsonEncode(stockData),
+              ),
+          maxRetries: AppConfig.defaultMaxRetries,
+        );
+        AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
       }
 
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 201 || response.statusCode == 200) {
+        AppLogger.info('Stock créé avec succès', tag: 'STOCK_SERVICE');
         final responseData = jsonDecode(response.body);
         return Stock.fromJson(responseData['data'] ?? responseData);
       }
@@ -238,7 +279,13 @@ class StockService extends GetxService {
           'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la création du stock: $e',
+        tag: 'STOCK_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -251,12 +298,24 @@ class StockService extends GetxService {
       }
 
       final stockData = stock.toJson();
-      final response = await http.put(
-        Uri.parse('$baseUrl/stocks-update/${stock.id}'),
-        headers: ApiService.headers(),
-        body: jsonEncode(stockData),
+      final url = '${AppConfig.baseUrl}/stocks-update/${stock.id}';
+      AppLogger.httpRequest('PUT', url, tag: 'STOCK_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.put(
+              Uri.parse(url),
+              headers: ApiService.headers(),
+              body: jsonEncode(stockData),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
+        AppLogger.info('Stock mis à jour avec succès', tag: 'STOCK_SERVICE');
         final responseData = jsonDecode(response.body);
         return Stock.fromJson(responseData['data'] ?? responseData);
       }
@@ -274,7 +333,7 @@ class StockService extends GetxService {
   Future<Map<String, dynamic>> deleteStock(int id) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/stocks-destroy/$id'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-destroy/$id'),
         headers: ApiService.headers(),
       );
 
@@ -301,7 +360,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks-add-stock/$stockId'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-add-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -334,7 +393,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks-remove-stock/$stockId'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-remove-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -365,7 +424,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks-adjust-stock/$stockId'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-adjust-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'new_quantity': newQuantity,
@@ -395,7 +454,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks-transfer-stock/$stockId'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-transfer-stock/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'quantity': quantity,
@@ -428,7 +487,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks-movements/$stockId'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-movements/$stockId'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'type': type,
@@ -461,7 +520,7 @@ class StockService extends GetxService {
     int? limit,
   }) async {
     try {
-      String url = '$baseUrl/stocks-movements/$stockId';
+      String url = '${AppConfig.baseUrl}/stocks-movements/$stockId';
       List<String> params = [];
 
       if (type != null && type.isNotEmpty) {
@@ -510,7 +569,7 @@ class StockService extends GetxService {
     DateTime? endDate,
   }) async {
     try {
-      String url = '$baseUrl/stocks-statistics';
+      String url = '${AppConfig.baseUrl}/stocks-statistics';
       List<String> params = [];
 
       if (startDate != null) {
@@ -546,7 +605,7 @@ class StockService extends GetxService {
   Future<List<StockCategory>> getStockCategories() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/stocks-categories'),
+        Uri.parse('${AppConfig.baseUrl}/stocks-categories'),
         headers: ApiService.headers(),
       );
       if (response.statusCode == 200) {
@@ -574,7 +633,7 @@ class StockService extends GetxService {
     try {
       final response = await http.post(
         Uri.parse(
-          '$baseUrl/stock-categories',
+          '${AppConfig.baseUrl}/stock-categories',
         ), // Correction: conforme à Laravel
         headers: ApiService.headers(),
         body: jsonEncode({
@@ -602,7 +661,7 @@ class StockService extends GetxService {
     String? type,
   }) async {
     try {
-      String url = '$baseUrl/stocks/alerts';
+      String url = '${AppConfig.baseUrl}/stocks/alerts';
       List<String> params = [];
 
       if (unreadOnly == true) {
@@ -640,7 +699,7 @@ class StockService extends GetxService {
   Future<Map<String, dynamic>> markAlertAsRead(int alertId) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/stocks/alerts/$alertId/read'),
+        Uri.parse('${AppConfig.baseUrl}/stocks/alerts/$alertId/read'),
         headers: ApiService.headers(),
       );
 
@@ -660,7 +719,7 @@ class StockService extends GetxService {
   Future<Stock?> searchStockByBarcode(String barcode) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/stocks/search/barcode/$barcode'),
+        Uri.parse('${AppConfig.baseUrl}/stocks/search/barcode/$barcode'),
         headers: ApiService.headers(),
       );
 
@@ -687,7 +746,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/valider'),
+        Uri.parse('${AppConfig.baseUrl}/stocks/$stockId/valider'),
         headers: ApiService.headers(),
         body: jsonEncode({
           if (validationComment != null && validationComment.isNotEmpty)
@@ -713,7 +772,7 @@ class StockService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/stocks/$stockId/rejeter'),
+        Uri.parse('${AppConfig.baseUrl}/stocks/$stockId/rejeter'),
         headers: ApiService.headers(),
         body: jsonEncode({'commentaire': commentaire}),
       );

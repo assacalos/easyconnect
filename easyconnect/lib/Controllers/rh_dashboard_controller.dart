@@ -167,10 +167,19 @@ class RhDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingEntities() async {
     try {
+      // OPTIMISATION : Charger toutes les entités en parallèle
+      final results = await Future.wait([
+        _leaveService.getAllLeaveRequests(),
+        _recruitmentService.getAllRecruitmentRequests(),
+        _attendanceService.getAttendances(),
+        _contractService.getAllContracts(),
+      ], eagerError: false);
+
       // Charger les congés en attente
       try {
-        final leaves = await _leaveService.getAllLeaveRequests();
-        pendingLeaves.value = leaves.where((l) => l.status == 'pending').length;
+        final leaves = results[0] as List;
+        pendingLeaves.value =
+            leaves.where((l) => (l as dynamic).status == 'pending').length;
       } catch (e) {
         pendingLeaves.value = 0;
       }
@@ -178,20 +187,21 @@ class RhDashboardController extends BaseDashboardController {
       // Charger les recrutements en attente
       // Les recrutements "en attente" sont ceux avec le statut "published" (publié mais pas encore validé)
       try {
-        final recruitments =
-            await _recruitmentService.getAllRecruitmentRequests();
+        final recruitments = results[1] as List;
         pendingRecruitments.value =
-            recruitments.where((r) => r.status == 'published').length;
+            recruitments
+                .where((r) => (r as dynamic).status == 'published')
+                .length;
       } catch (e) {
         pendingRecruitments.value = 0;
       }
 
       // Charger les pointages en attente
       try {
-        final attendances = await _attendanceService.getAttendances();
+        final attendances = results[2] as List;
         pendingAttendance.value =
             attendances
-                .where((a) => a.status.toLowerCase() == 'pending')
+                .where((a) => (a as dynamic).status.toLowerCase() == 'pending')
                 .length;
       } catch (e) {
         pendingAttendance.value = 0;
@@ -199,9 +209,9 @@ class RhDashboardController extends BaseDashboardController {
 
       // Charger les contrats en attente
       try {
-        final contracts = await _contractService.getAllContracts();
+        final contracts = results[3] as List;
         pendingContracts.value =
-            contracts.where((c) => c.status == 'pending').length;
+            contracts.where((c) => (c as dynamic).status == 'pending').length;
       } catch (e) {
         pendingContracts.value = 0;
       }

@@ -5,10 +5,14 @@ import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
+import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
 class InterventionList extends StatelessWidget {
-  const InterventionList({super.key});
+  final int? clientId;
+
+  const InterventionList({super.key, this.clientId});
 
   @override
   Widget build(BuildContext context) {
@@ -45,28 +49,31 @@ class InterventionList extends StatelessWidget {
             _buildInterventionTab(controller, 'rejected'),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () async {
-            await Get.to(() => const InterventionForm());
-            // Recharger les données après retour du formulaire
-            controller.loadInterventions();
-            // Notifier le dashboard technicien pour qu'il se mette à jour
-            if (Get.isRegistered<TechnicienDashboardController>()) {
-              try {
-                final dashboardController =
-                    Get.find<TechnicienDashboardController>();
-                dashboardController.refreshPendingEntities();
-              } catch (e) {
-                print('⚠️ DashboardController non disponible: $e');
+        floatingActionButton: RoleBasedWidget(
+          allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN, Roles.PATRON],
+          child: FloatingActionButton.extended(
+            onPressed: () async {
+              await Get.to(() => const InterventionForm());
+              // Recharger les données après retour du formulaire
+              controller.loadInterventions();
+              // Notifier le dashboard technicien pour qu'il se mette à jour
+              if (Get.isRegistered<TechnicienDashboardController>()) {
+                try {
+                  final dashboardController =
+                      Get.find<TechnicienDashboardController>();
+                  dashboardController.refreshPendingEntities();
+                } catch (e) {
+                  print('⚠️ DashboardController non disponible: $e');
+                }
               }
-            }
-          },
-          icon: const Icon(Icons.add),
-          label: const Text('Nouvelle Intervention'),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          elevation: 8,
-          tooltip: 'Créer une nouvelle intervention',
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvelle Intervention'),
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            elevation: 8,
+            tooltip: 'Créer une nouvelle intervention',
+          ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
@@ -77,9 +84,13 @@ class InterventionList extends StatelessWidget {
     InterventionController controller,
     String status,
   ) {
+    // Récupérer clientId depuis les arguments
+    final args = Get.arguments as Map<String, dynamic>?;
+    final filterClientId = clientId ?? args?['clientId'] as int?;
+
     return Obx(() {
       // Filtrer les interventions par statut
-      final interventions =
+      var interventions =
           controller.interventions.where((intervention) {
             switch (status) {
               case 'pending':
@@ -94,6 +105,16 @@ class InterventionList extends StatelessWidget {
                 return true;
             }
           }).toList();
+
+      // Filtrer par clientId si fourni
+      if (filterClientId != null) {
+        interventions =
+            interventions
+                .where(
+                  (intervention) => intervention.clientId == filterClientId,
+                )
+                .toList();
+      }
 
       if (controller.isLoading.value) {
         return const Center(child: CircularProgressIndicator());
@@ -387,6 +408,24 @@ class InterventionList extends StatelessWidget {
                       label: const Text('Rejeter'),
                       onPressed:
                           () => _showRejectDialog(intervention, controller),
+                    ),
+                  ],
+                  // Bouton PDF pour les interventions validées (approved, completed)
+                  if (intervention.status == 'approved' ||
+                      intervention.status == 'completed') ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.picture_as_pdf, size: 16),
+                      label: const Text('PDF'),
+                      onPressed: () {
+                        // Note: Pas de méthode generatePDF pour les interventions
+                        Get.snackbar(
+                          'Information',
+                          'Génération PDF non disponible pour les interventions',
+                          snackPosition: SnackPosition.BOTTOM,
+                        );
+                      },
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
                     ),
                   ],
                 ],

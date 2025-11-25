@@ -3,6 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class SalaryService {
   final storage = GetStorage();
@@ -154,27 +159,34 @@ class SalaryService {
         throw Exception('year est requis et doit être entre 2000 et 2100');
       }
 
-      // Formatage du mois (assurer qu'il est au format "MM" si nécessaire)
-      String monthFormatted = salary.month!;
-      if (monthFormatted.length == 1) {
-        monthFormatted = '0$monthFormatted';
+      // Formatage du mois selon la documentation API
+      // La documentation accepte un entier (1-12) ou une string
+      // On envoie un entier pour plus de simplicité
+      int monthInt = int.tryParse(salary.month!) ?? 0;
+      if (monthInt < 1 || monthInt > 12) {
+        throw Exception('Le mois doit être entre 1 et 12');
       }
 
       // Préparer les données selon la documentation API
       // Le backend génère automatiquement : period, period_start, period_end, salary_date
+      // Format snake_case comme recommandé dans la documentation
       final salaryData = {
-        'employeeId': salary.employeeId, // Le backend convertit en hr_id
-        'baseSalary': salary.baseSalary,
-        'month': monthFormatted,
-        'year': salary.year!,
+        'employee_id':
+            salary
+                .employeeId, // ID de l'employé depuis la table employees (obligatoire)
+        'base_salary': salary.baseSalary, // Salaire de base (obligatoire)
+        'month': monthInt, // Mois (1-12) - format entier comme recommandé
+        'year': salary.year!, // Année (obligatoire)
         // Champs optionnels
-        if (salary.netSalary > 0) 'netSalary': salary.netSalary,
+        if (salary.netSalary > 0) 'net_salary': salary.netSalary,
         if (salary.bonus > 0) 'bonus': salary.bonus,
         if (salary.deductions > 0) 'deductions': salary.deductions,
         if (salary.notes != null && salary.notes!.isNotEmpty)
           'notes': salary.notes,
         if (salary.justificatifs.isNotEmpty)
-          'justificatifs': salary.justificatifs,
+          'justificatif':
+              salary
+                  .justificatifs, // Note: le backend attend 'justificatif' (singulier) comme array
       };
       final response = await http.post(
         Uri.parse('$baseUrl/salaries-create'),
@@ -222,28 +234,34 @@ class SalaryService {
         throw Exception('year est requis et doit être entre 2000 et 2100');
       }
 
-      // Formatage du mois (assurer qu'il est au format "MM" si nécessaire)
-      String monthFormatted = salary.month!;
-      if (monthFormatted.length == 1) {
-        monthFormatted = '0$monthFormatted';
+      // Formatage du mois selon la documentation API
+      // La documentation accepte un entier (1-12) ou une string
+      // On envoie un entier pour plus de simplicité
+      int monthInt = int.tryParse(salary.month!) ?? 0;
+      if (monthInt < 1 || monthInt > 12) {
+        throw Exception('Le mois doit être entre 1 et 12');
       }
 
       // Préparer les données selon la documentation API
       // Le backend génère automatiquement : period, period_start, period_end, salary_date
+      // Format snake_case comme recommandé dans la documentation
       final salaryData = {
-        'employeeId': salary.employeeId, // Le backend convertit en hr_id
-        'baseSalary': salary.baseSalary,
-        'month': monthFormatted,
-        'year': salary.year!,
+        'employee_id':
+            salary.employeeId, // ID de l'employé depuis la table employees
+        'base_salary': salary.baseSalary, // Salaire de base
+        'month': monthInt, // Mois (1-12) - format entier comme recommandé
+        'year': salary.year!, // Année
         // Champs optionnels
-        if (salary.netSalary > 0) 'netSalary': salary.netSalary,
+        if (salary.netSalary > 0) 'net_salary': salary.netSalary,
         if (salary.bonus > 0) 'bonus': salary.bonus,
         if (salary.deductions > 0) 'deductions': salary.deductions,
         if (salary.status != null) 'status': salary.status,
         if (salary.notes != null && salary.notes!.isNotEmpty)
           'notes': salary.notes,
         if (salary.justificatifs.isNotEmpty)
-          'justificatifs': salary.justificatifs,
+          'justificatif':
+              salary
+                  .justificatifs, // Note: le backend attend 'justificatif' (singulier) comme array
       };
       final response = await http.put(
         Uri.parse('$baseUrl/salaries-update/${salary.id}'),
@@ -477,62 +495,105 @@ class SalaryService {
   // Récupérer les employés
   Future<List<Map<String, dynamic>>> getEmployees() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/employees-list'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final url = '${AppConfig.baseUrl}/employees-list';
+      AppLogger.httpRequest('GET', url, tag: 'SALARY_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'SALARY_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => Map<String, dynamic>.from(json)).toList();
-      }
+        // Vérifier si le body est complet
+        final bodyTrimmed = response.body.trim();
+        final isComplete =
+            bodyTrimmed.endsWith('}') || bodyTrimmed.endsWith(']');
 
-      // Si l'endpoint n'existe pas ou n'est pas accessible, retourner des données de test
-      if (response.statusCode == 403 || response.statusCode == 404) {
-        return [
-          {
-            'id': 1,
-            'name': 'John Doe',
-            'email': 'john@example.com',
-            'position': 'Développeur',
-          },
-          {
-            'id': 2,
-            'name': 'Jane Smith',
-            'email': 'jane@example.com',
-            'position': 'Designer',
-          },
-          {
-            'id': 3,
-            'name': 'Bob Johnson',
-            'email': 'bob@example.com',
-            'position': 'Manager',
-          },
-        ];
-      }
+        if (!isComplete) {
+          throw Exception(
+            'La réponse du serveur est incomplète (JSON tronqué).',
+          );
+        }
 
-      throw Exception(
-        'Erreur lors de la récupération des employés: ${response.statusCode}',
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          throw Exception(
+            'Erreur lors du parsing JSON: $e. La réponse du serveur est peut-être mal formatée.',
+          );
+        }
+
+        if (data['data'] != null) {
+          // Le backend peut retourner soit une liste directe, soit un objet paginé
+          List<dynamic> dataList;
+
+          if (data['data'] is List) {
+            // Format simple : {"success": true, "data": [...]}
+            dataList = data['data'] as List;
+          } else if (data['data'] is Map && data['data']['data'] != null) {
+            // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
+            dataList = data['data']['data'] as List;
+          } else {
+            AppLogger.warning(
+              'Format de données inattendu dans la réponse',
+              tag: 'SALARY_SERVICE',
+            );
+            return [];
+          }
+
+          // Transformer les données pour inclure toutes les informations de l'employé
+          final employees =
+              dataList.map((json) {
+                final employee = Map<String, dynamic>.from(json);
+                // Construire le nom complet depuis first_name et last_name
+                final firstName = employee['first_name'] ?? '';
+                final lastName = employee['last_name'] ?? '';
+                employee['name'] = '$firstName $lastName'.trim();
+                // S'assurer que le salaire est correctement formaté
+                if (employee['salary'] != null) {
+                  final salary = employee['salary'];
+                  if (salary is String) {
+                    employee['salary'] = double.tryParse(salary);
+                  } else if (salary is num) {
+                    employee['salary'] = salary.toDouble();
+                  }
+                }
+                return employee;
+              }).toList();
+
+          AppLogger.info(
+            '${employees.length} employé(s) récupéré(s)',
+            tag: 'SALARY_SERVICE',
+          );
+          return employees;
+        } else {
+          AppLogger.warning(
+            'Aucune donnée dans la réponse',
+            tag: 'SALARY_SERVICE',
+          );
+          return [];
+        }
+      } else {
+        // Ne jamais retourner de données fictives - lever une exception
+        final errorMessage =
+            'Erreur lors de la récupération des employés: ${response.statusCode}';
+        AppLogger.error(errorMessage, tag: 'SALARY_SERVICE');
+        throw Exception(errorMessage);
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la récupération des employés: $e',
+        tag: 'SALARY_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
       );
-    } catch (e) {
-      // En cas d'erreur, retourner des données de test
-      return [
-        {
-          'id': 1,
-          'name': 'John Doe',
-          'email': 'john@example.com',
-          'position': 'Développeur',
-        },
-        {
-          'id': 2,
-          'name': 'Jane Smith',
-          'email': 'jane@example.com',
-          'position': 'Designer',
-        },
-      ];
+      // Ne jamais retourner de données fictives - propager l'erreur
+      rethrow;
     }
   }
 

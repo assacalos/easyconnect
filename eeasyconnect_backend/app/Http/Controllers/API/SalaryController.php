@@ -9,6 +9,7 @@ use App\Models\SalaryItem;
 use App\Models\Payroll;
 use App\Models\PayrollSetting;
 use App\Models\User;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -28,10 +29,10 @@ class SalaryController extends Controller
                 $query->where('status', $request->status);
             }
 
-            // Filtrage par employé (via hr_id)
+            // Filtrage par employé (via employee_id)
             if ($request->has('employee_id') || $request->has('hr_id')) {
                 $employeeId = $request->get('employee_id') ?? $request->get('hr_id');
-                $query->where('hr_id', $employeeId);
+                $query->where('employee_id', $employeeId);
             }
 
             // Filtrage par période
@@ -48,9 +49,12 @@ class SalaryController extends Controller
                 $query->where('salary_date', '<=', $request->date_fin);
             }
 
-            // Si employé → filtre ses propres salaires
+            // Si employé → filtre ses propres salaires (recherche dans la table employees)
             if ($user->role == 4) { // Employé
-                $query->where('hr_id', $user->id);
+                $employee = Employee::where('email', $user->email)->first();
+                if ($employee) {
+                    $query->where('employee_id', $employee->id);
+                }
             }
 
             // Pagination
@@ -81,8 +85,8 @@ class SalaryController extends Controller
                 return [
                     // Champs standards backend
                     'id' => $salary->id,
-                    'employee_id' => $salary->hr_id, // hr_id représente l'employé
-                    'hr_id' => $salary->hr_id,
+                    'employee_id' => $salary->employee_id,
+                    'hr_id' => $salary->employee_id, // Compatibilité Flutter (alias)
                     'employee_name' => $salary->employee_name,
                     'employee_email' => $salary->employee?->email ?? null, // Compatibilité Flutter
                     'salary_number' => $salary->salary_number,
@@ -108,7 +112,7 @@ class SalaryController extends Controller
                     'status_libelle' => $salary->status_libelle,
                     'notes' => $salary->notes,
                     'justificatif' => $salary->justificatif ?? [],
-                    'created_by' => $salary->hr_id, // Compatibilité Flutter
+                    'created_by' => $salary->employee_id, // Compatibilité Flutter
                     'approved_by' => $salary->approved_by,
                     'approved_at' => $salary->approved_at?->format('Y-m-d H:i:s'),
                     'paid_at' => $salary->paid_at?->format('Y-m-d H:i:s'),
@@ -197,8 +201,8 @@ class SalaryController extends Controller
             // Formater les données avec compatibilité Flutter
             $data = [
                 'id' => $salary->id,
-                'employee_id' => $salary->hr_id, // hr_id représente l'employé
-                'hr_id' => $salary->hr_id,
+                'employee_id' => $salary->employee_id,
+                'hr_id' => $salary->employee_id, // Compatibilité Flutter (alias)
                 'employee_name' => $salary->employee_name,
                 'employee_email' => $salary->employee?->email ?? null,
                 'salary_number' => $salary->salary_number,
@@ -219,7 +223,7 @@ class SalaryController extends Controller
                 'status_libelle' => $salary->status_libelle,
                 'notes' => $salary->notes,
                 'justificatif' => $salary->justificatif ?? [],
-                'created_by' => $salary->hr_id,
+                'created_by' => $salary->employee_id,
                 'approved_by' => $salary->approved_by,
                 'approved_at' => $salary->approved_at?->format('Y-m-d H:i:s'),
                 'paid_at' => $salary->paid_at?->format('Y-m-d H:i:s'),
@@ -253,11 +257,11 @@ class SalaryController extends Controller
             // Normaliser les champs camelCase vers snake_case (compatibilité Flutter)
             $data = $request->all();
             
-            // Convertir employeeId/employee_id -> hr_id
-            if (isset($data['employeeId']) && !isset($data['hr_id'])) {
-                $data['hr_id'] = $data['employeeId'];
-            } elseif (isset($data['employee_id']) && !isset($data['hr_id'])) {
-                $data['hr_id'] = $data['employee_id'];
+            // Convertir employeeId/hr_id -> employee_id
+            if (isset($data['employeeId']) && !isset($data['employee_id'])) {
+                $data['employee_id'] = $data['employeeId'];
+            } elseif (isset($data['hr_id']) && !isset($data['employee_id'])) {
+                $data['employee_id'] = $data['hr_id'];
             }
             
             // Convertir baseSalary -> base_salary
@@ -278,7 +282,7 @@ class SalaryController extends Controller
 
             // Validation flexible : accepter soit les champs backend, soit les champs Flutter
             $rules = [
-                'hr_id' => 'required|exists:users,id',
+                'employee_id' => 'required|exists:employees,id',
                 'base_salary' => 'required|numeric|min:0',
                 'notes' => 'nullable|string|max:1000',
                 'justificatif' => 'nullable|array',
@@ -372,7 +376,7 @@ class SalaryController extends Controller
             }
 
             $salary = Salary::create([
-                'hr_id' => $validated['hr_id'], // hr_id représente l'employé qui reçoit le salaire
+                'employee_id' => $validated['employee_id'],
                 'salary_number' => Salary::generateSalaryNumber(),
                 'period' => $period,
                 'period_start' => $periodStart,
@@ -402,8 +406,8 @@ class SalaryController extends Controller
 
             $responseData = [
                 'id' => $salary->id,
-                'employee_id' => $salary->hr_id, // hr_id représente l'employé (compatibilité Flutter)
-                'hr_id' => $salary->hr_id,
+                'employee_id' => $salary->employee_id,
+                'hr_id' => $salary->employee_id, // Compatibilité Flutter (alias)
                 'employee_name' => $salary->employee_name,
                 'employee_email' => $salary->employee?->email ?? null,
                 'base_salary' => $salary->base_salary,
@@ -415,7 +419,7 @@ class SalaryController extends Controller
                 'status' => 'pending', // Mappé pour Flutter
                 'notes' => $salary->notes,
                 'justificatif' => $salary->justificatif ?? [],
-                'created_by' => $salary->hr_id,
+                'created_by' => $salary->employee_id,
                 'created_at' => $salary->created_at->format('Y-m-d H:i:s'),
                 'updated_at' => $salary->updated_at->format('Y-m-d H:i:s'),
                 'period' => $salary->period,
@@ -671,7 +675,7 @@ class SalaryController extends Controller
             $stats = Salary::getSalaryStats($startDate, $endDate);
 
             // Ajouter les champs attendus par Flutter
-            $totalEmployees = User::where('role', 4)->count();
+            $totalEmployees = Employee::where('status', 'active')->count();
             $pendingCount = ($stats['draft_salaries'] ?? 0) + ($stats['calculated_salaries'] ?? 0);
             
             // Calculer les salaires par mois
@@ -840,10 +844,10 @@ class SalaryController extends Controller
             $query = Salary::with(['employee', 'hr', 'salaryItems.salaryComponent'])
                 ->whereIn('status', ['draft', 'calculated']);
 
-            // Filtrage par employé (via hr_id)
+            // Filtrage par employé (via employee_id)
             if ($request->has('employee_id') || $request->has('hr_id')) {
                 $employeeId = $request->get('employee_id') ?? $request->get('hr_id');
-                $query->where('hr_id', $employeeId);
+                $query->where('employee_id', $employeeId);
             }
 
             // Filtrage par période
@@ -878,8 +882,8 @@ class SalaryController extends Controller
 
                 return [
                     'id' => $salary->id,
-                    'employee_id' => $salary->hr_id, // hr_id représente l'employé (compatibilité Flutter)
-                    'hr_id' => $salary->hr_id,
+                    'employee_id' => $salary->employee_id,
+                    'hr_id' => $salary->employee_id, // Compatibilité Flutter (alias)
                     'employee_name' => $salary->employee_name,
                     'employee_email' => $salary->employee?->email ?? null,
                     'base_salary' => $salary->base_salary,
@@ -891,7 +895,7 @@ class SalaryController extends Controller
                     'status' => $statusFlutter,
                     'notes' => $salary->notes,
                     'justificatif' => $salary->justificatif ?? [],
-                    'created_by' => $salary->hr_id,
+                    'created_by' => $salary->employee_id,
                     'created_at' => $salary->created_at->format('Y-m-d H:i:s'),
                     'updated_at' => $salary->updated_at->format('Y-m-d H:i:s'),
                 ];

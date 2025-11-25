@@ -172,6 +172,7 @@ class _StockListState extends State<StockList>
                     ),
                   )
                   : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
                       final stock = filtered[index];
@@ -198,133 +199,172 @@ class _StockListState extends State<StockList>
 
   Widget _buildStockCard(Stock stock, NumberFormat formatCurrency) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStatusColor(stock.status),
-          child: Icon(_getStatusIcon(stock.status), color: Colors.white),
-        ),
-        title: Text(
-          stock.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('SKU: ${stock.sku}'),
-            Text('Quantité: ${stock.quantity.toStringAsFixed(0)}'),
-            Text('Prix unitaire: ${formatCurrency.format(stock.unitPrice)}'),
-            if ((stock.status == 'rejete' || stock.status == 'rejected') &&
-                stock.commentaire != null &&
-                stock.commentaire!.isNotEmpty) ...[
-              const SizedBox(height: 4),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell(
+        onTap: () => Get.to(() => StockDetail(stock: stock)),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec nom et statut
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Raison du rejet: ${stock.commentaire}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      stock.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(stock.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _getStatusColor(stock.status).withOpacity(0.5),
+                      ),
+                    ),
+                    child: Text(
+                      _getStatusLabel(stock.status),
+                      style: TextStyle(
+                        color: _getStatusColor(stock.status),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Bouton Détail
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.blue),
-              onPressed: () => Get.to(() => StockDetail(stock: stock)),
-              tooltip: 'Voir détails',
-            ),
-            // Bouton Modifier (seulement si en attente)
-            if (stock.status == 'en_attente' || stock.status == 'pending')
-              IconButton(
-                icon: const Icon(Icons.edit, color: Colors.orange),
-                onPressed: () async {
-                  await Get.to(() => StockForm(stock: stock));
-                  // Recharger les stocks après retour du formulaire
-                  controller.loadStocks();
-                },
-                tooltip: 'Modifier',
+              const SizedBox(height: 8),
+
+              // SKU
+              Row(
+                children: [
+                  Icon(Icons.qr_code, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'SKU: ${stock.sku}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
+                ],
               ),
-            // Menu pour actions supplémentaires
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'approve') {
-                  _showApproveDialog(stock);
-                } else if (value == 'reject') {
-                  _showRejectDialog(stock);
-                }
-              },
-              itemBuilder: (context) {
-                final items = <PopupMenuEntry<String>>[];
-                if (stock.status == 'en_attente' || stock.status == 'pending') {
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'approve',
-                      child: ListTile(
-                        leading: Icon(Icons.check, color: Colors.green),
-                        title: Text('Valider'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'reject',
-                      child: ListTile(
-                        leading: Icon(Icons.close, color: Colors.red),
-                        title: Text('Rejeter'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                }
-                return items;
-              },
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+              const SizedBox(height: 4),
+
+              // Quantité
+              Row(
+                children: [
+                  Icon(Icons.inventory, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Quantité: ${stock.quantity.toStringAsFixed(0)}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(stock.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              // Prix unitaire
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Prix unitaire: ${formatCurrency.format(stock.unitPrice)}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
-                  child: Text(
-                    _getStatusLabel(stock.status),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Valeur totale
+              Row(
+                children: [
+                  Icon(Icons.calculate, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Total: ${formatCurrency.format(stock.unitPrice * stock.quantity)}',
                     style: TextStyle(
-                      color: _getStatusColor(stock.status),
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.green[700],
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  formatCurrency.format(stock.unitPrice * stock.quantity),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+                ],
+              ),
+
+              // Raison du rejet si rejeté
+              if ((stock.status == 'rejete' || stock.status == 'rejected') &&
+                  stock.commentaire != null &&
+                  stock.commentaire!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.report, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison: ${stock.commentaire}',
+                        style: TextStyle(color: Colors.red[700], fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+
+              // Actions
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Détails'),
+                    onPressed: () => Get.to(() => StockDetail(stock: stock)),
+                  ),
+                  if (stock.status == 'en_attente' ||
+                      stock.status == 'pending') ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Modifier'),
+                      onPressed: () async {
+                        await Get.to(() => StockForm(stock: stock));
+                        controller.loadStocks();
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Valider'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.green,
+                      ),
+                      onPressed: () => _showApproveDialog(stock),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Rejeter'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      onPressed: () => _showRejectDialog(stock),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
-        onTap: () => Get.to(() => StockDetail(stock: stock)),
       ),
     );
   }
@@ -342,22 +382,6 @@ class _StockListState extends State<StockList>
         return Colors.red;
       default:
         return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'en_attente':
-      case 'pending':
-        return Icons.pending;
-      case 'valide':
-      case 'approved':
-        return Icons.check_circle;
-      case 'rejete':
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.help;
     }
   }
 

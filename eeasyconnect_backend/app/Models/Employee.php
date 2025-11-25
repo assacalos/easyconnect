@@ -73,6 +73,11 @@ class Employee extends Model
         return $this->hasMany(EmployeePerformance::class);
     }
 
+    public function salaries()
+    {
+        return $this->hasMany(Salary::class);
+    }
+
     // Scopes
     public function scopeActive($query)
     {

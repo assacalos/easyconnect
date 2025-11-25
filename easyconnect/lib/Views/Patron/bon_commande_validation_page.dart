@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 
 class BonCommandeValidationPage extends StatefulWidget {
   const BonCommandeValidationPage({super.key});
@@ -321,28 +322,76 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             ),
           ],
         );
-      case 2: // Validé - Afficher seulement info
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.check_circle, color: Colors.green),
-              const SizedBox(width: 8),
-              Text(
-                'Bon de commande validé',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                ),
+      case 2: // Validé - Afficher info et bouton PDF
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
               ),
-            ],
-          ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Bon de commande validé',
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () async {
+                // Utiliser le service PDF directement
+                try {
+                  final pdfService = PdfService();
+                  await pdfService.generateBonCommandePdf(
+                    bonCommande: {
+                      'reference': 'BC-${bonCommande.id}',
+                      'date_creation': DateTime.now(),
+                      'montant_ht': 0.0,
+                      'tva': 0.0,
+                      'total_ttc': 0.0,
+                    },
+                    items: [],
+                    fournisseur: {
+                      'nom': 'N/A',
+                      'email': '',
+                      'contact': '',
+                      'adresse': '',
+                    },
+                  );
+                  Get.snackbar(
+                    'Succès',
+                    'PDF généré avec succès',
+                    backgroundColor: Colors.green,
+                    colorText: Colors.white,
+                  );
+                } catch (e) {
+                  Get.snackbar(
+                    'Erreur',
+                    'Erreur lors de la génération du PDF: $e',
+                    backgroundColor: Colors.red,
+                    colorText: Colors.white,
+                  );
+                }
+              },
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Générer PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         );
       case 3: // Rejeté - Afficher motif du rejet
         return Container(

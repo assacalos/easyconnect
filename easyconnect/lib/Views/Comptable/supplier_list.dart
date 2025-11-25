@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
+import 'package:easyconnect/Views/Comptable/supplier_detail.dart';
 
 class SupplierList extends StatelessWidget {
   const SupplierList({super.key});
@@ -244,7 +245,7 @@ class SupplierList extends StatelessWidget {
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => _showSupplierDetails(supplier, controller),
+        onTap: () => Get.to(() => SupplierDetail(supplier: supplier)),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -476,36 +477,6 @@ class SupplierList extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Description'),
             maxLines: 2,
           ),
-        ],
-      ),
-    );
-  }
-
-  void _showSupplierDetails(Supplier supplier, SupplierController controller) {
-    Get.dialog(
-      AlertDialog(
-        title: Text(supplier.nom),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Email: ${supplier.email}'),
-              Text('Téléphone: ${supplier.telephone}'),
-              Text('Adresse: ${supplier.adresse}'),
-              Text('Ville: ${supplier.ville}'),
-              Text('Pays: ${supplier.pays}'),
-              if (supplier.description != null)
-                Text('Description: ${supplier.description}'),
-              if (supplier.noteEvaluation != null)
-                Text('Note: ${supplier.noteEvaluation}/5'),
-              if (supplier.commentaires != null)
-                Text('Commentaires: ${supplier.commentaires}'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
         ],
       ),
     );

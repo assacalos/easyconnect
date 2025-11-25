@@ -216,21 +216,24 @@ class EmployeeController extends GetxController {
             100, // Limite de 100 employés par page pour éviter les réponses trop grandes
       );
       employees.value = employeesList;
-    } catch (e, stackTrace) {
+    } catch (e) {
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
       }
 
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les employés: $errorMessage',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les employés: $errorMessage',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      });
     } finally {
       isLoading.value = false;
     }
@@ -375,6 +378,68 @@ class EmployeeController extends GetxController {
     try {
       isCreating.value = true;
 
+      // Validation des champs obligatoires
+      if (firstNameController.text.trim().isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'Le prénom est obligatoire',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        });
+        return false;
+      }
+
+      if (lastNameController.text.trim().isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'Le nom est obligatoire',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        });
+        return false;
+      }
+
+      if (emailController.text.trim().isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'L\'email est obligatoire',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        });
+        return false;
+      }
+
+      // Validation de l'email
+      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+      if (!emailRegex.hasMatch(emailController.text.trim())) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'Format d\'email invalide',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        });
+        return false;
+      }
+
+      print('✅ [EMPLOYEE_CONTROLLER] Validation OK, création de l\'employé...');
+      print(
+        '📝 [EMPLOYEE_CONTROLLER] Prénom: ${firstNameController.text.trim()}',
+      );
+      print('📝 [EMPLOYEE_CONTROLLER] Nom: ${lastNameController.text.trim()}');
+      print('📝 [EMPLOYEE_CONTROLLER] Email: ${emailController.text.trim()}');
+
       await _employeeService.createEmployee(
         firstName: firstNameController.text.trim(),
         lastName: lastNameController.text.trim(),
@@ -410,7 +475,8 @@ class EmployeeController extends GetxController {
                 ? positionController.text.trim()
                 : null,
         department:
-            selectedDepartment.value.isNotEmpty
+            selectedDepartment.value.isNotEmpty &&
+                    selectedDepartment.value != 'all'
                 ? selectedDepartment.value
                 : null,
         manager:
@@ -426,9 +492,12 @@ class EmployeeController extends GetxController {
                 : null,
         salary:
             salaryController.text.isNotEmpty
-                ? double.parse(salaryController.text)
+                ? double.tryParse(salaryController.text)
                 : null,
-        currency: selectedCurrency.value,
+        currency:
+            selectedCurrency.value.isNotEmpty
+                ? selectedCurrency.value
+                : 'fcfa', // Valeur par défaut
         workSchedule:
             selectedWorkSchedule.value.isNotEmpty
                 ? selectedWorkSchedule.value
@@ -439,13 +508,43 @@ class EmployeeController extends GetxController {
                 : null,
       );
 
-      Get.snackbar('Succès', 'Employé créé avec succès');
+      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.snackbar(
+          'Succès',
+          'Employé créé avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      });
+
       clearForm();
-      loadEmployees(loadAll: true);
-      loadEmployeeStats();
+      await loadEmployees(loadAll: true);
+      await loadEmployeeStats();
       return true;
-    } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la création de l\'employé: $e');
+    } catch (e, stackTrace) {
+      // Logger l'erreur pour le débogage
+      print('❌ [EMPLOYEE_CONTROLLER] Erreur lors de la création: $e');
+      print('❌ [EMPLOYEE_CONTROLLER] Stack trace: $stackTrace');
+
+      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        String errorMessage = e.toString();
+        if (errorMessage.startsWith('Exception: ')) {
+          errorMessage = errorMessage.substring(11);
+        }
+
+        Get.snackbar(
+          'Erreur',
+          'Erreur lors de la création de l\'employé: $errorMessage',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      });
       return false;
     } finally {
       isCreating.value = false;
@@ -493,7 +592,8 @@ class EmployeeController extends GetxController {
                 ? positionController.text.trim()
                 : null,
         department:
-            selectedDepartment.value.isNotEmpty
+            selectedDepartment.value.isNotEmpty &&
+                    selectedDepartment.value != 'all'
                 ? selectedDepartment.value
                 : null,
         manager:
@@ -509,27 +609,63 @@ class EmployeeController extends GetxController {
                 : null,
         salary:
             salaryController.text.isNotEmpty
-                ? double.parse(salaryController.text)
+                ? double.tryParse(salaryController.text)
                 : null,
-        currency: selectedCurrency.value,
+        currency:
+            selectedCurrency.value.isNotEmpty
+                ? selectedCurrency.value
+                : 'fcfa', // Valeur par défaut
         workSchedule:
             selectedWorkSchedule.value.isNotEmpty
                 ? selectedWorkSchedule.value
                 : null,
-        status: selectedStatus.value,
+        status:
+            selectedStatus.value.isNotEmpty && selectedStatus.value != 'all'
+                ? selectedStatus.value
+                : null,
         notes:
             notesController.text.trim().isNotEmpty
                 ? notesController.text.trim()
                 : null,
       );
 
-      Get.snackbar('Succès', 'Employé mis à jour avec succès');
+      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Get.snackbar(
+          'Succès',
+          'Employé mis à jour avec succès',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      });
+
       clearForm();
-      loadEmployees(loadAll: true);
-      loadEmployeeStats();
+      await loadEmployees(loadAll: true);
+      await loadEmployeeStats();
       return true;
-    } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la mise à jour de l\'employé: $e');
+    } catch (e, stackTrace) {
+      // Logger l'erreur pour le débogage
+      print('❌ [EMPLOYEE_CONTROLLER] Erreur lors de la mise à jour: $e');
+      print('❌ [EMPLOYEE_CONTROLLER] Stack trace: $stackTrace');
+
+      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        String errorMessage = e.toString();
+        if (errorMessage.startsWith('Exception: ')) {
+          errorMessage = errorMessage.substring(11);
+        }
+
+        Get.snackbar(
+          'Erreur',
+          'Erreur lors de la mise à jour de l\'employé: $errorMessage',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      });
       return false;
     } finally {
       isUpdating.value = false;

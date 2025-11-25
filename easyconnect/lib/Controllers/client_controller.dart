@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class ClientController extends GetxController {
   final ClientService _clientService = ClientService();
@@ -17,14 +18,30 @@ class ClientController extends GetxController {
   Future<void> loadClients({int? status}) async {
     try {
       isLoading.value = true;
+      AppLogger.info(
+        'Chargement des clients${status != null ? ' (status: $status)' : ''}',
+        tag: 'CLIENT_CONTROLLER',
+      );
+
       final loadedClients = await _clientService.getClients(status: status);
       clients.assignAll(loadedClients);
-    } catch (e) {
+
+      AppLogger.info(
+        '${loadedClients.length} clients chargés avec succès',
+        tag: 'CLIENT_CONTROLLER',
+      );
+    } catch (e, stackTrace) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('session expirée') &&
           !errorString.contains('401')) {
+        AppLogger.error(
+          'Erreur lors du chargement des clients: $e',
+          tag: 'CLIENT_CONTROLLER',
+          error: e,
+          stackTrace: stackTrace,
+        );
         Get.snackbar(
           'Erreur',
           'Impossible de charger les clients',

@@ -94,8 +94,83 @@ class SupplierDetail extends StatelessWidget {
 
             const SizedBox(height: 16),
 
+            // Entités associées
+            const SizedBox(height: 16),
+            _buildAssociatedEntities(),
+
             // Actions
+            const SizedBox(height: 16),
             _buildActionButtons(controller),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssociatedEntities() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Entités associées',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildEntityButton(
+              icon: Icons.shopping_cart,
+              label: 'Bons de commande',
+              color: Colors.deepPurple,
+              onTap: () {
+                Get.toNamed(
+                  '/bons-de-commande-fournisseur',
+                  arguments: {'supplierId': supplier.id},
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEntityButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const Spacer(),
+            Icon(Icons.arrow_forward_ios, color: color, size: 20),
           ],
         ),
       ),

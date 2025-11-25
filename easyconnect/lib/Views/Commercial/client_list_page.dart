@@ -164,151 +164,155 @@ class ClientsPage extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête avec nom entreprise (prioritaire) et statut
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    client.nomEntreprise?.isNotEmpty == true
-                        ? client.nomEntreprise!
-                        : "${client.prenom ?? ''} ${client.nom ?? ''}"
-                            .trim()
-                            .isNotEmpty
-                        ? "${client.prenom ?? ''} ${client.nom ?? ''}".trim()
-                        : 'Client #${client.id}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(statusIcon, size: 16, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Informations client
-            if (client.nomEntreprise?.isNotEmpty == true &&
-                "${client.prenom ?? ''} ${client.nom ?? ''}"
-                    .trim()
-                    .isNotEmpty) ...[
+      child: InkWell(
+        onTap: () => Get.toNamed('/clients/${client.id}'),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec nom entreprise (prioritaire) et statut
               Row(
                 children: [
-                  const Icon(Icons.person, size: 16, color: Colors.grey),
+                  Expanded(
+                    child: Text(
+                      client.nomEntreprise?.isNotEmpty == true
+                          ? client.nomEntreprise!
+                          : "${client.prenom ?? ''} ${client.nom ?? ''}"
+                              .trim()
+                              .isNotEmpty
+                          ? "${client.prenom ?? ''} ${client.nom ?? ''}".trim()
+                          : 'Client #${client.id}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, size: 16, color: statusColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Informations client
+              if (client.nomEntreprise?.isNotEmpty == true &&
+                  "${client.prenom ?? ''} ${client.nom ?? ''}"
+                      .trim()
+                      .isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.person, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "${client.prenom ?? ''} ${client.nom ?? ''}".trim(),
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+              ],
+              Row(
+                children: [
+                  const Icon(Icons.email, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "${client.prenom ?? ''} ${client.nom ?? ''}".trim(),
+                      client.email.toString(),
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-            ],
-            Row(
-              children: [
-                const Icon(Icons.email, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    client.email.toString(),
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
 
-            Row(
-              children: [
-                const Icon(Icons.phone, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(client.contact.toString()),
-              ],
-            ),
-
-            // Raison du rejet
-            if (status == 2 &&
-                (client.commentaire != null &&
-                    client.commentaire!.isNotEmpty)) ...[
-              const SizedBox(height: 8),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 16, color: Colors.red),
+                  const Icon(Icons.phone, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Raison du rejet: ${client.commentaire}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
-                    ),
-                  ),
+                  Text(client.contact.toString()),
                 ],
               ),
-            ],
 
-            // Actions selon le statut et le rôle
-            if (status == 0) ...[
-              const SizedBox(height: 8),
-              // Seul le patron peut valider/rejeter
-              RoleBasedWidget(
-                allowedRoles: [Roles.ADMIN, Roles.PATRON],
-                child: Row(
+              // Raison du rejet
+              if (status == 2 &&
+                  (client.commentaire != null &&
+                      client.commentaire!.isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _showValidationDialog(client),
-                        icon: const Icon(Icons.check, size: 16),
-                        label: const Text('Valider'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
+                    const Icon(Icons.report, size: 16, color: Colors.red),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showRejectionDialog(client),
-                        icon: const Icon(Icons.close, size: 16),
-                        label: const Text('Rejeter'),
+                      child: Text(
+                        'Raison du rejet: ${client.commentaire}',
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
                       ),
                     ),
                   ],
                 ),
-              ),
+              ],
+
+              // Actions selon le statut et le rôle
+              if (status == 0) ...[
+                const SizedBox(height: 8),
+                // Seul le patron peut valider/rejeter
+                RoleBasedWidget(
+                  allowedRoles: [Roles.ADMIN, Roles.PATRON],
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showValidationDialog(client),
+                          icon: const Icon(Icons.check, size: 16),
+                          label: const Text('Valider'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showRejectionDialog(client),
+                          icon: const Icon(Icons.close, size: 16),
+                          label: const Text('Rejeter'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

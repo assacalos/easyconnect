@@ -291,18 +291,27 @@ class CommercialDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingEntities() async {
     try {
-      final clients = await _clientService.getClients();
+      // OPTIMISATION : Charger toutes les entités en parallèle
+      final results = await Future.wait([
+        _clientService.getClients(),
+        _devisService.getDevis(),
+        _bordereauService.getBordereaux(),
+        _bonCommandeService.getBonCommandes(),
+      ], eagerError: false);
+
+      final clients = results[0] as List;
       pendingClients.value =
           clients.where((c) => c.status == 0 || c.status == null).length;
 
-      final devis = await _devisService.getDevis();
+      final devis = results[1] as List;
       pendingDevis.value = devis.where((d) => d.status == 1).length;
 
-      final bordereaux = await _bordereauService.getBordereaux();
+      final bordereaux = results[2] as List;
       pendingBordereaux.value = bordereaux.where((b) => b.status == 1).length;
 
-      final bons = await _bonCommandeService.getBonCommandes();
-      pendingBonCommandes.value = bons.where((b) => b.status == 0).length;
+      final bonCommandes = results[3] as List;
+      pendingBonCommandes.value =
+          bonCommandes.where((bc) => bc.status == 0).length;
     } catch (e) {
       pendingClients.value = 0;
       pendingDevis.value = 0;
@@ -313,17 +322,26 @@ class CommercialDashboardController extends BaseDashboardController {
 
   Future<void> _loadValidatedEntities() async {
     try {
-      final clients = await _clientService.getClients();
+      // OPTIMISATION : Charger toutes les entités en parallèle
+      final results = await Future.wait([
+        _clientService.getClients(),
+        _devisService.getDevis(),
+        _bordereauService.getBordereaux(),
+        _bonCommandeService.getBonCommandes(),
+      ], eagerError: false);
+
+      final clients = results[0] as List;
       validatedClients.value = clients.where((c) => c.status == 1).length;
 
-      final devis = await _devisService.getDevis();
+      final devis = results[1] as List;
       validatedDevis.value = devis.length - pendingDevis.value;
 
-      final bordereaux = await _bordereauService.getBordereaux();
+      final bordereaux = results[2] as List;
       validatedBordereaux.value = bordereaux.length - pendingBordereaux.value;
 
-      final bons = await _bonCommandeService.getBonCommandes();
-      validatedBonCommandes.value = bons.length - pendingBonCommandes.value;
+      final bonCommandes = results[3] as List;
+      validatedBonCommandes.value =
+          bonCommandes.length - pendingBonCommandes.value;
     } catch (e) {
       validatedClients.value = 0;
       validatedDevis.value = 0;

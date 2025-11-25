@@ -580,7 +580,7 @@ class PdfService {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
-          // Informations commerciales à gauche
+          /*  // Informations commerciales à gauche
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -591,18 +591,10 @@ class PdfService {
                   ),
                   if (commercial['email'] != null)
                     pw.Text('Email: ${commercial['email']}'),
-                ] else
-                  pw.Text(
-                    'Merci pour votre confiance !',
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.white,
-                    ),
-                  ),
+                ],
               ],
             ),
-          ),
+          ), */
           // Signature en bas à droite
           if (_signatureImage != null)
             pw.Image(

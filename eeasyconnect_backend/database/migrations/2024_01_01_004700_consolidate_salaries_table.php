@@ -33,7 +33,7 @@ return new class extends Migration
         Schema::create('salaries', function (Blueprint $table) {
             $table->id();
             $table->string('salary_number')->unique()->nullable();
-            $table->unsignedBigInteger('hr_id'); // Renommé de user_id
+            $table->unsignedBigInteger('employee_id'); // Référence à la table employees
             $table->string('period')->nullable();
             $table->date('period_start')->nullable();
             $table->date('period_end')->nullable();
@@ -57,7 +57,7 @@ return new class extends Migration
             $table->unsignedBigInteger('paid_by')->nullable();
             $table->timestamps();
 
-            $table->foreign('hr_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('employee_id')->references('id')->on('employees')->onDelete('cascade');
             $table->foreign('approved_by')->references('id')->on('users')->onDelete('set null');
             $table->foreign('paid_by')->references('id')->on('users')->onDelete('set null');
         });

@@ -163,144 +163,162 @@ class _ExpenseListState extends State<ExpenseList>
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: expense.statusColor,
-          child: Icon(_getStatusIcon(expense.status), color: Colors.white),
-        ),
-        title: Text(
-          expense.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Catégorie: ${expense.categoryText}'),
-            Text('Montant: ${formatCurrency.format(expense.amount)}'),
-            Text('Date: ${_formatDate(expense.expenseDate)}'),
-            if (expense.status == 'rejected' &&
-                (expense.rejectionReason != null &&
-                    expense.rejectionReason!.isNotEmpty)) ...[
-              const SizedBox(height: 4),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => Get.to(() => ExpenseDetail(expense: expense)),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec titre et statut
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Raison du rejet: ${expense.rejectionReason}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      expense.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: expense.statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: expense.statusColor.withOpacity(0.5),
+                      ),
+                    ),
+                    child: Text(
+                      expense.statusText,
+                      style: TextStyle(
+                        color: expense.statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Bouton Détail
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.blue),
-              onPressed: () => Get.to(() => ExpenseDetail(expense: expense)),
-              tooltip: 'Voir détails',
-            ),
-            // Bouton Modifier (seulement si pending)
-            if (expense.status == 'pending' && controller.canManageExpenses)
-              IconButton(
-                icon: const Icon(Icons.edit, color: Colors.orange),
-                onPressed: () => Get.to(() => ExpenseForm(expense: expense)),
-                tooltip: 'Modifier',
+              const SizedBox(height: 8),
+
+              // Catégorie
+              Row(
+                children: [
+                  Icon(Icons.category, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    expense.categoryText,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
+                ],
               ),
-            // Menu pour actions supplémentaires selon le statut
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'approve' && controller.canApproveExpenses) {
-                  _showApproveDialog(expense, controller);
-                } else if (value == 'reject' && controller.canApproveExpenses) {
-                  _showRejectDialog(expense, controller);
-                }
-              },
-              itemBuilder: (context) {
-                final items = <PopupMenuEntry<String>>[];
-                if (expense.status == 'pending' &&
-                    controller.canApproveExpenses) {
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'approve',
-                      child: ListTile(
-                        leading: Icon(Icons.check, color: Colors.green),
-                        title: Text('Approuver'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                  items.add(
-                    const PopupMenuItem(
-                      value: 'reject',
-                      child: ListTile(
-                        leading: Icon(Icons.close, color: Colors.red),
-                        title: Text('Rejeter'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  );
-                }
-                return items;
-              },
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+              const SizedBox(height: 4),
+
+              // Date
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDate(expense.expenseDate),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
-                  decoration: BoxDecoration(
-                    color: expense.statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    expense.statusText,
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Montant
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    formatCurrency.format(expense.amount),
                     style: TextStyle(
-                      color: expense.statusColor,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.green[700],
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  formatCurrency.format(expense.amount),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+                ],
+              ),
+
+              // Raison du rejet si rejeté
+              if (expense.status == 'rejected' &&
+                  (expense.rejectionReason != null &&
+                      expense.rejectionReason!.isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.report, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison: ${expense.rejectionReason}',
+                        style: TextStyle(color: Colors.red[700], fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+
+              // Actions
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Détails'),
+                    onPressed:
+                        () => Get.to(() => ExpenseDetail(expense: expense)),
+                  ),
+                  if (expense.status == 'pending' &&
+                      controller.canManageExpenses) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Modifier'),
+                      onPressed:
+                          () => Get.to(() => ExpenseForm(expense: expense)),
+                    ),
+                  ],
+                  if (expense.status == 'pending' &&
+                      controller.canApproveExpenses) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Approuver'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.green,
+                      ),
+                      onPressed: () => _showApproveDialog(expense, controller),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Rejeter'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      onPressed: () => _showRejectDialog(expense, controller),
+                    ),
+                  ],
+                  // Note: Pas de méthode generatePDF pour les dépenses
+                ],
+              ),
+            ],
+          ),
         ),
-        onTap: () => Get.to(() => ExpenseDetail(expense: expense)),
       ),
     );
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'pending':
-        return Icons.pending;
-      case 'approved':
-        return Icons.check_circle;
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.help;
-    }
   }
 
   String _formatDate(DateTime date) {

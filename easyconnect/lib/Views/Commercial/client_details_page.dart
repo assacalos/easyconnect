@@ -178,6 +178,10 @@ class ClientDetailsPage extends StatelessWidget {
                         ),
                       ]),
                     ],
+                    const SizedBox(height: 24),
+                    _buildSection('Entités associées', [
+                      _buildEntityButtons(client.id!),
+                    ]),
                   ],
                 ),
               ),
@@ -185,6 +189,120 @@ class ClientDetailsPage extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+
+  Widget _buildEntityButtons(int clientId) {
+    return Column(
+      children: [
+        // Première ligne : Devis et Bordereaux
+        Row(
+          children: [
+            Expanded(
+              child: _buildEntityButton(
+                icon: Icons.description,
+                label: 'Devis',
+                color: Colors.blue,
+                onTap: () {
+                  Get.toNamed('/devis-page', arguments: {'clientId': clientId});
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildEntityButton(
+                icon: Icons.assignment,
+                label: 'Bordereaux',
+                color: Colors.purple,
+                onTap: () {
+                  Get.toNamed('/bordereaux', arguments: {'clientId': clientId});
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Deuxième ligne : Factures et Paiements
+        Row(
+          children: [
+            Expanded(
+              child: _buildEntityButton(
+                icon: Icons.receipt_long,
+                label: 'Factures',
+                color: Colors.green,
+                onTap: () {
+                  Get.toNamed('/invoices', arguments: {'clientId': clientId});
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildEntityButton(
+                icon: Icons.payment,
+                label: 'Paiements',
+                color: Colors.orange,
+                onTap: () {
+                  Get.toNamed('/payments', arguments: {'clientId': clientId});
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Troisième ligne : Interventions
+        Row(
+          children: [
+            Expanded(
+              child: _buildEntityButton(
+                icon: Icons.build,
+                label: 'Interventions',
+                color: Colors.teal,
+                onTap: () {
+                  Get.toNamed(
+                    '/interventions',
+                    arguments: {'clientId': clientId},
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEntityButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

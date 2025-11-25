@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
+import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/utils/roles.dart';
 
 class PaymentList extends StatefulWidget {
-  const PaymentList({super.key});
+  final int? clientId;
+
+  const PaymentList({super.key, this.clientId});
 
   @override
   State<PaymentList> createState() => _PaymentListState();
@@ -142,12 +146,15 @@ class _PaymentListState extends State<PaymentList>
           ],
         );
       }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.toNamed('/payments/new'),
-        tooltip: 'Nouveau paiement',
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
+      floatingActionButton: RoleBasedWidget(
+        allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
+        child: FloatingActionButton(
+          onPressed: () => Get.toNamed('/payments/new'),
+          tooltip: 'Nouveau paiement',
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }
@@ -155,98 +162,146 @@ class _PaymentListState extends State<PaymentList>
   Widget _buildPaymentCard(PaymentModel payment) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStatusColor(payment),
-          child: Icon(_getStatusIcon(payment), color: Colors.white),
-        ),
-        title: Text(
-          payment.paymentNumber,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Client: ${payment.clientName}'),
-            Text(
-              'Montant: ${payment.amount.toStringAsFixed(0)} ${payment.currency}',
-            ),
-            Text('Date: ${_formatDate(payment.paymentDate)}'),
-            if (payment.isRejected &&
-                (payment.notes != null && payment.notes!.isNotEmpty)) ...[
-              const SizedBox(height: 4),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => _showPaymentDetail(payment),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec numéro et statut
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Raison du rejet: ${payment.notes}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      payment.paymentNumber,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(payment).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _getStatusColor(payment).withOpacity(0.5),
+                      ),
+                    ),
+                    child: Text(
+                      _getStatusLabel(payment),
+                      style: TextStyle(
+                        color: _getStatusColor(payment),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Bouton Modifier
-            if (payment.status == 'draft' || payment.status == 'pending')
-              IconButton(
-                icon: const Icon(Icons.edit, color: Colors.orange),
-                onPressed: () => _editPayment(payment),
-                tooltip: 'Modifier',
-              ),
-            // Bouton Détail
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.blue),
-              onPressed: () => _showPaymentDetail(payment),
-              tooltip: 'Voir détails',
-            ),
-            // Bouton PDF
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              onPressed: () => controller.generatePDF(payment.id),
-              tooltip: 'Générer PDF',
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(payment).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _getStatusLabel(payment),
-                    style: TextStyle(
-                      color: _getStatusColor(payment),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+              const SizedBox(height: 8),
+
+              // Client
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      payment.clientName,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${payment.amount.toStringAsFixed(0)} ${payment.currency}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              // Date
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDate(payment.paymentDate),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Montant
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${payment.amount.toStringAsFixed(0)} ${payment.currency}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[700],
+                    ),
+                  ),
+                ],
+              ),
+
+              // Raison du rejet si rejeté
+              if (payment.isRejected &&
+                  (payment.notes != null && payment.notes!.isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.report, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison: ${payment.notes}',
+                        style: TextStyle(color: Colors.red[700], fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+
+              // Actions
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (payment.status == 'draft' || payment.status == 'pending')
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Modifier'),
+                      onPressed: () => _editPayment(payment),
+                    ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Détails'),
+                    onPressed: () => _showPaymentDetail(payment),
+                  ),
+                  // Bouton PDF seulement pour les paiements validés
+                  if (payment.isApproved) ...[
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.picture_as_pdf, size: 16),
+                      label: const Text('PDF'),
+                      onPressed: () => controller.generatePDF(payment.id),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
-        onTap: () => _showPaymentDetail(payment),
       ),
     );
   }
@@ -256,13 +311,6 @@ class _PaymentListState extends State<PaymentList>
     if (payment.isApproved) return Colors.green;
     if (payment.isRejected) return Colors.red;
     return Colors.grey;
-  }
-
-  IconData _getStatusIcon(PaymentModel payment) {
-    if (payment.isPending) return Icons.pending;
-    if (payment.isApproved) return Icons.check_circle;
-    if (payment.isRejected) return Icons.cancel;
-    return Icons.help;
   }
 
   String _getStatusLabel(PaymentModel payment) {

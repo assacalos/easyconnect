@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/logger.dart';
 
 /// Helper centralisé pour gérer les erreurs d'authentification
 class AuthErrorHandler {
@@ -42,25 +42,22 @@ class AuthErrorHandler {
       if (Get.isRegistered<AuthController>()) {
         final authController = Get.find<AuthController>();
 
-        // Afficher un seul message d'erreur
-        Get.snackbar(
-          'Session expirée',
-          'Votre session a expiré. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 3),
-          margin: const EdgeInsets.all(16),
+        // Logger l'événement sans afficher de message à l'utilisateur
+        AppLogger.warning(
+          'Session expirée - Déconnexion automatique',
+          tag: 'AUTH_ERROR_HANDLER',
         );
 
-        // Attendre que le message soit affiché
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // Déconnecter l'utilisateur
+        // Déconnecter l'utilisateur silencieusement
         authController.logout();
       }
-    } catch (e) {
-      print('Erreur lors de la gestion de la déconnexion: $e');
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la gestion de la déconnexion: $e',
+        tag: 'AUTH_ERROR_HANDLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
     } finally {
       // Réinitialiser le flag après un délai
       Future.delayed(const Duration(seconds: 2), () {

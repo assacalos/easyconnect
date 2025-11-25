@@ -7,7 +7,9 @@ import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
 class BordereauListPage extends StatelessWidget {
-  BordereauListPage({super.key});
+  final int? clientId;
+
+  BordereauListPage({super.key, this.clientId});
   final BordereauxController controller = Get.put(BordereauxController());
 
   @override
@@ -53,13 +55,23 @@ class BordereauListPage extends StatelessWidget {
   }
 
   Widget _buildBordereauList(int status) {
+    // Récupérer clientId depuis les arguments
+    final args = Get.arguments as Map<String, dynamic>?;
+    final filterClientId = clientId ?? args?['clientId'] as int?;
+
     return Obx(() {
       if (controller.isLoading.value) {
         return const Center(child: CircularProgressIndicator());
       }
 
-      final bordereauList =
+      var bordereauList =
           controller.bordereaux.where((b) => b.status == status).toList();
+
+      // Filtrer par clientId si fourni
+      if (filterClientId != null) {
+        bordereauList =
+            bordereauList.where((b) => b.clientId == filterClientId).toList();
+      }
 
       if (bordereauList.isEmpty) {
         return Center(

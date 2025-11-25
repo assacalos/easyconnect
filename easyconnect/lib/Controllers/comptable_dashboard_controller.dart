@@ -218,16 +218,24 @@ class ComptableDashboardController extends BaseDashboardController {
 
   Future<void> _loadValidatedEntities() async {
     try {
-      final factures = await _invoiceService.getAllInvoices();
+      // OPTIMISATION : Charger toutes les entités en parallèle
+      final results = await Future.wait([
+        _invoiceService.getAllInvoices(),
+        _paymentService.getAllPayments(),
+        _expenseService.getExpenses(),
+        _salaryService.getSalaries(),
+      ], eagerError: false);
+
+      final factures = results[0] as List;
       validatedFactures.value = factures.length - pendingFactures.value;
 
-      final paiements = await _paymentService.getAllPayments();
+      final paiements = results[1] as List;
       validatedPaiements.value = paiements.length - pendingPaiements.value;
 
-      final depenses = await _expenseService.getExpenses();
+      final depenses = results[2] as List;
       validatedDepenses.value = depenses.length - pendingDepenses.value;
 
-      final salaires = await _salaryService.getSalaries();
+      final salaires = results[3] as List;
       validatedSalaires.value = salaires.length - pendingSalaires.value;
     } catch (e) {
       validatedFactures.value = 0;
@@ -239,7 +247,15 @@ class ComptableDashboardController extends BaseDashboardController {
 
   Future<void> _loadStatistics() async {
     try {
-      final factures = await _invoiceService.getAllInvoices();
+      // OPTIMISATION : Charger toutes les données en parallèle
+      final results = await Future.wait([
+        _invoiceService.getAllInvoices(),
+        _paymentService.getAllPayments(),
+        _expenseService.getExpenses(),
+        _salaryService.getSalaries(),
+      ], eagerError: false);
+
+      final factures = results[0] as List;
       // Calculer le total des factures validées (chiffre d'affaires)
       final statusLower = (String status) => status.toLowerCase().trim();
       totalRevenue.value = factures
@@ -251,19 +267,19 @@ class ComptableDashboardController extends BaseDashboardController {
           })
           .fold(0.0, (sum, f) => sum + f.totalAmount);
 
-      final paiements = await _paymentService.getAllPayments();
+      final paiements = results[1] as List;
       totalPayments.value = paiements.fold(
         0.0,
         (sum, p) => sum + (p.amount ?? 0.0),
       );
 
-      final depenses = await _expenseService.getExpenses();
+      final depenses = results[2] as List;
       totalExpenses.value = depenses.fold(
         0.0,
         (sum, d) => sum + (d.amount ?? 0.0),
       );
 
-      final salaires = await _salaryService.getSalaries();
+      final salaires = results[3] as List;
       totalSalaries.value = salaires.fold(0.0, (sum, s) => sum + (s.netSalary));
 
       netProfit.value =

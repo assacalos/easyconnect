@@ -1,7 +1,9 @@
 import 'package:get_storage/get_storage.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
-const String baseUrl =
-    //"https://easykonect.smil-app.com/api"; // URL de production (pour APK sur téléphone)
-    "http://10.0.2.2:8000/api"; // URL locale (pour émulateur Android)
+// ⚠️ DEPRECATED: Utiliser AppConfig.baseUrl à la place
+// Conservé pour compatibilité avec l'ancien code
+@Deprecated('Use AppConfig.baseUrl instead')
+String get baseUrl => AppConfig.baseUrl;
 
 final storage = GetStorage();

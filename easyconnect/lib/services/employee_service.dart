@@ -3,7 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class EmployeeService extends GetxService {
   static EmployeeService get to => Get.find();
@@ -22,8 +26,20 @@ class EmployeeService extends GetxService {
     // Si aucune limite n'est spécifiée, utiliser une limite par défaut pour éviter les réponses trop grandes
     final effectiveLimit = limit ?? 50;
     final effectivePage = page ?? 1;
+
+    // OPTIMISATION : Vérifier le cache d'abord (sauf pour les recherches)
+    if (search == null || search.isEmpty) {
+      final cacheKey =
+          'employees_${department ?? 'all'}_${position ?? 'all'}_${status ?? 'all'}_${effectivePage}_$effectiveLimit';
+      final cached = CacheHelper.get<List<Employee>>(cacheKey);
+      if (cached != null) {
+        AppLogger.debug('Using cached employees', tag: 'EMPLOYEE_SERVICE');
+        return cached;
+      }
+    }
+
     try {
-      String url = '$baseUrl/employees';
+      String url = '${AppConfig.baseUrl}/employees';
       List<String> params = [];
 
       if (search != null && search.isNotEmpty) {
@@ -53,7 +69,7 @@ class EmployeeService extends GetxService {
         );
       } catch (e) {
         // Si la route /employees échoue, essayer /employees-list
-        url = '$baseUrl/employees-list';
+        url = '${AppConfig.baseUrl}/employees-list';
         if (params.isNotEmpty) {
           url += '?${params.join('&')}';
         }
@@ -101,6 +117,18 @@ class EmployeeService extends GetxService {
           try {
             final employees =
                 dataList.map((json) => Employee.fromJson(json)).toList();
+
+            // Mettre en cache pour 5 minutes (sauf pour les recherches)
+            if (search == null || search.isEmpty) {
+              final cacheKey =
+                  'employees_${department ?? 'all'}_${position ?? 'all'}_${status ?? 'all'}_${effectivePage}_$effectiveLimit';
+              CacheHelper.set(
+                cacheKey,
+                employees,
+                duration: AppConfig.defaultCacheDuration,
+              );
+            }
+
             return employees;
           } catch (e) {
             rethrow;
@@ -122,7 +150,7 @@ class EmployeeService extends GetxService {
   Future<Employee> getEmployee(int id) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/employees/$id'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id'),
         headers: ApiService.headers(),
       );
 
@@ -166,44 +194,137 @@ class EmployeeService extends GetxService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/employees'),
-        headers: ApiService.headers(),
-        body: jsonEncode({
-          'first_name': firstName,
-          'last_name': lastName,
-          'email': email,
-          'phone': phone,
-          'address': address,
-          'birth_date': birthDate?.toIso8601String(),
-          'gender': gender,
-          'marital_status': maritalStatus,
-          'nationality': nationality,
-          'id_number': idNumber,
-          'social_security_number': socialSecurityNumber,
-          'position': position,
-          'department': department,
-          'manager': manager,
-          'hire_date': hireDate?.toIso8601String(),
-          'contract_start_date': contractStartDate?.toIso8601String(),
-          'contract_end_date': contractEndDate?.toIso8601String(),
-          'contract_type': contractType,
-          'salary': salary,
-          'currency': currency,
-          'work_schedule': workSchedule,
-          'profile_picture': profilePicture,
-          'notes': notes,
-        }),
+      final url = '${AppConfig.baseUrl}/employees';
+      AppLogger.httpRequest('POST', url, tag: 'EMPLOYEE_SERVICE');
+
+      // Préparer les données en filtrant les valeurs null
+      final employeeData = <String, dynamic>{
+        'first_name': firstName,
+        'last_name': lastName,
+        'email': email,
+      };
+
+      // Ajouter les champs optionnels seulement s'ils ne sont pas null
+      if (phone != null && phone.isNotEmpty) employeeData['phone'] = phone;
+      if (address != null && address.isNotEmpty)
+        employeeData['address'] = address;
+      if (birthDate != null) {
+        employeeData['birth_date'] =
+            birthDate.toIso8601String().split('T')[0]; // Format YYYY-MM-DD
+      }
+      if (gender != null && gender.isNotEmpty) employeeData['gender'] = gender;
+      if (maritalStatus != null && maritalStatus.isNotEmpty) {
+        employeeData['marital_status'] = maritalStatus;
+      }
+      if (nationality != null && nationality.isNotEmpty) {
+        employeeData['nationality'] = nationality;
+      }
+      if (idNumber != null && idNumber.isNotEmpty) {
+        employeeData['id_number'] = idNumber;
+      }
+      if (socialSecurityNumber != null && socialSecurityNumber.isNotEmpty) {
+        employeeData['social_security_number'] = socialSecurityNumber;
+      }
+      if (position != null && position.isNotEmpty)
+        employeeData['position'] = position;
+      if (department != null && department.isNotEmpty) {
+        employeeData['department'] = department;
+      }
+      if (manager != null && manager.isNotEmpty)
+        employeeData['manager'] = manager;
+      if (hireDate != null) {
+        employeeData['hire_date'] =
+            hireDate.toIso8601String().split('T')[0]; // Format YYYY-MM-DD
+      }
+      if (contractStartDate != null) {
+        employeeData['contract_start_date'] =
+            contractStartDate.toIso8601String().split('T')[0];
+      }
+      if (contractEndDate != null) {
+        employeeData['contract_end_date'] =
+            contractEndDate.toIso8601String().split('T')[0];
+      }
+      if (contractType != null && contractType.isNotEmpty) {
+        employeeData['contract_type'] = contractType;
+      }
+      if (salary != null && salary > 0) employeeData['salary'] = salary;
+      if (currency != null && currency.isNotEmpty)
+        employeeData['currency'] = currency;
+      if (workSchedule != null && workSchedule.isNotEmpty) {
+        employeeData['work_schedule'] = workSchedule;
+      }
+      if (profilePicture != null && profilePicture.isNotEmpty) {
+        employeeData['profile_picture'] = profilePicture;
+      }
+      if (notes != null && notes.isNotEmpty) employeeData['notes'] = notes;
+
+      AppLogger.debug(
+        'Données envoyées: ${jsonEncode(employeeData)}',
+        tag: 'EMPLOYEE_SERVICE',
       );
 
-      if (response.statusCode == 201) {
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: ApiService.headers(),
+              body: jsonEncode(employeeData),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'EMPLOYEE_SERVICE');
+
+      // Logger le body de la réponse pour le débogage
+      AppLogger.debug(
+        'Réponse du backend (${response.statusCode}): ${response.body}',
+        tag: 'EMPLOYEE_SERVICE',
+      );
+
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        AppLogger.info('Employé créé avec succès', tag: 'EMPLOYEE_SERVICE');
         return jsonDecode(response.body);
       } else {
-        throw Exception(
-          'Erreur lors de la création de l\'employé: ${response.statusCode}',
-        );
+        // Extraire le message d'erreur détaillé du backend
+        String errorMessage =
+            'Erreur lors de la création de l\'employé: ${response.statusCode}';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'];
+          } else if (errorData['errors'] != null) {
+            // Si c'est une erreur de validation Laravel
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final errorList = errors.values.expand((e) => e as List).join(', ');
+            errorMessage = 'Erreurs de validation: $errorList';
+          } else {
+            // Si pas de message structuré, utiliser le body complet
+            errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
+          }
+          AppLogger.error(
+            'Erreur backend: $errorMessage',
+            tag: 'EMPLOYEE_SERVICE',
+          );
+        } catch (e) {
+          AppLogger.error(
+            'Erreur lors du parsing de la réponse: ${response.body}',
+            tag: 'EMPLOYEE_SERVICE',
+            error: e,
+          );
+          // Si le parsing échoue, utiliser le body brut
+          errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
+        }
+        throw Exception(errorMessage);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la création de l\'employé: $e',
+        tag: 'EMPLOYEE_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
+      );
       rethrow;
     }
   }
@@ -238,7 +359,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/employees/$id'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'first_name': firstName,
@@ -284,7 +405,7 @@ class EmployeeService extends GetxService {
   Future<Map<String, dynamic>> deleteEmployee(int id) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/employees/$id'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id'),
         headers: ApiService.headers(),
       );
 
@@ -304,7 +425,7 @@ class EmployeeService extends GetxService {
   Future<Map<String, dynamic>> submitEmployeeForApproval(int id) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$id/submit'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id/submit'),
         headers: ApiService.headers(),
       );
 
@@ -325,7 +446,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$id/approve'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id/approve'),
         headers: ApiService.headers(),
         body: jsonEncode({'comments': comments}),
       );
@@ -349,7 +470,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$id/reject'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$id/reject'),
         headers: ApiService.headers(),
         body: jsonEncode({'reason': reason}),
       );
@@ -368,7 +489,7 @@ class EmployeeService extends GetxService {
   Future<EmployeeStats> getEmployeeStats() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/employees/stats'),
+        Uri.parse('${AppConfig.baseUrl}/employees/stats'),
         headers: ApiService.headers(),
       );
 
@@ -389,7 +510,7 @@ class EmployeeService extends GetxService {
   Future<List<String>> getDepartments() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/employees/departments'),
+        Uri.parse('${AppConfig.baseUrl}/employees/departments'),
         headers: ApiService.headers(),
       );
 
@@ -430,7 +551,7 @@ class EmployeeService extends GetxService {
   Future<List<String>> getPositions() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/employees/positions'),
+        Uri.parse('${AppConfig.baseUrl}/employees/positions'),
         headers: ApiService.headers(),
       );
 
@@ -459,7 +580,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$employeeId/documents'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/documents'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'name': name,
@@ -493,7 +614,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$employeeId/leaves'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/leaves'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'type': type,
@@ -522,7 +643,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/leaves/$leaveId/approve'),
+        Uri.parse('${AppConfig.baseUrl}/leaves/$leaveId/approve'),
         headers: ApiService.headers(),
         body: jsonEncode({'comments': comments}),
       );
@@ -546,7 +667,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/leaves/$leaveId/reject'),
+        Uri.parse('${AppConfig.baseUrl}/leaves/$leaveId/reject'),
         headers: ApiService.headers(),
         body: jsonEncode({'reason': reason}),
       );
@@ -575,7 +696,7 @@ class EmployeeService extends GetxService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/employees/$employeeId/performances'),
+        Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/performances'),
         headers: ApiService.headers(),
         body: jsonEncode({
           'period': period,
@@ -603,7 +724,7 @@ class EmployeeService extends GetxService {
   Future<List<Employee>> searchEmployees(String query) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/employees/search?q=$query'),
+        Uri.parse('${AppConfig.baseUrl}/employees/search?q=$query'),
         headers: ApiService.headers(),
       );
 

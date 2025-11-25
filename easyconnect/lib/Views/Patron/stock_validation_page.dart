@@ -202,7 +202,7 @@ class _StockValidationPageState extends State<StockValidationPage>
     final formatDate = DateFormat('dd/MM/yyyy');
     final statusColor = _getStatusColor(stock.status);
     final statusIcon = _getStatusIcon(stock.status);
-    final statusText = _getStatusText(stock.status);
+    final statusText = stock.statusText; // Utiliser la propriété du modèle
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -393,10 +393,13 @@ class _StockValidationPageState extends State<StockValidationPage>
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
+      case 'en_attente':
       case 'pending':
         return Colors.orange;
+      case 'valide':
       case 'approved':
         return Colors.green;
+      case 'rejete':
       case 'rejected':
         return Colors.red;
       default:
@@ -406,27 +409,17 @@ class _StockValidationPageState extends State<StockValidationPage>
 
   IconData _getStatusIcon(String status) {
     switch (status.toLowerCase()) {
+      case 'en_attente':
       case 'pending':
         return Icons.pending;
+      case 'valide':
       case 'approved':
         return Icons.check_circle;
+      case 'rejete':
       case 'rejected':
         return Icons.cancel;
       default:
         return Icons.help;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'En attente';
-      case 'approved':
-        return 'Approuvé';
-      case 'rejected':
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
     }
   }
 

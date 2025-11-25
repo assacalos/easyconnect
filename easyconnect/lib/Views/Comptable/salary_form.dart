@@ -61,16 +61,35 @@ class _SalaryFormState extends State<SalaryForm> {
                     prefixIcon: Icon(Icons.person),
                   ),
                   child: Obx(
-                    () => Text(
-                      controller.selectedEmployeeName.value.isNotEmpty
-                          ? controller.selectedEmployeeName.value
-                          : 'Sélectionner un employé',
-                      style: TextStyle(
-                        color:
-                            controller.selectedEmployeeName.value.isNotEmpty
-                                ? Colors.black
-                                : Colors.grey[600],
-                      ),
+                    () => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          controller.selectedEmployeeName.value.isNotEmpty
+                              ? controller.selectedEmployeeName.value
+                              : 'Sélectionner un employé',
+                          style: TextStyle(
+                            color:
+                                controller.selectedEmployeeName.value.isNotEmpty
+                                    ? Colors.black
+                                    : Colors.grey[600],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (controller
+                            .selectedEmployeeEmail
+                            .value
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            controller.selectedEmployeeEmail.value,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -445,10 +464,47 @@ class _SalaryFormState extends State<SalaryForm> {
               itemCount: controller.employees.length,
               itemBuilder: (context, index) {
                 final employee = controller.employees[index];
+                final employeeName =
+                    employee['name'] ??
+                    '${employee['first_name'] ?? ''} ${employee['last_name'] ?? ''}'
+                        .trim();
+                final employeeEmail = employee['email'] ?? '';
+                final employeePosition = employee['position'] ?? '';
+                final employeeDepartment = employee['department'] ?? '';
+                final employeeSalary = employee['salary'];
+                final salaryText =
+                    employeeSalary != null
+                        ? 'Salaire: ${NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa', decimalDigits: 0).format(employeeSalary is String ? double.tryParse(employeeSalary) ?? 0 : (employeeSalary is num ? employeeSalary.toDouble() : 0))}'
+                        : '';
+
                 return ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.person)),
-                  title: Text(employee['name']),
-                  subtitle: Text(employee['email']),
+                  title: Text(employeeName),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (employeeEmail.isNotEmpty) Text(employeeEmail),
+                      if (employeePosition.isNotEmpty ||
+                          employeeDepartment.isNotEmpty)
+                        Text(
+                          '${employeePosition.isNotEmpty ? employeePosition : ''}${employeePosition.isNotEmpty && employeeDepartment.isNotEmpty ? ' - ' : ''}${employeeDepartment.isNotEmpty ? employeeDepartment : ''}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      if (salaryText.isNotEmpty)
+                        Text(
+                          salaryText,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
+                  isThreeLine: true,
                   onTap: () {
                     controller.selectEmployee(employee);
                     Get.back();

@@ -3,14 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/services/salary_service.dart';
-import 'package:easyconnect/services/user_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 class SalaryController extends GetxController {
   final SalaryService _salaryService = SalaryService();
-  final UserService _userService = UserService();
   final AuthController _authController = Get.find<AuthController>();
 
   // Variables observables
@@ -114,37 +112,19 @@ class SalaryController extends GetxController {
     }
   }
 
-  // Charger les utilisateurs de l'application comme employés
+  // Charger les employés depuis l'endpoint spécifique aux salaires
+  // Cet endpoint est accessible au comptable sans avoir besoin de permissions complètes sur les employés
   Future<void> loadEmployees() async {
     try {
-      // Charger tous les utilisateurs de l'application
-      final usersList = await _userService.getUsers();
-      // Convertir les UserModel en Map<String, dynamic> au format attendu
-      final employeesList =
-          usersList.map((user) {
-            // Construire le nom complet à partir de nom et prenom
-            final fullName =
-                [
-                  user.nom ?? '',
-                  user.prenom ?? '',
-                ].where((part) => part.isNotEmpty).join(' ').trim();
+      // Utiliser la méthode getEmployees() du SalaryService
+      // qui utilise l'endpoint /employees-list spécifique aux salaires
+      final employeesList = await _salaryService.getEmployees();
 
-            // Si aucun nom n'est disponible, utiliser l'email comme nom
-            final displayName =
-                fullName.isNotEmpty
-                    ? fullName
-                    : (user.email ?? 'Utilisateur ${user.id}');
-
-            return {
-              'id': user.id,
-              'name': displayName,
-              'email': user.email ?? '',
-            };
-          }).toList();
-
+      // Les données sont déjà au format Map<String, dynamic>
       employees.assignAll(employeesList);
     } catch (e) {
       // Ne pas bloquer l'application si cette méthode échoue
+      // L'endpoint peut retourner 403 si le comptable n'a pas accès
       employees.clear();
     }
   }
@@ -747,8 +727,23 @@ class SalaryController extends GetxController {
   // Sélectionner un employé
   void selectEmployee(Map<String, dynamic> employee) {
     selectedEmployeeId.value = employee['id'];
-    selectedEmployeeName.value = employee['name'];
-    selectedEmployeeEmail.value = employee['email'];
+    selectedEmployeeName.value =
+        employee['name'] ??
+        '${employee['first_name'] ?? ''} ${employee['last_name'] ?? ''}'.trim();
+    selectedEmployeeEmail.value = employee['email'] ?? '';
+
+    // Pré-remplir le salaire de base avec le salaire de l'employé
+    if (employee['salary'] != null) {
+      final salary = employee['salary'];
+      final salaryValue =
+          salary is String
+              ? double.tryParse(salary)
+              : (salary is num ? salary.toDouble() : null);
+      if (salaryValue != null && salaryValue > 0) {
+        baseSalaryController.text = salaryValue.toStringAsFixed(0);
+        updateNetSalary(); // Mettre à jour le salaire net
+      }
+    }
   }
 
   // Sélectionner le mois

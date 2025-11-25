@@ -2,15 +2,26 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class BordereauService {
   final storage = GetStorage();
 
   Future<List<Bordereau>> getBordereaux({int? status}) async {
     try {
+      // OPTIMISATION : Vérifier le cache d'abord
+      final cacheKey = 'bordereaux_${status ?? 'all'}';
+      final cached = CacheHelper.get<List<Bordereau>>(cacheKey);
+      if (cached != null) {
+        AppLogger.debug('Using cached bordereaux', tag: 'BORDEREAU_SERVICE');
+        return cached;
+      }
+
       final token = storage.read('token');
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
@@ -23,14 +34,25 @@ class BordereauService {
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
-      final url = '$baseUrl/bordereaux-list$queryString';
+      final url = '${AppConfig.baseUrl}/bordereaux-list$queryString';
+      AppLogger.httpRequest('GET', url, tag: 'BORDEREAU_SERVICE');
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BORDEREAU_SERVICE',
       );
 
       // Gérer les erreurs d'authentification
@@ -62,6 +84,13 @@ class BordereauService {
                 .cast<Bordereau>()
                 .toList();
 
+        // Mettre en cache pour 5 minutes
+        CacheHelper.set(
+          cacheKey,
+          bordereauList,
+          duration: AppConfig.defaultCacheDuration,
+        );
+
         return bordereauList;
       }
 
@@ -79,14 +108,27 @@ class BordereauService {
 
       final bordereauJson = bordereau.toJson();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/bordereaux-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(bordereauJson),
+      final url = '${AppConfig.baseUrl}/bordereaux-create';
+      AppLogger.httpRequest('POST', url, tag: 'BORDEREAU_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: json.encode(bordereauJson),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BORDEREAU_SERVICE',
       );
 
       // Gérer les erreurs d'authentification
@@ -183,7 +225,7 @@ class BordereauService {
     try {
       final token = storage.read('token');
       final response = await http.put(
-        Uri.parse('$baseUrl/bordereaux-update/${bordereau.id}'),
+        Uri.parse('${AppConfig.baseUrl}/bordereaux-update/${bordereau.id}'),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -205,7 +247,7 @@ class BordereauService {
     try {
       final token = storage.read('token');
       final response = await http.delete(
-        Uri.parse('$baseUrl/bordereaux-delete/$bordereauId'),
+        Uri.parse('${AppConfig.baseUrl}/bordereaux-delete/$bordereauId'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -222,7 +264,7 @@ class BordereauService {
     try {
       final token = storage.read('token');
       final response = await http.post(
-        Uri.parse('$baseUrl/bordereaux/$bordereauId/submit'),
+        Uri.parse('${AppConfig.baseUrl}/bordereaux/$bordereauId/submit'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
@@ -238,7 +280,7 @@ class BordereauService {
   Future<bool> approveBordereau(int bordereauId) async {
     try {
       final token = storage.read('token');
-      final url = '$baseUrl/bordereaux-validate/$bordereauId';
+      final url = '${AppConfig.baseUrl}/bordereaux-validate/$bordereauId';
 
       final response = await http.post(
         Uri.parse(url),
@@ -276,7 +318,7 @@ class BordereauService {
     try {
       final token = storage.read('token');
       // Essayer d'abord la route avec le format /bordereaux/{id}/reject
-      String url = '$baseUrl/bordereaux/$bordereauId/reject';
+      String url = '${AppConfig.baseUrl}/bordereaux/$bordereauId/reject';
       final body = {'commentaire': commentaire};
 
       http.Response response;
@@ -292,7 +334,7 @@ class BordereauService {
         );
       } catch (e) {
         // Si la première route échoue, essayer l'ancienne route
-        url = '$baseUrl/bordereaux-reject/$bordereauId';
+        url = '${AppConfig.baseUrl}/bordereaux-reject/$bordereauId';
         response = await http.post(
           Uri.parse(url),
           headers: {
@@ -331,7 +373,7 @@ class BordereauService {
     try {
       final token = storage.read('token');
       final response = await http.get(
-        Uri.parse('$baseUrl/bordereaux/stats'),
+        Uri.parse('${AppConfig.baseUrl}/bordereaux/stats'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',

@@ -14,25 +14,28 @@ class EmployeeForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final EmployeeController controller = Get.put(EmployeeController());
 
-    // Charger les départements si la liste est vide
-    if (controller.departments.isEmpty) {
-      controller.loadDepartments();
-    }
+    // Utiliser addPostFrameCallback pour éviter les erreurs "setState during build"
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Charger les départements si la liste est vide
+      if (controller.departments.isEmpty) {
+        controller.loadDepartments();
+      }
 
-    // Charger les employés si la liste est vide (pour le sélecteur)
-    if (employee == null && controller.employees.isEmpty) {
-      controller.loadEmployees(loadAll: true);
-    }
+      // Charger les employés si la liste est vide (pour le sélecteur)
+      if (employee == null && controller.employees.isEmpty) {
+        controller.loadEmployees(loadAll: true);
+      }
 
-    // Si on édite un employé existant, remplir le formulaire
-    if (employee != null) {
-      controller.fillForm(employee!);
-      controller.selectedEmployeeForForm.value = employee;
-    } else {
-      // Si on crée un nouvel employé, réinitialiser le formulaire
-      controller.clearForm();
-      controller.selectedEmployeeForForm.value = null;
-    }
+      // Si on édite un employé existant, remplir le formulaire
+      if (employee != null) {
+        controller.fillForm(employee!);
+        controller.selectedEmployeeForForm.value = employee;
+      } else {
+        // Si on crée un nouvel employé, réinitialiser le formulaire
+        controller.clearForm();
+        controller.selectedEmployeeForForm.value = null;
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -566,27 +569,38 @@ class EmployeeForm extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value: controller.selectedStatus.value,
+                    child: Obx(() {
+                      final statuses = controller.employeeStatuses;
+                      final currentValue = controller.selectedStatus.value;
+                      // S'assurer que la valeur actuelle est valide
+                      final validValue =
+                          statuses.any(
+                                (status) => status['value'] == currentValue,
+                              )
+                              ? currentValue
+                              : null;
+
+                      return DropdownButtonFormField<String>(
+                        value: validValue,
                         decoration: const InputDecoration(
                           labelText: 'Statut',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.info),
                         ),
                         items:
-                            controller.employeeStatuses
-                                .map<DropdownMenuItem<String>>((status) {
-                                  return DropdownMenuItem<String>(
-                                    value: status['value'] as String,
-                                    child: Text(status['label'] as String),
-                                  );
-                                })
-                                .toList(),
-                        onChanged:
-                            (value) => controller.selectedStatus.value = value!,
-                      ),
-                    ),
+                            statuses.map<DropdownMenuItem<String>>((status) {
+                              return DropdownMenuItem<String>(
+                                value: status['value'] as String,
+                                child: Text(status['label'] as String),
+                              );
+                            }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            controller.selectedStatus.value = value;
+                          }
+                        },
+                      );
+                    }),
                   ),
                 ],
               ),
