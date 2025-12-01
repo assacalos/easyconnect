@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
 use Illuminate\Http\Request;
 use App\Models\Notification;
 use Carbon\Carbon;
@@ -12,19 +12,31 @@ class NotificationController extends Controller
     /**
      * Liste des notifications
      * Accessible par tous les utilisateurs authentifiés
+     * Compatible avec la nouvelle structure de la documentation
      */
     public function index(Request $request)
     {
-        $query = Notification::where('user_id', auth()->id());
+        $user = auth()->user();
         
-        // Filtrage par statut si fourni
-        if ($request->has('statut')) {
-            $query->where('statut', $request->statut);
-        }
+        $query = Notification::where('user_id', $user->id)
+            ->orderBy('created_at', 'desc');
         
-        // Filtrage par type si fourni
+        // Filtrage par type si fourni (nouveau format: info, success, warning, error, task)
         if ($request->has('type')) {
             $query->where('type', $request->type);
+        }
+        
+        // Filtrer les non lues si demandé
+        if ($request->boolean('unread_only')) {
+            $query->where(function($q) {
+                $q->where('is_read', false)
+                  ->orWhere('statut', 'non_lue');
+            });
+        }
+        
+        // Filtrage par statut si fourni (ancien système)
+        if ($request->has('statut')) {
+            $query->where('statut', $request->statut);
         }
         
         // Filtrage par priorité si fourni
@@ -46,13 +58,43 @@ class NotificationController extends Controller
             $query->where('created_at', '<=', $request->date_fin);
         }
         
-        // Tri par défaut : plus récentes en premier
-        $notifications = $query->orderBy('created_at', 'desc')->get();
+        // Pagination
+        $perPage = $request->get('per_page', 20);
+        $notifications = $query->paginate($perPage);
+        
+        // Compter les notifications non lues
+        $unreadCount = Notification::where('user_id', $user->id)
+            ->where(function($q) {
+                $q->where('is_read', false)
+                  ->orWhere('statut', 'non_lue');
+            })
+            ->count();
+        
+        // Formater les notifications selon la nouvelle structure
+        $formattedNotifications = $notifications->map(function($notification) {
+            return [
+                'id' => (string) $notification->id,
+                'title' => $notification->title ?? $notification->titre ?? '',
+                'message' => $notification->message,
+                'type' => $notification->type,
+                'entity_type' => $notification->entity_type,
+                'entity_id' => $notification->entity_id ? (string) $notification->entity_id : null,
+                'is_read' => $notification->is_read !== null ? (bool) $notification->is_read : ($notification->statut === 'lue'),
+                'created_at' => $notification->created_at->toIso8601String(),
+                'action_route' => $notification->action_route,
+            ];
+        });
         
         return response()->json([
             'success' => true,
-            'notifications' => $notifications,
-            'message' => 'Liste des notifications récupérée avec succès'
+            'data' => $formattedNotifications,
+            'unread_count' => $unreadCount,
+            'pagination' => [
+                'current_page' => $notifications->currentPage(),
+                'last_page' => $notifications->lastPage(),
+                'per_page' => $notifications->perPage(),
+                'total' => $notifications->total(),
+            ],
         ]);
     }
 
@@ -79,12 +121,13 @@ class NotificationController extends Controller
     /**
      * Marquer une notification comme lue
      * Accessible par tous les utilisateurs authentifiés
+     * Compatible avec la nouvelle structure de la documentation
      */
     public function markAsRead($id)
     {
         $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
         
-        if ($notification->statut === 'lue') {
+        if ($notification->is_read || $notification->statut === 'lue') {
             return response()->json([
                 'success' => false,
                 'message' => 'Cette notification est déjà marquée comme lue'
@@ -95,7 +138,6 @@ class NotificationController extends Controller
         
         return response()->json([
             'success' => true,
-            'notification' => $notification,
             'message' => 'Notification marquée comme lue'
         ]);
     }
@@ -103,20 +145,24 @@ class NotificationController extends Controller
     /**
      * Marquer toutes les notifications comme lues
      * Accessible par tous les utilisateurs authentifiés
+     * Compatible avec la nouvelle structure de la documentation
      */
     public function markAllAsRead()
     {
         $count = Notification::where('user_id', auth()->id())
-            ->where('statut', 'non_lue')
+            ->where(function($q) {
+                $q->where('is_read', false)
+                  ->orWhere('statut', 'non_lue');
+            })
             ->update([
                 'statut' => 'lue',
+                'is_read' => true,
                 'date_lecture' => Carbon::now()
             ]);
         
         return response()->json([
             'success' => true,
-            'count' => $count,
-            'message' => "$count notifications marquées comme lues"
+            'message' => 'Toutes les notifications ont été marquées comme lues'
         ]);
     }
 
@@ -157,6 +203,7 @@ class NotificationController extends Controller
     /**
      * Supprimer une notification
      * Accessible par tous les utilisateurs authentifiés
+     * Compatible avec la nouvelle structure de la documentation
      */
     public function destroy($id)
     {

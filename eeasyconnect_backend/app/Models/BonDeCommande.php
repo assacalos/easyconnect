@@ -10,12 +10,9 @@ class BonDeCommande extends Model
     use HasFactory;
 
     protected $fillable = [
-        'client_id',
         'fournisseur_id',
         'numero_commande',
         'date_commande',
-        'date_livraison_prevue',
-        'date_livraison',
         'montant_total',
         'description',
         'statut',
@@ -30,8 +27,6 @@ class BonDeCommande extends Model
 
     protected $casts = [
         'date_commande' => 'date',
-        'date_livraison_prevue' => 'date',
-        'date_livraison' => 'date',
         'date_validation' => 'date',
         'date_debut_traitement' => 'date',
         'date_annulation' => 'date',
@@ -39,11 +34,6 @@ class BonDeCommande extends Model
     ];
 
     // Relations
-    public function client()
-    {
-        return $this->belongsTo(Client::class);
-    }
-
     public function fournisseur()
     {
         return $this->belongsTo(Fournisseur::class);
@@ -52,6 +42,11 @@ class BonDeCommande extends Model
     public function createur()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function items()
+    {
+        return $this->hasMany(BonDeCommandeItem::class, 'bon_de_commande_id');
     }
 
     // Scopes
@@ -122,17 +117,13 @@ class BonDeCommande extends Model
 
     public function getDureeTraitementAttribute()
     {
-        if ($this->date_debut_traitement && $this->date_livraison) {
-            return $this->date_debut_traitement->diffInDays($this->date_livraison);
-        }
+        // Cette méthode n'est plus utilisable sans date_livraison
         return null;
     }
 
     public function getRetardAttribute()
     {
-        if ($this->date_livraison_prevue && $this->date_livraison) {
-            return $this->date_livraison->gt($this->date_livraison_prevue);
-        }
+        // Cette méthode n'est plus utilisable sans date_livraison_prevue et date_livraison
         return false;
     }
 }

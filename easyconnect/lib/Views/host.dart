@@ -461,11 +461,24 @@ class Host extends StatelessWidget {
             title: Text("Bloc Notes", style: TextStyle(color: Colors.white)),
             onTap: () => print("Bloc Notes"),
           ),
-          ListTile(
-            leading: Icon(Icons.settings, color: Colors.white),
-            title: Text("Parametre", style: TextStyle(color: Colors.white)),
-            onTap: () => print("Parametre"),
-          ),
+          Obx(() {
+            final userRole = authController.userAuth.value?.role;
+            // Afficher le bouton paramètres seulement pour les admins
+            if (userRole == 1) {
+              return ListTile(
+                leading: Icon(Icons.settings, color: Colors.white),
+                title: Text(
+                  "Paramètres",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Get.toNamed('/admin/settings');
+                },
+              );
+            }
+            return SizedBox.shrink();
+          }),
           ListTile(
             leading: Icon(Icons.person, color: Colors.white),
             title: Text("Profil", style: TextStyle(color: Colors.white)),

@@ -2,47 +2,88 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Facture;
+use App\Models\FactureItem;
 use App\Models\Client;
+use App\Models\User;
 
 class FactureController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des factures
      * Accessible par tous les utilisateurs authentifiés
      */
     public function index(Request $request)
     {
-        $query = Facture::with('client');
+        $query = Facture::with(['client', 'items', 'user']);
         
-        // Filtrage par statut si fourni
-        if ($request->has('statut')) {
-            $query->where('statut', $request->statut);
+        // Filtrage par status si fourni
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
         }
         
-        // Filtrage par date si fourni
-        if ($request->has('date_debut')) {
-            $query->where('date_facture', '>=', $request->date_debut);
+        // Filtrage par client_id si fourni
+        if ($request->has('client_id')) {
+            $query->where('client_id', $request->client_id);
         }
         
-        if ($request->has('date_fin')) {
-            $query->where('date_facture', '<=', $request->date_fin);
+        // Filtrage par commercial_id si fourni
+        if ($request->has('commercial_id')) {
+            $query->where('user_id', $request->commercial_id);
         }
         
-        // Si commercial → filtre ses propres clients
+        // Filtrage par date de début (start_date ou date_debut)
+        if ($request->has('start_date') || $request->has('date_debut')) {
+            $date = $request->start_date ?? $request->date_debut;
+            $query->where('date_facture', '>=', $date);
+        }
+        
+        // Filtrage par date de fin (end_date ou date_fin)
+        if ($request->has('end_date') || $request->has('date_fin')) {
+            $date = $request->end_date ?? $request->date_fin;
+            $query->where('date_facture', '<=', $date);
+        }
+        
+        // Si commercial → filtre ses propres factures
         if (auth()->user()->isCommercial()) {
-            $query->whereHas('client', function($q) {
-                $q->where('user_id', auth()->id());
-            });
+            $query->where('user_id', auth()->id());
         }
         
-        $factures = $query->get();
+        // Pagination optionnelle
+        $perPage = $request->get('per_page');
+        $limit = $request->get('limit');
+        
+        // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
+        if (!$perPage && !$limit) {
+            $factures = $query->orderBy('created_at', 'desc')->get();
+            
+            $formattedFactures = $factures->map(function ($facture) {
+                return $this->formatFactureForFrontend($facture);
+            });
+            
+            return response()->json([
+                'success' => true,
+                'data' => $formattedFactures,
+                'message' => 'Liste des factures récupérée avec succès'
+            ]);
+        }
+        
+        // Sinon, utiliser la pagination
+        $perPage = $perPage ?? $limit ?? 15;
+        $factures = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        
+        // Formater pour le frontend
+        $factures->getCollection()->transform(function ($facture) {
+            return $this->formatFactureForFrontend($facture);
+        });
         
         return response()->json([
             'success' => true,
-            'factures' => $factures,
+            'data' => $factures,
             'message' => 'Liste des factures récupérée avec succès'
         ]);
     }
@@ -53,10 +94,10 @@ class FactureController extends Controller
      */
     public function show($id)
     {
-        $facture = Facture::with('client', 'paiements')->findOrFail($id);
+        $facture = Facture::with(['client', 'items', 'user', 'paiements'])->findOrFail($id);
         
         // Vérification des permissions pour les commerciaux
-        if (auth()->user()->isCommercial() && $facture->client->user_id !== auth()->id()) {
+        if (auth()->user()->isCommercial() && $facture->user_id !== auth()->id()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Accès refusé à cette facture'
@@ -65,7 +106,7 @@ class FactureController extends Controller
         
         return response()->json([
             'success' => true,
-            'facture' => $facture,
+            'data' => $this->formatFactureForFrontend($facture),
             'message' => 'Facture récupérée avec succès'
         ]);
     }
@@ -73,33 +114,139 @@ class FactureController extends Controller
     /**
      * Créer une facture
      * Accessible par Comptable et Admin
+     * Accepte les données du frontend avec items, subtotal, tax_rate, etc.
      */
     public function store(Request $request)
     {
         $request->validate([
             'client_id' => 'required|exists:clients,id',
-            'numero_facture' => 'required|string|unique:factures',
-            'montant' => 'required|numeric|min:0',
-            'date_facture' => 'required|date',
-            'description' => 'nullable|string',
-            'statut' => 'required|in:en_attente,payee,impayee'
+            'invoice_date' => 'required|date',
+            'due_date' => 'required|date',
+            'subtotal' => 'required|numeric|min:0',
+            'tax_rate' => 'required|numeric|min:0|max:100',
+            'tax_amount' => 'required|numeric|min:0',
+            'total_amount' => 'required|numeric|min:0',
+            'items' => 'required|array|min:1',
+            'items.*.description' => 'required|string',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.total_price' => 'required|numeric|min:0',
+            'items.*.unit' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'terms' => 'nullable|string',
+            'numero_facture' => 'nullable|string|unique:factures,numero_facture'
         ]);
 
+        // Génération automatique du numéro de facture si non fourni
+        $numeroFacture = $request->numero_facture;
+        if (!$numeroFacture) {
+            $numeroFacture = $this->generateInvoiceNumber();
+        }
+
+        // Création de la facture
         $facture = Facture::create([
             'client_id' => $request->client_id,
-            'numero_facture' => $request->numero_facture,
-            'montant' => $request->montant,
-            'date_facture' => $request->date_facture,
-            'description' => $request->description,
-            'statut' => $request->statut,
-            'user_id' => auth()->id()
+            'numero_facture' => $numeroFacture,
+            'date_facture' => $request->invoice_date,
+            'date_echeance' => $request->due_date,
+            'montant_ht' => $request->subtotal,
+            'tva' => $request->tax_rate,
+            'montant_ttc' => $request->total_amount,
+            'status' => 'en_attente',
+            'notes' => $request->notes,
+            'terms' => $request->terms,
+            'user_id' => $request->user_id ?? auth()->id()
         ]);
+
+        // Création des items de la facture
+        foreach ($request->items as $item) {
+            FactureItem::create([
+                'facture_id' => $facture->id,
+                'description' => $item['description'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'total_price' => $item['total_price'],
+                'unit' => $item['unit'] ?? null
+            ]);
+        }
+
+        // Charger la facture avec ses relations
+        $facture->load('client', 'items', 'user');
 
         return response()->json([
             'success' => true,
-            'facture' => $facture,
+            'data' => $this->formatFactureForFrontend($facture),
             'message' => 'Facture créée avec succès'
         ], 201);
+    }
+
+    /**
+     * Générer un numéro de facture automatique
+     */
+    private function generateInvoiceNumber()
+    {
+        $year = date('Y');
+        
+        // Trouver toutes les factures de l'année avec le format FAC-YYYY-XXXX
+        $invoices = Facture::whereYear('created_at', $year)
+            ->where('numero_facture', 'like', 'FAC-' . $year . '-%')
+            ->get();
+        
+        $maxNumber = 0;
+        foreach ($invoices as $invoice) {
+            if (preg_match('/FAC-\d{4}-(\d+)$/', $invoice->numero_facture, $matches)) {
+                $num = (int) $matches[1];
+                if ($num > $maxNumber) {
+                    $maxNumber = $num;
+                }
+            }
+        }
+        
+        $number = $maxNumber + 1;
+        
+        return 'FAC-' . $year . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Formater une facture pour le frontend
+     */
+    private function formatFactureForFrontend($facture)
+    {
+        $client = $facture->client;
+        $user = $facture->user;
+
+        return [
+            'id' => $facture->id,
+            'invoice_number' => $facture->numero_facture,
+            'client_id' => $facture->client_id,
+            'nom' => $client ? ($client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom)) : '',
+            'email' => $client->email ?? '',
+            'adresse' => $client->adresse ?? '',
+            'user_id' => $facture->user_id,
+            'commercial_name' => $user ? ($user->nom . ' ' . $user->prenom) : '',
+            'invoice_date' => $facture->date_facture->format('Y-m-d'),
+            'due_date' => $facture->date_echeance->format('Y-m-d'),
+            'status' => $facture->status,
+            'subtotal' => (float) $facture->montant_ht,
+            'tax_rate' => (float) $facture->tva,
+            'tax_amount' => (float) ($facture->montant_ttc - $facture->montant_ht),
+            'total_amount' => (float) $facture->montant_ttc,
+            'currency' => 'fcfa',
+            'notes' => $facture->notes,
+            'terms' => $facture->terms,
+            'items' => $facture->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'description' => $item->description,
+                    'quantity' => $item->quantity,
+                    'unit_price' => (float) $item->unit_price,
+                    'total_price' => (float) $item->total_price,
+                    'unit' => $item->unit
+                ];
+            }),
+            'created_at' => $facture->created_at->toDateTimeString(),
+            'updated_at' => $facture->updated_at->toDateTimeString()
+        ];
     }
 
     /**
@@ -111,7 +258,7 @@ class FactureController extends Controller
         $facture = Facture::findOrFail($id);
         
         // Vérification que la facture peut être modifiée
-        if ($facture->statut === 'payee') {
+        if ($facture->status === 'payee') {
             return response()->json([
                 'success' => false,
                 'message' => 'Impossible de modifier une facture payée'
@@ -123,7 +270,7 @@ class FactureController extends Controller
             'montant' => 'required|numeric|min:0',
             'date_facture' => 'required|date',
             'description' => 'nullable|string',
-            'statut' => 'required|in:en_attente,payee,impayee'
+            'status' => 'required|in:en_attente,payee,impayee'
         ]);
 
         $facture->update($request->all());
@@ -144,7 +291,7 @@ class FactureController extends Controller
         $facture = Facture::findOrFail($id);
         
         // Vérification que la facture peut être supprimée
-        if ($facture->statut === 'payee') {
+        if ($facture->status === 'payee') {
             return response()->json([
                 'success' => false,
                 'message' => 'Impossible de supprimer une facture payée'
@@ -167,14 +314,14 @@ class FactureController extends Controller
     {
         $facture = Facture::findOrFail($id);
         
-        if ($facture->statut === 'payee') {
+        if ($facture->status === 'payee') {
             return response()->json([
                 'success' => false,
                 'message' => 'Cette facture est déjà marquée comme payée'
             ], 400);
         }
         
-        $facture->update(['statut' => 'payee']);
+        $facture->update(['status' => 'payee']);
 
         return response()->json([
             'success' => true,
@@ -183,6 +330,184 @@ class FactureController extends Controller
         ]);
     }
 
+    /**
+     * Valider une facture par le patron
+     * Accessible par Patron et Admin uniquement
+     */
+    public function validateFacture(Request $request, $id)
+    {
+        $facture = Facture::findOrFail($id);
+        
+        // Vérification que la facture est en attente de validation
+        if ($facture->status !== 'en_attente') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cette facture ne peut pas être validée dans son état actuel'
+            ], 400);
+        }
+        
+        $request->validate([
+            'commentaire' => 'nullable|string|max:500'
+        ]);
+        
+        $facture->update([
+            'status' => 'valide',
+            'validated_by' => auth()->id(),
+            'validated_at' => now(),
+            'validation_comment' => $request->commentaire ?? $request->comments
+        ]);
+        
+        // Créer la notification pour l'auteur de la facture
+        if ($facture->user_id) {
+            $this->createNotification([
+                'user_id' => $facture->user_id,
+                'title' => 'Validation Facture',
+                'message' => "Facture #{$facture->numero_facture} a été validée",
+                'type' => 'success',
+                'entity_type' => 'invoice',
+                'entity_id' => $facture->id,
+                'action_route' => "/invoices/{$facture->id}",
+            ]);
+        }
+        
+        // Log de l'action
+        \Log::info("Facture {$facture->numero_facture} validée par " . auth()->user()->nom);
+        
+        return response()->json([
+            'success' => true,
+            'facture' => $facture->fresh(),
+            'message' => 'Facture validée avec succès'
+        ]);
+    }
+    
+    /**
+     * Rejeter une facture par le patron
+     * Accessible par Patron et Admin uniquement
+     */
+    public function reject(Request $request, $id)
+    {
+        $facture = Facture::findOrFail($id);
+        
+        // Vérification que la facture peut être rejetée
+        if (!in_array($facture->status, ['en_attente', 'valide'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cette facture ne peut pas être rejetée dans son état actuel'
+            ], 400);
+        }
+        
+        $request->validate([
+            'raison_rejet' => 'nullable|string|max:500',
+            'reason' => 'nullable|string|max:500',
+            'commentaire' => 'nullable|string|max:500'
+        ]);
+        
+        $reason = $request->raison_rejet ?? $request->reason ?? 'Aucune raison spécifiée';
+        
+        $facture->update([
+            'status' => 'rejete',
+            'rejected_by' => auth()->id(),
+            'rejected_at' => now(),
+            'rejection_reason' => $reason,
+            'rejection_comment' => $request->commentaire
+        ]);
+        
+        // Créer la notification pour l'auteur de la facture
+        if ($facture->user_id) {
+            $this->createNotification([
+                'user_id' => $facture->user_id,
+                'title' => 'Rejet Facture',
+                'message' => "Facture #{$facture->numero_facture} a été rejetée. Raison: {$reason}",
+                'type' => 'error',
+                'entity_type' => 'invoice',
+                'entity_id' => $facture->id,
+                'action_route' => "/invoices/{$facture->id}",
+                'metadata' => ['reason' => $reason],
+            ]);
+        }
+        
+        // Log de l'action
+        \Log::info("Facture {$facture->numero_facture} rejetée par " . auth()->user()->nom . " - Raison: " . $reason);
+        
+        return response()->json([
+            'success' => true,
+            'facture' => $facture->fresh(),
+            'message' => 'Facture rejetée avec succès'
+        ]);
+    }
+    
+    /**
+     * Annuler le rejet d'une facture (remettre en attente)
+     * Accessible par Patron et Admin uniquement
+     */
+    public function cancelRejection(Request $request, $id)
+    {
+        $facture = Facture::findOrFail($id);
+        
+        if ($facture->status !== 'rejete') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cette facture n\'est pas rejetée'
+            ], 400);
+        }
+        
+        $facture->update([
+            'status' => 'en_attente',
+            'rejected_by' => null,
+            'rejected_at' => null,
+            'rejection_reason' => null,
+            'rejection_comment' => null
+        ]);
+        
+        // Log de l'action
+        \Log::info("Rejet de la facture {$facture->numero_facture} annulé par " . auth()->user()->nom);
+        
+        return response()->json([
+            'success' => true,
+            'facture' => $facture->fresh(),
+            'message' => 'Rejet de la facture annulé avec succès'
+        ]);
+    }
+    
+    /**
+     * Obtenir l'historique des validations/rejets d'une facture
+     * Accessible par Patron et Admin uniquement
+     */
+    public function validationHistory($id)
+    {
+        $facture = Facture::with(['client'])->findOrFail($id);
+        
+        $history = [];
+        
+        if ($facture->validated_by) {
+            $validator = \App\Models\User::find($facture->validated_by);
+            $history[] = [
+                'action' => 'validated',
+                'user' => $validator ? $validator->nom . ' ' . $validator->prenom : 'Utilisateur supprimé',
+                'date' => $facture->validated_at,
+                'comment' => $facture->validation_comment
+            ];
+        }
+        
+        if ($facture->rejected_by) {
+            $rejector = \App\Models\User::find($facture->rejected_by);
+            $history[] = [
+                'action' => 'rejected',
+                'user' => $rejector ? $rejector->nom . ' ' . $rejector->prenom : 'Utilisateur supprimé',
+                'date' => $facture->rejected_at,
+                'reason' => $facture->rejection_reason,
+                'comment' => $facture->rejection_comment
+            ];
+        }
+        
+        return response()->json([
+            'success' => true,
+            'facture' => $facture,
+            'history' => $history,
+            'message' => 'Historique récupéré avec succès'
+        ]);
+    }
+    
     /**
      * Rapports financiers
      * Accessible par Comptable, Patron et Admin
@@ -204,13 +529,14 @@ class FactureController extends Controller
         
         $rapport = [
             'total_factures' => $factures->count(),
-            'montant_total' => $factures->sum('montant'),
-            'factures_payees' => $factures->where('statut', 'payee')->count(),
-            'montant_paye' => $factures->where('statut', 'payee')->sum('montant'),
-            'factures_impayees' => $factures->where('statut', 'impayee')->count(),
-            'montant_impaye' => $factures->where('statut', 'impayee')->sum('montant'),
-            'factures_en_attente' => $factures->where('statut', 'en_attente')->count(),
-            'montant_en_attente' => $factures->where('statut', 'en_attente')->sum('montant')
+            'montant_total' => $factures->sum('montant_ttc'),
+            'montant_total_ht' => $factures->sum('montant_ht'),
+            'factures_en_attente' => $factures->where('status', 'en_attente')->count(),
+            'montant_en_attente' => $factures->where('status', 'en_attente')->sum('montant_ttc'),
+            'factures_validees' => $factures->where('status', 'valide')->count(),
+            'montant_valide' => $factures->where('status', 'valide')->sum('montant_ttc'),
+            'factures_rejetees' => $factures->where('status', 'rejete')->count(),
+            'montant_rejete' => $factures->where('status', 'rejete')->sum('montant_ttc')
         ];
         
         return response()->json([

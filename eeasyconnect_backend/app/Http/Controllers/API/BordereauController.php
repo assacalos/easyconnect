@@ -1,25 +1,29 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\API;
 
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Bordereau;
 use App\Models\BordereauItem;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class BordereauController extends Controller
 {
+    use SendsNotifications;
     // Récupérer tous les bordereaux (avec filtre status facultatif)
     public function index(Request $request)
     {
         $status = $request->query('status'); // facultatif
-        $query = Bordereau::with('items', 'client', 'user');
+        $query = Bordereau::with('items', 'client', 'user', 'devis');
 
         if ($status !== null) {
             $query->where('status', $status);
         }
 
-        $bordereaux = $query->get();
+        $bordereaux = $query->orderBy('created_at', 'desc')->get();
         return response()->json($bordereaux);
     }
 
@@ -27,15 +31,14 @@ class BordereauController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'reference' => 'required|unique:bordereaux,reference',
+            'reference' => 'required|unique:bordereaus,reference',
             'client_id' => 'required|exists:clients,id',
+            'devis_id' => 'nullable|exists:devis,id',
             'user_id' => 'required|exists:users,id',
             'date_creation' => 'required|date',
             'items' => 'required|array|min:1',
             'items.*.designation' => 'required|string',
-            'items.*.unite' => 'required|string',
             'items.*.quantite' => 'required|integer|min:1',
-            'items.*.prix_unitaire' => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -45,12 +48,10 @@ class BordereauController extends Controller
         $bordereau = Bordereau::create([
             'reference' => $request->reference,
             'client_id' => $request->client_id,
+            'devis_id' => $request->devis_id,
             'user_id' => $request->user_id,
             'date_creation' => $request->date_creation,
             'notes' => $request->notes,
-            'remise_globale' => $request->remise_globale,
-            'tva' => $request->tva ?? 20,
-            'conditions' => $request->conditions,
             'status' => 1, // soumis au patron
         ]);
 
@@ -58,10 +59,22 @@ class BordereauController extends Controller
             BordereauItem::create([
                 'bordereau_id' => $bordereau->id,
                 'designation' => $item['designation'],
-                'unite' => $item['unite'],
                 'quantite' => $item['quantite'],
-                'prix_unitaire' => $item['prix_unitaire'],
                 'description' => $item['description'] ?? null,
+            ]);
+        }
+
+        // Notifier le patron lors de la création (status=1 = soumis)
+        $patron = User::where('role', 6)->first();
+        if ($patron) {
+            $this->createNotification([
+                'user_id' => $patron->id,
+                'title' => 'Soumission Bordereau',
+                'message' => "Bordereau #{$bordereau->reference} a été soumis pour validation",
+                'type' => 'info',
+                'entity_type' => 'bordereau',
+                'entity_id' => $bordereau->id,
+                'action_route' => "/bordereaux/{$bordereau->id}",
             ]);
         }
 
@@ -85,7 +98,7 @@ class BordereauController extends Controller
         }
 
         $bordereau->update($request->only([
-            'notes', 'remise_globale', 'tva', 'conditions', 'status', 'commentaire_rejet'
+            'notes', 'status', 'commentaire'
         ]));
 
         // Mise à jour des items si fournis
@@ -95,9 +108,7 @@ class BordereauController extends Controller
                 BordereauItem::create([
                     'bordereau_id' => $bordereau->id,
                     'designation' => $item['designation'],
-                    'unite' => $item['unite'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
                     'description' => $item['description'] ?? null,
                 ]);
             }
@@ -119,28 +130,117 @@ class BordereauController extends Controller
         return response()->json(['message' => 'Bordereau supprimé']);
     }
 
-    // Valider ou rejeter (seulement par le patron)
+    // ✅ NOUVELLE MÉTHODE : Valider un bordereau
     public function validateBordereau(Request $request, $id)
     {
-        $bordereau = Bordereau::findOrFail($id);
-        $action = $request->input('action'); // 'valider' ou 'rejeter'
-        $commentaire = $request->input('commentaire');
+        try {
+            $bordereau = Bordereau::findOrFail($id);
+            
+            // Vérifier que le bordereau est soumis (status = 1)
+            if ($bordereau->status != 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seuls les bordereaux soumis peuvent être validés'
+                ], 403);
+            }
 
-        if ($action === 'valider') {
             $bordereau->update([
-                'status' => 2,
-                'date_validation' => now(),
-                'commentaire' => null
+                'status' => 2, // validé
+                'date_validation' => now()->toDateString(),
+                'commentaire' => null // effacer tout commentaire de rejet
             ]);
-        } elseif ($action === 'rejeter') {
-            $bordereau->update([
-                'status' => 3,
-                'commentaire' => $commentaire
-            ]);
-        } else {
-            return response()->json(['message' => 'Action invalide'], 422);
+
+            // Notifier l'auteur du bordereau
+            if ($bordereau->user_id) {
+                $this->createNotification([
+                    'user_id' => $bordereau->user_id,
+                    'title' => 'Validation Bordereau',
+                    'message' => "Bordereau #{$bordereau->reference} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'bordereau',
+                    'entity_id' => $bordereau->id,
+                    'action_route' => "/bordereaux/{$bordereau->id}",
+                ]);
+            }
+
+            // Recharger le bordereau avec ses relations
+            $bordereau->refresh();
+            $bordereau->load(['items', 'client', 'user']);
+            
+            // Charger devis seulement s'il existe
+            if ($bordereau->devis_id) {
+                $bordereau->load('devis');
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bordereau validé avec succès',
+                'data' => $bordereau
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la validation: ' . $e->getMessage()
+            ], 500);
         }
+    }
 
-        return response()->json($bordereau->load('items'));
+    // ✅ NOUVELLE MÉTHODE : Rejeter un bordereau
+    public function reject(Request $request, $id)
+    {
+        try {
+            $bordereau = Bordereau::findOrFail($id);
+            
+            // Vérifier que le bordereau est soumis (status = 1)
+            if ($bordereau->status != 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seuls les bordereaux soumis peuvent être rejetés'
+                ], 403);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'commentaire' => 'required|string|max:1000'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $bordereau->update([
+                'status' => 3, // rejeté
+                'commentaire' => $request->commentaire
+            ]);
+
+            // Notifier l'auteur du bordereau
+            if ($bordereau->user_id) {
+                $this->createNotification([
+                    'user_id' => $bordereau->user_id,
+                    'title' => 'Rejet Bordereau',
+                    'message' => "Bordereau #{$bordereau->reference} a été rejeté. Raison: {$request->commentaire}",
+                    'type' => 'error',
+                    'entity_type' => 'bordereau',
+                    'entity_id' => $bordereau->id,
+                    'action_route' => "/bordereaux/{$bordereau->id}",
+                    'metadata' => ['reason' => $request->commentaire],
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Bordereau rejeté avec succès',
+                'data' => $bordereau->load(['items', 'client', 'user', 'devis'])
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du rejet: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

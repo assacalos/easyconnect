@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/utils/permissions.dart';
 
 class BottomNavigation extends StatelessWidget {
   final int currentIndex;
@@ -69,7 +68,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.assessment),
-        label: 'Rapports',
+        label: 'Réportings',
       ),
     ];
   }
@@ -94,7 +93,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.assessment),
-        label: 'Rapports',
+        label: 'Réportings',
       ),
     ];
   }
@@ -111,7 +110,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.build),
-        label: 'Maintenance',
+        label: 'Interventions',
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.access_time),
@@ -119,7 +118,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.assessment),
-        label: 'Rapports',
+        label: 'Réportings',
       ),
     ];
   }
@@ -141,7 +140,7 @@ class BottomNavigation extends StatelessWidget {
       ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.assessment),
-        label: 'Rapports',
+        label: 'Réportings',
       ),
     ];
   }
@@ -220,7 +219,7 @@ class BottomNavigationController extends GetxController {
           '/commercial',
           '/clients',
           '/devis',
-          '/attendance',
+          '/attendance-punch',
           '/reporting',
         ];
         break;
@@ -229,16 +228,16 @@ class BottomNavigationController extends GetxController {
           '/comptable',
           '/invoices',
           '/payments',
-          '/attendance',
+          '/attendance-punch',
           '/reporting',
         ];
         break;
       case Roles.TECHNICIEN:
         routes.value = [
           '/technicien',
-          '/tickets',
-          '/maintenance',
-          '/attendance',
+          '/equipments',
+          '/interventions',
+          '/attendance-punch',
           '/reporting',
         ];
         break;
@@ -247,7 +246,7 @@ class BottomNavigationController extends GetxController {
           '/rh',
           '/employees',
           '/leaves',
-          '/attendance',
+          '/attendance-punch',
           '/reporting',
         ];
         break;
@@ -257,7 +256,7 @@ class BottomNavigationController extends GetxController {
           '/company',
           '/approvals',
           '/analytics',
-          '/settings',
+          '/reporting',
         ];
         break;
       default:

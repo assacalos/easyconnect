@@ -34,12 +34,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // Vérifier si l'utilisateur est déjà connecté (persistance de session)
       final userRole = authController.userAuth.value?.role;
-      print('Rôle utilisateur: $userRole');
+      final userName = authController.userAuth.value?.nom;
+      print('Rôle utilisateur: $userRole, Nom: $userName');
 
       if (userRole != null) {
         // Utilisateur connecté, rediriger vers son dashboard
         final initialRoute = AppRoutes.getInitialRoute(userRole);
         print('Utilisateur déjà connecté, redirection vers: $initialRoute');
+
+        // Attendre un peu avant la redirection
+        await Future.delayed(const Duration(milliseconds: 500));
         Get.offAllNamed(initialRoute);
       } else {
         // Aucun utilisateur connecté, aller au login

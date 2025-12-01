@@ -1,5 +1,6 @@
 import 'package:easyconnect/Controllers/userController.dart';
 import 'package:easyconnect/Models/user_model.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -90,9 +91,9 @@ class _UserFormState extends State<UserForm> {
                 onChanged: (v) => setState(() => isActive = v),
               ),
               SizedBox(height: 20),
-              ElevatedButton(
-                child: Text(widget.user == null ? "Créer" : "Mettre à jour"),
-                onPressed: () {
+              UniformFormButtons(
+                onCancel: () => Get.back(),
+                onSubmit: () async {
                   if (_formKey.currentState!.validate()) {
                     final user = UserModel(
                       id: widget.user?.id ?? 0,
@@ -103,12 +104,24 @@ class _UserFormState extends State<UserForm> {
                       isActive: isActive,
                     );
                     if (widget.user == null) {
-                      controller.addUser(user, passwordController.text);
+                      final success = await controller.addUser(
+                        user,
+                        passwordController.text,
+                      );
+                      if (success) {
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        Get.offNamed('/admin/users');
+                      }
                     } else {
-                      controller.updateUser(user);
+                      final success = await controller.updateUser(user);
+                      if (success) {
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        Get.offNamed('/admin/users');
+                      }
                     }
                   }
                 },
+                submitText: 'Soumettre',
               ),
             ],
           ),

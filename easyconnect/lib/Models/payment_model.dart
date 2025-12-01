@@ -10,10 +10,12 @@ class PaymentModel {
   final String comptableName;
   final DateTime paymentDate;
   final DateTime? dueDate;
-  final String status; // 'draft', 'submitted', 'approved', 'rejected', 'paid', 'overdue'
+  final String
+  status; // 'draft', 'submitted', 'approved', 'rejected', 'paid', 'overdue'
   final double amount;
   final String currency;
-  final String paymentMethod; // 'bank_transfer', 'check', 'cash', 'card', 'direct_debit'
+  final String
+  paymentMethod; // 'bank_transfer', 'check', 'cash', 'card', 'direct_debit'
   final String? description;
   final String? notes;
   final String? reference;
@@ -52,32 +54,86 @@ class PaymentModel {
   });
 
   factory PaymentModel.fromJson(Map<String, dynamic> json) {
-    return PaymentModel(
-      id: json['id'],
-      paymentNumber: json['payment_number'],
-      type: json['type'],
-      clientId: json['client_id'],
-      clientName: json['client_name'],
-      clientEmail: json['client_email'],
-      clientAddress: json['client_address'],
-      comptableId: json['comptable_id'],
-      comptableName: json['comptable_name'],
-      paymentDate: DateTime.parse(json['payment_date']),
-      dueDate: json['due_date'] != null ? DateTime.parse(json['due_date']) : null,
-      status: json['status'],
-      amount: (json['amount'] ?? 0).toDouble(),
-      currency: json['currency'] ?? 'EUR',
-      paymentMethod: json['payment_method'],
-      description: json['description'],
-      notes: json['notes'],
-      reference: json['reference'],
-      schedule: json['schedule'] != null ? PaymentSchedule.fromJson(json['schedule']) : null,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      submittedAt: json['submitted_at'] != null ? DateTime.parse(json['submitted_at']) : null,
-      approvedAt: json['approved_at'] != null ? DateTime.parse(json['approved_at']) : null,
-      paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at']) : null,
-    );
+    try {
+      print('🔍 PaymentModel: Parsing JSON: $json');
+
+      return PaymentModel(
+        id: _parseInt(json['id']) ?? 0,
+        paymentNumber:
+            json['payment_number']?.toString() ??
+            json['paymentNumber']?.toString() ??
+            'N/A',
+        type: json['type']?.toString() ?? 'one_time',
+        clientId:
+            _parseInt(
+              json['client_id'] ??
+                  json['cliennt_id'] ??
+                  json['clieent_id'] ??
+                  json['clientId'],
+            ) ??
+            0,
+        clientName:
+            json['client_name']?.toString() ??
+            json['clientName']?.toString() ??
+            'Client inconnu',
+        clientEmail:
+            json['client_email']?.toString() ??
+            json['clientEmail']?.toString() ??
+            '',
+        clientAddress:
+            json['client_address']?.toString() ??
+            json['clientAddress']?.toString() ??
+            '',
+        comptableId:
+            _parseInt(json['comptable_id'] ?? json['comptableId']) ?? 0,
+        comptableName:
+            json['comptable_name']?.toString() ??
+            json['comptableName']?.toString() ??
+            'Comptable inconnu',
+        paymentDate:
+            _parseDateTime(
+              json['payment_date'] ??
+                  json['paymentDate'] ??
+                  json['date_paiement'],
+            ) ??
+            DateTime.now(),
+        dueDate: _parseDateTime(json['due_date'] ?? json['dueDate']),
+        status: _normalizeStatus(json['status']?.toString() ?? 'pending'),
+        amount: _parseDouble(json['amount'] ?? json['montant']),
+        currency: json['currency']?.toString() ?? 'FCFA',
+        paymentMethod:
+            json['payment_method']?.toString() ??
+            json['paymentMethod']?.toString() ??
+            json['type_paiement']?.toString() ??
+            'bank_transfer',
+        description:
+            json['description']?.toString() ?? json['commentaire']?.toString(),
+        notes: json['notes']?.toString(),
+        reference: json['reference']?.toString(),
+        schedule:
+            json['schedule'] != null
+                ? PaymentSchedule.fromJson(json['schedule'])
+                : null,
+        createdAt:
+            _parseDateTime(json['created_at'] ?? json['createdAt']) ??
+            DateTime.now(),
+        updatedAt:
+            _parseDateTime(json['updated_at'] ?? json['updatedAt']) ??
+            DateTime.now(),
+        submittedAt: _parseDateTime(
+          json['submitted_at'] ?? json['submittedAt'],
+        ),
+        approvedAt: _parseDateTime(
+          json['approved_at'] ?? json['approvedAt'] ?? json['validated_at'],
+        ),
+        paidAt: _parseDateTime(json['paid_at'] ?? json['paidAt']),
+      );
+    } catch (e, stackTrace) {
+      print('❌ PaymentModel.fromJson: Erreur: $e');
+      print('❌ PaymentModel.fromJson: Stack trace: $stackTrace');
+      print('❌ PaymentModel.fromJson: JSON: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -107,6 +163,73 @@ class PaymentModel {
       'approved_at': approvedAt?.toIso8601String(),
       'paid_at': paidAt?.toIso8601String(),
     };
+  }
+
+  // Normaliser le statut vers les valeurs standard
+  static String _normalizeStatus(String? status) {
+    if (status == null || status.isEmpty) return 'pending';
+    final statusLower = status.toLowerCase().trim();
+
+    // Normaliser les variantes possibles
+    switch (statusLower) {
+      case 'drafts':
+      case 'draft':
+        return 'draft';
+      case 'submitted':
+      case 'soumis':
+        return 'submitted';
+      case 'approved':
+      case 'approuve':
+      case 'approuvé':
+      case 'valide':
+        return 'approved';
+      case 'rejected':
+      case 'rejete':
+      case 'rejeté':
+        return 'rejected';
+      case 'paid':
+      case 'paye':
+      case 'payé':
+        return 'paid';
+      case 'overdue':
+      case 'en_retard':
+        return 'overdue';
+      case 'pending':
+      case 'en_attente':
+        return 'pending';
+      default:
+        // Si le statut n'est pas reconnu, le retourner tel quel
+        // mais logger pour débogage
+        print('⚠️ PaymentModel: Statut non reconnu: $status');
+        return statusLower;
+    }
+  }
+
+  // Méthodes pour gérer le statut d'approbation
+  bool get isPending =>
+      status == 'pending' || status == 'submitted' || status == 'draft';
+  bool get isApproved => status == 'approved' || status == 'paid';
+  bool get isRejected => status == 'rejected';
+
+  String get approvalStatusText {
+    if (isPending) return 'En attente';
+    if (isApproved) return 'Validé';
+    if (isRejected) return 'Rejeté';
+    return 'Inconnu';
+  }
+
+  String get approvalStatusIcon {
+    if (isPending) return 'pending';
+    if (isApproved) return 'check_circle';
+    if (isRejected) return 'cancel';
+    return 'help';
+  }
+
+  String get approvalStatusColor {
+    if (isPending) return 'orange';
+    if (isApproved) return 'green';
+    if (isRejected) return 'red';
+    return 'grey';
   }
 }
 
@@ -145,12 +268,15 @@ class PaymentSchedule {
       paidInstallments: json['paid_installments'],
       installmentAmount: (json['installment_amount'] ?? 0).toDouble(),
       status: json['status'],
-      nextPaymentDate: json['next_payment_date'] != null 
-          ? DateTime.parse(json['next_payment_date']) 
-          : null,
-      installments: (json['installments'] as List<dynamic>?)
-          ?.map((installment) => PaymentInstallment.fromJson(installment))
-          .toList() ?? [],
+      nextPaymentDate:
+          json['next_payment_date'] != null
+              ? DateTime.parse(json['next_payment_date'])
+              : null,
+      installments:
+          (json['installments'] as List<dynamic>?)
+              ?.map((installment) => PaymentInstallment.fromJson(installment))
+              .toList() ??
+          [],
     );
   }
 
@@ -165,7 +291,8 @@ class PaymentSchedule {
       'installment_amount': installmentAmount,
       'status': status,
       'next_payment_date': nextPaymentDate?.toIso8601String(),
-      'installments': installments.map((installment) => installment.toJson()).toList(),
+      'installments':
+          installments.map((installment) => installment.toJson()).toList(),
     };
   }
 }
@@ -196,7 +323,8 @@ class PaymentInstallment {
       dueDate: DateTime.parse(json['due_date']),
       amount: (json['amount'] ?? 0).toDouble(),
       status: json['status'],
-      paidDate: json['paid_date'] != null ? DateTime.parse(json['paid_date']) : null,
+      paidDate:
+          json['paid_date'] != null ? DateTime.parse(json['paid_date']) : null,
       notes: json['notes'],
     );
   }
@@ -260,11 +388,15 @@ class PaymentStats {
       pendingAmount: (json['pending_amount'] ?? 0).toDouble(),
       paidAmount: (json['paid_amount'] ?? 0).toDouble(),
       overdueAmount: (json['overdue_amount'] ?? 0).toDouble(),
-      recentPayments: (json['recent_payments'] as List<dynamic>?)
-          ?.map((payment) => PaymentModel.fromJson(payment))
-          .toList() ?? [],
+      recentPayments:
+          (json['recent_payments'] as List<dynamic>?)
+              ?.map((payment) => PaymentModel.fromJson(payment))
+              .toList() ??
+          [],
       monthlyStats: Map<String, double>.from(json['monthly_stats'] ?? {}),
-      paymentMethodStats: Map<String, int>.from(json['payment_method_stats'] ?? {}),
+      paymentMethodStats: Map<String, int>.from(
+        json['payment_method_stats'] ?? {},
+      ),
     );
   }
 
@@ -281,7 +413,8 @@ class PaymentStats {
       'pending_amount': pendingAmount,
       'paid_amount': paidAmount,
       'overdue_amount': overdueAmount,
-      'recent_payments': recentPayments.map((payment) => payment.toJson()).toList(),
+      'recent_payments':
+          recentPayments.map((payment) => payment.toJson()).toList(),
       'monthly_stats': monthlyStats,
       'payment_method_stats': paymentMethodStats,
     };
@@ -342,4 +475,49 @@ class PaymentTemplate {
       'created_at': createdAt.toIso8601String(),
     };
   }
+}
+
+// Méthodes de parsing robustes pour PaymentModel
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+  if (value is num) return value.toInt();
+  return null;
+}
+
+double _parseDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return 0.0;
+    final parsed = double.tryParse(trimmed);
+    if (parsed != null) return parsed;
+    final cleaned = trimmed
+        .replaceAll(RegExp(r'[^\d.,-]'), '')
+        .replaceAll(',', '.');
+    return double.tryParse(cleaned) ?? 0.0;
+  }
+  if (value is num) return value.toDouble();
+  return 0.0;
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String) {
+    try {
+      return DateTime.parse(value);
+    } catch (e) {
+      print('⚠️ PaymentModel: Erreur parsing DateTime: $value - $e');
+      return null;
+    }
+  }
+  return null;
 }

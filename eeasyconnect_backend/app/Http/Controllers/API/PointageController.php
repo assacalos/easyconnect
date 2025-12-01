@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Pointage;
 use App\Models\User;
@@ -10,6 +11,7 @@ use Carbon\Carbon;
 
 class PointageController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des pointages
      * Accessible par RH, Patron et Admin
@@ -256,7 +258,7 @@ class PointageController extends Controller
      * Valider un pointage
      * Accessible par RH, Patron et Admin
      */
-    public function validate($id)
+    public function validatePointage($id)
     {
         $pointage = Pointage::findOrFail($id);
         
@@ -271,6 +273,19 @@ class PointageController extends Controller
             'statut' => 'valide',
             'date_validation' => now()
         ]);
+
+        // Notifier l'utilisateur concerné
+        if ($pointage->user_id) {
+            $this->createNotification([
+                'user_id' => $pointage->user_id,
+                'title' => 'Validation Pointage',
+                'message' => "Votre pointage du {$pointage->date_pointage} a été validé",
+                'type' => 'success',
+                'entity_type' => 'pointage',
+                'entity_id' => $pointage->id,
+                'action_route' => "/pointages/{$pointage->id}",
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -295,6 +310,20 @@ class PointageController extends Controller
             'statut' => 'rejete',
             'commentaire' => $request->commentaire
         ]);
+
+        // Notifier l'utilisateur concerné
+        if ($pointage->user_id) {
+            $this->createNotification([
+                'user_id' => $pointage->user_id,
+                'title' => 'Rejet Pointage',
+                'message' => "Votre pointage du {$pointage->date_pointage} a été rejeté. Raison: {$request->commentaire}",
+                'type' => 'error',
+                'entity_type' => 'pointage',
+                'entity_id' => $pointage->id,
+                'action_route' => "/pointages/{$pointage->id}",
+                'metadata' => ['reason' => $request->commentaire],
+            ]);
+        }
 
         return response()->json([
             'success' => true,

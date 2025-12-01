@@ -21,12 +21,13 @@ class DashboardWrapper extends StatelessWidget {
 
     return Scaffold(
       body: child,
-      bottomNavigationBar: userRole != null && userRole != Roles.PATRON
-          ? BottomNavigation(
-              currentIndex: currentIndex,
-              onTap: (index) => _handleNavigation(index, userRole),
-            )
-          : null,
+      bottomNavigationBar:
+          userRole != null && userRole != Roles.PATRON
+              ? BottomNavigation(
+                currentIndex: currentIndex,
+                onTap: (index) => _handleNavigation(index, userRole),
+              )
+              : null,
     );
   }
 
@@ -61,7 +62,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/devis-page');
         break;
       case 3:
-        Get.toNamed('/attendance');
+        Get.toNamed('/attendance-punch');
         break;
       case 4:
         Get.toNamed('/reporting');
@@ -81,7 +82,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/payments');
         break;
       case 3:
-        Get.toNamed('/attendance');
+        Get.toNamed('/attendance-punch');
         break;
       case 4:
         Get.toNamed('/reporting');
@@ -98,10 +99,10 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/tickets');
         break;
       case 2:
-        Get.toNamed('/maintenance');
+        Get.toNamed('/interventions');
         break;
       case 3:
-        Get.toNamed('/attendance');
+        Get.toNamed('/attendance-punch');
         break;
       case 4:
         Get.toNamed('/reporting');
@@ -121,7 +122,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/leaves');
         break;
       case 3:
-        Get.toNamed('/attendance');
+        Get.toNamed('/attendance-punch');
         break;
       case 4:
         Get.toNamed('/reporting');

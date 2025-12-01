@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\BonDeCommande;
-use App\Models\Client;
+use App\Models\BonDeCommandeItem;
 use App\Models\Fournisseur;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class BonDeCommandeController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des bons de commande avec filtres avancés
      * Accessible par Commercial, Comptable, Patron et Admin
@@ -18,11 +22,23 @@ class BonDeCommandeController extends Controller
     {
         try {
             $user = $request->user();
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur']);
+            $query = BonDeCommande::with(['fournisseur', 'createur', 'items']);
             
-            // Filtrage par statut
+            // Filtrage par rôle : Commercial ne voit que ses propres bons de commande
+            if ($user->role == 2) { // Commercial
+                $query->where('user_id', $user->id);
+            }
+            
+            // Filtrage par user_id (pour les autres rôles)
+            if ($request->has('user_id') && $user->role != 2) {
+                $query->where('user_id', $request->user_id);
+            }
+            
+            // Filtrage par statut (support des deux noms : statut et status)
             if ($request->has('statut')) {
                 $query->where('statut', $request->statut);
+            } elseif ($request->has('status')) {
+                $query->where('statut', $request->status);
             }
             
             // Filtrage par date de commande
@@ -32,11 +48,6 @@ class BonDeCommandeController extends Controller
             
             if ($request->has('date_fin')) {
                 $query->where('date_commande', '<=', $request->date_fin);
-            }
-            
-            // Filtrage par client
-            if ($request->has('client_id')) {
-                $query->where('client_id', $request->client_id);
             }
             
             // Filtrage par fournisseur
@@ -53,27 +64,25 @@ class BonDeCommandeController extends Controller
                 $query->where('montant_total', '<=', $request->montant_max);
             }
             
-            // Filtrage par retard
-            if ($request->has('en_retard')) {
-                $query->where('date_livraison_prevue', '<', now())
-                      ->where('statut', '!=', 'livre');
-            }
+            // Filtrage par retard (désactivé - date_livraison_prevue supprimée)
+            // if ($request->has('en_retard')) {
+            //     $query->where('date_livraison_prevue', '<', now())
+            //           ->where('statut', '!=', 'livre');
+            // }
             
-            // Si commercial → filtre ses propres clients
-            if ($user->role == 2) { // Commercial
-                $query->whereHas('client', function($q) use ($user) {
-                    $q->where('user_id', $user->id);
-                });
+            // Pagination optionnelle
+            if ($request->has('per_page') || $request->has('page')) {
+                $perPage = $request->get('per_page', 15);
+                $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
+            } else {
+                // Si pas de pagination demandée, retourner tous les résultats
+                $bons = $query->orderBy('date_commande', 'desc')->get();
             }
-            
-            // Pagination
-            $perPage = $request->get('per_page', 15);
-            $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
                 'data' => $bons,
-                'message' => 'Liste des bons de commande récupérée avec succès'
+                'message' => 'Bons de commande récupérés avec succès'
             ]);
             
         } catch (\Exception $e) {
@@ -90,15 +99,7 @@ class BonDeCommandeController extends Controller
      */
     public function show($id)
     {
-        $bon = BonDeCommande::with(['client', 'fournisseur'])->findOrFail($id);
-        
-        // Vérification des permissions pour les commerciaux
-        if (auth()->user()->isCommercial() && $bon->client->user_id !== auth()->id()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Accès refusé à ce bon de commande'
-            ], 403);
-        }
+        $bon = BonDeCommande::with(['fournisseur', 'createur', 'items'])->findOrFail($id);
         
         return response()->json([
             'success' => true,
@@ -114,39 +115,102 @@ class BonDeCommandeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'client_id' => 'required|exists:clients,id',
             'fournisseur_id' => 'required|exists:fournisseurs,id',
             'numero_commande' => 'required|string|unique:bon_de_commandes',
             'date_commande' => 'required|date',
-            'date_livraison_prevue' => 'nullable|date|after:date_commande',
-            'montant_total' => 'required|numeric|min:0',
+            'montant_total' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
-            'statut' => 'required|in:en_attente,valide,en_cours,livre,annule',
+            'statut' => 'nullable|in:en_attente,valide,en_cours,livre,annule',
             'commentaire' => 'nullable|string',
             'conditions_paiement' => 'nullable|string',
-            'delai_livraison' => 'nullable|integer|min:1'
+            'delai_livraison' => 'nullable|integer|min:1',
+            'items' => 'nullable|array',
+            'items.*.ref' => 'nullable|string',
+            'items.*.designation' => 'required_with:items|string',
+            'items.*.quantite' => 'required_with:items|integer|min:1',
+            'items.*.prix_unitaire' => 'required_with:items|numeric|min:0',
+            'items.*.description' => 'nullable|string',
         ]);
 
-        $bon = BonDeCommande::create([
-            'client_id' => $request->client_id,
-            'fournisseur_id' => $request->fournisseur_id,
-            'numero_commande' => $request->numero_commande,
-            'date_commande' => $request->date_commande,
-            'date_livraison_prevue' => $request->date_livraison_prevue,
-            'montant_total' => $request->montant_total,
-            'description' => $request->description,
-            'statut' => $request->statut,
-            'commentaire' => $request->commentaire,
-            'conditions_paiement' => $request->conditions_paiement,
-            'delai_livraison' => $request->delai_livraison,
-            'user_id' => auth()->id()
-        ]);
+        DB::beginTransaction();
 
-        return response()->json([
-            'success' => true,
-            'bon_de_commande' => $bon,
-            'message' => 'Bon de commande créé avec succès'
-        ], 201);
+        try {
+            // Calculer le montant total à partir des items si fournis
+            $montantTotal = $request->montant_total;
+            if ($request->has('items') && is_array($request->items) && count($request->items) > 0) {
+                $montantTotal = 0;
+                foreach ($request->items as $item) {
+                    $montantTotal += ($item['quantite'] * $item['prix_unitaire']);
+                }
+            }
+
+            if (!$montantTotal) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Le montant total est requis ou des items doivent être fournis'
+                ], 422);
+            }
+
+            $bon = BonDeCommande::create([
+                'fournisseur_id' => $request->fournisseur_id,
+                'numero_commande' => $request->numero_commande,
+                'date_commande' => $request->date_commande,
+                'montant_total' => $montantTotal,
+                'description' => $request->description,
+                'statut' => $request->statut ?? 'en_attente',
+                'commentaire' => $request->commentaire,
+                'conditions_paiement' => $request->conditions_paiement,
+                'delai_livraison' => $request->delai_livraison,
+                'user_id' => auth()->id()
+            ]);
+
+            // Créer les items si fournis
+            if ($request->has('items') && is_array($request->items)) {
+                foreach ($request->items as $itemData) {
+                    BonDeCommandeItem::create([
+                        'bon_de_commande_id' => $bon->id,
+                        'ref' => $itemData['ref'] ?? null,
+                        'designation' => $itemData['designation'],
+                        'quantite' => $itemData['quantite'],
+                        'prix_unitaire' => $itemData['prix_unitaire'],
+                        'description' => $itemData['description'] ?? null,
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            // Notifier le patron si le bon est en attente
+            if ($bon->statut === 'en_attente') {
+                $patron = User::where('role', 6)->first();
+                if ($patron) {
+                    $this->createNotification([
+                        'user_id' => $patron->id,
+                        'title' => 'Soumission Bon de Commande',
+                        'message' => "Bon de commande #{$bon->numero_commande} a été soumis pour validation",
+                        'type' => 'info',
+                        'entity_type' => 'bon_commande',
+                        'entity_id' => $bon->id,
+                        'action_route' => "/bons-de-commande/{$bon->id}",
+                    ]);
+                }
+            }
+
+            $bon->load(['fournisseur', 'createur', 'items']);
+
+            return response()->json([
+                'success' => true,
+                'bon_de_commande' => $bon,
+                'message' => 'Bon de commande créé avec succès'
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la création: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -166,31 +230,87 @@ class BonDeCommandeController extends Controller
         }
 
         $request->validate([
-            'numero_commande' => 'required|string|unique:bon_de_commandes,numero_commande,' . $bon->id,
-            'date_commande' => 'required|date',
-            'date_livraison_prevue' => 'nullable|date|after:date_commande',
-            'montant_total' => 'required|numeric|min:0',
+            'numero_commande' => 'nullable|string|unique:bon_de_commandes,numero_commande,' . $bon->id,
+            'date_commande' => 'nullable|date',
+            'montant_total' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
-            'statut' => 'required|in:en_attente,valide,en_cours,livre,annule',
+            'statut' => 'nullable|in:en_attente,valide,en_cours,livre,annule',
             'commentaire' => 'nullable|string',
             'conditions_paiement' => 'nullable|string',
-            'delai_livraison' => 'nullable|integer|min:1'
+            'delai_livraison' => 'nullable|integer|min:1',
+            'items' => 'nullable|array',
+            'items.*.ref' => 'nullable|string',
+            'items.*.designation' => 'required_with:items|string',
+            'items.*.quantite' => 'required_with:items|integer|min:1',
+            'items.*.prix_unitaire' => 'required_with:items|numeric|min:0',
+            'items.*.description' => 'nullable|string',
         ]);
 
-        $bon->update($request->all());
+        DB::beginTransaction();
 
-        return response()->json([
-            'success' => true,
-            'bon_de_commande' => $bon,
-            'message' => 'Bon de commande modifié avec succès'
-        ]);
+        try {
+            // Calculer le montant total à partir des items si fournis
+            $montantTotal = $request->montant_total ?? $bon->montant_total;
+            if ($request->has('items') && is_array($request->items) && count($request->items) > 0) {
+                $montantTotal = 0;
+                foreach ($request->items as $item) {
+                    $montantTotal += ($item['quantite'] * $item['prix_unitaire']);
+                }
+            }
+
+            // Mettre à jour le bon de commande
+            $updateData = $request->only([
+                'numero_commande', 'date_commande',
+                'description', 'statut', 'commentaire', 'conditions_paiement', 'delai_livraison'
+            ]);
+            $updateData['montant_total'] = $montantTotal;
+            
+            $bon->update(array_filter($updateData, function($value) {
+                return $value !== null;
+            }));
+
+            // Mettre à jour les items si fournis
+            if ($request->has('items')) {
+                // Supprimer les anciens items
+                $bon->items()->delete();
+
+                // Créer les nouveaux items
+                foreach ($request->items as $itemData) {
+                    BonDeCommandeItem::create([
+                        'bon_de_commande_id' => $bon->id,
+                        'ref' => $itemData['ref'] ?? null,
+                        'designation' => $itemData['designation'],
+                        'quantite' => $itemData['quantite'],
+                        'prix_unitaire' => $itemData['prix_unitaire'],
+                        'description' => $itemData['description'] ?? null,
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            $bon->load(['fournisseur', 'createur', 'items']);
+
+            return response()->json([
+                'success' => true,
+                'bon_de_commande' => $bon,
+                'message' => 'Bon de commande modifié avec succès'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la modification: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
      * Valider un bon de commande
      * Accessible par Comptable, Patron et Admin
      */
-    public function validate($id)
+    public function validateBon($id)
     {
         $bon = BonDeCommande::findOrFail($id);
         
@@ -206,10 +326,70 @@ class BonDeCommandeController extends Controller
             'date_validation' => now()
         ]);
 
+        // Notifier l'auteur du bon de commande
+        if ($bon->user_id) {
+            $this->createNotification([
+                'user_id' => $bon->user_id,
+                'title' => 'Validation Bon de Commande',
+                'message' => "Bon de commande #{$bon->numero} a été validé",
+                'type' => 'success',
+                'entity_type' => 'bon_commande',
+                'entity_id' => $bon->id,
+                'action_route' => "/bons-de-commande/{$bon->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'bon_de_commande' => $bon,
             'message' => 'Bon de commande validé avec succès'
+        ]);
+    }
+
+    /**
+     * Rejeter un bon de commande
+     * Accessible par Admin et Patron
+     */
+    public function reject(Request $request, $id)
+    {
+        $request->validate([
+            'commentaire' => 'required|string|max:500'
+        ]);
+
+        $bon = BonDeCommande::findOrFail($id);
+        
+        // Vérifier que le bon de commande est en attente
+        if ($bon->statut !== 'en_attente') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce bon de commande ne peut pas être rejeté'
+            ], 422);
+        }
+        
+        $bon->update([
+            'statut' => 'annule',
+            'commentaire' => $request->commentaire,
+            'date_annulation' => now()
+        ]);
+
+        // Notifier l'auteur du bon de commande
+        if ($bon->user_id) {
+            $this->createNotification([
+                'user_id' => $bon->user_id,
+                'title' => 'Rejet Bon de Commande',
+                'message' => "Bon de commande #{$bon->numero} a été rejeté. Raison: {$request->commentaire}",
+                'type' => 'error',
+                'entity_type' => 'bon_commande',
+                'entity_id' => $bon->id,
+                'action_route' => "/bons-de-commande/{$bon->id}",
+                'metadata' => ['reason' => $request->commentaire],
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'bon_de_commande' => $bon->load(['fournisseur', 'createur', 'items']),
+            'message' => 'Bon de commande rejeté avec succès'
         ]);
     }
 
@@ -257,7 +437,6 @@ class BonDeCommandeController extends Controller
         
         $bon->update([
             'statut' => 'livre',
-            'date_livraison' => now()
         ]);
 
         return response()->json([
@@ -301,7 +480,7 @@ class BonDeCommandeController extends Controller
 
     /**
      * Supprimer un bon de commande
-     * Accessible par Admin uniquement
+     * Accessible par Commercial, Comptable, Admin et Patron
      */
     public function destroy($id)
     {
@@ -329,7 +508,7 @@ class BonDeCommandeController extends Controller
      */
     public function reports(Request $request)
     {
-        $query = BonDeCommande::with(['client', 'fournisseur']);
+        $query = BonDeCommande::with(['fournisseur']);
         
         // Filtrage par période
         if ($request->has('date_debut')) {
@@ -355,14 +534,6 @@ class BonDeCommandeController extends Controller
             'montant_livre' => $bons->where('statut', 'livre')->sum('montant_total'),
             'bons_annules' => $bons->where('statut', 'annule')->count(),
             'montant_annule' => $bons->where('statut', 'annule')->sum('montant_total'),
-            'par_client' => $bons->groupBy('client_id')->map(function($group, $clientId) {
-                $client = Client::find($clientId);
-                return [
-                    'client' => $client ? $client->nom . ' ' . $client->prenom : 'Client inconnu',
-                    'total_bons' => $group->count(),
-                    'montant_total' => $group->sum('montant_total')
-                ];
-            }),
             'par_fournisseur' => $bons->groupBy('fournisseur_id')->map(function($group, $fournisseurId) {
                 $fournisseur = Fournisseur::find($fournisseurId);
                 return [
@@ -418,12 +589,8 @@ class BonDeCommandeController extends Controller
                     'livre' => $bons->where('statut', 'livre')->sum('montant_total'),
                     'annule' => $bons->where('statut', 'annule')->sum('montant_total'),
                 ],
-                'bons_en_retard' => $bons->filter(function($bon) {
-                    return $bon->date_livraison_prevue && 
-                           $bon->date_livraison_prevue < now() && 
-                           !in_array($bon->statut, ['livre', 'annule']);
-                })->count(),
-                'bons_recents' => BonDeCommande::with(['client', 'fournisseur'])
+                'bons_en_retard' => 0, // Désactivé - date_livraison_prevue supprimée
+                'bons_recents' => BonDeCommande::with(['fournisseur'])
                     ->orderBy('created_at', 'desc')
                     ->limit(5)
                     ->get()
@@ -466,7 +633,7 @@ class BonDeCommandeController extends Controller
                     'montant_moyen' => $bons->count() > 0 ? $bons->avg('montant_total') : 0
                 ],
                 'par_mois' => $bons->groupBy(function($bon) {
-                    return $bon->date_commande->format('Y-m');
+                    return $bon->date_commande?->format('Y-m');
                 })->map(function($group, $mois) {
                     return [
                         'mois' => $mois,
@@ -505,19 +672,11 @@ class BonDeCommandeController extends Controller
     {
         try {
             $user = $request->user();
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur']);
+            $query = BonDeCommande::with(['fournisseur', 'createur']);
             
             // Recherche par numéro de commande
             if ($request->has('numero')) {
                 $query->where('numero_commande', 'like', '%' . $request->numero . '%');
-            }
-            
-            // Recherche par nom de client
-            if ($request->has('client_nom')) {
-                $query->whereHas('client', function($q) use ($request) {
-                    $q->where('nom', 'like', '%' . $request->client_nom . '%')
-                      ->orWhere('prenom', 'like', '%' . $request->client_nom . '%');
-                });
             }
             
             // Recherche par nom de fournisseur
@@ -532,12 +691,6 @@ class BonDeCommandeController extends Controller
                 $query->where('description', 'like', '%' . $request->description . '%');
             }
             
-            // Si commercial → filtre ses propres clients
-            if ($user->role == 2) {
-                $query->whereHas('client', function($q) use ($user) {
-                    $q->where('user_id', $user->id);
-                });
-            }
             
             $bons = $query->orderBy('date_commande', 'desc')->get();
             
@@ -569,11 +722,9 @@ class BonDeCommandeController extends Controller
             $numero = 'BC-' . date('Y') . '-' . str_pad(BonDeCommande::count() + 1, 4, '0', STR_PAD_LEFT);
             
             $nouveauBon = BonDeCommande::create([
-                'client_id' => $originalBon->client_id,
                 'fournisseur_id' => $originalBon->fournisseur_id,
                 'numero_commande' => $numero,
                 'date_commande' => now()->toDateString(),
-                'date_livraison_prevue' => $originalBon->date_livraison_prevue,
                 'montant_total' => $originalBon->montant_total,
                 'description' => $originalBon->description,
                 'statut' => 'en_attente',
@@ -585,7 +736,7 @@ class BonDeCommandeController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => $nouveauBon->load(['client', 'fournisseur', 'createur']),
+                'data' => $nouveauBon->load(['fournisseur', 'createur']),
                 'message' => 'Bon de commande dupliqué avec succès'
             ], 201);
             
@@ -604,7 +755,7 @@ class BonDeCommandeController extends Controller
     public function export(Request $request)
     {
         try {
-            $query = BonDeCommande::with(['client', 'fournisseur', 'createur']);
+            $query = BonDeCommande::with(['fournisseur', 'createur']);
             
             // Appliquer les mêmes filtres que l'index
             if ($request->has('statut')) {
@@ -625,13 +776,10 @@ class BonDeCommandeController extends Controller
             $exportData = $bons->map(function($bon) {
                 return [
                     'Numéro' => $bon->numero_commande,
-                    'Date commande' => $bon->date_commande->format('d/m/Y'),
-                    'Client' => $bon->client->nom . ' ' . $bon->client->prenom,
+                    'Date commande' => $bon->date_commande?->format('d/m/Y'),
                     'Fournisseur' => $bon->fournisseur->nom,
                     'Montant' => $bon->montant_total,
                     'Statut' => $bon->statut_libelle,
-                    'Date livraison prévue' => $bon->date_livraison_prevue ? $bon->date_livraison_prevue->format('d/m/Y') : '',
-                    'Date livraison' => $bon->date_livraison ? $bon->date_livraison->format('d/m/Y') : '',
                     'Description' => $bon->description,
                     'Créé par' => $bon->createur->nom . ' ' . $bon->createur->prenom
                 ];

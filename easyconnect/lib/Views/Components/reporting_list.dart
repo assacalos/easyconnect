@@ -1,4 +1,6 @@
 import 'package:easyconnect/Views/Components/reporting_form.dart';
+import 'package:easyconnect/Views/Components/reporting_detail.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
@@ -26,52 +28,58 @@ class ReportingList extends StatelessWidget {
             onPressed:
                 () => _showFilterDialog(context, reportingController, userRole),
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Obx(() {
+            if (reportingController.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (reportingController.reports.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.assessment, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Aucun rapport trouvé',
+                      style: TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Créez votre premier rapport',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: reportingController.reports.length,
+              itemBuilder: (context, index) {
+                final report = reportingController.reports[index];
+                return _buildReportCard(
+                  context,
+                  report,
+                  reportingController,
+                  userRole,
+                );
+              },
+            );
+          }),
+          // Bouton d'ajout uniforme en bas à droite
+          UniformAddButton(
             onPressed: () => Get.to(() => const ReportingForm()),
+            label: 'Nouveau Rapport',
+            icon: Icons.assessment,
           ),
         ],
       ),
-      body: Obx(() {
-        if (reportingController.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (reportingController.reports.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.assessment, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  'Aucun rapport trouvé',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Créez votre premier rapport',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: reportingController.reports.length,
-          itemBuilder: (context, index) {
-            final report = reportingController.reports[index];
-            return _buildReportCard(
-              context,
-              report,
-              reportingController,
-              userRole,
-            );
-          },
-        );
-      }),
     );
   }
 
@@ -101,7 +109,9 @@ class ReportingList extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${report.userName} (${report.userRole})',
+                        report.userRole.toLowerCase().contains('comptable')
+                            ? report.userName
+                            : '${report.userName} (${report.userRole})',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.grey[600],
                         ),
@@ -148,24 +158,6 @@ class ReportingList extends StatelessWidget {
             // Actions
             Row(
               children: [
-                if (report.status == 'draft' &&
-                    (userRole == report.userId ||
-                        userRole == Roles.ADMIN ||
-                        userRole == Roles.PATRON)) ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => controller.submitReport(report.id),
-                      icon: const Icon(Icons.send, size: 16),
-                      label: const Text('Soumettre'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.blue,
-                        side: const BorderSide(color: Colors.blue),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-
                 if (report.status == 'submitted' &&
                     (userRole == Roles.ADMIN || userRole == Roles.PATRON)) ...[
                   Expanded(
@@ -184,7 +176,8 @@ class ReportingList extends StatelessWidget {
 
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showReportDetails(context, report),
+                    onPressed:
+                        () => Get.to(() => ReportingDetail(reporting: report)),
                     icon: const Icon(Icons.visibility, size: 16),
                     label: const Text('Détails'),
                     style: OutlinedButton.styleFrom(
@@ -206,10 +199,6 @@ class ReportingList extends StatelessWidget {
     String label;
 
     switch (status) {
-      case 'draft':
-        color = Colors.orange;
-        label = 'Brouillon';
-        break;
       case 'submitted':
         color = Colors.blue;
         label = 'Soumis';
@@ -262,10 +251,6 @@ class ReportingList extends StatelessWidget {
               metrics['devis_acceptes']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'CA (€)',
-              metrics['chiffre_affaires']?.toString() ?? '0',
-            ),
-            _buildMetricChip(
               'Nouveaux clients',
               metrics['nouveaux_clients']?.toString() ?? '0',
             ),
@@ -297,11 +282,11 @@ class ReportingList extends StatelessWidget {
               metrics['factures_payees']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'Montant facturé (€)',
+              'Montant facturé (fcfa)',
               metrics['montant_facture']?.toString() ?? '0',
             ),
             _buildMetricChip(
-              'Montant encaissé (€)',
+              'Montant encaissé (fcfa)',
               metrics['montant_encaissement']?.toString() ?? '0',
             ),
             _buildMetricChip(
@@ -441,61 +426,6 @@ class ReportingList extends StatelessWidget {
                   },
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showReportDetails(BuildContext context, ReportingModel report) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Détails du rapport - ${_formatDate(report.reportDate)}',
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Utilisateur: ${report.userName}'),
-                  Text('Rôle: ${report.userRole}'),
-                  Text('Statut: ${report.status}'),
-                  if (report.submittedAt != null)
-                    Text('Soumis le: ${_formatDate(report.submittedAt!)}'),
-                  if (report.approvedAt != null)
-                    Text('Approuvé le: ${_formatDate(report.approvedAt!)}'),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Métriques:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  ...report.metrics.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text('${entry.key}: ${entry.value}'),
-                    ),
-                  ),
-                  if (report.comments != null &&
-                      report.comments!.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Commentaires:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(report.comments!),
-                  ],
-                ],
-              ),
             ),
             actions: [
               TextButton(

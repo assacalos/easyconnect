@@ -3,11 +3,31 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:intl/intl.dart';
 
-class BonCommandeListPage extends StatelessWidget {
-  final BonCommandeController controller = Get.put(BonCommandeController());
-  BonCommandeListPage({super.key});
+class BonCommandeListPage extends StatefulWidget {
+  const BonCommandeListPage({super.key});
+
+  @override
+  State<BonCommandeListPage> createState() => _BonCommandeListPageState();
+}
+
+class _BonCommandeListPageState extends State<BonCommandeListPage> {
+  final BonCommandeController controller = Get.find<BonCommandeController>();
+  bool _hasLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_hasLoaded) {
+      _hasLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Ne charger que si les données ne sont pas déjà chargées
+        if (controller.bonCommandes.isEmpty && !controller.isLoading.value) {
+          controller.loadBonCommandes();
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,11 +41,18 @@ class BonCommandeListPage extends StatelessWidget {
           ),
         ],
       ),
-      body: Obx(
-        () =>
-            controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : _buildBonCommandeList(),
+      body: Column(
+        children: [
+          _buildStatusTabs(),
+          Expanded(
+            child: Obx(
+              () =>
+                  controller.isLoading.value
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildBonCommandeList(),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Get.toNamed('/bon-commandes/new'),
@@ -35,33 +62,105 @@ class BonCommandeListPage extends StatelessWidget {
     );
   }
 
-  Widget _buildBonCommandeList() {
-    if (controller.bonCommandes.isEmpty) {
-      return const Center(child: Text('Aucun bon de commande trouvé'));
-    }
-
-    return ListView.builder(
-      itemCount: controller.bonCommandes.length,
-      padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final bonCommande = controller.bonCommandes[index];
-        return _buildBonCommandeCard(bonCommande);
-      },
+  Widget _buildStatusTabs() {
+    return Obx(
+      () => Container(
+        color: Colors.grey[100],
+        child: TabBar(
+          controller: controller.tabController,
+          isScrollable: true,
+          indicatorColor: Colors.blue,
+          labelColor: Colors.blue,
+          unselectedLabelColor: Colors.grey[600],
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.all_inclusive, size: 16),
+                  const SizedBox(width: 4),
+                  Text('Tous (${controller.bonCommandes.length})'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.pending, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'En attente (${controller.bonCommandes.where((bc) => bc.status == 1).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Validés (${controller.bonCommandes.where((bc) => bc.status == 2).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cancel, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Rejetés (${controller.bonCommandes.where((bc) => bc.status == 3).length})',
+                  ),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.local_shipping, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Livrés (${controller.bonCommandes.where((bc) => bc.status == 4).length})',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildBonCommandeCard(BonCommande bonCommande) {
-    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
-    final formatDate = DateFormat('dd/MM/yyyy');
+  Widget _buildBonCommandeList() {
+    return Obx(() {
+      final filteredBonCommandes = controller.getFilteredBonCommandes();
 
+      if (filteredBonCommandes.isEmpty) {
+        return const Center(child: Text('Aucun bon de commande trouvé'));
+      }
+
+      return ListView.builder(
+        itemCount: filteredBonCommandes.length,
+        padding: const EdgeInsets.all(8),
+        itemBuilder: (context, index) {
+          final bonCommande = filteredBonCommandes[index];
+          return _buildBonCommandeCard(bonCommande);
+        },
+      );
+    });
+  }
+
+  Widget _buildBonCommandeCard(BonCommande bonCommande) {
     Color statusColor;
     IconData statusIcon;
 
     switch (bonCommande.status) {
-      case 0: // Brouillon
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        break;
       case 1: // En attente
         statusColor = Colors.orange;
         statusIcon = Icons.pending;
@@ -91,23 +190,20 @@ class BonCommandeListPage extends StatelessWidget {
           child: Icon(statusIcon, color: statusColor),
         ),
         title: Text(
-          bonCommande.reference,
+          'Bon de commande #${bonCommande.id ?? 'N/A'}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Date: ${formatDate.format(bonCommande.dateCreation)}'),
-            if (bonCommande.dateLivraisonPrevue != null)
-              Text(
-                'Livraison prévue: ${formatDate.format(bonCommande.dateLivraisonPrevue!)}',
-              ),
-            Text('Montant: ${formatCurrency.format(bonCommande.montantTTC)}'),
+            Text('Client ID: ${bonCommande.clientId}'),
             Text(
               'Status: ${bonCommande.statusText}',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
             ),
+            if (bonCommande.fichiers.isNotEmpty)
+              Text('Fichiers: ${bonCommande.fichiers.length}'),
           ],
         ),
         trailing: _buildActionButton(bonCommande),
@@ -143,10 +239,24 @@ class BonCommandeListPage extends StatelessWidget {
           },
         );
       }
-      if (bonCommande.status == 2 && !bonCommande.estLivre) {
-        return IconButton(
-          icon: const Icon(Icons.local_shipping),
-          onPressed: () => _showDeliveryConfirmation(bonCommande),
+      // Bouton Modifier pour les bons de commande validés ou rejetés
+      if (bonCommande.status == 2 || bonCommande.status == 3) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed:
+                  () => Get.toNamed('/bon-commandes/${bonCommande.id}/edit'),
+              tooltip: 'Modifier',
+            ),
+            if (bonCommande.status == 2)
+              IconButton(
+                icon: const Icon(Icons.local_shipping),
+                onPressed: () => _showDeliveryConfirmation(bonCommande),
+                tooltip: 'Marquer comme livré',
+              ),
+          ],
         );
       }
     }
@@ -188,13 +298,6 @@ class BonCommandeListPage extends StatelessWidget {
                   onTap: () {
                     Get.back();
                     controller.loadBonCommandes();
-                  },
-                ),
-                ListTile(
-                  title: const Text('Brouillons'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonCommandes(status: 0);
                   },
                 ),
                 ListTile(

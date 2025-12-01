@@ -13,7 +13,6 @@ class DevisItem extends Model
         'designation',
         'quantite',
         'prix_unitaire',
-        'remise',
     ];
 
     public function devis() {

@@ -17,7 +17,39 @@ class Reporting extends Model
         'submitted_at',
         'approved_at',
         'approved_by',
-        'comments'
+        'comments',
+        'patron_note',
+        // Notes pour les métriques commerciales
+        'notes_clients_prospectes',
+        'notes_rdv_obtenus',
+        'notes_devis_crees',
+        'notes_devis_acceptes',
+        'notes_nouveaux_clients',
+        'notes_appels_effectues',
+        'notes_emails_envoyes',
+        'notes_visites_realisees',
+        // Notes pour les métriques comptables
+        'notes_factures_emises',
+        'notes_factures_payees',
+        'notes_montant_facture',
+        'notes_montant_encaissement',
+        'notes_bordereaux_traites',
+        'notes_bons_commande_traites',
+        'notes_clients_factures',
+        'notes_relances_effectuees',
+        'notes_encaissements',
+        // Notes pour les métriques techniques
+        'notes_interventions_planifiees',
+        'notes_interventions_realisees',
+        'notes_interventions_annulees',
+        'notes_clients_visites',
+        'notes_problemes_resolus',
+        'notes_problemes_en_cours',
+        'notes_temps_travail',
+        'notes_deplacements',
+        'notes_techniques',
+        // Notes générales
+        'notes_generales'
     ];
 
     protected $casts = [
@@ -67,7 +99,9 @@ class Reporting extends Model
     // Méthodes utilitaires
     public function canBeEdited()
     {
-        return $this->status === 'draft';
+        // Permettre l'édition des reportings soumis (non approuvés)
+        // Plus de draft, donc on peut éditer les reportings soumis
+        return in_array($this->status, ['draft', 'submitted']);
     }
 
     public function canBeSubmitted()
@@ -139,6 +173,51 @@ class Reporting extends Model
         return $statuses[$this->status] ?? $this->status;
     }
 
+    // Méthodes pour gérer les notes par colonne
+    public function getNotesForColumn($columnName)
+    {
+        $notesField = 'notes_' . $columnName;
+        return $this->$notesField ?? null;
+    }
+
+    public function setNotesForColumn($columnName, $notes)
+    {
+        $notesField = 'notes_' . $columnName;
+        $this->$notesField = $notes;
+        return $this;
+    }
+
+    public function getAllNotes()
+    {
+        $notes = [];
+        $fillableFields = $this->getFillable();
+        
+        foreach ($fillableFields as $field) {
+            if (str_starts_with($field, 'notes_') && $field !== 'notes_generales') {
+                $columnName = str_replace('notes_', '', $field);
+                $notes[$columnName] = $this->$field;
+            }
+        }
+        
+        $notes['generales'] = $this->notes_generales;
+        return $notes;
+    }
+
+    public function updateNotes($notesData)
+    {
+        foreach ($notesData as $columnName => $notes) {
+            if ($columnName === 'generales') {
+                $this->notes_generales = $notes;
+            } else {
+                $notesField = 'notes_' . $columnName;
+                if (in_array($notesField, $this->getFillable())) {
+                    $this->$notesField = $notes;
+                }
+            }
+        }
+        return $this;
+    }
+
     // Méthodes pour générer les métriques selon le rôle
     public function generateCommercialMetrics($startDate, $endDate)
     {
@@ -158,18 +237,12 @@ class Reporting extends Model
             ->whereBetween('created_at', [$startDate, $endDate])
             ->count();
 
-        $chiffreAffaires = Devis::where('user_id', $userId)
-            ->where('status', 2) // Accepté
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('montant_total');
-
         return [
             'clients_prospectes' => $clientsProspectes,
             'rdv_obtenus' => rand(5, 15), // À implémenter avec une vraie table RDV
             'rdv_list' => [], // À implémenter
             'devis_crees' => $devisCrees,
             'devis_acceptes' => $devisAcceptes,
-            'chiffre_affaires' => $chiffreAffaires,
             'nouveaux_clients' => $clientsProspectes,
             'appels_effectues' => rand(20, 50),
             'emails_envoyes' => rand(30, 80),
@@ -209,7 +282,6 @@ class Reporting extends Model
             'montant_encaissement' => $montantFacture * 0.8, // 80% encaissé
             'bordereaux_traites' => $bordereauxTraites,
             'bons_commande_traites' => $bonsCommandeTraites,
-            'chiffre_affaires' => $montantFacture,
             'clients_factures' => $facturesEmises,
             'relances_effectuees' => rand(5, 15),
             'encaissements' => $montantFacture * 0.8

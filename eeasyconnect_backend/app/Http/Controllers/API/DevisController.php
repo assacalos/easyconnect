@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Devis;
 use App\Models\DevisItem;
 use App\Models\Client;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DevisController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des devis avec filtres par rôle et statut
      */
@@ -82,8 +85,7 @@ class DevisController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
-                'items.*.prix_unitaire' => 'required|numeric|min:0',
-                'items.*.remise' => 'nullable|numeric|min:0|max:100'
+                'items.*.prix_unitaire' => 'required|numeric|min:0'
             ]);
 
             DB::beginTransaction();
@@ -97,7 +99,7 @@ class DevisController extends Controller
                 'date_creation' => now()->toDateString(),
                 'date_validite' => $validated['date_validite'],
                 'notes' => $validated['notes'],
-                'status' => 0, // Brouillon
+                'status' => 1, // Brouillon
                 'remise_globale' => $validated['remise_globale'] ?? 0,
                 'tva' => $validated['tva'] ?? 0,
                 'conditions' => $validated['conditions'],
@@ -111,8 +113,7 @@ class DevisController extends Controller
                     'devis_id' => $devis->id,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
-                    'remise' => $item['remise'] ?? 0
+                    'prix_unitaire' => $item['prix_unitaire']
                 ]);
             }
 
@@ -181,8 +182,7 @@ class DevisController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
-                'items.*.prix_unitaire' => 'required|numeric|min:0',
-                'items.*.remise' => 'nullable|numeric|min:0|max:100'
+                'items.*.prix_unitaire' => 'required|numeric|min:0'
             ]);
 
             DB::beginTransaction();
@@ -204,8 +204,7 @@ class DevisController extends Controller
                     'devis_id' => $devis->id,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
-                    'prix_unitaire' => $item['prix_unitaire'],
-                    'remise' => $item['remise'] ?? 0
+                    'prix_unitaire' => $item['prix_unitaire']
                 ]);
             }
 
@@ -274,6 +273,20 @@ class DevisController extends Controller
 
             $devis->update(['status' => 1]); // Envoyé
 
+            // Notifier le patron
+            $patron = User::where('role', 6)->first();
+            if ($patron) {
+                $this->createNotification([
+                    'user_id' => $patron->id,
+                    'title' => 'Soumission Devis',
+                    'message' => "Devis #{$devis->reference} a été soumis pour validation",
+                    'type' => 'info',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis envoyé avec succès',
@@ -291,32 +304,52 @@ class DevisController extends Controller
     /**
      * Accepter un devis
      */
-    public function accept($id)
-    {
+    public function accept($id) {
         try {
             $devis = Devis::findOrFail($id);
-
+            
+            // Vérifier que le devis est envoyé (status = 1)
             if ($devis->status != 1) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Devis non envoyé'
+                    'message' => 'Seuls les devis envoyés peuvent être acceptés'
                 ], 403);
             }
 
-            $devis->update(['status' => 2]); // Accepté
-
+            $devis->status = 2; // Accepté/Validé
+            $devis->save();
+            
+            // Notifier l'auteur du devis
+            if ($devis->commercial_id) {
+                $this->createNotification([
+                    'user_id' => $devis->commercial_id,
+                    'title' => 'Validation Devis',
+                    'message' => "Devis #{$devis->reference} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                ]);
+            }
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Devis accepté avec succès',
-                'data' => $devis
+                'data' => $devis->load(['client', 'commercial', 'items'])
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'acceptation du devis: ' . $e->getMessage()
+                'message' => 'Erreur lors de l\'acceptation: ' . $e->getMessage()
             ], 500);
         }
+    }
+    
+    /**
+     * Valider un devis (méthode pour les patrons) - alias de accept
+     */
+    public function validateDevis($id) {
+        return $this->accept($id);
     }
 
     /**
@@ -343,6 +376,20 @@ class DevisController extends Controller
                 'commentaire' => $validated['commentaire']
             ]);
 
+            // Notifier l'auteur du devis
+            if ($devis->commercial_id) {
+                $this->createNotification([
+                    'user_id' => $devis->commercial_id,
+                    'title' => 'Rejet Devis',
+                    'message' => "Devis #{$devis->reference} a été rejeté. Raison: {$validated['commentaire']}",
+                    'type' => 'error',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                    'metadata' => ['reason' => $validated['commentaire']],
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis refusé avec succès',
@@ -366,18 +413,14 @@ class DevisController extends Controller
             $devis = Devis::with('items')->findOrFail($id);
             
             $sous_total = 0;
-            $total_remise_items = 0;
 
             foreach ($devis->items as $item) {
                 $prix_item = $item->quantite * $item->prix_unitaire;
-                $remise_item = $prix_item * ($item->remise / 100);
                 $sous_total += $prix_item;
-                $total_remise_items += $remise_item;
             }
 
-            $sous_total_apres_remise_items = $sous_total - $total_remise_items;
-            $remise_globale = $sous_total_apres_remise_items * ($devis->remise_globale / 100);
-            $total_ht = $sous_total_apres_remise_items - $remise_globale;
+            $remise_globale = $sous_total * ($devis->remise_globale / 100);
+            $total_ht = $sous_total - $remise_globale;
             $tva = $total_ht * ($devis->tva / 100);
             $total_ttc = $total_ht + $tva;
 
@@ -385,8 +428,6 @@ class DevisController extends Controller
                 'success' => true,
                 'data' => [
                     'sous_total' => round($sous_total, 2),
-                    'total_remise_items' => round($total_remise_items, 2),
-                    'sous_total_apres_remise_items' => round($sous_total_apres_remise_items, 2),
                     'remise_globale' => round($remise_globale, 2),
                     'total_ht' => round($total_ht, 2),
                     'tva' => round($tva, 2),
@@ -435,8 +476,7 @@ class DevisController extends Controller
                     'devis_id' => $newDevis->id,
                     'designation' => $item->designation,
                     'quantite' => $item->quantite,
-                    'prix_unitaire' => $item->prix_unitaire,
-                    'remise' => $item->remise
+                    'prix_unitaire' => $item->prix_unitaire
                 ]);
             }
 

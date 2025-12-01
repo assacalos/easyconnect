@@ -20,12 +20,17 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    // Conversion ID en int
+    // Conversion ID en int (avec gestion robuste)
     int idValue;
     if (json['id'] is String) {
-      idValue = int.parse(json['id']);
+      final idStr = json['id'] as String;
+      idValue = int.tryParse(idStr.trim()) ?? 0;
+    } else if (json['id'] is int) {
+      idValue = json['id'] as int;
+    } else if (json['id'] is num) {
+      idValue = (json['id'] as num).toInt();
     } else {
-      idValue = json['id'];
+      idValue = 0;
     }
 
     // Conversion rôle en int
@@ -37,10 +42,20 @@ class UserModel {
 
     // Conversion isActive en bool
     bool activeValue;
-    if (json['isActive'] is int) {
-      activeValue = json['isActive'] == 1;
+    if (json['is_active'] != null) {
+      if (json['is_active'] is int) {
+        activeValue = json['is_active'] == 1;
+      } else {
+        activeValue = json['is_active'] ?? true;
+      }
+    } else if (json['isActive'] != null) {
+      if (json['isActive'] is int) {
+        activeValue = json['isActive'] == 1;
+      } else {
+        activeValue = json['isActive'] ?? true;
+      }
     } else {
-      activeValue = json['isActive'] ?? true;
+      activeValue = true; // Valeur par défaut
     }
 
     return UserModel(
@@ -63,6 +78,6 @@ class UserModel {
     'role': role,
     'created_at': createdAt,
     'updated_at': updatedAt,
-    'isActive': isActive ? 1 : 0, // pour Laravel
+    'is_active': isActive, // pour Laravel
   };
 }

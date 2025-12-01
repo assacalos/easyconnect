@@ -3,65 +3,127 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bordereau_controller.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
 
 class BordereauListPage extends StatelessWidget {
-  BordereauListPage({super.key});
-  final BordereauController controller = Get.put(BordereauController());
+  final int? clientId;
+
+  BordereauListPage({super.key, this.clientId});
+  final BordereauxController controller = Get.put(BordereauxController());
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bordereaux'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterDialog(context),
+    // Charger les données au démarrage de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
+      controller.loadBordereaux();
+    });
+
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Bordereaux'),
+          bottom: const TabBar(
+            isScrollable: true,
+            tabs: [
+              Tab(text: 'En attente'),
+              Tab(text: 'Validés'),
+              Tab(text: 'Rejetés'),
+            ],
           ),
-        ],
-      ),
-      body: Obx(
-        () =>
-            controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : _buildBordereauList(),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed('/bordereaux/new'),
-        icon: const Icon(Icons.add),
-        label: const Text('Nouveau bordereau'),
+        ),
+        body: Stack(
+          children: [
+            TabBarView(
+              children: [
+                _buildBordereauList(1), // En attente
+                _buildBordereauList(2), // Validés
+                _buildBordereauList(3), // Rejetés
+              ],
+            ),
+            // Bouton d'ajout uniforme en bas à droite
+            UniformAddButton(
+              onPressed: () => Get.toNamed('/bordereaux/new'),
+              label: 'Nouveau Bordereau',
+              icon: Icons.assignment,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBordereauList() {
-    if (controller.bordereaux.isEmpty) {
-      return const Center(child: Text('Aucun bordereau trouvé'));
-    }
+  Widget _buildBordereauList(int status) {
+    // Récupérer clientId depuis les arguments
+    final args = Get.arguments as Map<String, dynamic>?;
+    final filterClientId = clientId ?? args?['clientId'] as int?;
 
-    return ListView.builder(
-      itemCount: controller.bordereaux.length,
-      padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final bordereau = controller.bordereaux[index];
-        return _buildBordereauCard(bordereau);
-      },
-    );
+    return Obx(() {
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
+      var bordereauList =
+          controller.bordereaux.where((b) => b.status == status).toList();
+
+      // Filtrer par clientId si fourni
+      if (filterClientId != null) {
+        bordereauList =
+            bordereauList.where((b) => b.clientId == filterClientId).toList();
+      }
+
+      if (bordereauList.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                status == 1
+                    ? Icons.access_time
+                    : status == 2
+                    ? Icons.check_circle
+                    : Icons.cancel,
+                size: 64,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                status == 1
+                    ? 'Aucun bordereau en attente'
+                    : status == 2
+                    ? 'Aucun bordereau validé'
+                    : 'Aucun bordereau rejeté',
+                style: const TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: bordereauList.length,
+        itemBuilder: (context, index) {
+          final bordereau = bordereauList[index];
+          return _buildBordereauCard(bordereau);
+        },
+      );
+    });
   }
 
   Widget _buildBordereauCard(Bordereau bordereau) {
-    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final formatCurrency = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: 'fcfa',
+    );
     final formatDate = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
     IconData statusIcon;
 
     switch (bordereau.status) {
-      case 0: // Brouillon
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        break;
       case 1: // En attente
         statusColor = Colors.orange;
         statusIcon = Icons.pending;
@@ -100,18 +162,46 @@ class BordereauListPage extends StatelessWidget {
               'Status: ${bordereau.statusText}',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
             ),
+            if (bordereau.status == 3 &&
+                (bordereau.commentaireRejet != null &&
+                    bordereau.commentaireRejet!.isNotEmpty)) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.report, size: 14, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Raison du rejet: ${bordereau.commentaireRejet}',
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
-        trailing: _buildActionButton(bordereau),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: () => controller.generatePDF(bordereau.id!),
+              tooltip: 'Générer PDF',
+            ),
+            _buildActionButton(bordereau),
+          ],
+        ),
         onTap: () => Get.toNamed('/bordereaux/${bordereau.id}'),
       ),
     );
   }
 
   Widget _buildActionButton(Bordereau bordereau) {
-    final userRole = Get.put(BordereauController()).userId;
+    final userRole = Get.put(BordereauxController()).userId;
 
-    if (userRole == Roles.COMMERCIAL && bordereau.status == 0) {
+    if (userRole == Roles.COMMERCIAL && bordereau.status == 1) {
       return PopupMenuButton(
         itemBuilder:
             (context) => [
@@ -132,6 +222,16 @@ class BordereauListPage extends StatelessWidget {
               break;
           }
         },
+      );
+    }
+
+    // Bouton Modifier pour les bordereaux validés ou rejetés
+    if (userRole == Roles.COMMERCIAL &&
+        (bordereau.status == 2 || bordereau.status == 3)) {
+      return IconButton(
+        icon: const Icon(Icons.edit),
+        onPressed: () => Get.toNamed('/bordereaux/${bordereau.id}/edit'),
+        tooltip: 'Modifier',
       );
     }
 
@@ -157,56 +257,6 @@ class BordereauListPage extends StatelessWidget {
 
     // Si aucune action n'est disponible, retourner un widget vide
     return const SizedBox.shrink();
-  }
-
-  void _showFilterDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Filtrer par statut'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('Tous'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBordereaux();
-                  },
-                ),
-                ListTile(
-                  title: const Text('Brouillons'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBordereaux(status: 0);
-                  },
-                ),
-                ListTile(
-                  title: const Text('En attente'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBordereaux(status: 1);
-                  },
-                ),
-                ListTile(
-                  title: const Text('Validés'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBordereaux(status: 2);
-                  },
-                ),
-                ListTile(
-                  title: const Text('Rejetés'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBordereaux(status: 3);
-                  },
-                ),
-              ],
-            ),
-          ),
-    );
   }
 
   void _showSubmitConfirmation(Bordereau bordereau) {
