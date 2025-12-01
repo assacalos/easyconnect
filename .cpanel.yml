@@ -1,0 +1,14 @@
+---
+deployment:
+  tasks:
+    # Définition du chemin de destination pour le Frontend
+    - export DEPLOYPATH=/home/amyv4492/public_html/easyConnect/
+    
+    # 1. Copie du contenu du dossier 'easyconnect' vers le dossier public
+    # Assurez-vous que cette commande copie le contenu, pas le dossier lui-même.
+    - /bin/cp -R easyConnect/* $DEPLOYPATH
+    
+    # 2. Si vous avez besoin d'exécuter npm install ou npm run build :
+    # Si votre frontend est en React, Vue, etc., vous devez le construire ici.
+    # Ex: - /usr/bin/npm install --prefix easyconnect
+    # Ex: - /usr/bin/npm run build --prefix easyconnect
