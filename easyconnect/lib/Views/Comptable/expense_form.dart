@@ -315,7 +315,8 @@ class ExpenseForm extends StatelessWidget {
       success = await controller.updateExpense(expense!);
     }
     if (success) {
-      Get.back();
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed('/expenses');
     }
   }
 

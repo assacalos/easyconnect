@@ -16,15 +16,23 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  bool _isLoading = false; // Protection contre les appels multiples
+  int? _lastLoadedStatus; // Mémoriser le dernier statut chargé
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (!_tabController.indexIsChanging) {
+        // Charger seulement quand le changement d'onglet est terminé
+        _onTabChanged();
+      }
     });
-    _loadClients();
+    // Charger toutes les données une fois au démarrage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAllClients();
+    });
   }
 
   @override
@@ -35,29 +43,80 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadClients();
+    // Ne pas recharger si on est déjà en train de charger
+    if (_isLoading) return;
+
+    // Ne pas recharger si on charge le même statut
+    final currentStatus = _getStatusForTab(_tabController.index);
+    if (_lastLoadedStatus == currentStatus && controller.clients.isNotEmpty) {
+      return;
+    }
+
+    _loadClients();
+  }
+
+  // Charger toutes les données une fois (sans filtre)
+  Future<void> _loadAllClients() async {
+    if (_isLoading) return;
+
+    try {
+      _isLoading = true;
+      // Charger tous les clients une fois, le filtrage se fera côté client
+      await controller.loadClients(status: null, forceRefresh: false);
+      _lastLoadedStatus = null; // null = tous les clients
+    } catch (e) {
+      print('❌ [CLIENT_VALIDATION] Erreur lors du chargement initial: $e');
+    } finally {
+      _isLoading = false;
     }
   }
 
   Future<void> _loadClients() async {
-    int? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 0;
-        break;
-      case 2: // Validés
-        status = 1;
-        break;
-      case 3: // Rejetés
-        status = 2;
-        break;
-    }
+    // Protection contre les appels multiples
+    if (_isLoading) return;
 
-    await controller.loadClients(status: status);
+    try {
+      _isLoading = true;
+
+      // Charger tous les clients une fois, le filtrage se fera côté client
+      // Cela évite les rechargements multiples lors du changement d'onglet
+      if (_lastLoadedStatus == null && controller.clients.isNotEmpty) {
+        // Les données sont déjà chargées, pas besoin de recharger
+        _isLoading = false;
+        return;
+      }
+
+      await controller.loadClients(status: null, forceRefresh: false);
+      _lastLoadedStatus = null;
+    } catch (e) {
+      print('❌ [CLIENT_VALIDATION] Erreur lors du chargement: $e');
+      // Ne pas afficher d'erreur si des données sont déjà disponibles
+      if (controller.clients.isEmpty) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les clients. Vérifiez votre connexion.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  int? _getStatusForTab(int tabIndex) {
+    switch (tabIndex) {
+      case 0: // Tous
+        return null;
+      case 1: // En attente
+        return 0;
+      case 2: // Validés
+        return 1;
+      case 3: // Rejetés
+        return 2;
+      default:
+        return null;
+    }
   }
 
   @override
@@ -90,7 +149,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
         children: [
           // Barre de recherche
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -156,7 +215,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.people, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               _searchQuery.isEmpty
                   ? 'Aucun client trouvé'
@@ -164,7 +223,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             if (_searchQuery.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
@@ -239,7 +298,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
         ),
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -248,7 +307,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
                   'Informations détaillées',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -272,7 +331,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _buildActionButtons(client, statusColor),
               ],
             ),
@@ -292,20 +351,30 @@ class _ClientValidationPageState extends State<ClientValidationPage>
               children: [
                 ElevatedButton.icon(
                   onPressed: () => _showApproveConfirmation(client),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Valider'),
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Valider', style: TextStyle(fontSize: 13)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
                   ),
                 ),
                 ElevatedButton.icon(
                   onPressed: () => _showRejectDialog(client),
-                  icon: const Icon(Icons.close),
-                  label: const Text('Rejeter'),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Rejeter', style: TextStyle(fontSize: 13)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
                   ),
                 ),
               ],
@@ -430,10 +499,19 @@ class _ClientValidationPageState extends State<ClientValidationPage>
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.approveClient(client.id!);
-        _loadClients();
+        try {
+          await controller.approveClient(client.id!);
+          // Recharger les données après validation (de manière asynchrone pour ne pas bloquer)
+          _loadAllClients().catchError((e) {
+            print(
+              '⚠️ [CLIENT_VALIDATION] Erreur lors du rechargement après validation: $e',
+            );
+          });
+        } catch (e) {
+          print('❌ [CLIENT_VALIDATION] Erreur lors de la validation: $e');
+        }
       },
     );
   }
@@ -459,7 +537,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
       textConfirm: 'Rejeter',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         if (commentController.text.isEmpty) {
           Get.snackbar(
             'Erreur',
@@ -469,8 +547,17 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           return;
         }
         Get.back();
-        controller.rejectClient(client.id!, commentController.text);
-        _loadClients();
+        try {
+          await controller.rejectClient(client.id!, commentController.text);
+          // Recharger les données après rejet (de manière asynchrone pour ne pas bloquer)
+          _loadAllClients().catchError((e) {
+            print(
+              '⚠️ [CLIENT_VALIDATION] Erreur lors du rechargement après rejet: $e',
+            );
+          });
+        } catch (e) {
+          print('❌ [CLIENT_VALIDATION] Erreur lors du rejet: $e');
+        }
       },
     );
   }

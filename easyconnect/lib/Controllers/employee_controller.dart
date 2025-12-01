@@ -215,7 +215,28 @@ class EmployeeController extends GetxController {
         limit:
             100, // Limite de 100 employés par page pour éviter les réponses trop grandes
       );
-      employees.value = employeesList;
+
+      // Fusionner les listes pour préserver les mises à jour optimistes
+      // Créer une map pour éviter les doublons
+      final Map<int, Employee> employeesMap = {
+        for (var emp in employees) emp.id!: emp,
+      };
+
+      // Ajouter/mettre à jour avec les nouvelles données
+      for (var emp in employeesList) {
+        if (emp.id != null) {
+          employeesMap[emp.id!] = emp;
+        }
+      }
+
+      // Convertir la map en liste triée
+      employees.value =
+          employeesMap.values.toList()..sort((a, b) {
+            // Trier par nom puis prénom
+            final nameA = '${a.lastName} ${a.firstName}'.toLowerCase();
+            final nameB = '${b.lastName} ${b.firstName}'.toLowerCase();
+            return nameA.compareTo(nameB);
+          });
     } catch (e) {
       // Extraire le message d'erreur
       String errorMessage = e.toString();
@@ -223,17 +244,26 @@ class EmployeeController extends GetxController {
         errorMessage = errorMessage.substring(11);
       }
 
-      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Get.snackbar(
-          'Erreur',
-          'Impossible de charger les employés: $errorMessage',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 5),
-        );
-      });
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (employees.isEmpty) {
+          // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les employés: $errorMessage',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+              duration: const Duration(seconds: 5),
+            );
+          });
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -440,7 +470,7 @@ class EmployeeController extends GetxController {
       print('📝 [EMPLOYEE_CONTROLLER] Nom: ${lastNameController.text.trim()}');
       print('📝 [EMPLOYEE_CONTROLLER] Email: ${emailController.text.trim()}');
 
-      await _employeeService.createEmployee(
+      final result = await _employeeService.createEmployee(
         firstName: firstNameController.text.trim(),
         lastName: lastNameController.text.trim(),
         email: emailController.text.trim(),
@@ -508,6 +538,21 @@ class EmployeeController extends GetxController {
                 : null,
       );
 
+      // Mise à jour optimiste : ajouter l'employé créé à la liste immédiatement
+      try {
+        if (result['data'] != null) {
+          final createdEmployee = Employee.fromJson(result['data']);
+          // Vérifier si l'employé n'existe pas déjà dans la liste
+          if (!employees.any((e) => e.id == createdEmployee.id)) {
+            employees.add(createdEmployee);
+          }
+        }
+      } catch (e) {
+        print(
+          '⚠️ [EMPLOYEE_CONTROLLER] Impossible d\'ajouter l\'employé créé à la liste: $e',
+        );
+      }
+
       // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Get.snackbar(
@@ -521,7 +566,19 @@ class EmployeeController extends GetxController {
       });
 
       clearForm();
-      await loadEmployees(loadAll: true);
+
+      // Recharger en arrière-plan pour synchroniser avec le serveur
+      Future.microtask(() async {
+        try {
+          await loadEmployees(loadAll: true);
+        } catch (e) {
+          // Ignorer les erreurs de rechargement en arrière-plan
+          print(
+            '⚠️ [EMPLOYEE_CONTROLLER] Erreur lors du rechargement en arrière-plan: $e',
+          );
+        }
+      });
+
       await loadEmployeeStats();
       return true;
     } catch (e, stackTrace) {

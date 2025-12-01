@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeLeave;
 use Illuminate\Http\Request;

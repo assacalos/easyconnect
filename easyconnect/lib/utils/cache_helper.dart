@@ -82,6 +82,21 @@ class CacheHelper {
 
   /// Retourne le nombre d'entrées dans le cache
   static int get size => _cache.length;
+
+  /// Supprime toutes les clés qui commencent par un préfixe
+  static void clearByPrefix(String prefix) {
+    final keysToRemove =
+        _cache.keys.where((key) => key.startsWith(prefix)).toList();
+    for (final key in keysToRemove) {
+      _cache.remove(key);
+    }
+    if (keysToRemove.isNotEmpty) {
+      AppLogger.debug(
+        'Cache cleared by prefix "$prefix": ${keysToRemove.length} entries removed',
+        tag: 'CACHE',
+      );
+    }
+  }
 }
 
 /// Entrée de cache avec expiration

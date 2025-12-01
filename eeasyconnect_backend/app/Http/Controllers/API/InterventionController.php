@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Intervention;
 use App\Models\Equipment;
 use App\Models\InterventionReport;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class InterventionController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des interventions
      */
@@ -339,6 +341,19 @@ class InterventionController extends Controller
             $notes = $request->get('notes');
 
             if ($intervention->approve($request->user()->id, $notes)) {
+                // Notifier le créateur de l'intervention
+                if ($intervention->created_by) {
+                    $this->createNotification([
+                        'user_id' => $intervention->created_by,
+                        'title' => 'Approbation Intervention',
+                        'message' => "Intervention #{$intervention->id} a été approuvée",
+                        'type' => 'success',
+                        'entity_type' => 'intervention',
+                        'entity_id' => $intervention->id,
+                        'action_route' => "/interventions/{$intervention->id}",
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),
@@ -385,6 +400,20 @@ class InterventionController extends Controller
             $rejectionReason = $reason ?? $validated['rejection_reason'] ?? $validated['reason'];
 
             if ($intervention->reject($rejectionReason)) {
+                // Notifier le créateur de l'intervention
+                if ($intervention->created_by) {
+                    $this->createNotification([
+                        'user_id' => $intervention->created_by,
+                        'title' => 'Rejet Intervention',
+                        'message' => "Intervention #{$intervention->id} a été rejetée. Raison: {$rejectionReason}",
+                        'type' => 'error',
+                        'entity_type' => 'intervention',
+                        'entity_id' => $intervention->id,
+                        'action_route' => "/interventions/{$intervention->id}",
+                        'metadata' => ['reason' => $rejectionReason],
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $this->transformInterventionForFlutter($intervention->fresh()->load(['creator', 'approver', 'client'])),

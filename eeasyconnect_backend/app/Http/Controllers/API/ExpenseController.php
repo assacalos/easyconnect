@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\ExpenseApproval;
 use App\Models\ExpenseBudget;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ExpenseController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des dépenses
      */
@@ -384,6 +387,20 @@ class ExpenseController extends Controller
             }
 
             if ($expense->submit()) {
+                // Notifier le patron
+                $patron = User::where('role', 6)->first();
+                if ($patron) {
+                    $this->createNotification([
+                        'user_id' => $patron->id,
+                        'title' => 'Soumission Dépense',
+                        'message' => "Dépense #{$expense->id} a été soumise pour validation",
+                        'type' => 'info',
+                        'entity_type' => 'expense',
+                        'entity_id' => $expense->id,
+                        'action_route' => "/expenses/{$expense->id}",
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Dépense soumise pour approbation'
@@ -433,6 +450,22 @@ class ExpenseController extends Controller
             $comments = $request->get('comments');
 
             if ($expense->approve($request->user()->id, $comments)) {
+                // Notifier l'auteur de la dépense
+                if ($expense->employee_id) {
+                    $employee = \App\Models\Employee::find($expense->employee_id);
+                    if ($employee && $employee->user_id) {
+                        $this->createNotification([
+                            'user_id' => $employee->user_id,
+                            'title' => 'Approbation Dépense',
+                            'message' => "Dépense #{$expense->id} a été approuvée",
+                            'type' => 'success',
+                            'entity_type' => 'expense',
+                            'entity_id' => $expense->id,
+                            'action_route' => "/expenses/{$expense->id}",
+                        ]);
+                    }
+                }
+
                 // Recharger la dépense avec ses relations
                 $expense->refresh();
                 $expense->load(['employee', 'expenseCategory', 'comptable', 'approvals.approver']);
@@ -489,6 +522,23 @@ class ExpenseController extends Controller
             ]);
 
             if ($expense->reject($request->user()->id, $validated['reason'])) {
+                // Notifier l'auteur de la dépense
+                if ($expense->employee_id) {
+                    $employee = \App\Models\Employee::find($expense->employee_id);
+                    if ($employee && $employee->user_id) {
+                        $this->createNotification([
+                            'user_id' => $employee->user_id,
+                            'title' => 'Rejet Dépense',
+                            'message' => "Dépense #{$expense->id} a été rejetée. Raison: {$validated['reason']}",
+                            'type' => 'error',
+                            'entity_type' => 'expense',
+                            'entity_id' => $expense->id,
+                            'action_route' => "/expenses/{$expense->id}",
+                            'metadata' => ['reason' => $validated['reason']],
+                        ]);
+                    }
+                }
+
                 // Recharger la dépense avec ses relations
                 $expense->refresh();
                 $expense->load(['employee', 'expenseCategory', 'comptable', 'approvals.approver']);

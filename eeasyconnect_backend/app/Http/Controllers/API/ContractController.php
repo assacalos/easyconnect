@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Contract;
 use App\Models\ContractClause;
 use App\Models\ContractAttachment;
 use App\Models\ContractTemplate;
 use App\Models\ContractAmendment;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ContractController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des contrats
      */
@@ -449,6 +452,20 @@ class ContractController extends Controller
 
             $contract->submit();
 
+            // Notifier le patron
+            $patron = User::where('role', 6)->first();
+            if ($patron) {
+                $this->createNotification([
+                    'user_id' => $patron->id,
+                    'title' => 'Soumission Contrat',
+                    'message' => "Contrat #{$contract->id} a été soumis pour validation",
+                    'type' => 'info',
+                    'entity_type' => 'contract',
+                    'entity_id' => $contract->id,
+                    'action_route' => "/contracts/{$contract->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Contrat soumis avec succès'
@@ -489,6 +506,22 @@ class ContractController extends Controller
             ]);
 
             $contract->approve(request()->user()->id);
+
+            // Notifier l'employé concerné
+            if ($contract->employee_id) {
+                $employee = \App\Models\Employee::find($contract->employee_id);
+                if ($employee && $employee->user_id) {
+                    $this->createNotification([
+                        'user_id' => $employee->user_id,
+                        'title' => 'Approbation Contrat',
+                        'message' => "Votre contrat a été approuvé",
+                        'type' => 'success',
+                        'entity_type' => 'contract',
+                        'entity_id' => $contract->id,
+                        'action_route' => "/contracts/{$contract->id}",
+                    ]);
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -541,6 +574,23 @@ class ContractController extends Controller
             $rejectionReason = $validated['rejection_reason'] ?? $validated['reason'] ?? '';
 
             $contract->reject(request()->user()->id, $rejectionReason);
+
+            // Notifier l'employé concerné
+            if ($contract->employee_id) {
+                $employee = \App\Models\Employee::find($contract->employee_id);
+                if ($employee && $employee->user_id) {
+                    $this->createNotification([
+                        'user_id' => $employee->user_id,
+                        'title' => 'Rejet Contrat',
+                        'message' => "Votre contrat a été rejeté. Raison: {$rejectionReason}",
+                        'type' => 'error',
+                        'entity_type' => 'contract',
+                        'entity_id' => $contract->id,
+                        'action_route' => "/contracts/{$contract->id}",
+                        'metadata' => ['reason' => $rejectionReason],
+                    ]);
+                }
+            }
 
             return response()->json([
                 'success' => true,

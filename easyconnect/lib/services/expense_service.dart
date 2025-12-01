@@ -15,11 +15,17 @@ class ExpenseService {
   }) async {
     try {
       final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
 
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
       if (category != null) queryParams['category'] = category;
       if (search != null) queryParams['search'] = search;
+      // Filtrer par userId pour les comptables (role 3) - le patron (role 6) voit toutes les dépenses
+      if (userRole == 3 && userId != null) {
+        queryParams['user_id'] = userId.toString();
+      }
 
       final queryString =
           queryParams.isEmpty
@@ -35,13 +41,49 @@ class ExpenseService {
       );
 
       if (response.statusCode == 200) {
-        final responseBody = json.decode(response.body);
-        // Gérer différents formats de réponse
-        final List<dynamic> data = responseBody['data'] ?? responseBody;
-        if (data.isEmpty) {
-          return [];
+        try {
+          final responseBody = json.decode(response.body);
+          // Gérer différents formats de réponse
+          List<dynamic> data;
+          if (responseBody is List) {
+            data = responseBody;
+          } else if (responseBody['data'] != null) {
+            data =
+                responseBody['data'] is List
+                    ? responseBody['data']
+                    : [responseBody['data']];
+          } else {
+            data = [];
+          }
+
+          if (data.isEmpty) {
+            return [];
+          }
+
+          final List<Expense> parsedExpenses = [];
+          for (var jsonItem in data) {
+            try {
+              final expense = Expense.fromJson(
+                jsonItem is Map<String, dynamic>
+                    ? jsonItem
+                    : Map<String, dynamic>.from(jsonItem),
+              );
+              parsedExpenses.add(expense);
+            } catch (e) {
+              // Logger l'erreur mais continuer avec les autres dépenses
+              print(
+                '⚠️ [EXPENSE_SERVICE] Erreur lors du parsing d\'une dépense: $e',
+              );
+              print('⚠️ [EXPENSE_SERVICE] JSON problématique: $jsonItem');
+              // Continuer avec les autres dépenses
+            }
+          }
+          return parsedExpenses;
+        } catch (e) {
+          throw Exception(
+            'Erreur lors du parsing de la réponse: $e. Réponse: ${response.body}',
+          );
         }
-        return data.map((json) => Expense.fromJson(json)).toList();
       }
       throw Exception(
         'Erreur lors de la récupération des dépenses: ${response.statusCode}',

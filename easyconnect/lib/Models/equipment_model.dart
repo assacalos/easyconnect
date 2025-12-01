@@ -82,6 +82,9 @@ class Equipment {
         'hors service': 'broken',
         'retiré': 'retired',
         'retire': 'retired',
+        'en attente': 'pending',
+        'en_attente': 'pending',
+        'pending': 'pending',
       };
       // Vérifier si c'est un libellé français
       if (statusMap.containsKey(statusStr)) {
@@ -94,6 +97,8 @@ class Equipment {
         'maintenance',
         'broken',
         'retired',
+        'pending',
+        'en_attente',
       ].contains(statusStr)) {
         return statusStr;
       }
@@ -181,6 +186,9 @@ class Equipment {
         return 'Hors service';
       case 'retired':
         return 'Retiré';
+      case 'pending':
+      case 'en_attente':
+        return 'En attente';
       default:
         return 'Inconnu';
     }
@@ -198,6 +206,9 @@ class Equipment {
         return Colors.red;
       case 'retired':
         return Colors.purple;
+      case 'pending':
+      case 'en_attente':
+        return Colors.amber;
       default:
         return Colors.grey;
     }
@@ -215,6 +226,9 @@ class Equipment {
         return Icons.error;
       case 'retired':
         return Icons.archive;
+      case 'pending':
+      case 'en_attente':
+        return Icons.hourglass_empty;
       default:
         return Icons.help;
     }

@@ -222,10 +222,10 @@ class SupplierForm extends StatelessWidget {
       success = await controller.updateSupplier(supplier!);
     }
 
-    // Fermer automatiquement le formulaire après succès
+    // Rediriger vers la page de liste après succès
     if (success) {
       await Future.delayed(const Duration(milliseconds: 500));
-      Get.back();
+      Get.offNamed('/suppliers');
     }
   }
 }

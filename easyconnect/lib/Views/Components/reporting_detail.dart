@@ -246,6 +246,9 @@ class ReportingDetail extends StatelessWidget {
               _buildComptableMetrics(formatCurrency),
             ] else if (role.contains('technicien')) ...[
               _buildTechnicienMetrics(),
+            ] else if (role.contains('ressources humaines') ||
+                role.contains('rh')) ...[
+              _buildRhMetrics(),
             ] else ...[
               _buildGenericMetrics(),
             ],
@@ -380,6 +383,54 @@ class ReportingDetail extends StatelessWidget {
         _buildMetricRow(
           'Déplacements',
           metrics['deplacements']?.toString() ?? '0',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRhMetrics() {
+    final metrics = reporting.metrics;
+    return Column(
+      children: [
+        _buildMetricRow(
+          'Employés recrutés',
+          metrics['employes_recrutes']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Demandes congé traitées',
+          metrics['demandes_conge_traitees']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Demandes congé approuvées',
+          metrics['demandes_conge_approuvees']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Demandes congé rejetées',
+          metrics['demandes_conge_rejetees']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Contrats créés',
+          metrics['contrats_crees']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Contrats renouvelés',
+          metrics['contrats_renouveles']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Pointages validés',
+          metrics['pointages_valides']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Entretiens réalisés',
+          metrics['entretiens_realises']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Formations organisées',
+          metrics['formations_organisees']?.toString() ?? '0',
+        ),
+        _buildMetricRow(
+          'Évaluations effectuées',
+          metrics['evaluations_effectuees']?.toString() ?? '0',
         ),
       ],
     );

@@ -548,7 +548,8 @@ class EquipmentForm extends StatelessWidget {
       success = await controller.updateEquipment(equipment!);
     }
     if (success) {
-      Get.back();
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed('/equipments');
     }
   }
 }

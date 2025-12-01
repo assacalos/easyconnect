@@ -3,7 +3,9 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
 import 'package:easyconnect/services/equipment_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class EquipmentController extends GetxController {
   final EquipmentService _equipmentService = EquipmentService();
@@ -84,12 +86,29 @@ class EquipmentController extends GetxController {
       final loadedEquipments = await _equipmentService.getEquipments();
       equipments.assignAll(loadedEquipments);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les équipements: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 5),
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (equipments.isEmpty) {
+          // Vérifier une dernière fois le cache avant d'afficher l'erreur
+          final cacheKey = 'equipments_all';
+          final cachedEquipments = CacheHelper.get<List<Equipment>>(cacheKey);
+          if (cachedEquipments == null || cachedEquipments.isEmpty) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les équipements: ${e.toString()}',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 5),
+            );
+          } else {
+            // Charger les données du cache si disponibles
+            equipments.assignAll(cachedEquipments);
+          }
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -183,14 +202,34 @@ class EquipmentController extends GetxController {
         updatedAt: DateTime.now(),
       );
 
-      await _equipmentService.createEquipment(equipment);
+      final createdEquipment = await _equipmentService.createEquipment(
+        equipment,
+      );
 
       // Attendre un peu pour que l'API mette à jour
       await Future.delayed(const Duration(milliseconds: 500));
 
       await loadEquipments();
       await loadEquipmentStats();
-      _notifyDashboard();
+
+      // Rafraîchir le dashboard technicien en arrière-plan
+      DashboardRefreshHelper.refreshTechnicienPending('equipment');
+
+      // Notifier le patron de la soumission
+      if (createdEquipment.id != null) {
+        NotificationHelper.notifySubmission(
+          entityType: 'equipment',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'equipment',
+            createdEquipment,
+          ),
+          entityId: createdEquipment.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'equipment',
+            createdEquipment.id.toString(),
+          ),
+        );
+      }
 
       clearForm();
 
@@ -285,7 +324,9 @@ class EquipmentController extends GetxController {
       await _equipmentService.updateEquipment(updatedEquipment);
       await loadEquipments();
       await loadEquipmentStats();
-      _notifyDashboard();
+
+      // Rafraîchir le dashboard technicien en arrière-plan
+      DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
       clearForm();
 
@@ -318,7 +359,9 @@ class EquipmentController extends GetxController {
       if (success) {
         equipments.removeWhere((e) => e.id == equipment.id);
         await loadEquipmentStats();
-        _notifyDashboard();
+
+        // Rafraîchir le dashboard technicien en arrière-plan
+        DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
         Get.snackbar(
           'Succès',
@@ -351,7 +394,9 @@ class EquipmentController extends GetxController {
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
-        _notifyDashboard();
+
+        // Rafraîchir le dashboard technicien en arrière-plan
+        DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
         Get.snackbar(
           'Succès',
@@ -387,7 +432,9 @@ class EquipmentController extends GetxController {
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
-        _notifyDashboard();
+
+        // Rafraîchir le dashboard technicien en arrière-plan
+        DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
         Get.snackbar(
           'Succès',
@@ -421,6 +468,9 @@ class EquipmentController extends GetxController {
         await loadEquipments();
         await loadEquipmentStats();
 
+        // Rafraîchir le dashboard technicien en arrière-plan
+        DashboardRefreshHelper.refreshTechnicienPending('equipment');
+
         Get.snackbar(
           'Succès',
           'Équipement assigné avec succès',
@@ -449,6 +499,9 @@ class EquipmentController extends GetxController {
       if (success) {
         await loadEquipments();
         await loadEquipmentStats();
+
+        // Rafraîchir le dashboard technicien en arrière-plan
+        DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
         Get.snackbar(
           'Succès',
@@ -492,16 +545,6 @@ class EquipmentController extends GetxController {
     selectedNextMaintenance.value = equipment.nextMaintenance;
     selectedAttachments.assignAll(equipment.attachments ?? []);
     selectedEquipment.value = equipment;
-  }
-
-  // Notifier le dashboard technicien d'un changement
-  void _notifyDashboard() {
-    try {
-      if (Get.isRegistered<TechnicienDashboardController>()) {
-        final dashboardController = Get.find<TechnicienDashboardController>();
-        dashboardController.refreshPendingEntities();
-      }
-    } catch (e) {}
   }
 
   // Vider le formulaire
@@ -642,6 +685,7 @@ class EquipmentController extends GetxController {
 
   // Obtenir les statuts
   List<Map<String, dynamic>> get statuses => [
+    {'value': 'pending', 'label': 'En attente', 'color': Colors.amber},
     {'value': 'active', 'label': 'Actif', 'color': Colors.green},
     {'value': 'inactive', 'label': 'Inactif', 'color': Colors.grey},
     {'value': 'maintenance', 'label': 'En maintenance', 'color': Colors.orange},

@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Bordereau;
 use App\Models\BordereauItem;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class BordereauController extends Controller
 {
+    use SendsNotifications;
     // Récupérer tous les bordereaux (avec filtre status facultatif)
     public function index(Request $request)
     {
@@ -58,6 +61,20 @@ class BordereauController extends Controller
                 'designation' => $item['designation'],
                 'quantite' => $item['quantite'],
                 'description' => $item['description'] ?? null,
+            ]);
+        }
+
+        // Notifier le patron lors de la création (status=1 = soumis)
+        $patron = User::where('role', 6)->first();
+        if ($patron) {
+            $this->createNotification([
+                'user_id' => $patron->id,
+                'title' => 'Soumission Bordereau',
+                'message' => "Bordereau #{$bordereau->reference} a été soumis pour validation",
+                'type' => 'info',
+                'entity_type' => 'bordereau',
+                'entity_id' => $bordereau->id,
+                'action_route' => "/bordereaux/{$bordereau->id}",
             ]);
         }
 
@@ -133,6 +150,19 @@ class BordereauController extends Controller
                 'commentaire' => null // effacer tout commentaire de rejet
             ]);
 
+            // Notifier l'auteur du bordereau
+            if ($bordereau->user_id) {
+                $this->createNotification([
+                    'user_id' => $bordereau->user_id,
+                    'title' => 'Validation Bordereau',
+                    'message' => "Bordereau #{$bordereau->reference} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'bordereau',
+                    'entity_id' => $bordereau->id,
+                    'action_route' => "/bordereaux/{$bordereau->id}",
+                ]);
+            }
+
             // Recharger le bordereau avec ses relations
             $bordereau->refresh();
             $bordereau->load(['items', 'client', 'user']);
@@ -185,6 +215,20 @@ class BordereauController extends Controller
                 'status' => 3, // rejeté
                 'commentaire' => $request->commentaire
             ]);
+
+            // Notifier l'auteur du bordereau
+            if ($bordereau->user_id) {
+                $this->createNotification([
+                    'user_id' => $bordereau->user_id,
+                    'title' => 'Rejet Bordereau',
+                    'message' => "Bordereau #{$bordereau->reference} a été rejeté. Raison: {$request->commentaire}",
+                    'type' => 'error',
+                    'entity_type' => 'bordereau',
+                    'entity_id' => $bordereau->id,
+                    'action_route' => "/bordereaux/{$bordereau->id}",
+                    'metadata' => ['reason' => $request->commentaire],
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

@@ -296,8 +296,9 @@ class _StockFormState extends State<StockForm> {
             : await controller.updateStock(widget.stock!);
 
     if (success && mounted) {
-      // Retour automatique à la liste après enregistrement réussi
-      Get.back();
+      // Rediriger vers la page de liste après enregistrement réussi
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed('/stocks');
     }
   }
 }

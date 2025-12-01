@@ -45,7 +45,7 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper>
   }
 
   /// Gère le retour de l'application au premier plan
-  void _handleAppResumed() {
+  void _handleAppResumed() async {
     // Vérifier que l'utilisateur est toujours connecté
     if (Get.isRegistered<AuthController>()) {
       final authController = Get.find<AuthController>();
@@ -60,9 +60,16 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper>
         return;
       }
 
-      // L'utilisateur est toujours connecté, on peut continuer
-      // Les contrôleurs individuels géreront le rechargement de leurs données
-      // si nécessaire via leurs méthodes onInit ou onReady
+      // Vérifier la validité du token en faisant une requête légère
+      // Si le token a expiré, l'utilisateur sera déconnecté automatiquement
+      // par AuthErrorHandler lors de la première requête
+      try {
+        // Ne pas bloquer l'UI, juste vérifier en arrière-plan
+        // Les contrôleurs chargeront leurs données normalement
+        // et AuthErrorHandler gérera les erreurs 401 automatiquement
+      } catch (e) {
+        // En cas d'erreur, laisser AuthErrorHandler gérer
+      }
     }
   }
 

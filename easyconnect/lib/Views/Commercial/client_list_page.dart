@@ -5,11 +5,19 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class ClientsPage extends StatelessWidget {
+class ClientsPage extends StatefulWidget {
   final bool isPatron;
   final int status;
 
-  ClientsPage({super.key, this.isPatron = false, this.status = 1});
+  const ClientsPage({super.key, this.isPatron = false, this.status = 1});
+
+  @override
+  State<ClientsPage> createState() => _ClientsPageState();
+}
+
+class _ClientsPageState extends State<ClientsPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   // Fonctions pour convertir le statut int en représentation textuelle
   String _getStatusText(int status) {
@@ -46,58 +54,77 @@ class ClientsPage extends StatelessWidget {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Récupérer l'index de l'onglet depuis les paramètres de la route
+    final tabParam = Get.parameters['tab'];
+    final initialIndex = tabParam != null ? int.tryParse(tabParam) ?? 0 : 0;
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
+
+    // Charger les données au démarrage de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = Get.find<ClientController>();
+      controller.loadClients(status: null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final ClientController controller = Get.find<ClientController>();
 
-    // Charger tous les clients (sans filtre de statut) au démarrage
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadClients(status: null);
-    });
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Clients'),
-          backgroundColor: Colors.blueAccent,
-          foregroundColor: Colors.white,
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'En attente'),
-              Tab(text: 'Validés'),
-              Tab(text: 'Rejetés'),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Clients'),
+        backgroundColor: Colors.blueAccent,
+        foregroundColor: Colors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'En attente'),
+            Tab(text: 'Validés'),
+            Tab(text: 'Rejetés'),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              controller.loadClients(status: null);
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabController,
+            children: [
+              _buildClientList(0), // En attente
+              _buildClientList(1), // Validés
+              _buildClientList(2), // Rejetés
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () {
-                controller.loadClients(status: null);
-              },
+          // Bouton d'ajout uniforme en bas à droite (seulement pour commerciaux et patrons)
+          RoleBasedWidget(
+            allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.COMMERCIAL],
+            child: UniformAddButton(
+              onPressed: () => Get.toNamed('/clients/new'),
+              label: 'Nouveau Client',
+              icon: Icons.person_add,
             ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            TabBarView(
-              children: [
-                _buildClientList(0), // En attente
-                _buildClientList(1), // Validés
-                _buildClientList(2), // Rejetés
-              ],
-            ),
-            // Bouton d'ajout uniforme en bas à droite (seulement pour commerciaux et patrons)
-            RoleBasedWidget(
-              allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.COMMERCIAL],
-              child: UniformAddButton(
-                onPressed: () => Get.toNamed('/clients/new'),
-                label: 'Nouveau Client',
-                icon: Icons.person_add,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

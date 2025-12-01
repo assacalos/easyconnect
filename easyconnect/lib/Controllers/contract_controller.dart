@@ -4,6 +4,7 @@ import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/services/contract_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/Models/employee_model.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class ContractController extends GetxController {
   final ContractService _contractService = ContractService.to;
@@ -166,11 +167,20 @@ class ContractController extends GetxController {
       contracts.value = contractsList;
       applyFilters();
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les contrats',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (contracts.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les contrats',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -495,6 +505,23 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier le patron de la soumission
+        if (result['data'] != null && result['data']['id'] != null) {
+          final contractData = result['data'];
+          NotificationHelper.notifySubmission(
+            entityType: 'contract',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'contract',
+              contractData,
+            ),
+            entityId: contractData['id'].toString(),
+            route: NotificationHelper.getEntityRoute(
+              'contract',
+              contractData['id'].toString(),
+            ),
+          );
+        }
+
         Get.snackbar('Succès', 'Contrat créé avec succès');
         clearForm();
         loadContracts();
@@ -540,6 +567,20 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'contract',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'contract',
+            contract,
+          ),
+          entityId: contract.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'contract',
+            contract.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Contrat approuvé avec succès');
         loadContracts();
         loadContractStats();
@@ -563,6 +604,21 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'contract',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'contract',
+            contract,
+          ),
+          entityId: contract.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute(
+            'contract',
+            contract.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Contrat rejeté');
         loadContracts();
         loadContractStats();

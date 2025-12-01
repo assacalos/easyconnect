@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\BonDeCommande;
 use App\Models\BonDeCommandeItem;
 use App\Models\Fournisseur;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class BonDeCommandeController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des bons de commande avec filtres avancés
      * Accessible par Commercial, Comptable, Patron et Admin
@@ -177,6 +180,22 @@ class BonDeCommandeController extends Controller
 
             DB::commit();
 
+            // Notifier le patron si le bon est en attente
+            if ($bon->statut === 'en_attente') {
+                $patron = User::where('role', 6)->first();
+                if ($patron) {
+                    $this->createNotification([
+                        'user_id' => $patron->id,
+                        'title' => 'Soumission Bon de Commande',
+                        'message' => "Bon de commande #{$bon->numero_commande} a été soumis pour validation",
+                        'type' => 'info',
+                        'entity_type' => 'bon_commande',
+                        'entity_id' => $bon->id,
+                        'action_route' => "/bons-de-commande/{$bon->id}",
+                    ]);
+                }
+            }
+
             $bon->load(['fournisseur', 'createur', 'items']);
 
             return response()->json([
@@ -307,6 +326,19 @@ class BonDeCommandeController extends Controller
             'date_validation' => now()
         ]);
 
+        // Notifier l'auteur du bon de commande
+        if ($bon->user_id) {
+            $this->createNotification([
+                'user_id' => $bon->user_id,
+                'title' => 'Validation Bon de Commande',
+                'message' => "Bon de commande #{$bon->numero} a été validé",
+                'type' => 'success',
+                'entity_type' => 'bon_commande',
+                'entity_id' => $bon->id,
+                'action_route' => "/bons-de-commande/{$bon->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'bon_de_commande' => $bon,
@@ -339,6 +371,20 @@ class BonDeCommandeController extends Controller
             'commentaire' => $request->commentaire,
             'date_annulation' => now()
         ]);
+
+        // Notifier l'auteur du bon de commande
+        if ($bon->user_id) {
+            $this->createNotification([
+                'user_id' => $bon->user_id,
+                'title' => 'Rejet Bon de Commande',
+                'message' => "Bon de commande #{$bon->numero} a été rejeté. Raison: {$request->commentaire}",
+                'type' => 'error',
+                'entity_type' => 'bon_commande',
+                'entity_id' => $bon->id,
+                'action_route' => "/bons-de-commande/{$bon->id}",
+                'metadata' => ['reason' => $request->commentaire],
+            ]);
+        }
 
         return response()->json([
             'success' => true,

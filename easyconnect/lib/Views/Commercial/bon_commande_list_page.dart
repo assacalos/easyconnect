@@ -4,15 +4,33 @@ import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 
-class BonCommandeListPage extends StatelessWidget {
+class BonCommandeListPage extends StatefulWidget {
+  const BonCommandeListPage({super.key});
+
+  @override
+  State<BonCommandeListPage> createState() => _BonCommandeListPageState();
+}
+
+class _BonCommandeListPageState extends State<BonCommandeListPage> {
   final BonCommandeController controller = Get.find<BonCommandeController>();
-  BonCommandeListPage({super.key});
+  bool _hasLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_hasLoaded) {
+      _hasLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Ne charger que si les données ne sont pas déjà chargées
+        if (controller.bonCommandes.isEmpty && !controller.isLoading.value) {
+          controller.loadBonCommandes();
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadBonCommandes();
-    });
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bons de commande'),

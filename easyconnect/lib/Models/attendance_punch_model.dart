@@ -80,7 +80,6 @@ class AttendancePunchModel {
 
   factory AttendancePunchModel.fromJson(Map<String, dynamic> json) {
     try {
-      // Logger le statut brut avant normalisation
       final rawStatus = json['status']?.toString();
 
       // Gérer les deux formats possibles : nouveau format (check_in_time/check_out_time) et ancien format (timestamp/type)

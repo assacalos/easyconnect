@@ -1,4 +1,5 @@
 import 'package:easyconnect/Controllers/attendance_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Controllers/contract_controller.dart';
 import 'package:easyconnect/Controllers/employee_controller.dart';
 import 'package:easyconnect/Controllers/equipment_controller.dart';
@@ -46,6 +47,11 @@ class PatronBinding extends Bindings {
   @override
   void dependencies() {
     print('=== INITIALISATION PATRON BINDING ===');
+
+    // S'assurer que l'AuthController est disponible
+    if (!Get.isRegistered<AuthController>()) {
+      Get.put(AuthController(), permanent: true);
+    }
 
     // Services d'abord
     Get.put(PatronDashboardService(), permanent: true);

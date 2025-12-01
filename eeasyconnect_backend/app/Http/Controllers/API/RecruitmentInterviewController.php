@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
 use App\Models\RecruitmentInterview;
 use App\Models\RecruitmentApplication;
 use Illuminate\Http\Request;

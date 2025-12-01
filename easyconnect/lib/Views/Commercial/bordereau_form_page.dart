@@ -512,12 +512,14 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                 data,
               );
               if (success) {
-                Get.back();
+                await Future.delayed(const Duration(milliseconds: 500));
+                Get.offNamed('/bordereaux');
               }
             } else {
               final success = await controller.createBordereau(data);
               if (success) {
-                Get.back();
+                await Future.delayed(const Duration(milliseconds: 500));
+                Get.offNamed('/bordereaux');
               }
             }
           }

@@ -28,7 +28,10 @@ class _ExpenseListState extends State<ExpenseList>
         controller.loadExpenses();
       }
     });
-    controller.loadExpenses();
+    // Charger les données après que le widget soit construit
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadExpenses();
+    });
   }
 
   @override

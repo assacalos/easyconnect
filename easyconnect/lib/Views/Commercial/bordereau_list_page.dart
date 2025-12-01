@@ -14,8 +14,9 @@ class BordereauListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Charger les bordereaux au chargement de la page
+    // Charger les données au démarrage de la page
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
       controller.loadBordereaux();
     });
 

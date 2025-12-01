@@ -36,6 +36,10 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
   Future<void> _loadClients() async {
     try {
       _isLoading.value = true;
+
+      // Réinitialiser la liste pour éviter les problèmes de colonnes
+      _clients.value = [];
+
       final clients = await _clientService.getClients(
         status: 1,
       ); // Status 1 = Validé
@@ -48,14 +52,9 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
         // L'utilisateur verra le message dans le dialog
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les clients: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 4),
-      );
+      // Ne pas afficher de snackbar dans le dialog pour éviter les messages d'erreur répétés
+      // L'erreur sera affichée dans le dialog lui-même
+      print('⚠️ [CLIENT_SELECTION_DIALOG] Erreur lors du chargement: $e');
       _clients.value = []; // S'assurer que la liste est vide en cas d'erreur
     } finally {
       _isLoading.value = false;
@@ -205,11 +204,17 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: client.statusColor,
-                          child: Icon(client.statusIcon, color: Colors.white),
+                          child: Icon(
+                            client.statusIcon,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                         title: Text(
                           nameToDisplay,
                           style: const TextStyle(fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,35 +225,51 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
                                 '${client.nom ?? ''} ${client.prenom ?? ''}'
                                     .trim()
                                     .isNotEmpty)
-                              Text(
-                                'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
-                                    .trim(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
+                                      .trim(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
                             if (client.email != null)
-                              Text(
-                                'Email: ${client.email}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  'Email: ${client.email}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
                             if (client.contact != null)
-                              Text(
-                                'Contact: ${client.contact}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
+                                child: Text(
+                                  'Tél: ${client.contact}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
-                            Text(
-                              'Statut: ${client.statusText}',
-                              style: TextStyle(
-                                color: client.statusColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Statut: ${client.statusText}',
+                                style: TextStyle(
+                                  color: client.statusColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        isThreeLine: false,
+                        isThreeLine: true,
+                        dense: true,
                         onTap: () {
                           widget.onClientSelected(client);
                           Navigator.of(context).pop();

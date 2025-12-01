@@ -29,7 +29,10 @@ class _SalaryListState extends State<SalaryList>
         setState(() {});
       }
     });
-    controller.loadSalaries();
+    // Charger les données après que le widget soit construit
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadSalaries();
+    });
   }
 
   @override
@@ -315,7 +318,7 @@ class _SalaryListState extends State<SalaryList>
                       onPressed: () => Get.to(() => SalaryForm(salary: salary)),
                     ),
                   ],
-                  if (salary.status == 'pending' &&
+                  /* if (salary.status == 'pending' &&
                       controller.canApproveSalaries) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
@@ -343,7 +346,7 @@ class _SalaryListState extends State<SalaryList>
                       style: TextButton.styleFrom(foregroundColor: Colors.blue),
                       onPressed: () => _showMarkPaidDialog(salary),
                     ),
-                  ],
+                  ], */
                   // Note: Pas de méthode generatePDF pour les salaires
                 ],
               ),
@@ -384,7 +387,7 @@ class _SalaryListState extends State<SalaryList>
     }
   }
 
-  void _showApproveDialog(Salary salary) {
+  /*  void _showApproveDialog(Salary salary) {
     final notesController = TextEditingController();
 
     Get.dialog(
@@ -421,9 +424,9 @@ class _SalaryListState extends State<SalaryList>
         ],
       ),
     );
-  }
+  } */
 
-  void _showRejectDialog(Salary salary) {
+  /*  void _showRejectDialog(Salary salary) {
     final reasonController = TextEditingController();
 
     Get.dialog(
@@ -461,7 +464,7 @@ class _SalaryListState extends State<SalaryList>
         ],
       ),
     );
-  }
+  } */
 
   void _showMarkPaidDialog(Salary salary) {
     Get.dialog(

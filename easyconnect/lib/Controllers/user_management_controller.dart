@@ -50,13 +50,22 @@ class UserManagementController extends GetxController {
       final loadedUsers = await _userService.getUsers();
       users.value = loadedUsers;
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les utilisateurs: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (users.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les utilisateurs: $e',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        }
+      }
     } finally {
       isLoading.value = false;
     }

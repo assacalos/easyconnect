@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Salary;
 use App\Models\SalaryComponent;
 use App\Models\SalaryItem;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 class SalaryController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des salaires
      */
@@ -603,6 +605,22 @@ class SalaryController extends Controller
             $notes = $request->get('notes');
 
             if ($salary->approve($request->user()->id, $notes)) {
+                // Notifier l'employé concerné
+                if ($salary->employee_id) {
+                    $employee = Employee::find($salary->employee_id);
+                    if ($employee && $employee->user_id) {
+                        $this->createNotification([
+                            'user_id' => $employee->user_id,
+                            'title' => 'Approbation Salaire',
+                            'message' => "Salaire pour {$employee->prenom} {$employee->nom} a été approuvé",
+                            'type' => 'success',
+                            'entity_type' => 'salary',
+                            'entity_id' => $salary->id,
+                            'action_route' => "/salaries/{$salary->id}",
+                        ]);
+                    }
+                }
+
                 // Recharger le salaire avec ses relations
                 $salary->refresh();
                 $salary->load(['employee', 'hr', 'approver', 'salaryItems.salaryComponent']);
@@ -815,6 +833,24 @@ class SalaryController extends Controller
             ]);
 
             if ($salary->cancel($validated['reason'] ?? null)) {
+                // Notifier l'employé concerné
+                if ($salary->employee_id) {
+                    $employee = Employee::find($salary->employee_id);
+                    if ($employee && $employee->user_id) {
+                        $reason = $validated['reason'] ?? 'Rejeté';
+                        $this->createNotification([
+                            'user_id' => $employee->user_id,
+                            'title' => 'Rejet Salaire',
+                            'message' => "Salaire pour {$employee->prenom} {$employee->nom} a été rejeté. Raison: {$reason}",
+                            'type' => 'error',
+                            'entity_type' => 'salary',
+                            'entity_id' => $salary->id,
+                            'action_route' => "/salaries/{$salary->id}",
+                            'metadata' => ['reason' => $reason],
+                        ]);
+                    }
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $salary->load(['employee', 'hr']),

@@ -14,9 +14,12 @@ class RecruitmentForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final RecruitmentController controller = Get.put(RecruitmentController());
 
-    // Charger les départements si la liste est vide
+    // Charger les départements et postes si les listes sont vides
     if (controller.departments.isEmpty) {
       controller.loadDepartments();
+    }
+    if (controller.positions.isEmpty) {
+      controller.loadPositions();
     }
 
     // Si on édite une demande existante, remplir le formulaire
@@ -68,75 +71,131 @@ class RecruitmentForm extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value:
-                            controller.selectedDepartmentForm.value.isEmpty
-                                ? null
-                                : controller.selectedDepartmentForm.value,
-                        decoration: const InputDecoration(
-                          labelText: 'Département *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.business),
-                        ),
-                        items:
-                            controller.departmentOptions
-                                .where((dept) => dept['value'] != 'all')
-                                .map<DropdownMenuItem<String>>((dept) {
-                                  return DropdownMenuItem<String>(
-                                    value: dept['value']!,
-                                    child: Text(dept['label']!),
-                                  );
-                                })
-                                .toList(),
-                        onChanged:
-                            (value) => controller.selectDepartment(value!),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Le département est obligatoire';
-                          }
-                          return null;
-                        },
+              // Sélection multiple des départements
+              Obx(
+                () => InkWell(
+                  onTap:
+                      () => _showMultiSelectDialog(
+                        context,
+                        'Sélectionner les départements',
+                        controller.departmentOptions
+                            .where((dept) => dept['value'] != 'all')
+                            .map(
+                              (dept) => {
+                                'value': dept['value']!,
+                                'label': dept['label']!,
+                              },
+                            )
+                            .toList(),
+                        controller.selectedDepartmentsForm,
+                        (value) => controller.toggleDepartment(value),
+                        (value) => controller.isDepartmentSelected(value),
                       ),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Départements *',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.business),
+                      errorText:
+                          controller.selectedDepartmentsForm.isEmpty
+                              ? 'Au moins un département est obligatoire'
+                              : null,
                     ),
+                    child:
+                        controller.selectedDepartmentsForm.isEmpty
+                            ? Text(
+                              'Sélectionner les départements',
+                              style: TextStyle(color: Colors.grey[600]),
+                            )
+                            : Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children:
+                                  controller.selectedDepartmentsForm.map((
+                                    dept,
+                                  ) {
+                                    final deptLabel =
+                                        controller.departmentOptions.firstWhere(
+                                          (d) => d['value'] == dept,
+                                          orElse: () => {'label': dept},
+                                        )['label']!;
+                                    return Chip(
+                                      label: Text(deptLabel),
+                                      onDeleted:
+                                          () =>
+                                              controller.toggleDepartment(dept),
+                                      deleteIcon: const Icon(
+                                        Icons.close,
+                                        size: 18,
+                                      ),
+                                    );
+                                  }).toList(),
+                            ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value:
-                            controller.selectedPositionForm.value.isEmpty
-                                ? null
-                                : controller.selectedPositionForm.value,
-                        decoration: const InputDecoration(
-                          labelText: 'Poste *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.work),
-                        ),
-                        items:
-                            controller.positionOptions
-                                .where((pos) => pos['value'] != 'all')
-                                .map<DropdownMenuItem<String>>((pos) {
-                                  return DropdownMenuItem<String>(
-                                    value: pos['value']!,
-                                    child: Text(pos['label']!),
-                                  );
-                                })
-                                .toList(),
-                        onChanged: (value) => controller.selectPosition(value!),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Le poste est obligatoire';
-                          }
-                          return null;
-                        },
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Sélection multiple des postes
+              Obx(
+                () => InkWell(
+                  onTap:
+                      () => _showMultiSelectDialog(
+                        context,
+                        'Sélectionner les postes',
+                        controller.positionOptions
+                            .where((pos) => pos['value'] != 'all')
+                            .map(
+                              (pos) => {
+                                'value': pos['value']!,
+                                'label': pos['label']!,
+                              },
+                            )
+                            .toList(),
+                        controller.selectedPositionsForm,
+                        (value) => controller.togglePosition(value),
+                        (value) => controller.isPositionSelected(value),
                       ),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Postes *',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.work),
+                      errorText:
+                          controller.selectedPositionsForm.isEmpty
+                              ? 'Au moins un poste est obligatoire'
+                              : null,
                     ),
+                    child:
+                        controller.selectedPositionsForm.isEmpty
+                            ? Text(
+                              'Sélectionner les postes',
+                              style: TextStyle(color: Colors.grey[600]),
+                            )
+                            : Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children:
+                                  controller.selectedPositionsForm.map((pos) {
+                                    final posLabel =
+                                        controller.positionOptions.firstWhere(
+                                          (p) => p['value'] == pos,
+                                          orElse: () => {'label': pos},
+                                        )['label']!;
+                                    return Chip(
+                                      label: Text(posLabel),
+                                      onDeleted:
+                                          () => controller.togglePosition(pos),
+                                      deleteIcon: const Icon(
+                                        Icons.close,
+                                        size: 18,
+                                      ),
+                                    );
+                                  }).toList(),
+                            ),
                   ),
-                ],
+                ),
               ),
 
               const SizedBox(height: 16),
@@ -411,10 +470,56 @@ class RecruitmentForm extends StatelessWidget {
     );
   }
 
+  // Afficher un dialogue de sélection multiple
+  void _showMultiSelectDialog(
+    BuildContext context,
+    String title,
+    List<Map<String, String>> options,
+    RxList<String> selectedValues,
+    Function(String) onToggle,
+    bool Function(String) isSelected,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: options.length,
+              itemBuilder: (context, index) {
+                final option = options[index];
+                final value = option['value']!;
+                final label = option['label']!;
+                final selected = isSelected(value);
+
+                return CheckboxListTile(
+                  title: Text(label),
+                  value: selected,
+                  onChanged: (bool? checked) {
+                    onToggle(value);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Fermer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _saveRecruitmentRequest(RecruitmentController controller) async {
     if (controller.titleController.text.trim().isEmpty ||
-        controller.selectedDepartmentForm.value.isEmpty ||
-        controller.selectedPositionForm.value.isEmpty ||
+        controller.selectedDepartmentsForm.isEmpty ||
+        controller.selectedPositionsForm.isEmpty ||
         controller.descriptionController.text.trim().isEmpty ||
         controller.requirementsController.text.trim().isEmpty ||
         controller.responsibilitiesController.text.trim().isEmpty ||
@@ -430,7 +535,10 @@ class RecruitmentForm extends StatelessWidget {
     if (request == null) {
       final success = await controller.createRecruitmentRequest();
       if (success) {
-        Get.back(); // Retour automatique à la liste après succès
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed(
+          '/recruitment',
+        ); // Redirection automatique vers la liste après succès
       }
     } else {
       // TODO: Implémenter la mise à jour

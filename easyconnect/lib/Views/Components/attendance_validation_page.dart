@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../Models/attendance_punch_model.dart';
 import '../../services/attendance_punch_service.dart';
+import '../../Controllers/auth_controller.dart';
+import '../../utils/roles.dart';
 
 class AttendanceValidationPage extends StatefulWidget {
   const AttendanceValidationPage({super.key});
@@ -13,6 +15,7 @@ class AttendanceValidationPage extends StatefulWidget {
 
 class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
   final AttendancePunchService _punchService = AttendancePunchService();
+  final AuthController _authController = Get.find<AuthController>();
 
   List<AttendancePunchModel> _attendances = [];
   bool _isLoading = false;
@@ -28,118 +31,63 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
     setState(() => _isLoading = true);
 
     try {
-      final attendances = await _punchService.getPendingAttendances();
+      final user = _authController.userAuth.value;
+      if (user == null) {
+        print('⚠️ [ATTENDANCE_VALIDATION_PAGE] Utilisateur non connecté');
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      List<AttendancePunchModel> attendances;
+
+      // Si c'est un patron, charger tous les pointages
+      // Sinon, charger uniquement les pointages de l'utilisateur connecté
+      if (user.role == Roles.PATRON) {
+        print(
+          '📋 [ATTENDANCE_VALIDATION_PAGE] Chargement de tous les pointages (Patron)',
+        );
+        attendances = await _punchService.getAttendances();
+      } else {
+        print(
+          '📋 [ATTENDANCE_VALIDATION_PAGE] Chargement des pointages pour utilisateur: ${user.id}, rôle: ${user.role}',
+        );
+        attendances = await _punchService.getAttendances(userId: user.id);
+      }
+
       setState(() {
         _attendances = attendances;
       });
+      print(
+        '📋 [ATTENDANCE_VALIDATION_PAGE] Pointages chargés: ${attendances.length}',
+      );
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger les pointages');
+      print('❌ [ATTENDANCE_VALIDATION_PAGE] Erreur lors du chargement: $e');
+      Get.snackbar('Erreur', 'Impossible de charger les pointages: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _approveAttendance(AttendancePunchModel attendance) async {
-    try {
-      final result = await _punchService.approveAttendance(attendance.id!);
-
-      if (result['success'] == true) {
-        Get.snackbar(
-          'Succès',
-          'Pointage approuvé',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
-        _loadAttendances();
-      } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'],
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
-      }
-    } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
-    }
-  }
-
-  Future<void> _rejectAttendance(AttendancePunchModel attendance) async {
-    final TextEditingController reasonController = TextEditingController();
-
-    final result = await Get.dialog<bool>(
-      AlertDialog(
-        title: const Text('Rejeter le pointage'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Pointage de ${attendance.userName ?? 'Utilisateur inconnu'}'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(result: false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Get.back(result: true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true && reasonController.text.trim().isNotEmpty) {
-      try {
-        final rejectResult = await _punchService.rejectAttendance(
-          attendance.id!,
-          reasonController.text.trim(),
-        );
-
-        if (rejectResult['success'] == true) {
-          Get.snackbar(
-            'Succès',
-            'Pointage rejeté',
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
-          );
-          _loadAttendances();
-        } else {
-          Get.snackbar(
-            'Erreur',
-            rejectResult['message'],
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-          );
-        }
-      } catch (e) {
-        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
-      }
-    }
-  }
-
   List<AttendancePunchModel> get _filteredAttendances {
+    List<AttendancePunchModel> filtered = _attendances;
+
+    // Filtrer par type (check_in/check_out)
     switch (_selectedFilter) {
       case 'check_in':
-        return _attendances.where((a) => a.isCheckIn).toList();
+        filtered = filtered.where((a) => a.isCheckIn).toList();
+        break;
       case 'check_out':
-        return _attendances.where((a) => a.isCheckOut).toList();
+        filtered = filtered.where((a) => a.isCheckOut).toList();
+        break;
       default:
-        return _attendances;
+        // Tous les types
+        break;
     }
+
+    // Trier par date (plus récent en premier)
+    filtered.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return filtered;
   }
 
   @override
@@ -167,31 +115,36 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
           // Filtres
           Container(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               children: [
-                const Text('Filtrer: '),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedFilter,
-                    isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(value: 'all', child: Text('Tous')),
-                      DropdownMenuItem(
-                        value: 'check_in',
-                        child: Text('Arrivées'),
+                // Filtre par type
+                Row(
+                  children: [
+                    const Text('Type: '),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String>(
+                        value: _selectedFilter,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: 'all', child: Text('Tous')),
+                          DropdownMenuItem(
+                            value: 'check_in',
+                            child: Text('Arrivées'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'check_out',
+                            child: Text('Départs'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedFilter = value!;
+                          });
+                        },
                       ),
-                      DropdownMenuItem(
-                        value: 'check_out',
-                        child: Text('Départs'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedFilter = value!;
-                      });
-                    },
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -203,7 +156,27 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredAttendances.isEmpty
-                    ? const Center(child: Text('Aucun pointage en attente'))
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.inbox, size: 64, color: Colors.grey),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Aucun pointage trouvé',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${_attendances.length} pointage(s) au total',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
                     : ListView.builder(
                       itemCount: _filteredAttendances.length,
                       itemBuilder: (context, index) {
@@ -215,6 +188,20 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
         ],
       ),
     );
+  }
+
+  String _getDisplayName(AttendancePunchModel attendance) {
+    final userName = attendance.userName ?? '';
+    if (userName.toLowerCase().contains('comptable')) {
+      final user = _authController.userAuth.value;
+      if (user != null) {
+        final displayName = '${user.prenom ?? ''} ${user.nom ?? ''}'.trim();
+        if (displayName.isNotEmpty) {
+          return displayName;
+        }
+      }
+    }
+    return userName.isNotEmpty ? userName : 'Utilisateur inconnu';
   }
 
   Widget _buildAttendanceCard(AttendancePunchModel attendance) {
@@ -233,7 +220,7 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      attendance.userName ?? 'Utilisateur inconnu',
+                      _getDisplayName(attendance),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -318,37 +305,6 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
                 ),
               ),
             ],
-
-            const SizedBox(height: 16),
-
-            // Actions
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _approveAttendance(attendance),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Approuver'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _rejectAttendance(attendance),
-                    icon: const Icon(Icons.close),
-                    label: const Text('Rejeter'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),

@@ -438,11 +438,11 @@ class _SalaryFormState extends State<SalaryForm> {
       success = await controller.updateSalary(widget.salary!);
     }
 
-    // Fermer la page seulement en cas de succès
+    // Rediriger vers la page de liste seulement en cas de succès
     if (success) {
       // Attendre un peu pour que le snackbar de succès s'affiche
-      await Future.delayed(const Duration(milliseconds: 300));
-      Get.back();
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed('/salaries');
       // Note: loadSalaries() est déjà appelé dans createSalary() et updateSalary()
     }
     // Si erreur, ne pas fermer pour permettre à l'utilisateur de corriger

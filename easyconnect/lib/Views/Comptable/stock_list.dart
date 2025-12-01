@@ -343,22 +343,6 @@ class _StockListState extends State<StockList>
                         controller.loadStocks();
                       },
                     ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Valider'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.green,
-                      ),
-                      onPressed: () => _showApproveDialog(stock),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => _showRejectDialog(stock),
-                    ),
                   ],
                 ],
               ),
@@ -399,72 +383,5 @@ class _StockListState extends State<StockList>
       default:
         return 'Inconnu';
     }
-  }
-
-  void _showApproveDialog(Stock stock) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Approuver le produit'),
-        content: Text('Approuver le produit "${stock.name}" ?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              // Note: Approbation supprimée selon la nouvelle API (statuts: active/inactive/discontinued)
-              Get.back();
-              Get.snackbar(
-                'Info',
-                'Utilisez le statut "active" pour activer un produit',
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Approuver'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectDialog(Stock stock) {
-    final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le produit'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Rejeter le produit "${stock.name}" ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectStock(
-                  stock,
-                  commentaire: reasonController.text.trim(),
-                );
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
   }
 }

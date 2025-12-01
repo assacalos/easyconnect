@@ -111,7 +111,11 @@ class ReportingService extends GetxService {
                 .where((report) => report != null)
                 .cast<ReportingModel>()
                 .toList();
-        return reportsList;
+
+        // Filtrer par userId pour s'assurer que l'utilisateur ne voit que ses propres reporting
+        final filteredReports =
+            reportsList.where((report) => report.userId == userId).toList();
+        return filteredReports;
       } else {
         throw Exception(
           'Erreur lors de la récupération des rapports: ${response.statusCode} - ${response.body}',

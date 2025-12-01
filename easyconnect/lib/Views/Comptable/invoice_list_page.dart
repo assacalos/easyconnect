@@ -55,7 +55,16 @@ class _InvoiceListPageState extends State<InvoiceListPage>
         setState(() => _invoices = invoices);
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger les factures: $e');
+      // Ne pas afficher d'erreur si des données sont disponibles
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (_invoices.isEmpty) {
+          Get.snackbar('Erreur', 'Impossible de charger les factures: $e');
+        }
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -230,14 +239,32 @@ class _InvoiceListPageState extends State<InvoiceListPage>
           invoice.invoiceNumber,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        isThreeLine: true,
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Client: ${invoice.clientName}'),
-            Text(
-              'Montant: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
+            Flexible(
+              child: Text(
+                'Client: ${invoice.clientName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            Text('Date: ${_formatDate(invoice.invoiceDate)}'),
+            Flexible(
+              child: Text(
+                'Montant: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Flexible(
+              child: Text(
+                'Date: ${_formatDate(invoice.invoiceDate)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             if (invoice.status == 'rejete' &&
                 (invoice.notes != null && invoice.notes!.isNotEmpty)) ...[
               const SizedBox(height: 4),
@@ -246,10 +273,12 @@ class _InvoiceListPageState extends State<InvoiceListPage>
                 children: [
                   const Icon(Icons.report, size: 14, color: Colors.red),
                   const SizedBox(width: 4),
-                  Expanded(
+                  Flexible(
                     child: Text(
-                      'Raison du rejet: ${invoice.notes}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      'Raison: ${invoice.notes}',
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -257,60 +286,81 @@ class _InvoiceListPageState extends State<InvoiceListPage>
             ],
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Bouton Détail
-            IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.blue),
-              onPressed: () => _showInvoiceDetail(invoice),
-              tooltip: 'Voir détails',
-            ),
-            // Bouton Modifier (seulement si en_attente)
-            if (invoice.status == 'en_attente')
+        trailing: Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Bouton Détail
               IconButton(
-                icon: const Icon(Icons.edit, color: Colors.orange),
-                onPressed: () => _editInvoice(invoice),
-                tooltip: 'Modifier',
+                icon: const Icon(
+                  Icons.info_outline,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+                onPressed: () => _showInvoiceDetail(invoice),
+                tooltip: 'Voir détails',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
-            // Bouton PDF
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              onPressed: () => _generatePDF(invoice),
-              tooltip: 'Générer PDF',
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+              const SizedBox(width: 4),
+              // Bouton Modifier (seulement si en_attente)
+              if (invoice.status == 'en_attente')
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.orange, size: 20),
+                  onPressed: () => _editInvoice(invoice),
+                  tooltip: 'Modifier',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              if (invoice.status == 'en_attente') const SizedBox(width: 4),
+              // Bouton PDF
+              IconButton(
+                icon: const Icon(
+                  Icons.picture_as_pdf,
+                  color: Colors.red,
+                  size: 20,
+                ),
+                onPressed: () => _generatePDF(invoice),
+                tooltip: 'Générer PDF',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              const SizedBox(width: 8),
+              // Statut et montant dans une colonne compacte
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(invoice.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _getStatusLabel(invoice.status),
+                      style: TextStyle(
+                        color: _getStatusColor(invoice.status),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(invoice.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _getStatusLabel(invoice.status),
-                    style: TextStyle(
-                      color: _getStatusColor(invoice.status),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
         onTap: () => _showInvoiceDetail(invoice),
       ),

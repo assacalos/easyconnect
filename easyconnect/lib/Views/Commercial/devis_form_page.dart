@@ -4,38 +4,57 @@ import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
 
-class DevisFormPage extends StatelessWidget {
-  final DevisController controller = Get.put(DevisController());
+class DevisFormPage extends StatefulWidget {
   final bool isEditing;
   final int? devisId;
+
+  const DevisFormPage({super.key, this.isEditing = false, this.devisId});
+
+  @override
+  State<DevisFormPage> createState() => _DevisFormPageState();
+}
+
+class _DevisFormPageState extends State<DevisFormPage> {
+  final DevisController controller = Get.put(DevisController());
 
   final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
   final formatDate = DateFormat('dd/MM/yyyy');
 
   // Contrôleurs de formulaire
-  final referenceController = TextEditingController();
-  final notesController = TextEditingController();
-  final conditionsController = TextEditingController();
-  final remiseGlobaleController = TextEditingController();
-  final tvaController = TextEditingController();
-  final dateValiditeController = TextEditingController();
-
-  DevisFormPage({super.key, this.isEditing = false, this.devisId});
+  late final TextEditingController referenceController;
+  late final TextEditingController notesController;
+  late final TextEditingController conditionsController;
+  late final TextEditingController remiseGlobaleController;
+  late final TextEditingController tvaController;
+  late final TextEditingController dateValiditeController;
 
   @override
-  Widget build(BuildContext context) {
+  void initState() {
+    super.initState();
+    // Créer les contrôleurs de formulaire
+    referenceController = TextEditingController();
+    notesController = TextEditingController();
+    conditionsController = TextEditingController();
+    remiseGlobaleController = TextEditingController();
+    tvaController = TextEditingController();
+    dateValiditeController = TextEditingController();
+
+    // Ne pas appeler clearForm() ici car cela vide le formulaire même si l'utilisateur
+    // a commencé à remplir des données. clearForm() sera appelé uniquement après
+    // un succès confirmé.
+
     // Charger les clients au démarrage et initialiser la référence
     WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.searchClients('');
-      if (!isEditing) {
+      if (!widget.isEditing) {
         controller.initializeGeneratedReference();
       }
     });
 
     // Pré-remplir le formulaire si édition
-    if (isEditing && devisId != null) {
+    if (widget.isEditing && widget.devisId != null) {
       final devis = controller.devis.firstWhere(
-        (d) => d.id == devisId,
+        (d) => d.id == widget.devisId,
         orElse:
             () => Devis(
               id: 0,
@@ -66,10 +85,24 @@ class DevisFormPage extends StatelessWidget {
         controller.selectClient(client);
       }
     }
+  }
 
+  @override
+  void dispose() {
+    referenceController.dispose();
+    notesController.dispose();
+    conditionsController.dispose();
+    remiseGlobaleController.dispose();
+    tvaController.dispose();
+    dateValiditeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Modifier le devis' : 'Nouveau devis'),
+        title: Text(widget.isEditing ? 'Modifier le devis' : 'Nouveau devis'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -628,7 +661,7 @@ class DevisFormPage extends StatelessWidget {
       child: ElevatedButton.icon(
         onPressed: _saveDevis,
         icon: const Icon(Icons.save),
-        label: Text(isEditing ? 'Modifier le devis' : 'Créer le devis'),
+        label: Text(widget.isEditing ? 'Modifier le devis' : 'Créer le devis'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -641,8 +674,8 @@ class DevisFormPage extends StatelessWidget {
 
   void _saveDevis() async {
     print('💾 [DEVIS FORM] Début de la sauvegarde du devis');
-    print('💾 [DEVIS FORM] Mode édition: $isEditing');
-    print('💾 [DEVIS FORM] Devis ID: $devisId');
+    print('💾 [DEVIS FORM] Mode édition: ${widget.isEditing}');
+    print('💾 [DEVIS FORM] Devis ID: ${widget.devisId}');
 
     if (controller.selectedClient.value == null) {
       print('❌ [DEVIS FORM] Aucun client sélectionné');
@@ -710,13 +743,14 @@ class DevisFormPage extends StatelessWidget {
     print('💾 [DEVIS FORM] - remise_globale: ${data['remise_globale']}');
     print('💾 [DEVIS FORM] - tva: ${data['tva']}');
 
-    if (isEditing && devisId != null) {
-      print('💾 [DEVIS FORM] Mise à jour du devis $devisId');
-      final success = await controller.updateDevis(devisId!, data);
+    if (widget.isEditing && widget.devisId != null) {
+      print('💾 [DEVIS FORM] Mise à jour du devis ${widget.devisId}');
+      final success = await controller.updateDevis(widget.devisId!, data);
       if (success) {
         print('✅ [DEVIS FORM] Devis mis à jour avec succès');
         _clearForm();
-        Get.back();
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed('/devis');
       } else {
         print('❌ [DEVIS FORM] Échec de la mise à jour');
       }
@@ -726,7 +760,8 @@ class DevisFormPage extends StatelessWidget {
       if (success) {
         print('✅ [DEVIS FORM] Devis créé avec succès');
         _clearForm();
-        Get.back();
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed('/devis');
       } else {
         print('❌ [DEVIS FORM] Échec de la création');
       }

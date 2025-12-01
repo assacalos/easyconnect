@@ -4,6 +4,7 @@ import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/services/leave_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class LeaveController extends GetxController {
   final LeaveService _leaveService = LeaveService.to;
@@ -77,7 +78,12 @@ class LeaveController extends GetxController {
   // Charger les employés
   Future<void> loadEmployees() async {
     try {
-      final employeesList = await _employeeService.getEmployees();
+      // Réduire la limite pour éviter les réponses JSON tronquées
+      // Si besoin de plus d'employés, on peut charger par pagination
+      final employeesList = await _employeeService.getEmployees(
+        limit: 50, // Limite réduite pour éviter les réponses trop grandes
+        page: 1,
+      );
       employees.value =
           employeesList.map((employee) {
             return {
@@ -86,9 +92,65 @@ class LeaveController extends GetxController {
               'email': employee.email,
             };
           }).toList();
+
+      // Si la liste est toujours vide après le chargement, essayer de recharger avec une limite plus petite
+      if (employees.isEmpty) {
+        print(
+          '⚠️ [LEAVE_CONTROLLER] Aucun employé chargé, nouvelle tentative avec limite réduite...',
+        );
+        // Nouvelle tentative après un court délai avec une limite plus petite
+        await Future.delayed(const Duration(milliseconds: 500));
+        try {
+          final retryList = await _employeeService.getEmployees(
+            limit: 30,
+            page: 1,
+          );
+          employees.value =
+              retryList.map((employee) {
+                return {
+                  'id': employee.id,
+                  'name': '${employee.firstName} ${employee.lastName}',
+                  'email': employee.email,
+                };
+              }).toList();
+        } catch (retryError) {
+          print(
+            '❌ [LEAVE_CONTROLLER] Erreur lors de la nouvelle tentative: $retryError',
+          );
+        }
+      }
     } catch (e) {
-      // En cas d'erreur, laisser la liste vide
-      employees.value = [];
+      print('❌ [LEAVE_CONTROLLER] Erreur lors du chargement des employés: $e');
+
+      // Si l'erreur est due à une réponse JSON tronquée, essayer avec une limite plus petite
+      if (e.toString().contains('JSON tronqué') ||
+          e.toString().contains('incomplet')) {
+        print(
+          '⚠️ [LEAVE_CONTROLLER] Tentative avec limite réduite (30 employés)...',
+        );
+        try {
+          final employeesList = await _employeeService.getEmployees(
+            limit: 30,
+            page: 1,
+          );
+          employees.value =
+              employeesList.map((employee) {
+                return {
+                  'id': employee.id,
+                  'name': '${employee.firstName} ${employee.lastName}',
+                  'email': employee.email,
+                };
+              }).toList();
+        } catch (retryError) {
+          print(
+            '❌ [LEAVE_CONTROLLER] Erreur même avec limite réduite: $retryError',
+          );
+          employees.value = [];
+        }
+      } else {
+        // En cas d'autre erreur, laisser la liste vide
+        employees.value = [];
+      }
     }
   }
 
@@ -120,11 +182,20 @@ class LeaveController extends GetxController {
       leaveRequests.value = requests;
       applyFilters();
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les demandes de congés',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (leaveRequests.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les demandes de congés',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -291,6 +362,23 @@ class LeaveController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier le patron de la soumission
+        if (result['data'] != null && result['data']['id'] != null) {
+          final leaveData = result['data'];
+          NotificationHelper.notifySubmission(
+            entityType: 'leave',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'leave',
+              leaveData,
+            ),
+            entityId: leaveData['id'].toString(),
+            route: NotificationHelper.getEntityRoute(
+              'leave',
+              leaveData['id'].toString(),
+            ),
+          );
+        }
+
         Get.snackbar('Succès', 'Demande de congé créée avec succès');
         clearForm();
         loadLeaveRequests();
@@ -321,6 +409,17 @@ class LeaveController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'leave',
+          entityName: NotificationHelper.getEntityDisplayName('leave', request),
+          entityId: request.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'leave',
+            request.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Demande approuvée avec succès');
         loadLeaveRequests();
         loadLeaveStats();
@@ -349,6 +448,18 @@ class LeaveController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'leave',
+          entityName: NotificationHelper.getEntityDisplayName('leave', request),
+          entityId: request.id.toString(),
+          reason: rejectionReasonController.text.trim(),
+          route: NotificationHelper.getEntityRoute(
+            'leave',
+            request.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Demande rejetée');
         rejectionReasonController.clear();
         loadLeaveRequests();

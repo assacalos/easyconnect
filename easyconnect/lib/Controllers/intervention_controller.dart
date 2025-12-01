@@ -6,6 +6,9 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class InterventionController extends GetxController {
   final InterventionService _interventionService = InterventionService();
@@ -24,6 +27,7 @@ class InterventionController extends GetxController {
   final RxString selectedType = 'all'.obs;
   final RxString selectedPriority = 'all'.obs;
   final Rx<Intervention?> selectedIntervention = Rx<Intervention?>(null);
+  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
   // Contrôleurs de formulaire
   final TextEditingController titleController = TextEditingController();
@@ -60,9 +64,12 @@ class InterventionController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadInterventions();
-    loadInterventionStats();
-    loadPendingInterventions();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadInterventions();
+      loadInterventionStats();
+      loadPendingInterventions();
+    });
   }
 
   @override
@@ -85,11 +92,14 @@ class InterventionController extends GetxController {
   }
 
   // Charger toutes les interventions
-  Future<void> loadInterventions() async {
+  Future<void> loadInterventions({String? statusFilter}) async {
     try {
       isLoading.value = true;
+      _currentStatusFilter =
+          statusFilter ??
+          (selectedStatus.value == 'all' ? null : selectedStatus.value);
       final loadedInterventions = await _interventionService.getInterventions(
-        status: selectedStatus.value == 'all' ? null : selectedStatus.value,
+        status: _currentStatusFilter,
         type: selectedType.value == 'all' ? null : selectedType.value,
         priority:
             selectedPriority.value == 'all' ? null : selectedPriority.value,
@@ -97,11 +107,8 @@ class InterventionController extends GetxController {
       );
       interventions.assignAll(loadedInterventions);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les interventions',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur - les erreurs sont gérées silencieusement
+      // Les erreurs d'authentification sont déjà gérées par AuthErrorHandler
     } finally {
       isLoading.value = false;
     }
@@ -174,6 +181,30 @@ class InterventionController extends GetxController {
       final createdIntervention = await _interventionService.createIntervention(
         intervention,
       );
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('interventions_');
+
+      // Ajouter l'intervention à la liste localement (mise à jour optimiste)
+      if (createdIntervention.id != null) {
+        interventions.add(createdIntervention);
+        pendingInterventions.add(createdIntervention);
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'intervention',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'intervention',
+            createdIntervention,
+          ),
+          entityId: createdIntervention.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'intervention',
+            createdIntervention.id.toString(),
+          ),
+        );
+      }
+
       await loadInterventions();
       await loadInterventionStats();
       _notifyDashboard();
@@ -296,8 +327,62 @@ class InterventionController extends GetxController {
   // Approuver une intervention
   Future<void> approveIntervention(Intervention intervention) async {
     try {
-      isLoading.value = true;
+      // Mise à jour optimiste de l'UI
+      final interventionIndex = interventions.indexWhere(
+        (i) => i.id == intervention.id,
+      );
+      final pendingIndex = pendingInterventions.indexWhere(
+        (i) => i.id == intervention.id,
+      );
 
+      if (interventionIndex != -1 || pendingIndex != -1) {
+        final updatedIntervention = Intervention(
+          id: intervention.id,
+          title: intervention.title,
+          description: intervention.description,
+          type: intervention.type,
+          status: 'approved', // Approuvée
+          priority: intervention.priority,
+          scheduledDate: intervention.scheduledDate,
+          startDate: intervention.startDate,
+          endDate: intervention.endDate,
+          location: intervention.location,
+          clientId: intervention.clientId,
+          clientName: intervention.clientName,
+          clientPhone: intervention.clientPhone,
+          clientEmail: intervention.clientEmail,
+          equipment: intervention.equipment,
+          problemDescription: intervention.problemDescription,
+          solution: intervention.solution,
+          notes:
+              notesController.text.trim().isEmpty
+                  ? intervention.notes
+                  : notesController.text.trim(),
+          attachments: intervention.attachments,
+          estimatedDuration: intervention.estimatedDuration,
+          actualDuration: intervention.actualDuration,
+          cost: intervention.cost,
+          createdAt: intervention.createdAt,
+          updatedAt: DateTime.now(),
+          createdBy: intervention.createdBy,
+          approvedBy: intervention.approvedBy,
+          approvedAt: DateTime.now().toIso8601String(),
+          rejectionReason: intervention.rejectionReason,
+          completionNotes: intervention.completionNotes,
+        );
+
+        if (interventionIndex != -1) {
+          interventions[interventionIndex] = updatedIntervention;
+        }
+        if (pendingIndex != -1) {
+          pendingInterventions.removeAt(pendingIndex);
+        }
+      }
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('interventions_');
+
+      // Appel API en arrière-plan
       final success = await _interventionService.approveIntervention(
         intervention.id!,
         notes:
@@ -307,9 +392,23 @@ class InterventionController extends GetxController {
       );
 
       if (success) {
-        await loadInterventions();
-        await loadInterventionStats();
-        await loadPendingInterventions();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('intervention');
+
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'intervention',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'intervention',
+            intervention,
+          ),
+          entityId: intervention.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'intervention',
+            intervention.id.toString(),
+          ),
+        );
+
         _notifyDashboard();
 
         Get.snackbar(
@@ -317,17 +416,31 @@ class InterventionController extends GetxController {
           'Intervention approuvée',
           snackPosition: SnackPosition.BOTTOM,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadInterventions(
+            statusFilter: _currentStatusFilter,
+          ).catchError((e) {});
+          loadInterventionStats().catchError((e) {});
+          loadPendingInterventions().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadInterventions(statusFilter: _currentStatusFilter);
+        await loadPendingInterventions();
         throw Exception('Erreur lors de l\'approbation');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadInterventions(statusFilter: _currentStatusFilter);
+      await loadPendingInterventions();
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver l\'intervention',
         snackPosition: SnackPosition.BOTTOM,
       );
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -337,17 +450,87 @@ class InterventionController extends GetxController {
     String reason,
   ) async {
     try {
-      isLoading.value = true;
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('interventions_');
 
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final interventionIndex = interventions.indexWhere(
+        (i) => i.id == intervention.id,
+      );
+      final pendingIndex = pendingInterventions.indexWhere(
+        (i) => i.id == intervention.id,
+      );
+
+      if (interventionIndex != -1 || pendingIndex != -1) {
+        final originalIntervention =
+            interventionIndex != -1
+                ? interventions[interventionIndex]
+                : pendingInterventions[pendingIndex];
+        final updatedIntervention = Intervention(
+          id: originalIntervention.id,
+          title: originalIntervention.title,
+          description: originalIntervention.description,
+          type: originalIntervention.type,
+          status: 'rejected', // Rejetée
+          priority: originalIntervention.priority,
+          scheduledDate: originalIntervention.scheduledDate,
+          startDate: originalIntervention.startDate,
+          endDate: originalIntervention.endDate,
+          location: originalIntervention.location,
+          clientId: originalIntervention.clientId,
+          clientName: originalIntervention.clientName,
+          clientPhone: originalIntervention.clientPhone,
+          clientEmail: originalIntervention.clientEmail,
+          equipment: originalIntervention.equipment,
+          problemDescription: originalIntervention.problemDescription,
+          solution: originalIntervention.solution,
+          notes: originalIntervention.notes,
+          attachments: originalIntervention.attachments,
+          estimatedDuration: originalIntervention.estimatedDuration,
+          actualDuration: originalIntervention.actualDuration,
+          cost: originalIntervention.cost,
+          createdAt: originalIntervention.createdAt,
+          updatedAt: originalIntervention.updatedAt,
+          createdBy: originalIntervention.createdBy,
+          approvedBy: originalIntervention.approvedBy,
+          approvedAt: originalIntervention.approvedAt,
+          rejectionReason: reason,
+          completionNotes: originalIntervention.completionNotes,
+        );
+
+        if (interventionIndex != -1) {
+          interventions[interventionIndex] = updatedIntervention;
+        }
+        if (pendingIndex != -1) {
+          pendingInterventions.removeAt(pendingIndex);
+        }
+      }
+
+      // Appel API en arrière-plan
       final success = await _interventionService.rejectIntervention(
         intervention.id!,
         reason: reason,
       );
 
       if (success) {
-        await loadInterventions();
-        await loadInterventionStats();
-        await loadPendingInterventions();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('intervention');
+
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'intervention',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'intervention',
+            intervention,
+          ),
+          entityId: intervention.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute(
+            'intervention',
+            intervention.id.toString(),
+          ),
+        );
+
         _notifyDashboard();
 
         Get.snackbar(
@@ -355,17 +538,31 @@ class InterventionController extends GetxController {
           'Intervention rejetée',
           snackPosition: SnackPosition.BOTTOM,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadInterventions(
+            statusFilter: _currentStatusFilter,
+          ).catchError((e) {});
+          loadInterventionStats().catchError((e) {});
+          loadPendingInterventions().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadInterventions(statusFilter: _currentStatusFilter);
+        await loadPendingInterventions();
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadInterventions(statusFilter: _currentStatusFilter);
+      await loadPendingInterventions();
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter l\'intervention',
         snackPosition: SnackPosition.BOTTOM,
       );
-    } finally {
-      isLoading.value = false;
     }
   }
 

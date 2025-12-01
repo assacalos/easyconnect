@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Attendance;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ use Illuminate\Support\Str;
 
 class AttendanceController extends Controller
 {
+    use SendsNotifications;
     /**
      * Enregistrer un pointage (arrivée ou départ)
      */
@@ -55,8 +57,45 @@ class AttendanceController extends Controller
         }
 
         // Vérifier si l'utilisateur peut pointer
-        if (!$this->canUserPunch($user, $request->type)) {
-            Log::warning('User cannot punch', ['user_id' => $user->id, 'type' => $request->type]);
+        Log::info('Attendance store - Before canUserPunch check', [
+            'user_id' => $user->id,
+            'type' => $request->type,
+            'timestamp' => now()->toDateTimeString()
+        ]);
+        
+        $canPunch = $this->canUserPunch($user, $request->type);
+        
+        Log::info('Attendance store - After canUserPunch check', [
+            'user_id' => $user->id,
+            'type' => $request->type,
+            'can_punch' => $canPunch,
+            'timestamp' => now()->toDateTimeString()
+        ]);
+        
+        if (!$canPunch) {
+            // Vérifier à nouveau pour diagnostiquer
+            $today = now()->startOfDay();
+            $tomorrow = now()->copy()->addDay()->startOfDay();
+            $debugAttendance = Attendance::where('user_id', $user->id)
+                ->where('check_in_time', '>=', $today)
+                ->where('check_in_time', '<', $tomorrow)
+                ->whereNull('check_out_time')
+                ->get();
+            
+            Log::warning('User cannot punch - Debug info', [
+                'user_id' => $user->id,
+                'type' => $request->type,
+                'today' => $today->toDateTimeString(),
+                'tomorrow' => $tomorrow->toDateTimeString(),
+                'found_attendances' => $debugAttendance->map(function($a) {
+                    return [
+                        'id' => $a->id,
+                        'check_in_time' => $a->check_in_time,
+                        'check_out_time' => $a->check_out_time,
+                    ];
+                })->toArray()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Vous ne pouvez pas pointer maintenant'
@@ -104,8 +143,12 @@ class AttendanceController extends Controller
             // Si c'est un check-in, créer ou mettre à jour le pointage
             if ($request->type === 'check_in') {
                 // Vérifier s'il existe déjà un pointage du jour sans check_out
+                $today = now()->startOfDay();
+                $tomorrow = now()->copy()->addDay()->startOfDay();
+                
                 $todayAttendance = Attendance::where('user_id', $user->id)
-                    ->whereDate('check_in_time', today())
+                    ->where('check_in_time', '>=', $today)
+                    ->where('check_in_time', '<', $tomorrow)
                     ->whereNull('check_out_time')
                     ->first();
 
@@ -133,8 +176,12 @@ class AttendanceController extends Controller
                 }
             } else {
                 // C'est un check-out, trouver le pointage du jour
+                $today = now()->startOfDay();
+                $tomorrow = now()->copy()->addDay()->startOfDay();
+                
                 $todayAttendance = Attendance::where('user_id', $user->id)
-                    ->whereDate('check_in_time', today())
+                    ->where('check_in_time', '>=', $today)
+                    ->where('check_in_time', '<', $tomorrow)
                     ->whereNull('check_out_time')
                     ->first();
 
@@ -192,7 +239,8 @@ class AttendanceController extends Controller
 
         // Filtres
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $backendStatus = $this->mapStatusFromFrontend($request->status);
+            $query->where('status', $backendStatus);
         }
 
         if ($request->has('user_id')) {
@@ -241,17 +289,108 @@ class AttendanceController extends Controller
             ], 403);
         }
 
-        if ($attendance->approve($user, $request->input('comment'))) {
+        // Recharger le pointage pour s'assurer d'avoir les dernières données
+        $attendance->refresh();
+        
+        // Si le statut est null, le définir à 'en_attente' pour compatibilité avec les anciens pointages
+        if ($attendance->status === null) {
+            $attendance->status = 'en_attente';
+            $attendance->save();
+        }
+        
+        // Vérifier que le pointage peut être approuvé
+        if (!$attendance->canBeApproved()) {
+            Log::warning('Cannot approve attendance', [
+                'attendance_id' => $attendance->id,
+                'status' => $attendance->status,
+                'user_id' => $attendance->user_id,
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce pointage ne peut pas être approuvé. Statut actuel: ' . ($attendance->status ?? 'null'),
+                'current_status' => $attendance->status,
+                'attendance_id' => $attendance->id
+            ], 400);
+        }
+
+        Log::info('Attempting to approve attendance', [
+            'attendance_id' => $attendance->id,
+            'current_status' => $attendance->status,
+            'can_be_approved' => $attendance->canBeApproved(),
+            'approver_id' => $user->id,
+        ]);
+
+        $result = $attendance->approve($user, $request->input('comment'));
+        
+        Log::info('Approve result', [
+            'attendance_id' => $attendance->id,
+            'result' => $result,
+            'status_after_approve' => $attendance->status,
+        ]);
+
+        if ($result) {
+            // Utiliser fresh() pour forcer le rechargement depuis la base de données
+            // fresh() retourne une nouvelle instance depuis la DB, ce qui est plus fiable que refresh()
+            $attendance = $attendance->fresh(['user', 'validator']);
+            
+            if (!$attendance) {
+                Log::error('Cannot reload attendance after approval', [
+                    'attendance_id' => $attendance->id ?? 'unknown',
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erreur lors du rechargement du pointage'
+                ], 500);
+            }
+            
+            Log::info('Attendance approved successfully', [
+                'attendance_id' => $attendance->id,
+                'final_status' => $attendance->status,
+                'validated_by' => $attendance->validated_by,
+                'validated_at' => $attendance->validated_at,
+            ]);
+            
+            // Notifier l'utilisateur concerné
+            if ($attendance->user_id) {
+                $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
+                $this->createNotification([
+                    'user_id' => $attendance->user_id,
+                    'title' => 'Approbation Pointage',
+                    'message' => "Votre pointage du {$dateFormatted} a été approuvé",
+                    'type' => 'success',
+                    'entity_type' => 'attendance',
+                    'entity_id' => $attendance->id,
+                    'action_route' => "/attendances/{$attendance->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Pointage approuvé avec succès',
-                'data' => $attendance->fresh(['user', 'validator'])
+                'data' => [
+                    'id' => $attendance->id,
+                    'status' => $attendance->status,
+                    'validated_by' => $attendance->validated_by,
+                    'validated_at' => $attendance->validated_at,
+                    'validation_comment' => $attendance->validation_comment,
+                    'user' => $attendance->user,
+                    'validator' => $attendance->validator,
+                ]
             ]);
         }
 
+        Log::error('Failed to approve attendance', [
+            'attendance_id' => $attendance->id,
+            'current_status' => $attendance->status,
+            'can_be_approved' => $attendance->canBeApproved(),
+        ]);
+
         return response()->json([
             'success' => false,
-            'message' => 'Impossible d\'approuver ce pointage'
+            'message' => 'Impossible d\'approuver ce pointage. Vérifiez que le statut est "en_attente"',
+            'current_status' => $attendance->status,
+            'can_be_approved' => $attendance->canBeApproved()
         ], 400);
     }
 
@@ -282,11 +421,55 @@ class AttendanceController extends Controller
             ], 403);
         }
 
+        // Recharger le pointage pour s'assurer d'avoir les dernières données
+        $attendance->refresh();
+        
+        // Si le statut est null, le définir à 'en_attente' pour compatibilité avec les anciens pointages
+        if ($attendance->status === null) {
+            $attendance->status = 'en_attente';
+            $attendance->save();
+        }
+        
+        // Vérifier que le pointage peut être rejeté
+        if (!$attendance->canBeRejected()) {
+            Log::warning('Cannot reject attendance', [
+                'attendance_id' => $attendance->id,
+                'status' => $attendance->status,
+                'user_id' => $attendance->user_id,
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce pointage ne peut pas être rejeté. Statut actuel: ' . ($attendance->status ?? 'null'),
+                'current_status' => $attendance->status,
+                'attendance_id' => $attendance->id
+            ], 400);
+        }
+
         if ($attendance->reject($user, $request->reason, $request->input('comment'))) {
+            // Recharger le pointage avec les relations
+            $attendance->refresh();
+            $attendance->load(['user', 'rejector']);
+            
+            // Notifier l'utilisateur concerné
+            if ($attendance->user_id) {
+                $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
+                $this->createNotification([
+                    'user_id' => $attendance->user_id,
+                    'title' => 'Rejet Pointage',
+                    'message' => "Votre pointage du {$dateFormatted} a été rejeté. Raison: {$request->reason}",
+                    'type' => 'error',
+                    'entity_type' => 'attendance',
+                    'entity_id' => $attendance->id,
+                    'action_route' => "/attendances/{$attendance->id}",
+                    'metadata' => ['reason' => $request->reason],
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Pointage rejeté avec succès',
-                'data' => $attendance->fresh(['user', 'rejector'])
+                'data' => $attendance
             ]);
         }
 
@@ -314,19 +497,68 @@ class AttendanceController extends Controller
 
     /**
      * Vérifier si l'utilisateur peut pointer
+     * Utilise canUserPunchWithDetails() pour garantir la cohérence avec store()
      */
     public function canPunch(Request $request): JsonResponse
     {
         $user = $request->user();
         $type = $request->query('type', 'check_in');
 
-        $canPunch = $this->canUserPunch($user, $type);
-
-        return response()->json([
-            'success' => true,
-            'can_punch' => $canPunch,
-            'message' => $canPunch ? 'Vous pouvez pointer' : 'Vous ne pouvez pas pointer maintenant'
-        ]);
+        // Utiliser canUserPunchWithDetails() pour obtenir toutes les infos en une seule fois
+        $details = $this->canUserPunchWithDetails($user, $type);
+        
+        if ($type === 'check_in') {
+            if ($details['today_completed']) {
+                return response()->json([
+                    'success' => true,
+                    'can_punch' => false,
+                    'message' => 'Vous avez déjà pointé aujourd\'hui',
+                    'current_status' => 'checked_out'
+                ]);
+            }
+            
+            if ($details['today_attendance']) {
+                return response()->json([
+                    'success' => true,
+                    'can_punch' => false,
+                    'message' => 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.',
+                    'current_status' => 'checked_in'
+                ]);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'can_punch' => $details['can_punch'],
+                'message' => 'Vous pouvez pointer votre arrivée',
+                'current_status' => 'no_attendance'
+            ]);
+        } else {
+            // check_out
+            if ($details['today_attendance']) {
+                return response()->json([
+                    'success' => true,
+                    'can_punch' => $details['can_punch'],
+                    'message' => 'Vous pouvez pointer votre départ',
+                    'current_status' => 'checked_in'
+                ]);
+            }
+            
+            if ($details['today_completed']) {
+                return response()->json([
+                    'success' => true,
+                    'can_punch' => false,
+                    'message' => 'Vous avez déjà pointé votre départ aujourd\'hui',
+                    'current_status' => 'checked_out'
+                ]);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'can_punch' => false,
+                'message' => 'Vous devez d\'abord pointer votre arrivée',
+                'current_status' => 'no_attendance'
+            ]);
+        }
     }
 
     /**
@@ -366,33 +598,97 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Vérifier si l'utilisateur peut pointer
+     * Vérifier si l'utilisateur peut pointer avec tous les détails
+     * Cette méthode fait toutes les requêtes en une seule fois pour éviter les incohérences
+     */
+    private function canUserPunchWithDetails(User $user, string $type): array
+    {
+        // Utiliser withoutGlobalScopes() pour éviter tout problème de scope
+        $today = now()->startOfDay();
+        $tomorrow = now()->copy()->addDay()->startOfDay();
+        
+        // Vérifier les pointages sans check-out (en cours)
+        $todayAttendance = Attendance::withoutGlobalScopes()
+            ->where('user_id', $user->id)
+            ->where('check_in_time', '>=', $today)
+            ->where('check_in_time', '<', $tomorrow)
+            ->whereNull('check_out_time')
+            ->orderBy('check_in_time', 'desc')
+            ->first();
+        
+        // Vérifier les pointages avec check-out (complétés)
+        $todayCompleted = Attendance::withoutGlobalScopes()
+            ->where('user_id', $user->id)
+            ->where('check_in_time', '>=', $today)
+            ->where('check_in_time', '<', $tomorrow)
+            ->whereNotNull('check_out_time')
+            ->exists();
+        
+        if ($type === 'check_in') {
+            // Pour check-in : ne peut pas pointer si :
+            // 1. Il y a déjà un pointage complété aujourd'hui
+            // 2. Il y a déjà un pointage en cours (sans check-out)
+            $canPunch = !$todayCompleted && !$todayAttendance;
+        } else {
+            // Pour check-out : peut pointer seulement s'il y a un pointage en cours (sans check-out)
+            $canPunch = (bool)$todayAttendance;
+        }
+        
+        Log::info('canUserPunchWithDetails', [
+            'user_id' => $user->id,
+            'type' => $type,
+            'today' => $today->toDateTimeString(),
+            'tomorrow' => $tomorrow->toDateTimeString(),
+            'has_attendance_in_progress' => (bool)$todayAttendance,
+            'has_attendance_completed' => $todayCompleted,
+            'can_punch' => $canPunch,
+            'attendance_id' => $todayAttendance?->id,
+            'attendance_check_in' => $todayAttendance?->check_in_time?->toDateTimeString(),
+            'attendance_check_out' => $todayAttendance?->check_out_time?->toDateTimeString(),
+            'attendance_status' => $todayAttendance?->status,
+        ]);
+        
+        return [
+            'can_punch' => $canPunch,
+            'today_attendance' => $todayAttendance,
+            'today_completed' => $todayCompleted,
+        ];
+    }
+
+    /**
+     * Vérifier si l'utilisateur peut pointer (méthode simplifiée pour store())
+     * Utilise canUserPunchWithDetails() en interne
      */
     private function canUserPunch(User $user, string $type): bool
     {
-        if ($type === 'check_in') {
-            // Pour check-in : vérifier s'il n'y a pas déjà un check-in aujourd'hui sans check-out
-            $todayAttendance = Attendance::where('user_id', $user->id)
-                ->whereDate('check_in_time', today())
-                ->whereNull('check_out_time')
-                ->first();
-            return !$todayAttendance; // Peut pointer si pas de pointage en cours
-        } else {
-            // Pour check-out : vérifier qu'il y a un check-in aujourd'hui sans check-out
-            $todayAttendance = Attendance::where('user_id', $user->id)
-                ->whereDate('check_in_time', today())
-                ->whereNull('check_out_time')
-                ->first();
-            return (bool)$todayAttendance; // Peut pointer si pointage en cours
-        }
+        $details = $this->canUserPunchWithDetails($user, $type);
+        return $details['can_punch'];
     }
 
     /**
      * Vérifier si l'utilisateur peut approuver
+     * Les rôles autorisés sont : Admin (1), Patron (6), RH (4)
      */
     private function canApprove(User $user): bool
     {
-        return in_array($user->role, ['admin', 'patron', 'rh']);
+        return in_array($user->role, [1, 4, 6]) || $user->isAdmin() || $user->isPatron();
+    }
+
+    /**
+     * Mapper les statuts du frontend vers le backend
+     */
+    private function mapStatusFromFrontend(string $frontendStatus): string
+    {
+        $statusMapping = [
+            'pending' => 'en_attente',
+            'approved' => 'valide',
+            'rejected' => 'rejete',
+            'en_attente' => 'en_attente',
+            'valide' => 'valide',
+            'rejete' => 'rejete',
+        ];
+        
+        return $statusMapping[$frontendStatus] ?? $frontendStatus;
     }
 
     /**
@@ -422,9 +718,13 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         
+        $today = now()->startOfDay();
+        $tomorrow = now()->copy()->addDay()->startOfDay();
+        
         // Vérifier s'il y a un pointage aujourd'hui sans check-out
         $todayAttendance = Attendance::where('user_id', $user->id)
-            ->whereDate('check_in_time', today())
+            ->where('check_in_time', '>=', $today)
+            ->where('check_in_time', '<', $tomorrow)
             ->whereNull('check_out_time')
             ->first();
 
@@ -438,7 +738,8 @@ class AttendanceController extends Controller
 
         // Vérifier s'il y a un pointage aujourd'hui avec check-out
         $todayCompleted = Attendance::where('user_id', $user->id)
-            ->whereDate('check_in_time', today())
+            ->where('check_in_time', '>=', $today)
+            ->where('check_in_time', '<', $tomorrow)
             ->whereNotNull('check_out_time')
             ->exists();
 

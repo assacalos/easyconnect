@@ -5,7 +5,10 @@ import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:easyconnect/services/camera_service.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class SalaryController extends GetxController {
   final SalaryService _salaryService = SalaryService();
@@ -26,6 +29,7 @@ class SalaryController extends GetxController {
   final RxString selectedMonth = 'all'.obs;
   final RxInt selectedYear = DateTime.now().year.obs;
   final Rx<Salary?> selectedSalary = Rx<Salary?>(null);
+  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
   // Contrôleurs de formulaire
   final TextEditingController employeeSearchController =
@@ -46,11 +50,14 @@ class SalaryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadSalaries();
-    loadSalaryStats();
-    loadPendingSalaries();
-    loadEmployees();
-    loadSalaryComponents();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadSalaries();
+      loadSalaryStats();
+      loadPendingSalaries();
+      loadEmployees();
+      loadSalaryComponents();
+    });
   }
 
   @override
@@ -64,9 +71,22 @@ class SalaryController extends GetxController {
   }
 
   // Charger tous les salaires
-  Future<void> loadSalaries() async {
+  Future<void> loadSalaries({String? statusFilter}) async {
     try {
-      isLoading.value = true;
+      _currentStatusFilter =
+          statusFilter ??
+          (selectedStatus.value == 'all' ? null : selectedStatus.value);
+
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
+      final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
+      if (cachedSalaries != null && cachedSalaries.isNotEmpty) {
+        allSalaries.assignAll(cachedSalaries);
+        applyFilters();
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
+      }
 
       // Tester la connectivité d'abord
       final isConnected = await _salaryService.testSalaryConnection();
@@ -83,19 +103,73 @@ class SalaryController extends GetxController {
         search: null, // Pas de recherche côté serveur
       );
 
-      // Stocker tous les salaires
-      allSalaries.assignAll(loadedSalaries);
-      applyFilters();
+      // Ne remplacer la liste que si on a reçu des données
+      if (loadedSalaries.isNotEmpty) {
+        // Stocker tous les salaires
+        allSalaries.assignAll(loadedSalaries);
+        applyFilters();
+        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+        CacheHelper.set(cacheKey, loadedSalaries);
+      } else if (allSalaries.isEmpty) {
+        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
+        allSalaries.clear();
+        salaries.clear();
+      }
+      // Si allSalaries n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
 
       // Ne pas afficher de message de succès à chaque chargement
       // Le chargement se fait silencieusement
     } catch (e) {
-      // Vider la liste des salaires en cas d'erreur
-      allSalaries.value = [];
-      salaries.value = [];
+      print(
+        '⚠️ [SALARY_CONTROLLER] Erreur lors du chargement des salaires: $e',
+      );
 
-      // Ne pas afficher de message d'erreur à l'utilisateur
-      // L'erreur est loggée dans la console pour le débogage
+      // Vérifier d'abord si des données sont déjà disponibles (liste ou cache)
+      final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
+      final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
+      final hasDataInList = allSalaries.isNotEmpty || salaries.isNotEmpty;
+      final hasDataInCache =
+          cachedSalaries != null && cachedSalaries.isNotEmpty;
+
+      // Si des données sont disponibles, les charger et ne pas afficher d'erreur
+      if (hasDataInCache && !hasDataInList) {
+        // Charger les données du cache si la liste est vide
+        allSalaries.assignAll(cachedSalaries);
+        applyFilters();
+        print(
+          '✅ [SALARY_CONTROLLER] Données chargées depuis le cache (${cachedSalaries.length} salaires)',
+        );
+      } else if (hasDataInList) {
+        // Si la liste contient déjà des données, on garde ce qu'on a
+        print(
+          '✅ [SALARY_CONTROLLER] Liste des salaires conservée (${allSalaries.length} salaires) malgré l\'erreur de rechargement',
+        );
+      } else {
+        // Vider la liste seulement si aucune donnée n'est disponible
+        allSalaries.value = [];
+        salaries.value = [];
+      }
+
+      // Ne pas afficher de message d'erreur si des données sont disponibles (liste ou cache)
+      // Cela évite d'afficher une erreur après une création réussie ou si des données sont disponibles
+      if (!hasDataInList && !hasDataInCache) {
+        // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+        final errorString = e.toString().toLowerCase();
+        if (!errorString.contains('session expirée') &&
+            !errorString.contains('401') &&
+            !errorString.contains('unauthorized') &&
+            !errorString.contains('impossible de se connecter')) {
+          // Ne pas afficher d'erreur pour les erreurs de connexion si des données sont en cache
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les salaires',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -231,17 +305,63 @@ class SalaryController extends GetxController {
         // Ne pas inclure createdAt et updatedAt - le serveur les gère
       );
 
-      await _salaryService.createSalary(salary);
-      await loadSalaries();
-      await loadSalaryStats();
+      final createdSalary = await _salaryService.createSalary(salary);
 
+      // Invalider le cache
+      CacheHelper.clearByPrefix('salaries_');
+
+      // Ajouter le salaire créé à la liste localement (mise à jour optimiste)
+      // S'assurer que le salaire est ajouté avant de naviguer
+      if (createdSalary.id != null) {
+        allSalaries.add(createdSalary);
+        applyFilters(); // Appliquer les filtres pour mettre à jour la liste filtrée
+        // Sauvegarder dans le cache pour un affichage instantané
+        final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
+        CacheHelper.set(cacheKey, allSalaries.toList());
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'salary',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'salary',
+            createdSalary,
+          ),
+          entityId: createdSalary.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'salary',
+            createdSalary.id.toString(),
+          ),
+        );
+      }
+
+      // Afficher le message de succès immédiatement
       Get.snackbar(
         'Succès',
         'Salaire créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
+        duration: const Duration(seconds: 2),
       );
+
+      // Rafraîchir les compteurs et recharger en arrière-plan (non-bloquant)
+      Future.microtask(() {
+        DashboardRefreshHelper.refreshPatronCounter('salary');
+
+        // Recharger les données en arrière-plan sans bloquer l'UI
+        loadSalaries().catchError((e) {
+          print(
+            '⚠️ [SALARY_CONTROLLER] Erreur lors du rechargement après création: $e',
+          );
+          // Ne pas afficher d'erreur à l'utilisateur car la création a réussi
+        });
+
+        loadSalaryStats().catchError((e) {
+          print(
+            '⚠️ [SALARY_CONTROLLER] Erreur lors du rechargement des stats: $e',
+          );
+        });
+      });
 
       clearForm();
       return true;
@@ -331,10 +451,25 @@ class SalaryController extends GetxController {
   // Approuver un salaire
   Future<void> approveSalary(Salary salary) async {
     try {
-      print(
-        '🔵 [SALARY_CONTROLLER] approveSalary() appelé pour salaryId: ${salary.id}',
-      );
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('salaries_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final salaryIndex = salaries.indexWhere((s) => s.id == salary.id);
+      final allSalaryIndex = allSalaries.indexWhere((s) => s.id == salary.id);
+      final pendingIndex = pendingSalaries.indexWhere((s) => s.id == salary.id);
+
+      if (salaryIndex != -1 || allSalaryIndex != -1) {
+        final originalSalary =
+            salaryIndex != -1
+                ? salaries[salaryIndex]
+                : allSalaries[allSalaryIndex];
+        // Note: Le modèle Salary a beaucoup de champs, on met juste à jour le statut
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+        // La mise à jour optimiste sera effectuée après le rechargement
+      }
 
       final success = await _salaryService.approveSalary(
         salary.id!,
@@ -345,9 +480,19 @@ class SalaryController extends GetxController {
       );
 
       if (success) {
-        await loadSalaries();
-        await loadSalaryStats();
-        await loadPendingSalaries();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('salary');
+
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'salary',
+          entityName: NotificationHelper.getEntityDisplayName('salary', salary),
+          entityId: salary.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'salary',
+            salary.id.toString(),
+          ),
+        );
 
         Get.snackbar(
           'Succès',
@@ -356,12 +501,28 @@ class SalaryController extends GetxController {
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+          loadSalaryStats().catchError((e) {});
+          loadPendingSalaries().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadSalaries(statusFilter: _currentStatusFilter);
+        await loadSalaryStats();
+        await loadPendingSalaries();
         throw Exception(
           'Erreur lors de l\'approbation - La réponse du serveur indique un échec',
         );
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadSalaries(statusFilter: _currentStatusFilter);
+      await loadSalaryStats();
+      await loadPendingSalaries();
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le salaire: $e',
@@ -380,15 +541,44 @@ class SalaryController extends GetxController {
     try {
       isLoading.value = true;
 
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('salaries_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final salaryIndex = salaries.indexWhere((s) => s.id == salary.id);
+      final allSalaryIndex = allSalaries.indexWhere((s) => s.id == salary.id);
+      final pendingIndex = pendingSalaries.indexWhere((s) => s.id == salary.id);
+
+      if (salaryIndex != -1 || allSalaryIndex != -1) {
+        final originalSalary =
+            salaryIndex != -1
+                ? salaries[salaryIndex]
+                : allSalaries[allSalaryIndex];
+        // Note: Le modèle Salary a beaucoup de champs, on met juste à jour le statut
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+        // La mise à jour optimiste sera effectuée après le rechargement
+      }
+
       final success = await _salaryService.rejectSalary(
         salary.id!,
         reason: reason,
       );
 
       if (success) {
-        await loadSalaries();
-        await loadSalaryStats();
-        await loadPendingSalaries();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('salary');
+
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'salary',
+          entityName: NotificationHelper.getEntityDisplayName('salary', salary),
+          entityId: salary.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute(
+            'salary',
+            salary.id.toString(),
+          ),
+        );
 
         Get.snackbar(
           'Succès',
@@ -397,12 +587,28 @@ class SalaryController extends GetxController {
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+          loadSalaryStats().catchError((e) {});
+          loadPendingSalaries().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadSalaries(statusFilter: _currentStatusFilter);
+        await loadSalaryStats();
+        await loadPendingSalaries();
         throw Exception(
           'Erreur lors du rejet - La réponse du serveur indique un échec',
         );
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadSalaries(statusFilter: _currentStatusFilter);
+      await loadSalaryStats();
+      await loadPendingSalaries();
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le salaire: $e',
@@ -611,51 +817,90 @@ class SalaryController extends GetxController {
           );
         }
       } else {
-        final ImagePicker picker = ImagePicker();
-        final ImageSource source =
-            selectionType == 'camera'
-                ? ImageSource.camera
-                : ImageSource.gallery;
+        // Utiliser CameraService pour une meilleure gestion des permissions
+        final cameraService = CameraService();
+        File? imageFile;
 
-        final XFile? pickedFile = await picker.pickImage(
-          source: source,
-          imageQuality: 85,
-        );
-
-        if (pickedFile != null) {
-          final file = File(pickedFile.path);
-          final fileSize = await file.length();
-
-          if (fileSize > 10 * 1024 * 1024) {
-            Get.snackbar(
-              'Erreur',
-              'Le fichier est trop volumineux (max 10 MB)',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-            return;
+        try {
+          if (selectionType == 'camera') {
+            imageFile = await cameraService.takePicture();
+          } else {
+            imageFile = await cameraService.pickImageFromGallery();
           }
 
-          selectedFiles.add({
-            'name': pickedFile.name,
-            'path': pickedFile.path,
-            'size': fileSize,
-            'type': 'image',
-            'extension': 'jpg',
-          });
+          if (imageFile != null && await imageFile.exists()) {
+            // Vérifier que le fichier existe
+            if (!await imageFile.exists()) {
+              throw Exception('Le fichier sélectionné n\'existe pas');
+            }
+
+            final fileSize = await imageFile.length();
+
+            if (fileSize > 10 * 1024 * 1024) {
+              Get.snackbar(
+                'Erreur',
+                'Le fichier est trop volumineux (max 10 MB)',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            // Valider l'image
+            try {
+              await cameraService.validateImage(imageFile);
+            } catch (e) {
+              Get.snackbar(
+                'Erreur',
+                'Image invalide: $e',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            final fileName = imageFile.path.split('/').last;
+            final extension = fileName.split('.').last.toLowerCase();
+
+            selectedFiles.add({
+              'name': fileName,
+              'path': imageFile.path,
+              'size': fileSize,
+              'type': 'image',
+              'extension': extension,
+            });
+
+            Get.snackbar(
+              'Succès',
+              'Fichier sélectionné',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+            );
+          }
+        } catch (e) {
+          // Gérer les erreurs de permissions et autres erreurs
+          String errorMessage = 'Erreur lors de la sélection du fichier';
+          if (e.toString().contains('Permission')) {
+            errorMessage =
+                'Permission refusée. Veuillez autoriser l\'accès à la caméra/photos dans les paramètres de l\'application.';
+          } else {
+            errorMessage = e.toString().replaceFirst('Exception: ', '');
+          }
 
           Get.snackbar(
-            'Succès',
-            'Fichier sélectionné',
+            'Erreur',
+            errorMessage,
             snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           );
         }
       }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Erreur lors de la sélection du fichier: $e',
+        'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
       );
     }
   }

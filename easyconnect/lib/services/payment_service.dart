@@ -4,6 +4,11 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
 
 class PaymentService extends GetxService {
   static PaymentService get to => Get.find();
@@ -26,7 +31,8 @@ class PaymentService extends GetxService {
           )
           .timeout(const Duration(seconds: 10));
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -86,15 +92,17 @@ class PaymentService extends GetxService {
         );
       }
 
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          final responseData = jsonDecode(response.body);
+          final responseData = result['data'];
           List<dynamic> data = [];
 
           // Gérer différents formats de réponse
           if (responseData is List) {
             data = responseData;
-          } else if (responseData['data'] != null) {
+          } else if (responseData is Map && responseData['data'] != null) {
             if (responseData['data'] is List) {
               data = responseData['data'];
             } else if (responseData['data']['data'] != null &&
@@ -147,12 +155,13 @@ class PaymentService extends GetxService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return PaymentModel.fromJson(data['data'] ?? data);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return PaymentModel.fromJson(result['data']);
       } else {
         throw Exception(
-          'Erreur lors de la récupération du paiement: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la récupération du paiement',
         );
       }
     } catch (e) {
@@ -201,28 +210,11 @@ class PaymentService extends GetxService {
         },
       );
 
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          // Nettoyer la réponse JSON avant de la parser
-          String cleanedBody = response.body.trim();
-
-          // Vérifier si la réponse se termine correctement
-          if (!cleanedBody.endsWith('}') && !cleanedBody.endsWith(']')) {
-            // Essayer de corriger en ajoutant les caractères manquants
-            if (cleanedBody.contains('"data":[') &&
-                !cleanedBody.endsWith(']')) {
-              cleanedBody += ']';
-            }
-            if (cleanedBody.contains('"paiements":[') &&
-                !cleanedBody.endsWith(']')) {
-              cleanedBody += ']';
-            }
-            if (!cleanedBody.endsWith('}')) {
-              cleanedBody += '}';
-            }
-          }
-
-          final responseData = jsonDecode(cleanedBody);
+          final responseData = result['data'];
 
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
@@ -394,21 +386,13 @@ class PaymentService extends GetxService {
           body: comments != null ? jsonEncode({'comments': comments}) : null,
         );
       }
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else if (response.statusCode == 500) {
-        // Erreur 500 : problème serveur
-        final responseData = jsonDecode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur serveur lors de l\'approbation';
-        throw Exception('Erreur serveur: $message');
-      } else {
-        // Autres erreurs (400, 401, 403, 422, etc.)
-        final responseData = jsonDecode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur lors de l\'approbation';
-        throw Exception('Erreur ${response.statusCode}: $message');
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       }
+
+      throw Exception(result['message'] ?? 'Erreur lors de l\'approbation');
     } catch (e) {
       rethrow;
     }
@@ -449,20 +433,13 @@ class PaymentService extends GetxService {
           body: reason != null ? jsonEncode({'reason': reason}) : null,
         );
       }
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else if (response.statusCode == 500) {
-        // Erreur 500 : problème serveur
-        final responseData = jsonDecode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur serveur lors du rejet';
-        throw Exception('Erreur serveur: $message');
-      } else {
-        // Autres erreurs (400, 401, 403, 422, etc.)
-        final responseData = jsonDecode(response.body);
-        final message = responseData['message'] ?? 'Erreur lors du rejet';
-        throw Exception('Erreur ${response.statusCode}: $message');
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       }
+
+      throw Exception(result['message'] ?? 'Erreur lors du rejet');
     } catch (e) {
       rethrow;
     }
@@ -489,10 +466,12 @@ class PaymentService extends GetxService {
         }),
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
-        throw Exception('Erreur lors du marquage: ${response.statusCode}');
+        throw Exception(result['message'] ?? 'Erreur lors du marquage');
       }
     } catch (e) {
       rethrow;
@@ -511,12 +490,12 @@ class PaymentService extends GetxService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
-        throw Exception(
-          'Erreur lors de la réactivation: ${response.statusCode}',
-        );
+        throw Exception(result['message'] ?? 'Erreur lors de la réactivation');
       }
     } catch (e) {
       rethrow;
@@ -537,12 +516,17 @@ class PaymentService extends GetxService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['schedules'] ?? []);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is Map && data['schedules'] != null) {
+          return List<Map<String, dynamic>>.from(data['schedules']);
+        }
+        return [];
       } else {
         throw Exception(
-          'Erreur lors de la récupération des plannings: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la récupération des plannings',
         );
       }
     } catch (e) {
@@ -744,6 +728,25 @@ class PaymentService extends GetxService {
     try {
       final token = storage.read('token');
 
+      // Validation des données avant envoi
+      if (clientName.trim().isEmpty) {
+        throw Exception('Le nom du client est requis');
+      }
+      if (clientEmail.trim().isEmpty) {
+        throw Exception('L\'email du client est requis');
+      }
+      if (amount <= 0) {
+        throw Exception('Le montant doit être supérieur à 0');
+      }
+      if (paymentMethod.isEmpty) {
+        throw Exception('La méthode de paiement est requise');
+      }
+
+      // Fonction pour formater les dates au format YYYY-MM-DD (format attendu par Laravel)
+      String formatDate(DateTime date) {
+        return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      }
+
       // Préparer les données à envoyer en nettoyant les valeurs null et vides
       final Map<String, dynamic> requestData = {
         'client_name': clientName.trim(),
@@ -752,8 +755,8 @@ class PaymentService extends GetxService {
         'comptable_id': comptableId,
         'comptable_name': comptableName.trim(),
         'type': type,
-        'payment_date': paymentDate.toIso8601String(),
-        'amount': amount,
+        'payment_date': formatDate(paymentDate), // Format YYYY-MM-DD
+        'amount': amount.toDouble(), // S'assurer que c'est un double
         'payment_method': paymentMethod,
       };
 
@@ -764,7 +767,7 @@ class PaymentService extends GetxService {
 
       // Ajouter les champs optionnels seulement s'ils ne sont pas null ou vides
       if (dueDate != null) {
-        requestData['due_date'] = dueDate.toIso8601String();
+        requestData['due_date'] = formatDate(dueDate); // Format YYYY-MM-DD
       }
 
       if (description != null && description.trim().isNotEmpty) {
@@ -779,35 +782,268 @@ class PaymentService extends GetxService {
         requestData['reference'] = reference.trim();
       }
 
-      // Ajouter le schedule seulement s'il existe
-      if (schedule != null) {
+      // Ajouter le schedule seulement s'il existe et pour les paiements mensuels
+      if (schedule != null && type == 'monthly') {
         try {
-          requestData['schedule'] = schedule.toJson();
+          // Créer un schedule selon le format attendu par Laravel
+          // Laravel attend : start_date, end_date (optionnel), frequency, total_installments, installment_amount
+          final scheduleData = <String, dynamic>{
+            'start_date': formatDate(schedule.startDate),
+            'frequency': schedule.frequency,
+            'total_installments': schedule.totalInstallments,
+            'installment_amount': schedule.installmentAmount,
+          };
+
+          // end_date est optionnel selon la documentation Laravel
+          // Note: schedule.endDate est non-nullable dans PaymentSchedule, mais on peut l'omettre si nécessaire
+          scheduleData['end_date'] = formatDate(schedule.endDate);
+
+          // Ajouter created_by si disponible (nécessaire pour certains backends Laravel)
+          // Utiliser comptable_id comme created_by pour le schedule
+          if (comptableId > 0) {
+            scheduleData['created_by'] = comptableId;
+          }
+
+          // Note: status et next_payment_date ne sont pas envoyés lors de la création
+          // Ils seront générés par Laravel
+
+          requestData['schedule'] = scheduleData;
+
+          AppLogger.debug(
+            'Schedule ajouté: $scheduleData',
+            tag: 'PAYMENT_SERVICE',
+          );
+
+          // Validation supplémentaire des données du schedule
+          final startDateStr = scheduleData['start_date'] as String?;
+          final endDateStr = scheduleData['end_date'] as String?; // Optionnel
+          final frequencyValue = scheduleData['frequency'] as int?;
+          final totalInstallmentsValue =
+              scheduleData['total_installments'] as int?;
+          final installmentAmountValue =
+              scheduleData['installment_amount'] as double?;
+
+          if (startDateStr == null) {
+            throw Exception('La date de début du planning est requise');
+          }
+
+          if (frequencyValue == null || frequencyValue <= 0) {
+            throw Exception('La fréquence doit être supérieure à 0');
+          }
+
+          if (totalInstallmentsValue == null || totalInstallmentsValue <= 0) {
+            throw Exception('Le nombre d\'échéances doit être supérieur à 0');
+          }
+
+          if (installmentAmountValue == null || installmentAmountValue <= 0) {
+            throw Exception('Le montant par échéance doit être supérieur à 0');
+          }
+
+          // Vérifier que la date de fin est après la date de début (si fournie)
+          if (endDateStr != null) {
+            final startDate = DateTime.parse('${startDateStr}T00:00:00');
+            final endDate = DateTime.parse('${endDateStr}T00:00:00');
+            if (endDate.isBefore(startDate) ||
+                endDate.isAtSameMomentAs(startDate)) {
+              throw Exception(
+                'La date de fin doit être postérieure à la date de début',
+              );
+            }
+          }
         } catch (e) {
-          // Ne pas inclure le schedule s'il y a une erreur
+          AppLogger.error(
+            'Erreur lors de la préparation du schedule: $e',
+            tag: 'PAYMENT_SERVICE',
+          );
+          // Propager l'erreur pour que l'utilisateur soit informé
+          throw Exception(
+            'Erreur dans les données du planning: ${e.toString().replaceAll('Exception: ', '')}',
+          );
         }
       }
 
-      // Log des données avant envoi
+      // Log des données avant envoi (print pour être sûr de voir dans la console)
+      print('📤 [PAYMENT_SERVICE] Données du paiement à envoyer: $requestData');
+      AppLogger.debug(
+        'Données du paiement à envoyer: $requestData',
+        tag: 'PAYMENT_SERVICE',
+      );
+
+      // Log spécifique pour les paiements mensuels
+      if (type == 'monthly' && schedule != null) {
+        AppLogger.debug(
+          'Paiement mensuel - Schedule: ${schedule.toJson()}',
+          tag: 'PAYMENT_SERVICE',
+        );
+      }
 
       final jsonBody = jsonEncode(requestData);
-      final response = await http.post(
-        Uri.parse('$baseUrl/payments'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonBody,
+
+      // Log du JSON final pour le débogage (print pour être sûr de voir dans la console)
+      print('📤 [PAYMENT_SERVICE] JSON final à envoyer: $jsonBody');
+      AppLogger.debug(
+        'JSON final à envoyer: $jsonBody',
+        tag: 'PAYMENT_SERVICE',
       );
+
+      AppLogger.httpRequest(
+        'POST',
+        '$baseUrl/payments',
+        tag: 'PAYMENT_SERVICE',
+      );
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse('$baseUrl/payments'),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonBody,
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        '$baseUrl/payments',
+        tag: 'PAYMENT_SERVICE',
+      );
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      // Gérer l'erreur 422 (Erreur de validation)
+      if (response.statusCode == 422) {
+        try {
+          final errorData = jsonDecode(response.body);
+          String errorMessage = 'Erreur de validation';
+
+          // Extraire le message principal
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          }
+
+          // Extraire les erreurs de validation par champ
+          if (errorData['errors'] != null && errorData['errors'] is Map) {
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final List<String> validationErrors = [];
+
+            errors.forEach((field, messages) {
+              if (messages is List) {
+                for (var msg in messages) {
+                  validationErrors.add('${_formatFieldName(field)}: $msg');
+                }
+              } else {
+                validationErrors.add('${_formatFieldName(field)}: $messages');
+              }
+            });
+
+            if (validationErrors.isNotEmpty) {
+              errorMessage = validationErrors.join('\n');
+            }
+          }
+
+          print('❌ [PAYMENT_SERVICE] Erreur 422 - Validation: $errorMessage');
+          AppLogger.error(
+            'Erreur 422 - Validation: $errorMessage',
+            tag: 'PAYMENT_SERVICE',
+          );
+          throw Exception(errorMessage);
+        } catch (e) {
+          // Si le parsing de l'erreur échoue, utiliser le message par défaut
+          AppLogger.error(
+            'Erreur 422 - Impossible de parser: ${response.body}',
+            tag: 'PAYMENT_SERVICE',
+          );
+          throw Exception(
+            'Erreur de validation. Veuillez vérifier les données saisies.',
+          );
+        }
+      }
+
+      // Gérer l'erreur 500 (Erreur serveur)
+      if (response.statusCode == 500) {
+        try {
+          final errorData = jsonDecode(response.body);
+          String errorMessage =
+              'Erreur serveur lors de la création du paiement';
+
+          // Extraire le message d'erreur du serveur
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          } else if (errorData['error'] != null) {
+            errorMessage = errorData['error'].toString();
+          } else if (errorData['exception'] != null) {
+            errorMessage = 'Erreur: ${errorData['exception']}';
+          }
+
+          // Logger les détails pour le débogage
+          print('❌ [PAYMENT_SERVICE] Erreur 500 - Serveur: $errorMessage');
+          print('❌ [PAYMENT_SERVICE] Réponse complète: ${response.body}');
+          print('❌ [PAYMENT_SERVICE] Données envoyées: $requestData');
+          AppLogger.error(
+            'Erreur 500 - Serveur: $errorMessage',
+            tag: 'PAYMENT_SERVICE',
+          );
+          AppLogger.error(
+            'Réponse complète: ${response.body}',
+            tag: 'PAYMENT_SERVICE',
+          );
+          AppLogger.error(
+            'Données envoyées: $requestData',
+            tag: 'PAYMENT_SERVICE',
+          );
+
+          throw Exception(
+            'Erreur serveur: $errorMessage\nVeuillez contacter le support si le problème persiste.',
+          );
+        } catch (e) {
+          // Si le parsing de l'erreur échoue, utiliser le message par défaut
+          AppLogger.error(
+            'Erreur 500 - Impossible de parser: ${response.body}',
+            tag: 'PAYMENT_SERVICE',
+          );
+          AppLogger.error(
+            'Données envoyées: $requestData',
+            tag: 'PAYMENT_SERVICE',
+          );
+          throw Exception(
+            'Erreur serveur (500). Veuillez vérifier les données et réessayer.\n'
+            'Si le problème persiste, contactez le support technique.',
+          );
+        }
+      }
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         try {
           final responseBody = jsonDecode(response.body);
+          AppLogger.debug(
+            '✅ Paiement créé avec succès: $responseBody',
+            tag: 'PAYMENT_SERVICE',
+          );
           return responseBody;
         } catch (e) {
+          AppLogger.error(
+            'Erreur de format de réponse: ${response.body}',
+            tag: 'PAYMENT_SERVICE',
+          );
           throw Exception('Erreur de format de réponse: ${response.body}');
         }
       } else {
+        // Logger la réponse complète pour le débogage
+        AppLogger.error(
+          'Erreur HTTP ${response.statusCode}: ${response.body}',
+          tag: 'PAYMENT_SERVICE',
+        );
+        AppLogger.error(
+          'Données envoyées: $requestData',
+          tag: 'PAYMENT_SERVICE',
+        );
+
+        // Pour les autres erreurs, essayer d'extraire un message
         try {
           final errorBody = jsonDecode(response.body);
           final errorMessage =
@@ -958,5 +1194,43 @@ class PaymentService extends GetxService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // Helper pour formater les noms de champs de manière lisible
+  String _formatFieldName(String field) {
+    // Traduire les noms de champs courants
+    final translations = {
+      'client_id': 'Client',
+      'nom': 'Nom',
+      'email': 'Email',
+      'adresse': 'Adresse',
+      'comptable_id': 'Comptable',
+      'comptable_name': 'Nom du comptable',
+      'type': 'Type de paiement',
+      'payment_date': 'Date de paiement',
+      'due_date': 'Date d\'échéance',
+      'amount': 'Montant',
+      'payment_method': 'Méthode de paiement',
+      'description': 'Description',
+      'notes': 'Notes',
+      'reference': 'Référence',
+      'schedule': 'Planification',
+    };
+
+    // Si on a une traduction, l'utiliser
+    if (translations.containsKey(field)) {
+      return translations[field]!;
+    }
+
+    // Sinon, formater le nom du champ (remplacer _ par des espaces et capitaliser)
+    return field
+        .split('_')
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? ''
+                  : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+        )
+        .join(' ');
   }
 }

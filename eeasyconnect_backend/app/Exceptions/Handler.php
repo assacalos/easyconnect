@@ -3,6 +3,12 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -42,7 +48,115 @@ class Handler extends ExceptionHandler
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
-            //
+            // Log toutes les exceptions pour le débogage
+            \Log::error('Exception caught', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         });
+    }
+
+    /**
+     * Render an exception into an HTTP response.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Throwable  $e
+     * @return \Symfony\Component\HttpFoundation\Response
+     *
+     * @throws \Throwable
+     */
+    public function render($request, Throwable $e)
+    {
+        // Handle API requests with JSON responses
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return $this->handleApiException($request, $e);
+        }
+
+        return parent::render($request, $e);
+    }
+
+    /**
+     * Handle API exceptions and return JSON responses.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Throwable  $e
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function handleApiException($request, Throwable $e)
+    {
+        if ($e instanceof ValidationException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        if ($e instanceof AuthenticationException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Non authentifié',
+            ], 401);
+        }
+
+        if ($e instanceof ModelNotFoundException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ressource non trouvée',
+            ], 404);
+        }
+
+        if ($e instanceof NotFoundHttpException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Route non trouvée',
+            ], 404);
+        }
+
+        if ($e instanceof MethodNotAllowedHttpException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Méthode HTTP non autorisée',
+            ], 405);
+        }
+
+        if ($e instanceof ThrottleRequestsException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Trop de requêtes. Veuillez réessayer plus tard.',
+            ], 429);
+        }
+
+        // Log l'exception pour le débogage
+        \Log::error('API Exception', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'request' => [
+                'url' => $request->fullUrl(),
+                'method' => $request->method(),
+                'ip' => $request->ip(),
+            ],
+        ]);
+
+        // En mode debug, retourner l'erreur détaillée
+        if (config('app.debug')) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => config('app.debug') ? $e->getTrace() : null,
+            ], 500);
+        }
+
+        // Production error response
+        return response()->json([
+            'success' => false,
+            'message' => 'Une erreur est survenue. Veuillez réessayer plus tard.',
+        ], 500);
     }
 }

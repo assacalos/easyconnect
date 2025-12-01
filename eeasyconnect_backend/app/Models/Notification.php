@@ -13,22 +13,32 @@ class Notification extends Model
     protected $fillable = [
         'user_id',
         'type',
-        'titre',
+        'title',
+        'titre', // Ancien champ pour compatibilité
         'message',
-        'data',
-        'statut',
+        'data', // Ancien champ pour compatibilité
+        'metadata', // Nouveau champ
+        'statut', // Ancien champ pour compatibilité
+        'is_read', // Nouveau champ
         'priorite',
         'canal',
         'date_lecture',
         'date_expiration',
-        'envoyee'
+        'envoyee',
+        'entity_type',
+        'entity_id',
+        'action_route'
     ];
 
     protected $casts = [
         'data' => 'array',
+        'metadata' => 'array',
         'date_lecture' => 'datetime',
         'date_expiration' => 'datetime',
-        'envoyee' => 'boolean'
+        'envoyee' => 'boolean',
+        'is_read' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
     ];
 
     /**
@@ -102,8 +112,29 @@ class Notification extends Model
     {
         $this->update([
             'statut' => 'lue',
+            'is_read' => true,
             'date_lecture' => Carbon::now()
         ]);
+    }
+
+    /**
+     * Obtenir le titre (compatibilité avec l'ancien système)
+     */
+    public function getTitleOrTitre()
+    {
+        return $this->title ?? $this->titre ?? null;
+    }
+
+    /**
+     * Obtenir is_read avec fallback sur statut
+     */
+    public function getIsReadValue()
+    {
+        if ($this->is_read !== null) {
+            return (bool) $this->is_read;
+        }
+        // Compatibilité avec l'ancien système
+        return $this->statut === 'lue';
     }
 
     /**

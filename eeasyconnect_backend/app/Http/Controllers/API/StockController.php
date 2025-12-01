@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Stock;
 use App\Models\StockMovement;
 use App\Models\StockAlert;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class StockController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des stocks
      */
@@ -817,6 +819,19 @@ class StockController extends Controller
             // Recharger le stock
             $stock = Stock::find($id);
 
+            // Notifier l'auteur du stock (si user_id existe)
+            if ($stock && property_exists($stock, 'user_id') && $stock->user_id) {
+                $this->createNotification([
+                    'user_id' => $stock->user_id,
+                    'title' => 'Validation Stock',
+                    'message' => "Stock {$stock->name} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'stock',
+                    'entity_id' => $stock->id,
+                    'action_route' => "/stocks/{$stock->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $this->transformStockForFlutter($stock),
@@ -865,6 +880,20 @@ class StockController extends Controller
 
             // Recharger le stock
             $stock = Stock::find($id);
+
+            // Notifier l'auteur du stock (si user_id existe)
+            if ($stock && property_exists($stock, 'user_id') && $stock->user_id) {
+                $this->createNotification([
+                    'user_id' => $stock->user_id,
+                    'title' => 'Rejet Stock',
+                    'message' => "Stock {$stock->name} a été rejeté. Raison: {$validated['commentaire']}",
+                    'type' => 'error',
+                    'entity_type' => 'stock',
+                    'entity_id' => $stock->id,
+                    'action_route' => "/stocks/{$stock->id}",
+                    'metadata' => ['reason' => $validated['commentaire']],
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

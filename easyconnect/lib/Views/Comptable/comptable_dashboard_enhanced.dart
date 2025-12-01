@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/comptable_dashboard_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
@@ -11,6 +12,16 @@ import 'package:easyconnect/utils/dashboard_filters.dart';
 class ComptableDashboardEnhanced
     extends BaseDashboard<ComptableDashboardController> {
   const ComptableDashboardEnhanced({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Rafraîchir les données quand la page devient visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.refreshPendingEntities();
+    });
+
+    return super.build(context);
+  }
 
   @override
   String get title => 'Tableau de Bord Comptable';
@@ -83,7 +94,7 @@ class ComptableDashboardEnhanced
 
   Widget _buildPendingSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.red.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -158,7 +169,7 @@ class ComptableDashboardEnhanced
 
   Widget _buildValidatedSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -199,6 +210,7 @@ class ComptableDashboardEnhanced
                       icon: Icons.receipt,
                       color: Colors.red,
                       subtitle: 'Factures traitées',
+                      onTap: () => Get.toNamed('/invoices?tab=2'),
                     ),
                     _buildValidatedCard(
                       title: 'Paiements Validés',
@@ -206,6 +218,7 @@ class ComptableDashboardEnhanced
                       icon: Icons.payment,
                       color: Colors.teal,
                       subtitle: 'Paiements confirmés',
+                      onTap: () => Get.toNamed('/payments?tab=2'),
                     ),
                     _buildValidatedCard(
                       title: 'Dépenses Validées',
@@ -213,6 +226,7 @@ class ComptableDashboardEnhanced
                       icon: Icons.money_off,
                       color: Colors.orange,
                       subtitle: 'Dépenses approuvées',
+                      onTap: () => Get.toNamed('/expenses?tab=2'),
                     ),
                     _buildValidatedCard(
                       title: 'Salaires Validés',
@@ -220,6 +234,7 @@ class ComptableDashboardEnhanced
                       icon: Icons.account_balance_wallet,
                       color: Colors.purple,
                       subtitle: 'Salaires payés',
+                      onTap: () => Get.toNamed('/salaries?tab=2'),
                     ),
                   ],
                 ),
@@ -233,7 +248,7 @@ class ComptableDashboardEnhanced
 
   Widget _buildStatisticsSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -332,7 +347,7 @@ class ComptableDashboardEnhanced
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
@@ -397,69 +412,77 @@ class ComptableDashboardEnhanced
     required IconData icon,
     required Color color,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 28, color: color),
               ),
-              child: Icon(icon, size: 28, color: color),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -476,7 +499,7 @@ class ComptableDashboardEnhanced
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
@@ -488,7 +511,7 @@ class ComptableDashboardEnhanced
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -600,6 +623,24 @@ class ComptableDashboardEnhanced
           Get.toNamed('/suppliers');
         },
       ),
+      // Bouton Paramètres (visible pour tous, mais accès restreint aux admins)
+      Obx(() {
+        final userRole = Get.find<AuthController>().userAuth.value?.role;
+        if (userRole == 1) {
+          return ListTile(
+            leading: const Icon(Icons.settings, color: Colors.white70),
+            title: const Text(
+              'Paramètres',
+              style: TextStyle(color: Colors.white70),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Get.toNamed('/admin/settings');
+            },
+          );
+        }
+        return const SizedBox.shrink();
+      }),
     ];
   }
 

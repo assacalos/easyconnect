@@ -4,7 +4,9 @@ import 'package:easyconnect/Controllers/employee_controller.dart';
 import 'package:easyconnect/Controllers/leave_controller.dart';
 import 'package:easyconnect/Controllers/recruitment_controller.dart';
 import 'package:easyconnect/Controllers/salary_controller.dart';
+import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/services/contract_service.dart';
+import 'package:easyconnect/services/reporting_service.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/rh_dashboard_controller.dart';
 import 'package:easyconnect/services/rh_dashboard_service.dart';
@@ -26,6 +28,7 @@ class RhBinding extends Bindings {
     Get.put(AttendancePunchService(), permanent: true);
     Get.put(RecruitmentService(), permanent: true);
     Get.put(ContractService(), permanent: true);
+    Get.put(ReportingService(), permanent: true);
 
     // Contrôleur RH
     Get.put(RhDashboardController(), permanent: true);
@@ -34,5 +37,6 @@ class RhBinding extends Bindings {
     Get.put(AttendanceController(), permanent: true);
     Get.put(RecruitmentController(), permanent: true);
     Get.put(ContractController(), permanent: true);
+    Get.put(ReportingController(), permanent: true);
   }
 }

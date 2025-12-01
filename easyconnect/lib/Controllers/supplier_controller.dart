@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/services/supplier_service.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class SupplierController extends GetxController {
   late final SupplierService _supplierService;
@@ -39,8 +41,11 @@ class SupplierController extends GetxController {
       _supplierService = Get.find<SupplierService>();
     } catch (e) {}
 
-    loadSuppliers();
-    loadSupplierStats();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadSuppliers();
+      loadSupplierStats();
+    });
   }
 
   @override
@@ -71,11 +76,29 @@ class SupplierController extends GetxController {
       // Appliquer les filtres côté client
       applyFilters();
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les fournisseurs',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (allSuppliers.isEmpty) {
+          // Vérifier une dernière fois le cache avant d'afficher l'erreur
+          final cacheKey = 'suppliers_all';
+          final cachedSuppliers = CacheHelper.get<List<Supplier>>(cacheKey);
+          if (cachedSuppliers == null || cachedSuppliers.isEmpty) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les fournisseurs',
+              snackPosition: SnackPosition.BOTTOM,
+            );
+          } else {
+            // Charger les données du cache si disponibles
+            allSuppliers.assignAll(cachedSuppliers);
+            applyFilters();
+          }
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -152,9 +175,21 @@ class SupplierController extends GetxController {
         statut: 'en_attente', // Statut par défaut selon la doc
       );
 
-      await _supplierService.createSupplier(supplier);
+      final createdSupplier = await _supplierService.createSupplier(supplier);
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('suppliers_');
+
+      // Ajouter le fournisseur à la liste localement (mise à jour optimiste)
+      if (createdSupplier.id != null) {
+        suppliers.add(createdSupplier);
+      }
+
       await loadSuppliers(); // Recharger tous les fournisseurs
       await loadSupplierStats();
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('supplier');
 
       Get.snackbar(
         'Succès',

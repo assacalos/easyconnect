@@ -5,8 +5,8 @@ import 'package:easyconnect/Controllers/contract_controller.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:easyconnect/services/camera_service.dart';
 
 class ContractForm extends StatefulWidget {
   final Contract? contract;
@@ -762,7 +762,10 @@ class _ContractFormState extends State<ContractForm> {
         success = await controller.updateContract(widget.contract!);
       }
       if (success) {
-        Get.back(); // Retour automatique à la liste après succès
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed(
+          '/contracts',
+        ); // Redirection automatique vers la liste après succès
       }
     }
   }
@@ -850,55 +853,103 @@ class _ContractFormState extends State<ContractForm> {
           );
         }
       } else {
-        // Utiliser image_picker pour les images
-        final ImagePicker picker = ImagePicker();
-        final ImageSource source =
-            selectionType == 'camera'
-                ? ImageSource.camera
-                : ImageSource.gallery;
+        // Utiliser CameraService pour une meilleure gestion des permissions
+        final cameraService = CameraService();
+        File? imageFile;
 
-        final XFile? pickedFile = await picker.pickImage(
-          source: source,
-          imageQuality: 85,
-        );
-
-        if (pickedFile != null) {
-          final file = File(pickedFile.path);
-          final fileSize = await file.length();
-
-          // Vérifier la taille (max 10 MB)
-          if (fileSize > 10 * 1024 * 1024) {
-            Get.snackbar(
-              'Erreur',
-              'Le fichier est trop volumineux (max 10 MB)',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-            return;
+        try {
+          if (selectionType == 'camera') {
+            imageFile = await cameraService.takePicture();
+          } else {
+            imageFile = await cameraService.pickImageFromGallery();
           }
 
-          // Ajouter le fichier à la liste
-          controller.selectedAttachments.add({
-            'name': pickedFile.name,
-            'path': pickedFile.path,
-            'size': fileSize,
-            'type': 'image',
-            'extension': 'jpg',
-          });
-          controller.updateAttachmentsDisplay();
+          if (imageFile != null && await imageFile.exists()) {
+            final fileSize = await imageFile.length();
+
+            // Vérifier la taille (max 10 MB)
+            if (fileSize > 10 * 1024 * 1024) {
+              Get.snackbar(
+                'Erreur',
+                'Le fichier est trop volumineux (max 10 MB)',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            // Valider l'image
+            try {
+              await cameraService.validateImage(imageFile);
+            } catch (e) {
+              Get.snackbar(
+                'Erreur',
+                'Image invalide: $e',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            final fileName = imageFile.path.split('/').last;
+            final extension = fileName.split('.').last.toLowerCase();
+
+            // Déterminer le type de fichier
+            String fileType = 'image';
+            if (extension == 'pdf') {
+              fileType = 'pdf';
+            } else if (![
+              'jpg',
+              'jpeg',
+              'png',
+              'gif',
+              'webp',
+            ].contains(extension)) {
+              fileType = 'document';
+            }
+
+            // Ajouter le fichier à la liste
+            controller.selectedAttachments.add({
+              'name': fileName,
+              'path': imageFile.path,
+              'size': fileSize,
+              'type': fileType,
+              'extension': extension,
+            });
+
+            controller.updateAttachmentsDisplay();
+
+            Get.snackbar(
+              'Succès',
+              'Fichier sélectionné',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+            );
+          }
+        } catch (e) {
+          // Gérer les erreurs de permissions et autres erreurs
+          String errorMessage = 'Erreur lors de la sélection du fichier';
+          if (e.toString().contains('Permission')) {
+            errorMessage =
+                'Permission refusée. Veuillez autoriser l\'accès à la caméra/photos dans les paramètres de l\'application.';
+          } else {
+            errorMessage = e.toString().replaceFirst('Exception: ', '');
+          }
 
           Get.snackbar(
-            'Succès',
-            'Fichier sélectionné',
+            'Erreur',
+            errorMessage,
             snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           );
         }
       }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Erreur lors de la sélection du fichier: $e',
+        'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
       );
     }
   }

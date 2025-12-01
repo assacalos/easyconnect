@@ -305,11 +305,16 @@ class TechnicienDashboardController extends BaseDashboardController {
 
       try {
         final equipments = results[2] as List;
-        // Équipements en attente = ceux qui nécessitent une attention (en maintenance, broken, etc.)
+        // Équipements en attente = ceux qui nécessitent une attention ou qui sont en attente de validation
         pendingEquipments.value =
             equipments.where((e) {
-              final status = (e as dynamic).status.toLowerCase();
-              return status == 'maintenance' ||
+              final status =
+                  (e as dynamic).status?.toString().toLowerCase() ?? '';
+              // Inclure les statuts: pending, en_attente, maintenance, broken
+              // et les équipements qui nécessitent une maintenance
+              return status == 'pending' ||
+                  status == 'en_attente' ||
+                  status == 'maintenance' ||
                   status == 'broken' ||
                   (e as dynamic).needsMaintenance == true;
             }).length;

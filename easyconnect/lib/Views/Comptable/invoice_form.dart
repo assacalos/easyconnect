@@ -474,7 +474,7 @@ class InvoiceForm extends StatelessWidget {
             Obx(
               () => SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 44,
                 child: ElevatedButton(
                   onPressed:
                       controller.isCreating.value
@@ -482,7 +482,10 @@ class InvoiceForm extends StatelessWidget {
                           : () async {
                             final success = await controller.createInvoice();
                             if (success) {
-                              Get.back();
+                              await Future.delayed(
+                                const Duration(milliseconds: 500),
+                              );
+                              Get.offNamed('/invoices');
                             }
                           },
                   style: ElevatedButton.styleFrom(

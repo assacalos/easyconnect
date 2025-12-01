@@ -169,7 +169,7 @@ class InterventionForm extends StatelessWidget {
                 },
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Informations client
               _buildSectionTitle('Informations client'),
@@ -307,7 +307,7 @@ class InterventionForm extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Informations techniques
               _buildSectionTitle('Informations techniques'),
@@ -351,7 +351,7 @@ class InterventionForm extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Planification
               _buildSectionTitle('Planification'),
@@ -385,7 +385,7 @@ class InterventionForm extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // Notes
               _buildSectionTitle('Notes'),
@@ -402,7 +402,7 @@ class InterventionForm extends StatelessWidget {
                 maxLines: 3,
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
 
               // Bouton d'enregistrement unique
               SizedBox(
@@ -412,7 +412,8 @@ class InterventionForm extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    minimumSize: const Size(0, 44),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -466,7 +467,10 @@ class InterventionForm extends StatelessWidget {
       success = await controller.updateIntervention(intervention!);
     }
     if (success) {
-      Get.back(); // Retour automatique à la liste après succès
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed(
+        '/interventions',
+      ); // Redirection automatique vers la liste après succès
     }
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
 class AppSettingsPage extends StatefulWidget {
   const AppSettingsPage({super.key});
@@ -13,6 +14,19 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   bool _autoBackup = false;
   String _selectedLanguage = 'fr';
   String _selectedTheme = 'system';
+  final TextEditingController _apiUrlController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _apiUrlController.text = AppConfig.baseUrl;
+  }
+
+  @override
+  void dispose() {
+    _apiUrlController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +39,39 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Section Configuration API
+          _buildSectionHeader('Configuration API'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text('URL de l\'API'),
+                  subtitle: Text(
+                    AppConfig.getCurrentUrlInfo(),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  leading: const Icon(Icons.api),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () {
+                    _showApiUrlDialog();
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Réinitialiser l\'URL'),
+                  subtitle: const Text('Restaurer l\'URL par défaut'),
+                  leading: const Icon(Icons.refresh),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () {
+                    _showResetApiUrlDialog();
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
           // Section Général
           _buildSectionHeader('Général'),
           Card(
@@ -407,6 +454,98 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Fermer'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showApiUrlDialog() {
+    _apiUrlController.text = AppConfig.baseUrl;
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Configuration de l\'URL de l\'API'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _apiUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL de l\'API',
+                    hintText: 'https://example.com/api',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'URL actuelle: ${AppConfig.baseUrl}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newUrl = _apiUrlController.text.trim();
+                  if (newUrl.isNotEmpty) {
+                    await AppConfig.setBaseUrl(newUrl);
+                    Navigator.pop(context);
+                    setState(() {});
+                    Get.snackbar(
+                      'Succès',
+                      'URL de l\'API mise à jour avec succès',
+                      backgroundColor: Colors.green,
+                      colorText: Colors.white,
+                    );
+                  } else {
+                    Get.snackbar(
+                      'Erreur',
+                      'L\'URL ne peut pas être vide',
+                      backgroundColor: Colors.red,
+                      colorText: Colors.white,
+                    );
+                  }
+                },
+                child: const Text('Enregistrer'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showResetApiUrlDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Réinitialiser l\'URL de l\'API'),
+            content: const Text(
+              'Voulez-vous réinitialiser l\'URL de l\'API à sa valeur par défaut ?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await AppConfig.resetBaseUrl();
+                  Navigator.pop(context);
+                  setState(() {});
+                  Get.snackbar(
+                    'Succès',
+                    'URL de l\'API réinitialisée avec succès',
+                    backgroundColor: Colors.green,
+                    colorText: Colors.white,
+                  );
+                },
+                child: const Text('Réinitialiser'),
               ),
             ],
           ),

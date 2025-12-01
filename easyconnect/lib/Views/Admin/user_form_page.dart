@@ -238,7 +238,10 @@ class UserFormPage extends StatelessWidget {
                                           final success =
                                               await controller.createUser();
                                           if (success) {
-                                            Get.back();
+                                            await Future.delayed(
+                                              const Duration(milliseconds: 500),
+                                            );
+                                            Get.offNamed('/admin/users');
                                           }
                                         }
                                       },

@@ -27,7 +27,10 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
         });
       }
     });
-    controller.loadTaxes();
+    // Charger les données après que le widget soit construit
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadTaxes();
+    });
   }
 
   @override
@@ -350,7 +353,7 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
                     label: const Text('Modifier'),
                     onPressed: () => _showEditDialog(tax),
                   ),
-                  if (tax.isPending) ...[
+                  /*  if (tax.isPending) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.check, size: 16),
@@ -367,23 +370,23 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
                       style: TextButton.styleFrom(foregroundColor: Colors.red),
                       onPressed: () => _showRejectDialog(tax),
                     ),
-                  ],
+                  ], */
                   if (tax.isValidated && !tax.isPaid) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.payment, size: 16),
-                      label: const Text('Marquer payé'),
+                      label: const Text('Payé'),
                       style: TextButton.styleFrom(foregroundColor: Colors.blue),
                       onPressed: () => _showMarkPaidDialog(tax),
                     ),
                   ],
                   const SizedBox(width: 8),
-                  TextButton.icon(
+                  /*  TextButton.icon(
                     icon: const Icon(Icons.delete, size: 16),
                     label: const Text('Supprimer'),
                     style: TextButton.styleFrom(foregroundColor: Colors.red),
                     onPressed: () => _showDeleteDialog(tax),
-                  ),
+                  ), */
                 ],
               ),
             ],

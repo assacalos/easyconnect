@@ -534,7 +534,8 @@ class _DevisValidationPageState extends State<DevisValidationPage>
       onConfirm: () {
         Get.back();
         controller.acceptDevis(devis.id!);
-        _loadDevis();
+        // Ne pas recharger immédiatement - le contrôleur gère déjà la mise à jour optimiste
+        // et rechargera en arrière-plan après succès
       },
     );
   }

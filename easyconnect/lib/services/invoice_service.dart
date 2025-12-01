@@ -34,30 +34,43 @@ class InvoiceService extends GetxService {
       final totalAmount = subtotal + taxAmount;
 
       final url = '${AppConfig.baseUrl}/factures-create';
+      // Préparer les données à envoyer
+      final requestData = {
+        'client_id': clientId,
+        'nom': clientName,
+        'email': clientEmail,
+        'adresse': clientAddress,
+        'user_id': commercialId,
+        'commercial_name': commercialName,
+        'invoice_date': invoiceDate.toIso8601String(),
+        'due_date': dueDate.toIso8601String(),
+        'items': items.map((item) => item.toJson()).toList(),
+        'subtotal': subtotal,
+        'tax_rate': taxRate,
+        'tax_amount': taxAmount,
+        'total_amount': totalAmount,
+      };
+
+      // Ajouter les champs optionnels seulement s'ils ne sont pas null
+      if (notes != null && notes.isNotEmpty) {
+        requestData['notes'] = notes;
+      }
+      if (terms != null && terms.isNotEmpty) {
+        requestData['terms'] = terms;
+      }
+
       AppLogger.httpRequest('POST', url, tag: 'INVOICE_SERVICE');
+      AppLogger.debug(
+        'Données de la facture à envoyer: $requestData',
+        tag: 'INVOICE_SERVICE',
+      );
 
       final response = await RetryHelper.retryNetwork(
         operation:
             () => http.post(
               Uri.parse(url),
               headers: ApiService.headers(),
-              body: jsonEncode({
-                'client_id': clientId,
-                'nom': clientName,
-                'email': clientEmail,
-                'adresse': clientAddress,
-                'user_id': commercialId,
-                'commercial_name': commercialName,
-                'invoice_date': invoiceDate.toIso8601String(),
-                'due_date': dueDate.toIso8601String(),
-                'items': items.map((item) => item.toJson()).toList(),
-                'subtotal': subtotal,
-                'tax_rate': taxRate,
-                'tax_amount': taxAmount,
-                'total_amount': totalAmount,
-                'notes': notes,
-                'terms': terms,
-              }),
+              body: jsonEncode(requestData),
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -67,15 +80,126 @@ class InvoiceService extends GetxService {
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
-      final responseBody = jsonDecode(response.body);
+      // Gérer l'erreur 422 (Erreur de validation)
+      if (response.statusCode == 422) {
+        try {
+          final errorData = json.decode(response.body);
+          String errorMessage = 'Erreur de validation';
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        // Le backend retourne {'success': true, 'data': {...}, 'message': '...'}
-        return responseBody;
-      } else {
-        throw Exception(
-          'Erreur lors de la création de la facture: ${response.statusCode} - ${responseBody['message'] ?? response.body}',
+          // Extraire le message principal
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          }
+
+          // Extraire les erreurs de validation par champ
+          if (errorData['errors'] != null && errorData['errors'] is Map) {
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final List<String> validationErrors = [];
+
+            errors.forEach((field, messages) {
+              if (messages is List) {
+                for (var msg in messages) {
+                  validationErrors.add('${_formatFieldName(field)}: $msg');
+                }
+              } else {
+                validationErrors.add('${_formatFieldName(field)}: $messages');
+              }
+            });
+
+            if (validationErrors.isNotEmpty) {
+              errorMessage = validationErrors.join('\n');
+            }
+          }
+
+          AppLogger.error(
+            'Erreur 422 - Validation: $errorMessage',
+            tag: 'INVOICE_SERVICE',
+          );
+          throw Exception(errorMessage);
+        } catch (e) {
+          // Si le parsing de l'erreur échoue, utiliser le message par défaut
+          AppLogger.error(
+            'Erreur 422 - Impossible de parser: ${response.body}',
+            tag: 'INVOICE_SERVICE',
+          );
+          throw Exception(
+            'Erreur de validation. Veuillez vérifier les données saisies.',
+          );
+        }
+      }
+
+      // Gérer différents formats de réponse
+      try {
+        final responseBody = json.decode(response.body);
+        AppLogger.debug(
+          'Réponse de création de facture: $responseBody',
+          tag: 'INVOICE_SERVICE',
         );
+
+        // Si la réponse contient directement les données de la facture
+        if (responseBody is Map && responseBody.containsKey('id')) {
+          return Map<String, dynamic>.from({
+            'success': true,
+            'data': responseBody,
+            'message': 'Facture créée avec succès',
+          });
+        }
+
+        // Si la réponse est au format standardisé
+        if (responseBody is Map && responseBody.containsKey('success')) {
+          return Map<String, dynamic>.from(responseBody);
+        }
+
+        // Si la réponse contient 'data'
+        if (responseBody is Map && responseBody.containsKey('data')) {
+          return Map<String, dynamic>.from({
+            'success': true,
+            'data': responseBody['data'],
+            'message': responseBody['message'] ?? 'Facture créée avec succès',
+          });
+        }
+
+        // Si la réponse contient 'facture' ou 'invoice'
+        if (responseBody is Map &&
+            (responseBody.containsKey('facture') ||
+                responseBody.containsKey('invoice'))) {
+          return Map<String, dynamic>.from({
+            'success': true,
+            'data': responseBody['facture'] ?? responseBody['invoice'],
+            'message': 'Facture créée avec succès',
+          });
+        }
+
+        // Format inattendu, retourner la réponse complète
+        AppLogger.warning(
+          'Format de réponse inattendu pour la création de facture: $responseBody',
+          tag: 'INVOICE_SERVICE',
+        );
+        return Map<String, dynamic>.from({
+          'success': true,
+          'data': responseBody,
+          'message': 'Facture créée avec succès',
+        });
+      } catch (e) {
+        // Si le parsing échoue, essayer avec parseResponse
+        final result = ApiService.parseResponse(response);
+
+        if (result['success'] == true) {
+          return result;
+        } else {
+          // Pour les autres erreurs, essayer d'extraire un message
+          try {
+            final errorData = json.decode(response.body);
+            final message =
+                errorData['message'] ??
+                'Erreur lors de la création de la facture (${response.statusCode})';
+            throw Exception(message);
+          } catch (e2) {
+            throw Exception(
+              result['message'] ?? 'Erreur lors de la création de la facture',
+            );
+          }
+        }
       }
     } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
@@ -132,9 +256,12 @@ class InvoiceService extends GetxService {
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> invoiceList = data['data'] ?? [];
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        final List<dynamic> invoiceList =
+            data is List ? data : (data['data'] ?? []);
         if (invoiceList.isEmpty) {
           return [];
         }
@@ -151,7 +278,8 @@ class InvoiceService extends GetxService {
         return invoices;
       } else {
         throw Exception(
-          'Erreur lors de la récupération des factures commerciales: ${response.statusCode}',
+          result['message'] ??
+              'Erreur lors de la récupération des factures commerciales',
         );
       }
     } catch (e) {
@@ -280,7 +408,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        final data = result['success'] == true ? result['data'] : null;
         return InvoiceModel.fromJson(data['data']);
       } else {
         throw Exception(
@@ -316,7 +445,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        return result['success'] == true ? (result['data'] ?? {}) : {};
       } else {
         throw Exception(
           'Erreur lors de la mise à jour de la facture: ${response.statusCode}',
@@ -348,7 +478,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        return result['success'] == true ? (result['data'] ?? {}) : {};
       } else {
         throw Exception(
           'Erreur lors de la soumission de la facture: ${response.statusCode}',
@@ -383,11 +514,24 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        // Retourner le résultat complet avec la clé 'success'
+        return result;
       } else {
-        throw Exception(
-          'Erreur lors de l\'approbation de la facture: ${response.statusCode}',
-        );
+        // Si le statut n'est pas 200, parser la réponse pour obtenir le message d'erreur
+        try {
+          final errorData = json.decode(response.body);
+          return {
+            'success': false,
+            'message':
+                errorData['message'] ??
+                'Erreur lors de l\'approbation de la facture',
+          };
+        } catch (e) {
+          throw Exception(
+            'Erreur lors de l\'approbation de la facture: ${response.statusCode}',
+          );
+        }
       }
     } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
@@ -418,11 +562,23 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        // Retourner le résultat complet avec la clé 'success'
+        return result;
       } else {
-        throw Exception(
-          'Erreur lors du rejet de la facture: ${response.statusCode}',
-        );
+        // Si le statut n'est pas 200, parser la réponse pour obtenir le message d'erreur
+        try {
+          final errorData = json.decode(response.body);
+          return {
+            'success': false,
+            'message':
+                errorData['message'] ?? 'Erreur lors du rejet de la facture',
+          };
+        } catch (e) {
+          throw Exception(
+            'Erreur lors du rejet de la facture: ${response.statusCode}',
+          );
+        }
       }
     } catch (e, stackTrace) {
       // Gérer les erreurs d'authentification dans les exceptions
@@ -455,7 +611,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        return result['success'] == true ? (result['data'] ?? {}) : {};
       } else {
         throw Exception(
           'Erreur lors de l\'envoi de la facture: ${response.statusCode}',
@@ -490,7 +647,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        return result['success'] == true ? (result['data'] ?? {}) : {};
       } else {
         throw Exception(
           'Erreur lors du paiement de la facture: ${response.statusCode}',
@@ -522,7 +680,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        return result['success'] == true ? (result['data'] ?? {}) : {};
       } else {
         throw Exception(
           'Erreur lors de la suppression de la facture: ${response.statusCode}',
@@ -582,7 +741,8 @@ class InvoiceService extends GetxService {
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        final data = result['success'] == true ? result['data'] : null;
         return InvoiceStats.fromJson(data);
       } else {
         throw Exception(
@@ -614,7 +774,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        final data = result['success'] == true ? result['data'] : null;
         final List<dynamic> invoiceList = data['data'] ?? [];
         return invoiceList.map((json) => InvoiceModel.fromJson(json)).toList();
       } else {
@@ -648,7 +809,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        final data = result['success'] == true ? result['data'] : null;
         return data['invoice_number'];
       } else {
         throw Exception(
@@ -681,7 +843,8 @@ class InvoiceService extends GetxService {
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final result = ApiService.parseResponse(response);
+        final data = result['success'] == true ? result['data'] : null;
         final List<dynamic> templateList = data['data'] ?? [];
         return templateList
             .map((json) => InvoiceTemplate.fromJson(json))
@@ -707,135 +870,41 @@ class InvoiceService extends GetxService {
     }
   }
 
-  // Méthode pour générer des données mockées (DÉSACTIVÉE - utilisez les vraies données de l'API)
-  // Cette méthode n'est plus utilisée et peut être supprimée
-  @Deprecated('Utilisez getAllInvoices() ou getCommercialInvoices() à la place')
-  List<InvoiceModel> getMockInvoices() {
-    return [
-      InvoiceModel(
-        id: 1,
-        invoiceNumber: 'FAC-2024-001',
-        clientId: 1,
-        clientName: 'Client Test 1',
-        clientEmail: 'client1@test.com',
-        clientAddress: '123 Rue Test, Paris',
-        commercialId: 1,
-        commercialName: 'Commercial Test',
-        invoiceDate: DateTime.now().subtract(const Duration(days: 5)),
-        dueDate: DateTime.now().add(const Duration(days: 25)),
-        subtotal: 1000.0,
-        taxRate: 20.0,
-        taxAmount: 200.0,
-        totalAmount: 1200.0,
-        status: 'en_attente',
-        notes: 'Facture de test',
-        terms: 'Paiement à 30 jours',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 5)),
-        currency: 'fcfa',
-        items: [
-          InvoiceItem(
-            id: 1,
-            description: 'Service de consultation',
-            quantity: 1,
-            unitPrice: 1000.0,
-            totalPrice: 1000.0,
-          ),
-        ],
-      ),
-      InvoiceModel(
-        id: 2,
-        invoiceNumber: 'FAC-2024-002',
-        clientId: 2,
-        clientName: 'Client Test 2',
-        clientEmail: 'client2@test.com',
-        clientAddress: '456 Avenue Test, Lyon',
-        commercialId: 1,
-        commercialName: 'Commercial Test',
-        invoiceDate: DateTime.now().subtract(const Duration(days: 3)),
-        dueDate: DateTime.now().add(const Duration(days: 27)),
-        subtotal: 1500.0,
-        taxRate: 20.0,
-        taxAmount: 300.0,
-        totalAmount: 1800.0,
-        status: 'valide',
-        notes: 'Facture approuvée',
-        terms: 'Paiement à 30 jours',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        currency: 'fcfa',
-        items: [
-          InvoiceItem(
-            id: 2,
-            description: 'Développement web',
-            quantity: 1,
-            unitPrice: 1500.0,
-            totalPrice: 1500.0,
-          ),
-        ],
-      ),
-      InvoiceModel(
-        id: 3,
-        invoiceNumber: 'FAC-2024-003',
-        clientId: 3,
-        clientName: 'Client Test 3',
-        clientEmail: 'client3@test.com',
-        clientAddress: '789 Boulevard Test, Marseille',
-        commercialId: 1,
-        commercialName: 'Commercial Test',
-        invoiceDate: DateTime.now().subtract(const Duration(days: 1)),
-        dueDate: DateTime.now().add(const Duration(days: 29)),
-        subtotal: 800.0,
-        taxRate: 20.0,
-        taxAmount: 160.0,
-        totalAmount: 960.0,
-        status: 'en_attente',
-        notes: 'Facture en attente',
-        terms: 'Paiement à 30 jours',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        currency: 'fcfa',
-        items: [
-          InvoiceItem(
-            id: 3,
-            description: 'Maintenance',
-            quantity: 1,
-            unitPrice: 800.0,
-            totalPrice: 800.0,
-          ),
-        ],
-      ),
-      InvoiceModel(
-        id: 4,
-        invoiceNumber: 'FAC-2024-004',
-        clientId: 4,
-        clientName: 'Client Test 4',
-        clientEmail: 'client4@test.com',
-        clientAddress: '321 Rue Test, Toulouse',
-        commercialId: 1,
-        commercialName: 'Commercial Test',
-        invoiceDate: DateTime.now().subtract(const Duration(days: 2)),
-        dueDate: DateTime.now().add(const Duration(days: 28)),
-        subtotal: 600.0,
-        taxRate: 20.0,
-        taxAmount: 120.0,
-        totalAmount: 720.0,
-        status: 'rejete',
-        notes: 'Facture rejetée',
-        terms: 'Paiement à 30 jours',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        currency: 'fcfa',
-        items: [
-          InvoiceItem(
-            id: 4,
-            description: 'Service rejeté',
-            quantity: 1,
-            unitPrice: 600.0,
-            totalPrice: 600.0,
-          ),
-        ],
-      ),
-    ];
+  // Helper pour formater les noms de champs de manière lisible
+  String _formatFieldName(String field) {
+    // Traduire les noms de champs courants
+    final translations = {
+      'client_id': 'Client',
+      'nom': 'Nom',
+      'email': 'Email',
+      'adresse': 'Adresse',
+      'user_id': 'Utilisateur',
+      'commercial_name': 'Commercial',
+      'invoice_date': 'Date de facture',
+      'due_date': 'Date d\'échéance',
+      'items': 'Articles',
+      'subtotal': 'Sous-total',
+      'tax_rate': 'Taux de TVA',
+      'tax_amount': 'Montant TVA',
+      'total_amount': 'Montant total',
+      'notes': 'Notes',
+      'terms': 'Conditions',
+    };
+
+    // Si on a une traduction, l'utiliser
+    if (translations.containsKey(field)) {
+      return translations[field]!;
+    }
+
+    // Sinon, formater le nom du champ (remplacer _ par des espaces et capitaliser)
+    return field
+        .split('_')
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? ''
+                  : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+        )
+        .join(' ');
   }
 }

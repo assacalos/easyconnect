@@ -5,6 +5,7 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/services/comptable_dashboard_service.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
@@ -119,6 +120,14 @@ class ComptableDashboardController extends BaseDashboardController {
     ),
   ];
 
+  @override
+  void onReady() {
+    super.onReady();
+    // Rafraîchir les entités en attente quand le contrôleur est prêt
+    // Cela permet de mettre à jour les compteurs quand on revient sur le dashboard
+    refreshPendingEntities();
+  }
+
   void onFilterChanged(Filter filter) {
     if (activeFilters.contains(filter)) {
       activeFilters.remove(filter);
@@ -129,21 +138,53 @@ class ComptableDashboardController extends BaseDashboardController {
   }
 
   @override
+  void loadCachedData() {
+    // Charger les données depuis le cache pour un affichage instantané
+    final cachedPendingFactures = CacheHelper.get<int>(
+      'dashboard_comptable_pendingFactures',
+    );
+    if (cachedPendingFactures != null)
+      pendingFactures.value = cachedPendingFactures;
+
+    final cachedPendingPaiements = CacheHelper.get<int>(
+      'dashboard_comptable_pendingPaiements',
+    );
+    if (cachedPendingPaiements != null)
+      pendingPaiements.value = cachedPendingPaiements;
+
+    final cachedPendingDepenses = CacheHelper.get<int>(
+      'dashboard_comptable_pendingDepenses',
+    );
+    if (cachedPendingDepenses != null)
+      pendingDepenses.value = cachedPendingDepenses;
+
+    final cachedPendingSalaires = CacheHelper.get<int>(
+      'dashboard_comptable_pendingSalaires',
+    );
+    if (cachedPendingSalaires != null)
+      pendingSalaires.value = cachedPendingSalaires;
+
+    final cachedTotalRevenue = CacheHelper.get<double>(
+      'dashboard_comptable_totalRevenue',
+    );
+    if (cachedTotalRevenue != null) totalRevenue.value = cachedTotalRevenue;
+  }
+
+  @override
   Future<void> loadData() async {
     if (isLoading.value) return;
-    isLoading.value = true;
+    // Ne pas bloquer l'UI - charger en arrière-plan
+    isLoading.value = false; // Permettre l'affichage immédiat
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      // Charger les données des entités en attente (non-bloquant)
+      _loadPendingEntities().catchError((e) {});
 
-      // Charger les données des entités en attente
-      await _loadPendingEntities();
+      // Charger les données des entités validées (non-bloquant)
+      _loadValidatedEntities().catchError((e) {});
 
-      // Charger les données des entités validées
-      await _loadValidatedEntities();
-
-      // Charger les statistiques montants
-      await _loadStatistics();
+      // Charger les statistiques montants (non-bloquant)
+      _loadStatistics().catchError((e) {});
 
       // Simuler le chargement des données des graphiques
       revenueData.value = [
@@ -187,27 +228,52 @@ class ComptableDashboardController extends BaseDashboardController {
     }
   }
 
+  // Méthode publique pour recharger les entités en attente
+  Future<void> refreshPendingEntities() async {
+    await _loadPendingEntities();
+  }
+
   Future<void> _loadPendingEntities() async {
     try {
       final factures = await _invoiceService.getAllInvoices();
       final statusLower = (String status) => status.toLowerCase();
-      pendingFactures.value =
+      final pendingFacturesCount =
           factures.where((f) {
             final status = statusLower(f.status);
             return status == 'draft' || status == 'en_attente';
           }).length;
+      pendingFactures.value = pendingFacturesCount;
+      CacheHelper.set(
+        'dashboard_comptable_pendingFactures',
+        pendingFacturesCount,
+      );
 
       final paiements = await _paymentService.getAllPayments();
       // Utiliser la propriété isPending du modèle qui gère tous les cas
-      pendingPaiements.value = paiements.where((p) => p.isPending).length;
+      final pendingPaiementsCount = paiements.where((p) => p.isPending).length;
+      pendingPaiements.value = pendingPaiementsCount;
+      CacheHelper.set(
+        'dashboard_comptable_pendingPaiements',
+        pendingPaiementsCount,
+      );
 
       final depenses = await _expenseService.getExpenses();
-      pendingDepenses.value =
+      final pendingDepensesCount =
           depenses.where((d) => d.status == 'pending').length;
+      pendingDepenses.value = pendingDepensesCount;
+      CacheHelper.set(
+        'dashboard_comptable_pendingDepenses',
+        pendingDepensesCount,
+      );
 
       final salaires = await _salaryService.getSalaries();
-      pendingSalaires.value =
+      final pendingSalairesCount =
           salaires.where((s) => s.status == 'pending').length;
+      pendingSalaires.value = pendingSalairesCount;
+      CacheHelper.set(
+        'dashboard_comptable_pendingSalaires',
+        pendingSalairesCount,
+      );
     } catch (e) {
       pendingFactures.value = 0;
       pendingPaiements.value = 0;
@@ -258,7 +324,7 @@ class ComptableDashboardController extends BaseDashboardController {
       final factures = results[0] as List;
       // Calculer le total des factures validées (chiffre d'affaires)
       final statusLower = (String status) => status.toLowerCase().trim();
-      totalRevenue.value = factures
+      final revenue = factures
           .where((f) {
             final status = statusLower(f.status);
             return status == 'valide' ||
@@ -266,24 +332,25 @@ class ComptableDashboardController extends BaseDashboardController {
                 status == 'approved';
           })
           .fold(0.0, (sum, f) => sum + f.totalAmount);
+      totalRevenue.value = revenue;
+      CacheHelper.set('dashboard_comptable_totalRevenue', revenue);
 
       final paiements = results[1] as List;
-      totalPayments.value = paiements.fold(
-        0.0,
-        (sum, p) => sum + (p.amount ?? 0.0),
-      );
+      final payments = paiements.fold(0.0, (sum, p) => sum + (p.amount ?? 0.0));
+      totalPayments.value = payments;
+      CacheHelper.set('dashboard_comptable_totalPayments', payments);
 
       final depenses = results[2] as List;
-      totalExpenses.value = depenses.fold(
-        0.0,
-        (sum, d) => sum + (d.amount ?? 0.0),
-      );
+      final expenses = depenses.fold(0.0, (sum, d) => sum + (d.amount ?? 0.0));
+      totalExpenses.value = expenses;
+      CacheHelper.set('dashboard_comptable_totalExpenses', expenses);
 
       final salaires = results[3] as List;
-      totalSalaries.value = salaires.fold(0.0, (sum, s) => sum + (s.netSalary));
+      final salaries = salaires.fold(0.0, (sum, s) => sum + (s.netSalary));
+      totalSalaries.value = salaries;
+      CacheHelper.set('dashboard_comptable_totalSalaries', salaries);
 
-      netProfit.value =
-          totalRevenue.value - totalExpenses.value - totalSalaries.value;
+      netProfit.value = revenue - expenses - salaries;
     } catch (e) {
       totalRevenue.value = 0.0;
       totalPayments.value = 0.0;

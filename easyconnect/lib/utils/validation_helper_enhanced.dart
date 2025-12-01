@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
 /// Helper amélioré pour la validation des formulaires
 class ValidationHelperEnhanced {
@@ -97,8 +98,14 @@ class ValidationHelperEnhanced {
   }
 
   /// Affiche une erreur de validation
-  static void showValidationError(String message) {
+  static void showValidationError(String message, {bool showToUser = true}) {
     AppLogger.warning('Validation error: $message');
+
+    // Les erreurs de validation peuvent être affichées car elles sont utilisateur-friendly
+    if (!showToUser && !AppConfig.showErrorMessagesToUsers) {
+      return;
+    }
+
     Get.snackbar(
       'Erreur de validation',
       message,

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
 
 class BonDeCommandeFournisseurService {
   final storage = GetStorage();
@@ -38,30 +40,42 @@ class BonDeCommandeFournisseurService {
         },
       );
 
-      if (response.statusCode == 200) {
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      // Utiliser ApiService.parseResponse pour gérer le format standardisé
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          final responseData = json.decode(response.body);
+          final responseData = result['data'];
 
           // Gérer différents formats de réponse
           List<dynamic> data;
           if (responseData is List) {
             data = responseData;
-          } else if (responseData['data'] != null) {
-            if (responseData['data'] is List) {
-              data = responseData['data'];
-            } else if (responseData['data']['data'] != null) {
-              data = responseData['data']['data'];
+          } else if (responseData is Map<String, dynamic>) {
+            if (responseData['data'] != null) {
+              if (responseData['data'] is List) {
+                data = responseData['data'];
+              } else if (responseData['data'] is Map &&
+                  responseData['data']['data'] != null &&
+                  responseData['data']['data'] is List) {
+                data = responseData['data']['data'];
+              } else {
+                data = [responseData['data']];
+              }
+            } else if (responseData['bon_de_commandes'] != null) {
+              if (responseData['bon_de_commandes'] is List) {
+                data = responseData['bon_de_commandes'];
+              } else {
+                data = [responseData['bon_de_commandes']];
+              }
+            } else if (responseData['bon_de_commande'] != null) {
+              data = [responseData['bon_de_commande']];
             } else {
-              data = [responseData['data']];
+              return [];
             }
-          } else if (responseData['bon_de_commandes'] != null) {
-            if (responseData['bon_de_commandes'] is List) {
-              data = responseData['bon_de_commandes'];
-            } else {
-              data = [responseData['bon_de_commandes']];
-            }
-          } else if (responseData['bon_de_commande'] != null) {
-            data = [responseData['bon_de_commande']];
           } else {
             return [];
           }
@@ -71,7 +85,7 @@ class BonDeCommandeFournisseurService {
                   .map((json) {
                     try {
                       return BonDeCommande.fromJson(json);
-                    } catch (e, stackTrace) {
+                    } catch (e) {
                       return null;
                     }
                   })
@@ -80,13 +94,14 @@ class BonDeCommandeFournisseurService {
                   .toList();
 
           return bonDeCommandeList;
-        } catch (e, stackTrace) {
-          return [];
+        } catch (e) {
+          throw Exception('Erreur lors du parsing des bons de commande: $e');
         }
       }
 
       throw Exception(
-        'Erreur lors de la récupération des bons de commande: ${response.statusCode}',
+        result['message'] ??
+            'Erreur lors de la récupération des bons de commande',
       );
     } catch (e) {
       throw Exception(

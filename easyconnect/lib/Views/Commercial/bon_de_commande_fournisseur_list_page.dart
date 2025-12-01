@@ -5,19 +5,36 @@ import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
-class BonDeCommandeFournisseurListPage extends StatelessWidget {
+class BonDeCommandeFournisseurListPage extends StatefulWidget {
   final int? supplierId;
+
+  const BonDeCommandeFournisseurListPage({super.key, this.supplierId});
+
+  @override
+  State<BonDeCommandeFournisseurListPage> createState() =>
+      _BonDeCommandeFournisseurListPageState();
+}
+
+class _BonDeCommandeFournisseurListPageState
+    extends State<BonDeCommandeFournisseurListPage> {
   final BonDeCommandeFournisseurController controller = Get.put(
     BonDeCommandeFournisseurController(),
   );
+  bool _hasLoaded = false;
 
-  BonDeCommandeFournisseurListPage({super.key, this.supplierId});
+  @override
+  void initState() {
+    super.initState();
+    if (!_hasLoaded) {
+      _hasLoaded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.loadBonDeCommandes();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadBonDeCommandes();
-    });
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bons de commande fournisseur'),

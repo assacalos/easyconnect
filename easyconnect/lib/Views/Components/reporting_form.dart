@@ -96,6 +96,8 @@ class ReportingForm extends StatelessWidget {
               _buildComptableMetrics(context, reportingController),
             ] else if (userRole == Roles.TECHNICIEN) ...[
               _buildTechnicienMetrics(context, reportingController),
+            ] else if (userRole == Roles.RH) ...[
+              _buildRhMetrics(context, reportingController),
             ],
 
             const SizedBox(height: 24),
@@ -818,6 +820,305 @@ class ReportingForm extends StatelessWidget {
               onChanged: (value) {
                 controller.updateTechnicienMetrics(notesTechniques: value);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRhMetrics(BuildContext context, ReportingController controller) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Métriques RH', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Employés recrutés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            employesRecrutes: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note employés recrutés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les recrutements...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            noteEmployesRecrutes: value,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Demandes congé traitées',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            demandesCongeTraitees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note demandes congé traitées',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les demandes...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            noteDemandesCongeTraitees: value,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Demandes congé approuvées',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      controller.updateRhMetrics(
+                        demandesCongeApprouvees: int.tryParse(value) ?? 0,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Demandes congé rejetées',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      controller.updateRhMetrics(
+                        demandesCongeRejetees: int.tryParse(value) ?? 0,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Contrats créés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            contratsCrees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note contrats créés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les contrats...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(noteContratsCrees: value);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Contrats renouvelés',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      controller.updateRhMetrics(
+                        contratsRenouveles: int.tryParse(value) ?? 0,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Pointages validés',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            pointagesValides: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note pointages validés',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les pointages...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            notePointagesValides: value,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Entretiens réalisés',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      controller.updateRhMetrics(
+                        entretiensRealises: int.tryParse(value) ?? 0,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Formations organisées',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            formationsOrganisees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note formations organisées',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les formations...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            noteFormationsOrganisees: value,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Évaluations effectuées',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            evaluationsEffectuees: int.tryParse(value) ?? 0,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Note évaluations effectuées',
+                          border: OutlineInputBorder(),
+                          hintText: 'Détails sur les évaluations...',
+                        ),
+                        maxLines: 2,
+                        onChanged: (value) {
+                          controller.updateRhMetrics(
+                            noteEvaluationsEffectuees: value,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

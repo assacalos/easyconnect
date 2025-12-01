@@ -291,12 +291,14 @@ class BonCommandeFormPage extends StatelessWidget {
                 bonCommandeId!,
               );
               if (success) {
-                Get.back();
+                await Future.delayed(const Duration(milliseconds: 500));
+                Get.offNamed('/bon-commandes');
               }
             } else {
               final success = await controller.createBonCommande();
               if (success) {
-                Get.back();
+                await Future.delayed(const Duration(milliseconds: 500));
+                Get.offNamed('/bon-commandes');
               }
             }
           }

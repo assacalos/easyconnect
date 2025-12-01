@@ -269,7 +269,8 @@ class ProfilePage extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              minimumSize: const Size(0, 44),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -285,7 +286,8 @@ class ProfilePage extends StatelessWidget {
             label: const Text('Déconnexion'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.red,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              minimumSize: const Size(0, 44),
               side: const BorderSide(color: Colors.red),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),

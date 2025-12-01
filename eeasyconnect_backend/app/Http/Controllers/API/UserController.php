@@ -2,71 +2,104 @@
 
 namespace App\Http\Controllers\API;
 
+use App\Http\Requests\LoginRequest;
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
 use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|string|min:6',
-        ]);
+        try {
+            $credentials = $request->only('email', 'password');
 
-        $credentials = $request->only('email', 'password');
+            if (!Auth::attempt($credentials)) {
+                return $this->errorResponse('Identifiants incorrects', 401);
+            }
 
-        if (!Auth::attempt($credentials)) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Identifiants incorrects'
-            ], 401);
+            $user = Auth::user();
+            
+            if (!$user) {
+                return $this->errorResponse('Utilisateur non trouvé', 404);
+            }
+
+            $token = $user->createToken('API Token')->plainTextToken;
+
+            // Vérifier si getRoleName existe, sinon utiliser une valeur par défaut
+            $roleName = method_exists($user, 'getRoleName') ? $user->getRoleName() : 'Utilisateur';
+
+            return $this->successResponse([
+                'token' => $token,
+                'user' => [
+                    'id' => $user->id,
+                    'nom' => $user->nom ?? '',
+                    'prenom' => $user->prenom ?? '',
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'role_name' => $roleName
+                ],
+            ], 'Connexion réussie');
+        } catch (\Exception $e) {
+            \Log::error('Login error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // En mode debug, retourner l'erreur détaillée
+            if (config('app.debug')) {
+                return $this->errorResponse(
+                    'Erreur lors de la connexion: ' . $e->getMessage(),
+                    500
+                );
+            }
+
+            return $this->errorResponse('Erreur lors de la connexion', 500);
         }
-
-        $user = Auth::user();
-        $token = $user->createToken('API Token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'nom' => $user->nom,
-                'prenom' => $user->prenom,
-                'email' => $user->email,
-                'role' => $user->role,
-                'role_name' => $user->getRoleName()
-            ],
-            'message' => 'Connexion réussie'
-        ]);
     }
 
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
         
-        return response()->json([
-            'success' => true,
-            'message' => 'Déconnexion réussie'
-        ]);
+        return $this->successResponse(null, 'Déconnexion réussie');
     }
 
     public function me(Request $request)
     {
-        $user = $request->user();
-        
-        return response()->json([
-            'success' => true,
-            'user' => [
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return $this->unauthorizedResponse('Utilisateur non authentifié');
+            }
+
+            // Vérifier si getRoleName existe, sinon utiliser une valeur par défaut
+            $roleName = method_exists($user, 'getRoleName') ? $user->getRoleName() : 'Utilisateur';
+            
+            return $this->successResponse([
                 'id' => $user->id,
-                'nom' => $user->nom,
-                'prenom' => $user->prenom,
+                'nom' => $user->nom ?? '',
+                'prenom' => $user->prenom ?? '',
                 'email' => $user->email,
                 'role' => $user->role,
-                'role_name' => $user->getRoleName()
-            ]
-        ]);
+                'role_name' => $roleName
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Me endpoint error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            if (config('app.debug')) {
+                return $this->errorResponse('Erreur: ' . $e->getMessage(), 500);
+            }
+
+            return $this->errorResponse('Erreur lors de la récupération des informations utilisateur', 500);
+        }
     }
     /**
      * Liste des utilisateurs (Admin uniquement)

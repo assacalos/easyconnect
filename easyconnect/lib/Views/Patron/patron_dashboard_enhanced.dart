@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/patron_dashboard_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
@@ -95,7 +96,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
 
   Widget _buildValidationSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(16),
@@ -239,7 +240,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             gradient: LinearGradient(
@@ -276,7 +277,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                 decoration: BoxDecoration(
                   color: color,
                   borderRadius: BorderRadius.circular(14),
@@ -299,7 +300,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
 
   Widget _buildPerformanceSection() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -383,7 +384,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
@@ -395,7 +396,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -641,6 +642,24 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
         title: const Text('Rapports', style: TextStyle(color: Colors.white70)),
         onTap: () => Get.toNamed('/patron/reports'),
       ),
+      // Bouton Paramètres (visible pour tous, mais accès restreint aux admins)
+      Obx(() {
+        final userRole = Get.find<AuthController>().userAuth.value?.role;
+        if (userRole == 1) {
+          return ListTile(
+            leading: const Icon(Icons.settings, color: Colors.white70),
+            title: const Text(
+              'Paramètres',
+              style: TextStyle(color: Colors.white70),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Get.toNamed('/admin/settings');
+            },
+          );
+        }
+        return const SizedBox.shrink();
+      }),
     ];
   }
 

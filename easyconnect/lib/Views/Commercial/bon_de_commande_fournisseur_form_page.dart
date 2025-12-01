@@ -401,13 +401,15 @@ class _BonDeCommandeFournisseurFormPageState
                                       data,
                                     );
                                 if (success) {
-                                  Get.back();
+                                  // Fermer immédiatement le formulaire après succès
+                                  Get.offNamed('/bons-de-commande-fournisseur');
                                 }
                               } else {
                                 final success = await controller
                                     .createBonDeCommande(data);
                                 if (success) {
-                                  Get.back();
+                                  // Fermer immédiatement le formulaire après succès
+                                  Get.offNamed('/bons-de-commande-fournisseur');
                                 }
                               }
                             }

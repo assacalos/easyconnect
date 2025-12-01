@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\Reporting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -11,6 +12,7 @@ use Carbon\Carbon;
 
 class UserReportingController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des reportings
      */
@@ -295,6 +297,20 @@ class UserReportingController extends Controller
             
             // Si c'est un draft (ancien système), on peut encore le soumettre
             if ($reporting->submit()) {
+                // Notifier le patron
+                $patron = User::where('role', 6)->first();
+                if ($patron) {
+                    $this->createNotification([
+                        'user_id' => $patron->id,
+                        'title' => 'Soumission Reporting',
+                        'message' => "Reporting #{$reporting->id} a été soumis pour validation",
+                        'type' => 'info',
+                        'entity_type' => 'reporting',
+                        'entity_id' => $reporting->id,
+                        'action_route' => "/user-reportings/{$reporting->id}",
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $reporting->load(['user', 'approver']),
@@ -337,6 +353,19 @@ class UserReportingController extends Controller
             ]);
             
             if ($reporting->approve($user->id, $request->comments)) {
+                // Notifier l'auteur du reporting
+                if ($reporting->user_id) {
+                    $this->createNotification([
+                        'user_id' => $reporting->user_id,
+                        'title' => 'Approbation Reporting',
+                        'message' => "Reporting #{$reporting->id} a été approuvé",
+                        'type' => 'success',
+                        'entity_type' => 'reporting',
+                        'entity_id' => $reporting->id,
+                        'action_route' => "/user-reportings/{$reporting->id}",
+                    ]);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => $reporting->load(['user', 'approver']),

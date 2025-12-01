@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:intl/intl.dart';
 
 class PaiementValidationPage extends StatefulWidget {
@@ -48,28 +50,21 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
   }
 
   Future<void> _loadPayments() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente - inclure tous les statuts en attente
-        // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
-        status = null;
-        break;
-      case 2: // Validés
-        status = 'approved';
-        break;
-      case 3: // Rejetés
-        status = 'rejected';
-        break;
+    // Réinitialiser tous les filtres pour charger tous les paiements
+    controller.selectedStatus.value = 'all';
+    controller.selectedType.value = 'all';
+    controller.selectedApprovalStatus.value = 'all';
+    controller.startDate.value = null;
+    controller.endDate.value = null;
+
+    // Invalider le cache pour forcer le rechargement depuis le serveur
+    final authController = Get.find<AuthController>();
+    final user = authController.userAuth.value;
+    if (user != null) {
+      CacheHelper.clearByPrefix('payments_');
     }
 
-    if (status != null) {
-      controller.selectedStatus.value = status;
-    } else {
-      controller.selectedStatus.value = 'all';
-    }
+    // Charger tous les paiements, le filtrage par onglet se fait côté client
     await controller.loadPayments();
   }
 

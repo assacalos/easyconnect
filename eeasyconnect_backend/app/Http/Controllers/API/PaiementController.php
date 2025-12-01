@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Paiement;
 use App\Models\Facture;
@@ -11,6 +12,7 @@ use App\Models\PaymentSchedule;
 
 class PaiementController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des paiements
      * Accessible par Comptable, Patron et Admin
@@ -231,15 +233,41 @@ class PaiementController extends Controller
             // Si c'est un paiement mensuel avec schedule, créer le schedule
             if (($validated['type'] ?? 'one_time') === 'monthly' && isset($validated['schedule'])) {
                 $scheduleData = $validated['schedule'];
+                
+                // Parser les dates du schedule (format ISO vers Y-m-d)
+                $scheduleStartDate = $scheduleData['start_date'] ?? $paiement->date_paiement;
+                if (is_string($scheduleStartDate)) {
+                    try {
+                        $scheduleStartDate = \Carbon\Carbon::parse($scheduleStartDate)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        $scheduleStartDate = $paiement->date_paiement;
+                    }
+                }
+                
+                $scheduleEndDate = $scheduleData['end_date'] ?? null;
+                if ($scheduleEndDate && is_string($scheduleEndDate)) {
+                    try {
+                        $scheduleEndDate = \Carbon\Carbon::parse($scheduleEndDate)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        $scheduleEndDate = null;
+                    }
+                }
+                
+                // Calculer le montant de l'échéance et l'arrondir à 2 décimales
+                $totalInstallments = $scheduleData['total_installments'] ?? 12;
+                $installmentAmount = $scheduleData['installment_amount'] ?? ($paiement->montant / $totalInstallments);
+                $installmentAmount = round($installmentAmount, 2);
+                
                 PaymentSchedule::create([
                     'payment_id' => $paiement->id,
-                    'start_date' => $scheduleData['start_date'] ?? $paiement->date_paiement,
-                    'end_date' => $scheduleData['end_date'] ?? null,
+                    'start_date' => $scheduleStartDate,
+                    'end_date' => $scheduleEndDate,
                     'frequency' => $scheduleData['frequency'] ?? 30,
-                    'total_installments' => $scheduleData['total_installments'] ?? 12,
+                    'total_installments' => $totalInstallments,
                     'paid_installments' => 0,
-                    'installment_amount' => $scheduleData['installment_amount'] ?? ($paiement->montant / ($scheduleData['total_installments'] ?? 12)),
-                    'status' => 'active'
+                    'installment_amount' => $installmentAmount,
+                    'status' => 'active',
+                    'created_by' => $scheduleData['created_by'] ?? auth()->id()
                 ]);
             }
 
@@ -398,6 +426,20 @@ class PaiementController extends Controller
                     $paiement->facture->update(['statut' => 'payee']);
                 }
 
+                // Notifier l'auteur du paiement
+                if ($paiement->comptable_id) {
+                    $reference = $paiement->reference ?? $paiement->id;
+                    $this->createNotification([
+                        'user_id' => $paiement->comptable_id,
+                        'title' => 'Validation Paiement',
+                        'message' => "Paiement #{$reference} a été validé",
+                        'type' => 'success',
+                        'entity_type' => 'payment',
+                        'entity_id' => $paiement->id,
+                        'action_route' => "/payments/{$paiement->id}",
+                    ]);
+                }
+
                 // Recharger le paiement avec ses relations
                 $paiement->refresh();
                 $paiement->load('client', 'comptable', 'facture', 'schedule');
@@ -459,6 +501,21 @@ class PaiementController extends Controller
             'rejected_by' => auth()->id(),
             'rejected_at' => now()
         ]);
+
+        // Notifier l'auteur du paiement
+        if ($paiement->comptable_id) {
+            $reference = $paiement->reference ?? $paiement->id;
+            $this->createNotification([
+                'user_id' => $paiement->comptable_id,
+                'title' => 'Rejet Paiement',
+                'message' => "Paiement #{$reference} a été rejeté. Raison: {$reason}",
+                'type' => 'error',
+                'entity_type' => 'payment',
+                'entity_id' => $paiement->id,
+                'action_route' => "/payments/{$paiement->id}",
+                'metadata' => ['reason' => $reason],
+            ]);
+        }
 
         $paiement->load('client', 'comptable', 'schedule');
         return response()->json([
@@ -543,6 +600,21 @@ class PaiementController extends Controller
         $paiement = Paiement::findOrFail($id);
 
         if ($paiement->submit()) {
+            // Notifier le patron
+            $patron = \App\Models\User::where('role', 6)->first();
+            if ($patron) {
+                $reference = $paiement->reference ?? $paiement->id;
+                $this->createNotification([
+                    'user_id' => $patron->id,
+                    'title' => 'Soumission Paiement',
+                    'message' => "Paiement #{$reference} a été soumis pour validation",
+                    'type' => 'info',
+                    'entity_type' => 'payment',
+                    'entity_id' => $paiement->id,
+                    'action_route' => "/payments/{$paiement->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'paiement' => $paiement,
@@ -572,6 +644,20 @@ class PaiementController extends Controller
         $comment = $request->comment ?? $request->comments;
 
         if ($paiement->approve(auth()->id(), $comment)) {
+            // Notifier l'auteur du paiement
+            if ($paiement->comptable_id) {
+                $reference = $paiement->reference ?? $paiement->id;
+                $this->createNotification([
+                    'user_id' => $paiement->comptable_id,
+                    'title' => 'Approbation Paiement',
+                    'message' => "Paiement #{$reference} a été approuvé",
+                    'type' => 'success',
+                    'entity_type' => 'payment',
+                    'entity_id' => $paiement->id,
+                    'action_route' => "/payments/{$paiement->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'paiement' => $paiement,

@@ -97,37 +97,33 @@ class StockService extends GetxService {
       await AuthErrorHandler.handleHttpResponse(response);
 
       // Gérer les réponses avec différents codes de statut
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          final responseData = jsonDecode(response.body);
+          final responseData = result['data'];
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
 
           // Essayer d'abord le format standard Laravel
-          if (responseData['data'] != null) {
-            if (responseData['data'] is List) {
-              data = responseData['data'];
-            } else if (responseData['data']['data'] != null) {
-              data = responseData['data']['data'];
-            }
-          }
-          // Essayer le format spécifique aux stocks
-          else if (responseData['stocks'] != null) {
-            if (responseData['stocks'] is List) {
-              data = responseData['stocks'];
-            }
-          }
-          // Essayer le format avec success
-          else if (responseData['success'] == true &&
-              responseData['stocks'] != null) {
-            if (responseData['stocks'] is List) {
-              data = responseData['stocks'];
-            }
-          }
-          // Si la réponse est directement une liste
-          else if (responseData is List) {
+          if (responseData is List) {
             data = responseData;
+          } else if (responseData is Map) {
+            if (responseData['data'] != null) {
+              if (responseData['data'] is List) {
+                data = responseData['data'];
+              } else if (responseData['data']['data'] != null) {
+                data = responseData['data']['data'];
+              }
+            }
+            // Essayer le format spécifique aux stocks
+            else if (responseData['stocks'] != null) {
+              if (responseData['stocks'] is List) {
+                data = responseData['stocks'];
+              }
+            }
           }
+
           if (data.isEmpty) {
             return [];
           }
@@ -144,7 +140,7 @@ class StockService extends GetxService {
         }
       } else {
         // Si c'est une erreur 401, elle a déjà été gérée
-        if (response.statusCode == 401) {
+        if (result['statusCode'] == 401) {
           throw Exception('Session expirée');
         }
 
@@ -181,12 +177,13 @@ class StockService extends GetxService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return Stock.fromJson(data['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       } else {
         throw Exception(
-          'Erreur lors de la récupération du stock: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la récupération du stock',
         );
       }
     } catch (e) {
@@ -260,25 +257,16 @@ class StockService extends GetxService {
 
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         AppLogger.info('Stock créé avec succès', tag: 'STOCK_SERVICE');
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+        return Stock.fromJson(result['data']);
       }
 
-      // Afficher les détails de l'erreur
-      final errorBody = response.body;
-
-      // Essayer de parser le message d'erreur du backend
-      try {
-        final errorData = jsonDecode(errorBody);
-        final message = errorData['message'] ?? errorBody;
-        throw Exception('Erreur ${response.statusCode}: $message');
-      } catch (e) {
-        throw Exception(
-          'Erreur lors de la création du stock: ${response.statusCode} - $errorBody',
-        );
-      }
+      throw Exception(
+        result['message'] ?? 'Erreur lors de la création du stock',
+      );
     } catch (e, stackTrace) {
       AppLogger.error(
         'Erreur lors de la création du stock: $e',
@@ -314,15 +302,15 @@ class StockService extends GetxService {
       AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         AppLogger.info('Stock mis à jour avec succès', tag: 'STOCK_SERVICE');
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+        return Stock.fromJson(result['data']);
       }
 
-      final errorBody = response.body;
       throw Exception(
-        'Erreur lors de la mise à jour du stock: ${response.statusCode} - $errorBody',
+        result['message'] ?? 'Erreur lors de la mise à jour du stock',
       );
     } catch (e) {
       rethrow;
@@ -337,11 +325,13 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
         throw Exception(
-          'Erreur lors de la suppression du stock: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la suppression du stock',
         );
       }
     } catch (e) {
@@ -370,9 +360,10 @@ class StockService extends GetxService {
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         }),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(
@@ -402,9 +393,10 @@ class StockService extends GetxService {
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         }),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(
@@ -432,9 +424,10 @@ class StockService extends GetxService {
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         }),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(
@@ -462,9 +455,10 @@ class StockService extends GetxService {
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         }),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(
@@ -498,11 +492,13 @@ class StockService extends GetxService {
         }),
       );
 
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
         throw Exception(
-          'Erreur lors de l\'ajout du mouvement: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de l\'ajout du mouvement',
         );
       }
     } catch (e) {
@@ -548,11 +544,14 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return (data['data'] as List)
-            .map((json) => StockMovement.fromJson(json))
-            .toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => StockMovement.fromJson(json)).toList();
+        }
+        return [];
       } else {
         throw Exception(
           'Erreur lors de la récupération des mouvements: ${response.statusCode}',
@@ -588,12 +587,14 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return StockStats.fromJson(data['data'] ?? data);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return StockStats.fromJson(result['data']);
       } else {
         throw Exception(
-          'Erreur lors de la récupération des statistiques: ${response.statusCode}',
+          result['message'] ??
+              'Erreur lors de la récupération des statistiques',
         );
       }
     } catch (e) {
@@ -608,15 +609,17 @@ class StockService extends GetxService {
         Uri.parse('${AppConfig.baseUrl}/stocks-categories'),
         headers: ApiService.headers(),
       );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List<dynamic> categoriesList = data['data'] ?? data;
-        return categoriesList
-            .map((json) => StockCategory.fromJson(json))
-            .toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => StockCategory.fromJson(json)).toList();
+        }
+        return [];
       } else {
         throw Exception(
-          'Erreur lors de la récupération des catégories: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la récupération des catégories',
         );
       }
     } catch (e) {
@@ -643,11 +646,13 @@ class StockService extends GetxService {
         }),
       );
 
-      if (response.statusCode == 201) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
         throw Exception(
-          'Erreur lors de la création de la catégorie: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la création de la catégorie',
         );
       }
     } catch (e) {
@@ -680,14 +685,17 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return (data['data'] as List)
-            .map((json) => StockAlert.fromJson(json))
-            .toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => StockAlert.fromJson(json)).toList();
+        }
+        return [];
       } else {
         throw Exception(
-          'Erreur lors de la récupération des alertes: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors de la récupération des alertes',
         );
       }
     } catch (e) {
@@ -703,11 +711,13 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       } else {
         throw Exception(
-          'Erreur lors du marquage de l\'alerte: ${response.statusCode}',
+          result['message'] ?? 'Erreur lors du marquage de l\'alerte',
         );
       }
     } catch (e) {
@@ -723,10 +733,11 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return Stock.fromJson(data['data']);
-      } else if (response.statusCode == 404) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
+      } else if (result['statusCode'] == 404) {
         return null;
       } else {
         throw Exception(
@@ -753,9 +764,10 @@ class StockService extends GetxService {
             'validation_comment': validationComment,
         }),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(
@@ -776,9 +788,10 @@ class StockService extends GetxService {
         headers: ApiService.headers(),
         body: jsonEncode({'commentaire': commentaire}),
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        return Stock.fromJson(responseData['data'] ?? responseData);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Stock.fromJson(result['data']);
       }
 
       throw Exception(

@@ -16,8 +16,9 @@ class DevisListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Recharger les devis au démarrage de la page
+    // Charger les données au démarrage de la page
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
       controller.loadDevis();
     });
 

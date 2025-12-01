@@ -109,7 +109,9 @@ class ReportingList extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${report.userName} (${report.userRole})',
+                        report.userRole.toLowerCase().contains('comptable')
+                            ? report.userName
+                            : '${report.userName} (${report.userRole})',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.grey[600],
                         ),

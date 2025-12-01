@@ -41,10 +41,19 @@ class RouteServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting(): void
     {
+        // Rate limiting pour les routes API authentifiées
         RateLimiter::for('api', function (Request $request) {
-            // Augmentation de la limite à 120 requêtes par minute pour éviter les erreurs 429
-            // Surtout nécessaire pour Flutter qui fait beaucoup d'appels simultanés
-            return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
+            // Limite plus élevée pour les utilisateurs authentifiés
+            if ($request->user()) {
+                return Limit::perMinute(120)->by($request->user()->id);
+            }
+            // Limite plus basse pour les routes publiques (login, etc.)
+            return Limit::perMinute(60)->by($request->ip());
+        });
+
+        // Rate limiting strict pour les routes de login
+        RateLimiter::for('login', function (Request $request) {
+            return Limit::perMinute(5)->by($request->ip());
         });
     }
 }

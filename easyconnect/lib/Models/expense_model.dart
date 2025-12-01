@@ -36,25 +36,49 @@ class Expense {
   });
 
   factory Expense.fromJson(Map<String, dynamic> json) {
+    // Helper pour parser les dates de manière sécurisée
+    DateTime parseDate(dynamic dateValue) {
+      if (dateValue == null) return DateTime.now();
+      if (dateValue is DateTime) return dateValue;
+      if (dateValue is String) {
+        try {
+          return DateTime.parse(dateValue);
+        } catch (e) {
+          return DateTime.now();
+        }
+      }
+      return DateTime.now();
+    }
+
     return Expense(
       id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
-      title: json['title'],
-      description: json['description'] ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
       amount:
           json['amount'] is String
               ? double.tryParse(json['amount']) ?? 0.0
               : (json['amount']?.toDouble() ?? 0.0),
-      category: json['category'],
-      status: json['status'] ?? 'pending',
-      expenseDate: DateTime.parse(json['expense_date']),
-      receiptPath: json['receipt_path'],
-      notes: json['notes'],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      createdBy: json['created_by'],
-      approvedBy: json['approved_by'],
-      rejectionReason: json['rejection_reason'],
-      approvedAt: json['approved_at'],
+      category: json['category']?.toString() ?? 'other',
+      status: json['status']?.toString() ?? 'pending',
+      expenseDate: parseDate(json['expense_date'] ?? json['expenseDate']),
+      receiptPath:
+          json['receipt_path']?.toString() ?? json['receiptPath']?.toString(),
+      notes: json['notes']?.toString(),
+      createdAt: parseDate(json['created_at'] ?? json['createdAt']),
+      updatedAt: parseDate(json['updated_at'] ?? json['updatedAt']),
+      createdBy:
+          json['created_by'] is String
+              ? int.tryParse(json['created_by'])
+              : json['created_by'],
+      approvedBy:
+          json['approved_by'] is String
+              ? int.tryParse(json['approved_by'])
+              : json['approved_by'],
+      rejectionReason:
+          json['rejection_reason']?.toString() ??
+          json['rejectionReason']?.toString(),
+      approvedAt:
+          json['approved_at']?.toString() ?? json['approvedAt']?.toString(),
     );
   }
 

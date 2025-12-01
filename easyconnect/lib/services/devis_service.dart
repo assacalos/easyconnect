@@ -23,12 +23,18 @@ class DevisService {
 
       final token = storage.read('token');
 
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
       var queryParams = <String, String>{};
       if (status != null) {
         // Statuts uniformisés : 1=En attente, 2=Validé, 3=Rejeté
         queryParams['status'] = status.toString();
       }
-      // Ne pas envoyer user_id car le contrôleur Laravel le gère automatiquement
+      // Filtrer par userId pour les commerciaux (role 2)
+      if (userRole == 2 && userId != null) {
+        queryParams['user_id'] = userId.toString();
+      }
 
       final queryString =
           queryParams.isEmpty
@@ -320,16 +326,32 @@ class DevisService {
     try {
       final token = storage.read('token');
       final url = '${AppConfig.baseUrl}/devis-validate/$devisId';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+
+      AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       return response.statusCode == 200;
     } catch (e) {
+      AppLogger.error(
+        'Erreur lors de la validation du devis: $e',
+        tag: 'DEVIS_SERVICE',
+      );
       return false;
     }
   }
@@ -339,18 +361,34 @@ class DevisService {
       final token = storage.read('token');
       final url = '${AppConfig.baseUrl}/devis-reject/$devisId';
       final body = json.encode({'commentaire': commentaire});
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: body,
+
+      AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.post(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: body,
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
       );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
 
       return response.statusCode == 200;
     } catch (e) {
+      AppLogger.error(
+        'Erreur lors du rejet du devis: $e',
+        tag: 'DEVIS_SERVICE',
+      );
       return false;
     }
   }

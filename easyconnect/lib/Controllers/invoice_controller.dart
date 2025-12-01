@@ -8,6 +8,9 @@ import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class InvoiceController extends GetxController {
   final InvoiceService _invoiceService = InvoiceService.to;
@@ -60,10 +63,13 @@ class InvoiceController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadInvoices();
-    loadTemplates();
-    // Générer automatiquement le numéro de facture au démarrage
-    initializeGeneratedReference();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadInvoices();
+      loadTemplates();
+      // Générer automatiquement le numéro de facture au démarrage
+      initializeGeneratedReference();
+    });
   }
 
   @override
@@ -107,22 +113,38 @@ class InvoiceController extends GetxController {
   // Charger les factures
   Future<void> loadInvoices() async {
     try {
-      isLoading.value = true;
-
       final user = _authController.userAuth.value;
       if (user == null) {
         return;
+      }
+
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'invoices_${user.role}_${selectedStatus.value}';
+      final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
+      if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
+        invoices.assignAll(cachedInvoices);
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
       }
 
       List<InvoiceModel> invoiceList;
 
       // Patron (role 6) ou Admin (role 1) peuvent voir toutes les factures
       if (user.role == 1 || user.role == 6) {
-        // Patron ou Admin
+        // Patron ou Admin - charger toutes les factures sans filtre de statut
+        AppLogger.info(
+          'Chargement de toutes les factures pour le patron/admin (role: ${user.role})',
+          tag: 'INVOICE_CONTROLLER',
+        );
         invoiceList = await _invoiceService.getAllInvoices(
           startDate: startDate.value,
           endDate: endDate.value,
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          status: null, // Toujours charger toutes les factures pour le patron
+        );
+        AppLogger.info(
+          '${invoiceList.length} factures chargées pour le patron/admin',
+          tag: 'INVOICE_CONTROLLER',
         );
       } else {
         // Comptable ou autre rôle
@@ -173,22 +195,37 @@ class InvoiceController extends GetxController {
 
       invoices.value = invoiceList;
 
-      // Charger les statistiques
-      await loadInvoiceStats();
+      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+      CacheHelper.set(cacheKey, invoiceList);
+
+      // Charger les statistiques (non-bloquant)
+      loadInvoiceStats().catchError((e) {});
     } catch (e) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('session expirée') &&
-          !errorString.contains('401')) {
-        Get.snackbar(
-          'Erreur',
-          'Impossible de charger les factures: ${e.toString()}',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 4),
-        );
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+        if (invoices.isEmpty) {
+          // Vérifier une dernière fois le cache avant d'afficher l'erreur
+          final cacheKey = 'invoices_all';
+          final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
+          if (cachedInvoices == null || cachedInvoices.isEmpty) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les factures: ${e.toString()}',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+              duration: const Duration(seconds: 4),
+            );
+          } else {
+            // Charger les données du cache si disponibles
+            invoices.value = cachedInvoices;
+          }
+        }
       }
     } finally {
       isLoading.value = false;
@@ -292,10 +329,22 @@ class InvoiceController extends GetxController {
                 ? null
                 : termsController.text.trim(),
       );
+
       // Vérifier si la réponse contient success == true
-      final isSuccess = result['success'] == true || result['success'] == 1;
+      // Gérer différents formats de réponse
+      final isSuccess =
+          result['success'] == true ||
+          result['success'] == 1 ||
+          result['success'] == 'true' ||
+          (result['success'] == null && result['data'] != null);
 
       if (isSuccess) {
+        // Invalider le cache
+        CacheHelper.clearByPrefix('invoices_');
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('invoice');
+
         // Afficher le message de succès d'abord
         Get.snackbar(
           'Succès',
@@ -331,7 +380,23 @@ class InvoiceController extends GetxController {
         return false;
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la création de la facture: $e');
+      // Extraire le message d'erreur de manière plus lisible
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
+      Get.snackbar(
+        'Erreur',
+        errorMessage,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+        maxWidth: 400,
+        isDismissible: true,
+        shouldIconPulse: true,
+      );
       return false;
     } finally {
       isCreating.value = false;
@@ -347,6 +412,22 @@ class InvoiceController extends GetxController {
 
       if (result['success'] == true) {
         Get.snackbar('Succès', 'Facture soumise au patron');
+        // Notifier de manière asynchrone (non-bloquant)
+        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId);
+        if (invoice != null) {
+          NotificationHelper.notifySubmission(
+            entityType: 'facture',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'facture',
+              invoice,
+            ),
+            entityId: invoiceId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'facture',
+              invoiceId.toString(),
+            ),
+          );
+        }
         await loadInvoices();
         await loadPendingInvoices();
       } else {
@@ -371,6 +452,87 @@ class InvoiceController extends GetxController {
       );
       isLoading.value = true;
 
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('invoices_');
+      CacheHelper.clearByPrefix('factures_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour le statut sans retirer de la liste
+      final invoiceIndex = pendingInvoices.indexWhere((i) => i.id == invoiceId);
+      InvoiceModel? originalInvoice;
+      if (invoiceIndex != -1) {
+        originalInvoice = pendingInvoices[invoiceIndex];
+        // Retirer de la liste des factures en attente
+        pendingInvoices.removeAt(invoiceIndex);
+      }
+
+      // Mettre à jour dans la liste principale - NE PAS RETIRER, juste mettre à jour le statut
+      final mainInvoiceIndex = invoices.indexWhere((i) => i.id == invoiceId);
+      if (mainInvoiceIndex != -1) {
+        originalInvoice ??= invoices[mainInvoiceIndex];
+        // Mettre à jour le statut à 'valide' (le backend retourne 'valide')
+        final original = invoices[mainInvoiceIndex];
+        final updatedInvoice = InvoiceModel(
+          id: original.id,
+          invoiceNumber: original.invoiceNumber,
+          clientId: original.clientId,
+          clientName: original.clientName,
+          clientEmail: original.clientEmail,
+          clientAddress: original.clientAddress,
+          commercialId: original.commercialId,
+          commercialName: original.commercialName,
+          invoiceDate: original.invoiceDate,
+          dueDate: original.dueDate,
+          subtotal: original.subtotal,
+          taxRate: original.taxRate,
+          taxAmount: original.taxAmount,
+          totalAmount: original.totalAmount,
+          currency: original.currency,
+          status:
+              'valide', // Mettre à jour le statut (le backend retourne 'valide')
+          items: original.items,
+          notes: original.notes,
+          terms: original.terms,
+          paymentInfo: original.paymentInfo,
+          createdAt: original.createdAt,
+          updatedAt: DateTime.now(),
+          sentAt: original.sentAt,
+          paidAt: original.paidAt,
+        );
+        invoices[mainInvoiceIndex] = updatedInvoice;
+      } else {
+        // Si la facture n'est pas dans la liste principale, la récupérer depuis pendingInvoices
+        if (originalInvoice != null) {
+          final updatedInvoice = InvoiceModel(
+            id: originalInvoice.id,
+            invoiceNumber: originalInvoice.invoiceNumber,
+            clientId: originalInvoice.clientId,
+            clientName: originalInvoice.clientName,
+            clientEmail: originalInvoice.clientEmail,
+            clientAddress: originalInvoice.clientAddress,
+            commercialId: originalInvoice.commercialId,
+            commercialName: originalInvoice.commercialName,
+            invoiceDate: originalInvoice.invoiceDate,
+            dueDate: originalInvoice.dueDate,
+            subtotal: originalInvoice.subtotal,
+            taxRate: originalInvoice.taxRate,
+            taxAmount: originalInvoice.taxAmount,
+            totalAmount: originalInvoice.totalAmount,
+            currency: originalInvoice.currency,
+            status: 'valide',
+            items: originalInvoice.items,
+            notes: originalInvoice.notes,
+            terms: originalInvoice.terms,
+            paymentInfo: originalInvoice.paymentInfo,
+            createdAt: originalInvoice.createdAt,
+            updatedAt: DateTime.now(),
+            sentAt: originalInvoice.sentAt,
+            paidAt: originalInvoice.paidAt,
+          );
+          // Ajouter à la liste principale pour qu'elle soit visible
+          invoices.add(updatedInvoice);
+        }
+      }
+
       final result = await _invoiceService.approveInvoice(
         invoiceId: invoiceId,
         comments: comments,
@@ -379,20 +541,52 @@ class InvoiceController extends GetxController {
       if (result['success'] == true) {
         Get.snackbar(
           'Succès',
-          'Facture approuvée',
+          result['message'] ?? 'Facture approuvée avec succès',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
+          duration: const Duration(seconds: 2),
         );
+
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('invoice');
+
+        // Notifier de manière asynchrone (non-bloquant)
+        if (originalInvoice != null) {
+          NotificationHelper.notifyValidation(
+            entityType: 'facture',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'facture',
+              originalInvoice,
+            ),
+            entityId: invoiceId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'facture',
+              invoiceId.toString(),
+            ),
+          );
+        }
+
+        // Recharger les données en arrière-plan pour synchroniser avec le serveur
+        // Mais garder la mise à jour optimiste pour que la facture reste visible
+        // Forcer le chargement de toutes les factures (status: null)
+        selectedStatus.value =
+            'all'; // Forcer le chargement de toutes les factures
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          await loadInvoices();
+          await loadPendingInvoices();
+        });
+      } else {
+        // En cas d'échec, recharger pour restaurer l'état
         await loadInvoices();
         await loadPendingInvoices();
-      } else {
         Get.snackbar(
           'Erreur',
-          result['message'] ?? 'Erreur lors de l\'approbation',
+          result['message'] ?? 'Impossible d\'approuver la facture',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
+          duration: const Duration(seconds: 5),
         );
       }
     } catch (e, stackTrace) {
@@ -402,9 +596,12 @@ class InvoiceController extends GetxController {
         error: e,
         stackTrace: stackTrace,
       );
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadInvoices();
+      await loadPendingInvoices();
       Get.snackbar(
         'Erreur',
-        'Erreur lors de l\'approbation: $e',
+        'Impossible d\'approuver la facture: ${e.toString()}',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
@@ -437,6 +634,23 @@ class InvoiceController extends GetxController {
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
+        // Notifier de manière asynchrone (non-bloquant)
+        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId);
+        if (invoice != null) {
+          NotificationHelper.notifyRejection(
+            entityType: 'facture',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'facture',
+              invoice,
+            ),
+            entityId: invoiceId.toString(),
+            reason: reason,
+            route: NotificationHelper.getEntityRoute(
+              'facture',
+              invoiceId.toString(),
+            ),
+          );
+        }
         await loadInvoices();
         await loadPendingInvoices();
       } else {
@@ -694,8 +908,14 @@ class InvoiceController extends GetxController {
       try {
         invoice = invoices.firstWhere((i) => i.id == invoiceId);
       } catch (e) {
-        // Si pas trouvée dans la liste, la charger depuis l'API
-        invoice = await _invoiceService.getInvoiceById(invoiceId);
+        // Si pas trouvée dans la liste (Bad state: No element), la charger depuis l'API
+        try {
+          invoice = await _invoiceService.getInvoiceById(invoiceId);
+        } catch (apiError) {
+          throw Exception(
+            'Impossible de charger la facture. Veuillez réessayer.',
+          );
+        }
       }
 
       // Vérifier que la facture a des items

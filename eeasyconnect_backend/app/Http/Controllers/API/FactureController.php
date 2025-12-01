@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Facture;
 use App\Models\FactureItem;
 use App\Models\Client;
+use App\Models\User;
 
 class FactureController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des factures
      * Accessible par tous les utilisateurs authentifiés
@@ -354,6 +357,19 @@ class FactureController extends Controller
             'validation_comment' => $request->commentaire ?? $request->comments
         ]);
         
+        // Créer la notification pour l'auteur de la facture
+        if ($facture->user_id) {
+            $this->createNotification([
+                'user_id' => $facture->user_id,
+                'title' => 'Validation Facture',
+                'message' => "Facture #{$facture->numero_facture} a été validée",
+                'type' => 'success',
+                'entity_type' => 'invoice',
+                'entity_id' => $facture->id,
+                'action_route' => "/invoices/{$facture->id}",
+            ]);
+        }
+        
         // Log de l'action
         \Log::info("Facture {$facture->numero_facture} validée par " . auth()->user()->nom);
         
@@ -386,16 +402,32 @@ class FactureController extends Controller
             'commentaire' => 'nullable|string|max:500'
         ]);
         
+        $reason = $request->raison_rejet ?? $request->reason ?? 'Aucune raison spécifiée';
+        
         $facture->update([
             'status' => 'rejete',
             'rejected_by' => auth()->id(),
             'rejected_at' => now(),
-            'rejection_reason' => $request->raison_rejet ?? $request->reason,
+            'rejection_reason' => $reason,
             'rejection_comment' => $request->commentaire
         ]);
         
+        // Créer la notification pour l'auteur de la facture
+        if ($facture->user_id) {
+            $this->createNotification([
+                'user_id' => $facture->user_id,
+                'title' => 'Rejet Facture',
+                'message' => "Facture #{$facture->numero_facture} a été rejetée. Raison: {$reason}",
+                'type' => 'error',
+                'entity_type' => 'invoice',
+                'entity_id' => $facture->id,
+                'action_route' => "/invoices/{$facture->id}",
+                'metadata' => ['reason' => $reason],
+            ]);
+        }
+        
         // Log de l'action
-        \Log::info("Facture {$facture->numero_facture} rejetée par " . auth()->user()->nom . " - Raison: " . $request->raison_rejet);
+        \Log::info("Facture {$facture->numero_facture} rejetée par " . auth()->user()->nom . " - Raison: " . $reason);
         
         return response()->json([
             'success' => true,

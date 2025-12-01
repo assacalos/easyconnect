@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
 /// Helper class pour standardiser les pages de validation
 class ValidationHelper {
@@ -42,13 +43,28 @@ class ValidationHelper {
     String methodName,
     dynamic error, {
     String? customMessage,
+    bool showToUser = false, // Par défaut, ne pas afficher aux utilisateurs
   }) {
     logError(pageName, methodName, error);
+
+    // Ne pas afficher les erreurs techniques aux utilisateurs finaux
+    if (!showToUser && !AppConfig.showErrorMessagesToUsers) {
+      return; // Masquer l'erreur pour les utilisateurs finaux
+    }
+
+    // Afficher un message utilisateur-friendly
+    final userMessage =
+        customMessage ??
+        (AppConfig.showErrorMessagesToUsers
+            ? 'Erreur lors du chargement: $error'
+            : AppConfig.getUserFriendlyErrorMessage(error));
+
     Get.snackbar(
       'Erreur',
-      customMessage ?? 'Erreur lors du chargement: $error',
+      userMessage,
       backgroundColor: Colors.red,
       colorText: Colors.white,
+      duration: const Duration(seconds: 3),
     );
   }
 

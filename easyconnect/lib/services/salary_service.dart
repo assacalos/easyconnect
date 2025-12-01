@@ -42,12 +42,18 @@ class SalaryService {
   }) async {
     try {
       final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
 
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
       if (month != null) queryParams['month'] = month;
       if (year != null) queryParams['year'] = year.toString();
       if (search != null) queryParams['search'] = search;
+      // Filtrer par userId pour les comptables (role 3) - seulement leurs propres salaires
+      if (userRole == 3 && userId != null) {
+        queryParams['user_id'] = userId.toString();
+      }
 
       final queryString =
           queryParams.isEmpty
@@ -64,19 +70,25 @@ class SalaryService {
         },
       );
 
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          final responseData = json.decode(response.body);
+          final responseData = result['data'];
 
           // Gérer différents formats de réponse de l'API Laravel
           List<dynamic> data = [];
 
           // Essayer d'abord le format standard Laravel
-          if (responseData['data'] != null) {
-            if (responseData['data'] is List) {
-              data = responseData['data'];
-            } else if (responseData['data']['data'] != null) {
-              data = responseData['data']['data'];
+          if (responseData is List) {
+            data = responseData;
+          } else if (responseData is Map) {
+            if (responseData['data'] != null) {
+              if (responseData['data'] is List) {
+                data = responseData['data'];
+              } else if (responseData['data']['data'] != null) {
+                data = responseData['data']['data'];
+              }
             }
           }
           // Essayer le format spécifique aux salaires
@@ -129,11 +141,14 @@ class SalaryService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return Salary.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Salary.fromJson(result['data']);
       }
+
       throw Exception(
-        'Erreur lors de la récupération du salaire: ${response.statusCode}',
+        result['message'] ?? 'Erreur lors de la récupération du salaire',
       );
     } catch (e) {
       throw Exception('Erreur lors de la récupération du salaire: $e');
@@ -197,15 +212,14 @@ class SalaryService {
         },
         body: json.encode(salaryData),
       );
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        final responseBody = json.decode(response.body);
-        return Salary.fromJson(responseBody['data'] ?? responseBody);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Salary.fromJson(result['data']);
       }
 
-      // Afficher les détails de l'erreur
-      final errorBody = response.body;
       throw Exception(
-        'Erreur lors de la création du salaire: ${response.statusCode} - $errorBody',
+        result['message'] ?? 'Erreur lors de la création du salaire',
       );
     } catch (e) {
       throw Exception('Erreur lors de la création du salaire: $e');
@@ -272,15 +286,14 @@ class SalaryService {
         },
         body: json.encode(salaryData),
       );
-      if (response.statusCode == 200) {
-        final responseBody = json.decode(response.body);
-        return Salary.fromJson(responseBody['data'] ?? responseBody);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Salary.fromJson(result['data']);
       }
 
-      // Afficher les détails de l'erreur
-      final errorBody = response.body;
       throw Exception(
-        'Erreur lors de la mise à jour du salaire: ${response.statusCode} - $errorBody',
+        result['message'] ?? 'Erreur lors de la mise à jour du salaire',
       );
     } catch (e) {
       throw Exception('Erreur lors de la mise à jour du salaire: $e');
@@ -303,28 +316,15 @@ class SalaryService {
         body: json.encode({'notes': notes}),
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        // Vérifier si la réponse contient success == true
-        if (responseData is Map && responseData['success'] == true) {
-          return true;
-        }
-        // Si pas de champ success, considérer 200 comme succès
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         return true;
-      } else if (response.statusCode == 400) {
-        // Erreur 400 : message explicite du backend
-        final responseData = json.decode(response.body);
-        final message =
-            responseData['message'] ?? 'Ce salaire ne peut pas être approuvé';
-        throw Exception(message);
-      } else if (response.statusCode == 500) {
-        // Erreur 500 : problème serveur
-        final responseData = json.decode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur serveur lors de l\'approbation';
-        throw Exception('Erreur serveur: $message');
       }
-      return false;
+
+      throw Exception(
+        result['message'] ?? 'Ce salaire ne peut pas être approuvé',
+      );
     } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
@@ -346,28 +346,15 @@ class SalaryService {
         body: json.encode({'reason': reason}),
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        // Vérifier si la réponse contient success == true
-        if (responseData is Map && responseData['success'] == true) {
-          return true;
-        }
-        // Si pas de champ success, considérer 200 comme succès
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         return true;
-      } else if (response.statusCode == 400) {
-        // Erreur 400 : message explicite du backend
-        final responseData = json.decode(response.body);
-        final message =
-            responseData['message'] ?? 'Ce salaire ne peut pas être rejeté';
-        throw Exception(message);
-      } else if (response.statusCode == 500) {
-        // Erreur 500 : problème serveur
-        final responseData = json.decode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur serveur lors du rejet';
-        throw Exception('Erreur serveur: $message');
       }
-      return false;
+
+      throw Exception(
+        result['message'] ?? 'Ce salaire ne peut pas être rejeté',
+      );
     } catch (e) {
       rethrow; // Propager l'exception au lieu de retourner false
     }
@@ -426,8 +413,10 @@ class SalaryService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return SalaryStats.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return SalaryStats.fromJson(result['data']);
       }
       throw Exception(
         'Erreur lors de la récupération des statistiques: ${response.statusCode}',
@@ -461,9 +450,10 @@ class SalaryService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        final dynamic data = responseData['data'];
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
 
         // Gérer le cas où data est une liste ou un objet
         if (data is List) {
@@ -476,7 +466,7 @@ class SalaryService {
       }
 
       // Si l'endpoint n'existe pas (404), utiliser les salaires généraux et filtrer
-      if (response.statusCode == 404) {
+      if (result['statusCode'] == 404) {
         final allSalaries = await getSalaries();
         final pendingSalaries =
             allSalaries.where((salary) => salary.status == 'pending').toList();
@@ -507,28 +497,12 @@ class SalaryService {
       AppLogger.httpResponse(response.statusCode, url, tag: 'SALARY_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 200) {
-        // Vérifier si le body est complet
-        final bodyTrimmed = response.body.trim();
-        final isComplete =
-            bodyTrimmed.endsWith('}') || bodyTrimmed.endsWith(']');
+      final result = ApiService.parseResponse(response);
 
-        if (!isComplete) {
-          throw Exception(
-            'La réponse du serveur est incomplète (JSON tronqué).',
-          );
-        }
+      if (result['success'] == true) {
+        final data = result['data'];
 
-        Map<String, dynamic> data;
-        try {
-          data = jsonDecode(response.body) as Map<String, dynamic>;
-        } catch (e) {
-          throw Exception(
-            'Erreur lors du parsing JSON: $e. La réponse du serveur est peut-être mal formatée.',
-          );
-        }
-
-        if (data['data'] != null) {
+        if (data != null && data is Map) {
           // Le backend peut retourner soit une liste directe, soit un objet paginé
           List<dynamic> dataList;
 
@@ -608,13 +582,18 @@ class SalaryService {
           'Authorization': 'Bearer $token',
         },
       );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => SalaryComponent.fromJson(json)).toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => SalaryComponent.fromJson(json)).toList();
+        }
+        return [];
       }
 
       // Si l'endpoint n'existe pas ou a une erreur serveur, retourner des composants par défaut
-      if (response.statusCode == 404 || response.statusCode == 500) {
+      if (result['statusCode'] == 404 || result['statusCode'] == 500) {
         return [
           SalaryComponent(
             id: 1,
@@ -696,11 +675,14 @@ class SalaryService {
         body: json.encode(component.toJson()),
       );
 
-      if (response.statusCode == 201) {
-        return SalaryComponent.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return SalaryComponent.fromJson(result['data']);
       }
+
       throw Exception(
-        'Erreur lors de la création du composant: ${response.statusCode}',
+        result['message'] ?? 'Erreur lors de la création du composant',
       );
     } catch (e) {
       throw Exception('Erreur lors de la création du composant: $e');
@@ -724,11 +706,14 @@ class SalaryService {
         body: json.encode(component.toJson()),
       );
 
-      if (response.statusCode == 200) {
-        return SalaryComponent.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return SalaryComponent.fromJson(result['data']);
       }
+
       throw Exception(
-        'Erreur lors de la mise à jour du composant: ${response.statusCode}',
+        result['message'] ?? 'Erreur lors de la mise à jour du composant',
       );
     } catch (e) {
       throw Exception('Erreur lors de la mise à jour du composant: $e');

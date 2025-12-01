@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:http/http.dart' as http;
@@ -42,14 +43,28 @@ class AuthErrorHandler {
       if (Get.isRegistered<AuthController>()) {
         final authController = Get.find<AuthController>();
 
-        // Logger l'événement sans afficher de message à l'utilisateur
+        // Logger l'événement
         AppLogger.warning(
           'Session expirée - Déconnexion automatique',
           tag: 'AUTH_ERROR_HANDLER',
         );
 
-        // Déconnecter l'utilisateur silencieusement
-        authController.logout();
+        // Afficher un message informatif à l'utilisateur
+        Get.snackbar(
+          'Session expirée',
+          'Votre session a expiré. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+          icon: const Icon(Icons.warning, color: Colors.white),
+        );
+
+        // Attendre un peu pour que l'utilisateur voie le message
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Déconnecter l'utilisateur
+        await authController.logout();
       }
     } catch (e, stackTrace) {
       AppLogger.error(

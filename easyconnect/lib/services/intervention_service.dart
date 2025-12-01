@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
 
 class InterventionService {
   final storage = GetStorage();
@@ -16,30 +17,54 @@ class InterventionService {
   }) async {
     try {
       final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
 
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
       if (type != null) queryParams['type'] = type;
       if (priority != null) queryParams['priority'] = priority;
       if (search != null) queryParams['search'] = search;
+      // Filtrer par userId uniquement pour les techniciens (role 5)
+      // Les admins (role 1) et patrons (role 6) doivent voir toutes les interventions
+      if (userRole == 5 && userId != null) {
+        queryParams['user_id'] = userId.toString();
+      }
 
       final queryString =
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/interventions-list$queryString'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+      final url = '$baseUrl/interventions-list$queryString';
+
+      final response = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception(
+                'Timeout: Le serveur ne répond pas dans les 30 secondes',
+              );
+            },
+          );
+
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final responseData = result['data'];
+
         // Gérer différents formats de réponse
         List<dynamic> data;
-        if (responseData is Map<String, dynamic>) {
+        if (responseData is List) {
+          data = responseData;
+        } else if (responseData is Map<String, dynamic>) {
           if (responseData['data'] is List) {
             data = responseData['data'];
           } else if (responseData['data'] is Map &&
@@ -49,13 +74,15 @@ class InterventionService {
             data = [responseData['data']];
           }
         } else {
-          data = responseData;
+          data = [];
         }
 
+        print('✅ [INTERVENTION] ${data.length} interventions trouvées');
         return data.map((json) => Intervention.fromJson(json)).toList();
       }
+
       throw Exception(
-        'Erreur lors de la récupération des interventions: ${response.statusCode}',
+        result['message'] ?? 'Erreur lors de la récupération des interventions',
       );
     } catch (e) {
       throw Exception('Erreur lors de la récupération des interventions: $e');
@@ -75,11 +102,15 @@ class InterventionService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return Intervention.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Intervention.fromJson(result['data']);
       }
+
       throw Exception(
-        'Erreur lors de la récupération de l\'intervention: ${response.statusCode}',
+        result['message'] ??
+            'Erreur lors de la récupération de l\'intervention',
       );
     } catch (e) {
       throw Exception('Erreur lors de la récupération de l\'intervention: $e');
@@ -100,9 +131,11 @@ class InterventionService {
         },
         body: json.encode(intervention.toJson()),
       );
-      if (response.statusCode == 201) {
-        return Intervention.fromJson(json.decode(response.body)['data']);
-      } else if (response.statusCode == 500) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Intervention.fromJson(result['data']);
+      } else if (result['statusCode'] == 500) {
         // En cas d'erreur 500, simuler une création locale
         return Intervention(
           id: DateTime.now().millisecondsSinceEpoch,
@@ -179,11 +212,14 @@ class InterventionService {
         body: json.encode(intervention.toJson()),
       );
 
-      if (response.statusCode == 200) {
-        return Intervention.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Intervention.fromJson(result['data']);
       }
+
       throw Exception(
-        'Erreur lors de la mise à jour de l\'intervention: ${response.statusCode}',
+        result['message'] ?? 'Erreur lors de la mise à jour de l\'intervention',
       );
     } catch (e) {
       throw Exception('Erreur lors de la mise à jour de l\'intervention: $e');
@@ -205,7 +241,8 @@ class InterventionService {
         body: json.encode({'notes': notes}),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -229,7 +266,8 @@ class InterventionService {
         body: json.encode({'reason': reason}),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -250,7 +288,8 @@ class InterventionService {
         body: json.encode({'notes': notes}),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -282,7 +321,8 @@ class InterventionService {
         }),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -301,7 +341,8 @@ class InterventionService {
         },
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -319,9 +360,11 @@ class InterventionService {
           'Authorization': 'Bearer $token',
         },
       );
-      if (response.statusCode == 200) {
-        return InterventionStats.fromJson(json.decode(response.body)['data']);
-      } else if (response.statusCode == 404) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return InterventionStats.fromJson(result['data']);
+      } else if (result['statusCode'] == 404) {
         // En cas d'erreur 404, retourner des statistiques vides
         return InterventionStats(
           totalInterventions: 0,
@@ -364,21 +407,42 @@ class InterventionService {
   Future<List<Intervention>> getPendingInterventions() async {
     try {
       final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      var queryParams = <String, String>{};
+      // Filtrer par userId uniquement pour les techniciens (role 5)
+      // Les admins (role 1) et patrons (role 6) doivent voir toutes les interventions
+      if (userRole == 5 && userId != null) {
+        queryParams['user_id'] = userId.toString();
+      }
+
+      final queryString =
+          queryParams.isEmpty
+              ? ''
+              : '?${Uri(queryParameters: queryParams).query}';
 
       final response = await http.get(
-        Uri.parse('$baseUrl/interventions/pending'),
+        Uri.parse('$baseUrl/interventions/pending$queryString'),
         headers: {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => Intervention.fromJson(json)).toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => Intervention.fromJson(json)).toList();
+        }
+        return [];
       }
+
       throw Exception(
-        'Erreur lors de la récupération des interventions en attente: ${response.statusCode}',
+        result['message'] ??
+            'Erreur lors de la récupération des interventions en attente',
       );
     } catch (e) {
       throw Exception(
@@ -402,12 +466,19 @@ class InterventionService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'];
-        return data.map((json) => Intervention.fromJson(json)).toList();
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        if (data is List) {
+          return data.map((json) => Intervention.fromJson(json)).toList();
+        }
+        return [];
       }
+
       throw Exception(
-        'Erreur lors de la récupération des interventions du technicien: ${response.statusCode}',
+        result['message'] ??
+            'Erreur lors de la récupération des interventions du technicien',
       );
     } catch (e) {
       throw Exception(
@@ -430,7 +501,8 @@ class InterventionService {
         body: json.encode({'file_path': filePath}),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -450,7 +522,8 @@ class InterventionService {
         body: json.encode({'file_path': filePath}),
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }

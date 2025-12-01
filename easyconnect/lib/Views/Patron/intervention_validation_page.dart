@@ -26,7 +26,10 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     _tabController.addListener(() {
       _onTabChanged();
     });
-    _loadInterventions();
+    // Charger les données après que le widget soit monté pour éviter de bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadInterventions();
+    });
   }
 
   @override
@@ -93,7 +96,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
         children: [
           // Barre de recherche
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -153,7 +156,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.build, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               _searchQuery.isEmpty
                   ? 'Aucune intervention trouvée'
@@ -161,7 +164,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             if (_searchQuery.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
@@ -240,7 +243,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
         ),
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -249,7 +252,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -266,12 +269,11 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
                       Text(
                         'Date prévue: ${formatDate.format(intervention.scheduledDate)}',
                       ),
-                      if (intervention.description != null)
-                        Text('Description: ${intervention.description}'),
+                      Text('Description: ${intervention.description}'),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _buildActionButtons(intervention, statusColor),
               ],
             ),
@@ -291,20 +293,30 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
             children: [
               ElevatedButton.icon(
                 onPressed: () => _showApproveConfirmation(intervention),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Valider', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 36),
                 ),
               ),
               ElevatedButton.icon(
                 onPressed: () => _showRejectDialog(intervention),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('Rejeter', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 36),
                 ),
               ),
             ],
@@ -445,10 +457,10 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.approveIntervention(intervention);
-        _loadInterventions();
+        await controller.approveIntervention(intervention);
+        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
       },
     );
   }
@@ -474,7 +486,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
       textConfirm: 'Rejeter',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         if (commentController.text.isEmpty) {
           Get.snackbar(
             'Erreur',
@@ -484,8 +496,11 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
           return;
         }
         Get.back();
-        controller.rejectIntervention(intervention, commentController.text);
-        _loadInterventions();
+        await controller.rejectIntervention(
+          intervention,
+          commentController.text,
+        );
+        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
       },
     );
   }

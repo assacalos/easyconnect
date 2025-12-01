@@ -185,9 +185,9 @@ class _ClientFormPageState extends State<ClientFormPage> {
                         _clearForm();
                         // Attendre un peu pour que le snackbar s'affiche
                         await Future.delayed(const Duration(milliseconds: 500));
-                        // Fermer le formulaire
+                        // Rediriger vers la page de liste des clients
                         if (mounted) {
-                          Get.back();
+                          Get.offNamed('/clients');
                         }
                       }
                     }

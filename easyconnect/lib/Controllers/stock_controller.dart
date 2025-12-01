@@ -3,6 +3,9 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class StockController extends GetxController {
   late final StockService _stockService;
@@ -25,6 +28,7 @@ class StockController extends GetxController {
   final RxString selectedStatus = 'all'.obs;
   final RxString selectedSortBy = 'name'.obs;
   final RxBool sortAscending = true.obs;
+  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
   // Variables pour le formulaire
   final TextEditingController nameController = TextEditingController();
@@ -136,10 +140,13 @@ class StockController extends GetxController {
       // Essayer de créer le service s'il n'existe pas
       _stockService = Get.put(StockService(), permanent: true);
     }
-    loadStocks();
-    loadCategories();
-    loadStockStats();
-    loadStockAlerts();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadStocks();
+      loadCategories();
+      loadStockStats();
+      loadStockAlerts();
+    });
   }
 
   @override
@@ -171,9 +178,10 @@ class StockController extends GetxController {
   }
 
   // Charger les stocks
-  Future<void> loadStocks() async {
+  Future<void> loadStocks({String? statusFilter}) async {
     try {
       isLoading.value = true;
+      _currentStatusFilter = statusFilter; // Mémoriser le filtre actuel
       AppLogger.info('Chargement des stocks', tag: 'STOCK_CONTROLLER');
 
       // Charger tous les stocks depuis l'API directement
@@ -231,34 +239,46 @@ class StockController extends GetxController {
         error: e,
       );
 
-      // Message d'erreur spécifique selon le type d'erreur
-      String errorMessage;
-      if (errorString.contains('socketexception') ||
-          errorString.contains('connection refused')) {
-        errorMessage =
-            'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
-      } else if (errorString.contains('500')) {
-        errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.';
-      } else if (errorString.contains('formatexception') ||
-          errorString.contains('unexpected end of input')) {
-        errorMessage =
-            'Erreur de format des données. Contactez l\'administrateur.';
-      } else if (errorString.contains('null') ||
-          errorString.contains('not a subtype')) {
-        errorMessage =
-            'Erreur de format des données. Contactez l\'administrateur.';
-      } else {
-        errorMessage = 'Erreur lors du chargement des stocks: $e';
-      }
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      if (allStocks.isEmpty) {
+        // Vérifier une dernière fois le cache avant d'afficher l'erreur
+        final cacheKey = 'stocks_all';
+        final cachedStocks = CacheHelper.get<List<Stock>>(cacheKey);
+        if (cachedStocks == null || cachedStocks.isEmpty) {
+          // Message d'erreur spécifique selon le type d'erreur
+          String errorMessage;
+          if (errorString.contains('socketexception') ||
+              errorString.contains('connection refused')) {
+            errorMessage =
+                'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
+          } else if (errorString.contains('500')) {
+            errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.';
+          } else if (errorString.contains('formatexception') ||
+              errorString.contains('unexpected end of input')) {
+            errorMessage =
+                'Erreur de format des données. Contactez l\'administrateur.';
+          } else if (errorString.contains('null') ||
+              errorString.contains('not a subtype')) {
+            errorMessage =
+                'Erreur de format des données. Contactez l\'administrateur.';
+          } else {
+            errorMessage = 'Erreur lors du chargement des stocks: $e';
+          }
 
-      Get.snackbar(
-        'Erreur',
-        errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+          Get.snackbar(
+            'Erreur',
+            errorMessage,
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+          );
+        } else {
+          // Charger les données du cache si disponibles
+          allStocks.assignAll(cachedStocks);
+          stocks.assignAll(cachedStocks);
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -519,7 +539,16 @@ class StockController extends GetxController {
         status: 'en_attente',
       );
 
-      await _stockService.createStock(stock);
+      final createdStock = await _stockService.createStock(stock);
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('stocks_');
+
+      // Ajouter le stock à la liste localement (mise à jour optimiste)
+      if (createdStock.id != null) {
+        allStocks.add(createdStock);
+        stocks.add(createdStock);
+      }
 
       Get.snackbar(
         'Succès',
@@ -531,6 +560,9 @@ class StockController extends GetxController {
       clearForm();
       loadStocks();
       loadStockStats();
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('stock');
       return true;
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -758,54 +790,165 @@ class StockController extends GetxController {
   // Approuver/Valider un stock
   Future<void> approveStock(Stock stock, {String? validationComment}) async {
     try {
-      isLoading.value = true;
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('stocks_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final stockIndex = stocks.indexWhere((s) => s.id == stock.id);
+      final allStockIndex = allStocks.indexWhere((s) => s.id == stock.id);
+
+      if (stockIndex != -1 || allStockIndex != -1) {
+        final originalStock =
+            stockIndex != -1 ? stocks[stockIndex] : allStocks[allStockIndex];
+        final updatedStock = Stock(
+          id: originalStock.id,
+          category: originalStock.category,
+          name: originalStock.name,
+          description: originalStock.description,
+          sku: originalStock.sku,
+          unit: originalStock.unit,
+          quantity: originalStock.quantity,
+          minQuantity: originalStock.minQuantity,
+          maxQuantity: originalStock.maxQuantity,
+          unitPrice: originalStock.unitPrice,
+          commentaire: originalStock.commentaire,
+          status: 'valide', // Validé
+          createdAt: originalStock.createdAt,
+          updatedAt: originalStock.updatedAt,
+          movements: originalStock.movements,
+        );
+
+        if (stockIndex != -1) {
+          stocks[stockIndex] = updatedStock;
+        }
+        if (allStockIndex != -1) {
+          allStocks[allStockIndex] = updatedStock;
+        }
+      }
+
+      // Appel API en arrière-plan
       await _stockService.approveStock(
         stockId: stock.id!,
         validationComment: validationComment,
       );
-      await loadStocks();
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('stock');
+
+      // Notifier l'utilisateur concerné de la validation
+      NotificationHelper.notifyValidation(
+        entityType: 'stock',
+        entityName: NotificationHelper.getEntityDisplayName('stock', stock),
+        entityId: stock.id.toString(),
+        route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
+      );
+
       Get.snackbar(
         'Succès',
         'Stock approuvé avec succès',
         backgroundColor: Colors.green,
         colorText: Colors.white,
       );
+
+      // Recharger les données en arrière-plan avec le filtre actuel
+      // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        loadStocks(statusFilter: _currentStatusFilter).catchError((e) {
+          // En cas d'erreur, on garde la mise à jour optimiste
+        });
+      });
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadStocks(statusFilter: _currentStatusFilter);
       Get.snackbar(
         'Erreur',
         'Erreur lors de l\'approbation: $e',
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
-    } finally {
-      isLoading.value = false;
     }
   }
 
   // Rejeter un stock (selon la doc API)
   void rejectStock(Stock stock, {String? commentaire}) async {
     try {
-      isLoading.value = true;
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('stocks_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final stockIndex = stocks.indexWhere((s) => s.id == stock.id);
+      final allStockIndex = allStocks.indexWhere((s) => s.id == stock.id);
+
+      if (stockIndex != -1 || allStockIndex != -1) {
+        final originalStock =
+            stockIndex != -1 ? stocks[stockIndex] : allStocks[allStockIndex];
+        final updatedStock = Stock(
+          id: originalStock.id,
+          category: originalStock.category,
+          name: originalStock.name,
+          description: originalStock.description,
+          sku: originalStock.sku,
+          unit: originalStock.unit,
+          quantity: originalStock.quantity,
+          minQuantity: originalStock.minQuantity,
+          maxQuantity: originalStock.maxQuantity,
+          unitPrice: originalStock.unitPrice,
+          commentaire: commentaire ?? originalStock.commentaire,
+          status: 'rejete', // Rejeté
+          createdAt: originalStock.createdAt,
+          updatedAt: originalStock.updatedAt,
+          movements: originalStock.movements,
+        );
+
+        if (stockIndex != -1) {
+          stocks[stockIndex] = updatedStock;
+        }
+        if (allStockIndex != -1) {
+          allStocks[allStockIndex] = updatedStock;
+        }
+      }
+
+      // Appel API en arrière-plan
       await _stockService.rejectStock(
         stockId: stock.id!,
         commentaire: commentaire ?? 'Rejeté par le patron',
       );
-      await loadStocks();
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('stock');
+
+      // Notifier l'utilisateur concerné du rejet
+      NotificationHelper.notifyRejection(
+        entityType: 'stock',
+        entityName: NotificationHelper.getEntityDisplayName('stock', stock),
+        entityId: stock.id.toString(),
+        reason: commentaire ?? 'Rejeté par le patron',
+        route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
+      );
+
       Get.snackbar(
         'Succès',
         'Stock rejeté avec succès',
         backgroundColor: Colors.orange,
         colorText: Colors.white,
       );
+
+      // Recharger les données en arrière-plan avec le filtre actuel
+      // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        loadStocks(statusFilter: _currentStatusFilter).catchError((e) {
+          // En cas d'erreur, on garde la mise à jour optimiste
+        });
+      });
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadStocks(statusFilter: _currentStatusFilter);
       Get.snackbar(
         'Erreur',
         'Erreur lors du rejet: $e',
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
-    } finally {
-      isLoading.value = false;
     }
   }
 

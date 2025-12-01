@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Devis;
 use App\Models\DevisItem;
 use App\Models\Client;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DevisController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des devis avec filtres par rôle et statut
      */
@@ -270,6 +273,20 @@ class DevisController extends Controller
 
             $devis->update(['status' => 1]); // Envoyé
 
+            // Notifier le patron
+            $patron = User::where('role', 6)->first();
+            if ($patron) {
+                $this->createNotification([
+                    'user_id' => $patron->id,
+                    'title' => 'Soumission Devis',
+                    'message' => "Devis #{$devis->reference} a été soumis pour validation",
+                    'type' => 'info',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis envoyé avec succès',
@@ -301,6 +318,19 @@ class DevisController extends Controller
 
             $devis->status = 2; // Accepté/Validé
             $devis->save();
+            
+            // Notifier l'auteur du devis
+            if ($devis->commercial_id) {
+                $this->createNotification([
+                    'user_id' => $devis->commercial_id,
+                    'title' => 'Validation Devis',
+                    'message' => "Devis #{$devis->reference} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                ]);
+            }
             
             return response()->json([
                 'success' => true,
@@ -345,6 +375,20 @@ class DevisController extends Controller
                 'status' => 3, // Refusé
                 'commentaire' => $validated['commentaire']
             ]);
+
+            // Notifier l'auteur du devis
+            if ($devis->commercial_id) {
+                $this->createNotification([
+                    'user_id' => $devis->commercial_id,
+                    'title' => 'Rejet Devis',
+                    'message' => "Devis #{$devis->reference} a été rejeté. Raison: {$validated['commentaire']}",
+                    'type' => 'error',
+                    'entity_type' => 'devis',
+                    'entity_id' => $devis->id,
+                    'action_route' => "/devis/{$devis->id}",
+                    'metadata' => ['reason' => $validated['commentaire']],
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

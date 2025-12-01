@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Client;
 
 class ClientController extends Controller
 {
+    use SendsNotifications;
     // Liste des clients avec filtre rôle et statut
     // Accessible aux commerciaux, comptables, techniciens, admin et patron
     // Seuls les commerciaux (role 2) voient uniquement leurs propres clients
@@ -178,6 +180,20 @@ class ClientController extends Controller
         $client->status = 1; // validé
         $client->save();
 
+        // Notifier l'auteur du client
+        if ($client->user_id) {
+            $clientName = $client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom);
+            $this->createNotification([
+                'user_id' => $client->user_id,
+                'title' => 'Validation Client',
+                'message' => "Client {$clientName} a été validé",
+                'type' => 'success',
+                'entity_type' => 'client',
+                'entity_id' => $client->id,
+                'action_route' => "/clients/{$client->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'data' => $client,
@@ -188,11 +204,26 @@ class ClientController extends Controller
     // Rejeter un client (patron)
     public function reject(Request $request, $id)
     {
-
         $client = Client::findOrFail($id);
         $client->status = 2; // rejeté
         $client->commentaire = $request->commentaire;
         $client->save();
+
+        // Notifier l'auteur du client
+        if ($client->user_id) {
+            $reason = $request->commentaire ?? 'Rejeté';
+            $clientName = $client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom);
+            $this->createNotification([
+                'user_id' => $client->user_id,
+                'title' => 'Rejet Client',
+                'message' => "Client {$clientName} a été rejeté. Raison: {$reason}",
+                'type' => 'error',
+                'entity_type' => 'client',
+                'entity_id' => $client->id,
+                'action_route' => "/clients/{$client->id}",
+                'metadata' => ['reason' => $reason],
+            ]);
+        }
 
         return response()->json([
             'success' => true,

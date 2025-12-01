@@ -19,9 +19,14 @@ class ApiService {
     String password,
   ) async {
     try {
+      final url = "$baseUrl/login";
+      print('🔐 TENTATIVE DE CONNEXION:');
+      print('URL: $url');
+      print('Email: $email');
+
       final response = await http
           .post(
-            Uri.parse("$baseUrl/login"),
+            Uri.parse(url),
             headers: headers(),
             body: jsonEncode({"email": email, "password": password}),
           )
@@ -33,9 +38,20 @@ class ApiService {
               );
             },
           );
-      final result = _parse(response);
+
+      print('📡 RÉPONSE SERVEUR:');
+      print('Status Code: ${response.statusCode}');
+      print('Headers: ${response.headers}');
+      print('Body: ${response.body}');
+
+      final result = parseResponse(response);
+      print('✅ RÉSULTAT PARSÉ: $result');
       return result;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ ERREUR API LOGIN:');
+      print('Type: ${e.runtimeType}');
+      print('Message: $e');
+      print('Stack trace: $stackTrace');
       return {"success": false, "message": e.toString()};
     }
   }
@@ -46,7 +62,7 @@ class ApiService {
         Uri.parse("$baseUrl/logout"),
         headers: headers(),
       );
-      final result = _parse(response);
+      final result = parseResponse(response);
       return result;
     } catch (e) {
       return {"success": false, "message": e.toString()};
@@ -56,7 +72,7 @@ class ApiService {
   // -------------------- USERS --------------------
   static Future<Map<String, dynamic>> getUsers() async {
     final res = await http.get(Uri.parse('$baseUrl/users'), headers: headers());
-    return _parse(res);
+    return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> updateUserRole(int id, int role) async {
@@ -65,7 +81,7 @@ class ApiService {
       headers: headers(),
       body: jsonEncode({'role': role}),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   // -------------------- CLIENTS --------------------
@@ -74,7 +90,7 @@ class ApiService {
       Uri.parse('$baseUrl/clients'),
       headers: headers(),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> createClient(Map data) async {
@@ -83,7 +99,7 @@ class ApiService {
       headers: headers(),
       body: jsonEncode(data),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> updateClient(int id, Map data) async {
@@ -92,7 +108,7 @@ class ApiService {
       headers: headers(),
       body: jsonEncode(data),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> deleteClient(int id) async {
@@ -100,7 +116,7 @@ class ApiService {
       Uri.parse('$baseUrl/clients/$id'),
       headers: headers(),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   // -------------------- QUOTES --------------------
@@ -109,7 +125,7 @@ class ApiService {
       Uri.parse('$baseUrl/quotes'),
       headers: headers(),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> createQuote(Map data) async {
@@ -118,7 +134,7 @@ class ApiService {
       headers: headers(),
       body: jsonEncode(data),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
   // -------------------- INVOICES --------------------
@@ -127,24 +143,114 @@ class ApiService {
       Uri.parse('$baseUrl/invoices'),
       headers: headers(),
     );
-    return _parse(res);
+    return parseResponse(res);
   }
 
-  // -------------------- PRIVATE PARSE --------------------
-  static Map<String, dynamic> _parse(http.Response res) {
+  // -------------------- PARSE --------------------
+  /// Parse la réponse HTTP selon le format standardisé de l'API
+  /// Format standardisé:
+  /// - Succès: {"success": true, "message": "...", "data": {...}}
+  /// - Erreur: {"success": false, "message": "...", "errors": {...}}
+  static Map<String, dynamic> parseResponse(http.Response res) {
     try {
-      final body = res.body.isNotEmpty ? jsonDecode(res.body) : {};
+      Map<String, dynamic> body = {};
 
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        return {"success": true, "data": body};
-      } else {
+      // Gérer le rate limiting (429) avant le parsing
+      if (res.statusCode == 429) {
         return {
           "success": false,
-          "message": body["message"] ?? "Erreur ${res.statusCode}",
+          "message": "Trop de requêtes. Veuillez réessayer plus tard.",
+          "statusCode": 429,
+        };
+      }
+
+      if (res.body.isNotEmpty) {
+        try {
+          body = jsonDecode(res.body);
+        } catch (e) {
+          return {
+            "success": false,
+            "message": "Format de réponse invalide du serveur",
+          };
+        }
+      }
+
+      // Vérifier si la réponse suit le format standardisé
+      final hasStandardFormat = body.containsKey('success');
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        // Format standardisé détecté
+        if (hasStandardFormat) {
+          if (body['success'] == true) {
+            // Succès: extraire les données de 'data'
+            return {
+              "success": true,
+              "data": body['data'],
+              "message": body['message'] ?? "Opération réussie",
+            };
+          } else {
+            // Erreur dans une réponse 2xx (ne devrait pas arriver mais géré)
+            return {
+              "success": false,
+              "message": body['message'] ?? "Erreur inconnue",
+              "errors": body['errors'],
+            };
+          }
+        } else {
+          // Format non standardisé (rétrocompatibilité)
+          if (body.containsKey('data')) {
+            return {"success": true, "data": body['data']};
+          } else if (body.containsKey('user') && body.containsKey('token')) {
+            // Format direct avec user et token (ancien format login)
+            return {
+              "success": true,
+              "data": {"user": body['user'], "token": body['token']},
+            };
+          } else {
+            // Retourner le body tel quel
+            return {"success": true, "data": body};
+          }
+        }
+      } else {
+        // Gérer les erreurs (4xx, 5xx)
+        String errorMessage = "Erreur ${res.statusCode}";
+        Map<String, dynamic>? errors;
+
+        // Format standardisé
+        if (hasStandardFormat) {
+          errorMessage = body['message'] ?? "Erreur ${res.statusCode}";
+          errors = body['errors'];
+        } else {
+          // Format non standardisé (rétrocompatibilité)
+          if (body.containsKey('message')) {
+            errorMessage = body['message'].toString();
+          } else if (body.containsKey('error')) {
+            errorMessage = body['error'].toString();
+          } else if (body.containsKey('errors')) {
+            // Erreurs de validation Laravel
+            final validationErrors = body['errors'];
+            if (validationErrors is Map) {
+              errors = Map<String, dynamic>.from(validationErrors);
+              final firstError = validationErrors.values.first;
+              if (firstError is List && firstError.isNotEmpty) {
+                errorMessage = firstError.first.toString();
+              }
+            }
+          }
+        }
+
+        return {
+          "success": false,
+          "message": errorMessage,
+          "errors": errors,
+          "statusCode": res.statusCode,
         };
       }
     } catch (e) {
-      return {"success": false, "message": "Invalid response format"};
+      return {
+        "success": false,
+        "message": "Erreur de traitement de la réponse: $e",
+      };
     }
   }
 }

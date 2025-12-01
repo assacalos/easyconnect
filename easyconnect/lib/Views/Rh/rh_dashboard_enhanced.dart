@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/rh_dashboard_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
@@ -195,6 +196,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                 icon: Icons.beach_access,
                 color: Colors.green,
                 subtitle: 'Validés',
+                onTap: () => Get.toNamed('/leaves?tab=2'),
               ),
               _buildValidatedCard(
                 title: 'Recrutements',
@@ -202,6 +204,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                 icon: Icons.person_add,
                 color: Colors.orange,
                 subtitle: 'Embauches',
+                onTap: () => Get.toNamed('/recruitment?tab=2'),
               ),
               _buildValidatedCard(
                 title: 'Contrats',
@@ -209,6 +212,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                 icon: Icons.description,
                 color: Colors.purple,
                 subtitle: 'Actifs',
+                onTap: () => Get.toNamed('/contracts?tab=2'),
               ),
             ],
           ),
@@ -219,7 +223,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
 
   Widget _buildStatisticsSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.indigo.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -296,7 +300,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
@@ -330,7 +334,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.amber,
                   borderRadius: BorderRadius.circular(20),
@@ -357,68 +361,73 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
     required IconData icon,
     required Color color,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 22, color: color),
               ),
-              child: Icon(icon, size: 22, color: color),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 3),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  fontSize: 13,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 1),
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              const SizedBox(height: 1),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -447,7 +456,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -529,6 +538,24 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
           Get.toNamed('/contracts');
         },
       ),
+      // Bouton Paramètres (visible pour tous, mais accès restreint aux admins)
+      Obx(() {
+        final userRole = Get.find<AuthController>().userAuth.value?.role;
+        if (userRole == 1) {
+          return ListTile(
+            leading: const Icon(Icons.settings, color: Colors.white70),
+            title: const Text(
+              'Paramètres',
+              style: TextStyle(color: Colors.white70),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Get.toNamed('/admin/settings');
+            },
+          );
+        }
+        return const SizedBox.shrink();
+      }),
     ];
   }
 

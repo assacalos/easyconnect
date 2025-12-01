@@ -9,6 +9,9 @@ import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class BordereauxController extends GetxController {
   late int userId;
@@ -32,6 +35,9 @@ class BordereauxController extends GetxController {
   // Référence générée automatiquement
   final generatedReference = ''.obs;
 
+  // Mémoriser le statut actuellement chargé
+  int? _currentStatus;
+
   // Statistiques
   final totalBordereaux = 0.obs;
   final bordereauEnvoyes = 0.obs;
@@ -45,23 +51,81 @@ class BordereauxController extends GetxController {
     userId = int.parse(
       Get.find<AuthController>().userAuth.value!.id.toString(),
     );
-    loadBordereaux();
-    // loadStats(); // Temporairement désactivé car l'endpoint n'existe pas
+    // Ne pas charger automatiquement - laisser les pages décider quand charger
+    // Cela évite les erreurs et ralentissements inutiles
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   loadBordereaux();
+    // });
   }
 
-  Future<void> loadBordereaux({int? status}) async {
+  Future<void> loadBordereaux({int? status, bool forceRefresh = false}) async {
     try {
+      // Si on ne force pas le rafraîchissement et que les données sont déjà chargées avec le même statut, ne rien faire
+      // MAIS seulement si on a vraiment des données (pas si la liste est vide)
+      // ET seulement si le statut a déjà été défini (pas au premier chargement)
+      if (!forceRefresh &&
+          bordereaux.isNotEmpty &&
+          _currentStatus == status &&
+          _currentStatus != null) {
+        AppLogger.debug(
+          'Données déjà chargées, pas de rechargement nécessaire',
+          tag: 'BORDEREAU_CONTROLLER',
+        );
+        return;
+      }
+
+      _currentStatus = status; // Mémoriser le statut actuel
+
+      // Toujours mettre isLoading à true au début du chargement
       isLoading.value = true;
+
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'bordereaux_${status ?? 'all'}';
+      final cachedBordereaux = CacheHelper.get<List<Bordereau>>(cacheKey);
+      if (cachedBordereaux != null &&
+          cachedBordereaux.isNotEmpty &&
+          !forceRefresh) {
+        bordereaux.value = cachedBordereaux;
+        // Garder isLoading à true pour montrer qu'on charge les données fraîches
+        AppLogger.debug(
+          'Données chargées depuis le cache: ${cachedBordereaux.length} bordereaux',
+          tag: 'BORDEREAU_CONTROLLER',
+        );
+      }
+
+      // Charger les données fraîches en arrière-plan
       final loadedBordereaux = await _bordereauService.getBordereaux(
         status: status,
       );
       bordereaux.value = loadedBordereaux;
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les bordereaux',
-        snackPosition: SnackPosition.BOTTOM,
+      AppLogger.error(
+        'Erreur lors du chargement des bordereaux: $e',
+        tag: 'BORDEREAU_CONTROLLER',
       );
+
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (bordereaux.isEmpty) {
+          // Vérifier une dernière fois le cache avant d'afficher l'erreur
+          final cacheKey = 'bordereaux_${status ?? 'all'}';
+          final cachedBordereaux = CacheHelper.get<List<Bordereau>>(cacheKey);
+          if (cachedBordereaux == null || cachedBordereaux.isEmpty) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les bordereaux',
+              snackPosition: SnackPosition.BOTTOM,
+            );
+          } else {
+            // Charger les données du cache si disponibles
+            bordereaux.value = cachedBordereaux;
+          }
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -107,7 +171,59 @@ class BordereauxController extends GetxController {
         commercialId: userId,
       );
 
-      await _bordereauService.createBordereau(newBordereau);
+      // Logger les données avant l'envoi pour le débogage
+      AppLogger.debug(
+        '📦 [BORDEREAU] Création du bordereau:',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Client ID: ${newBordereau.clientId}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Devis ID: ${newBordereau.devisId}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Référence: ${newBordereau.reference}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Commercial ID: ${newBordereau.commercialId}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Nombre d\'items: ${newBordereau.items.length}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - Items: ${newBordereau.items.map((i) => {'designation': i.designation, 'quantite': i.quantite, 'unite': i.unite}).toList()}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      AppLogger.debug(
+        '  - JSON: ${newBordereau.toJson()}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+
+      final createdBordereau = await _bordereauService.createBordereau(
+        newBordereau,
+      );
+
+      // Vérifier que la création a vraiment réussi (l'entité a un ID)
+      if (createdBordereau.id == null) {
+        throw Exception(
+          'Le bordereau a été créé mais sans ID. Veuillez réessayer.',
+        );
+      }
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('bordereaux_');
+
+      // Ajouter le bordereau à la liste localement (mise à jour optimiste)
+      bordereaux.add(createdBordereau);
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('bordereau');
 
       // Si la création réussit, afficher le message de succès
       Get.snackbar(
@@ -122,13 +238,17 @@ class BordereauxController extends GetxController {
       // Effacer le formulaire
       clearForm();
 
-      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
-      try {
-        await loadBordereaux();
-      } catch (e) {
-        // Si le rechargement échoue, on ne fait rien car le bordereau a été créé avec succès
-        // L'utilisateur peut recharger manuellement si nécessaire
-      }
+      // Recharger la liste en arrière-plan (sans bloquer et sans afficher d'erreur)
+      Future.microtask(() {
+        loadBordereaux().catchError((e) {
+          // Ignorer silencieusement les erreurs de rechargement
+          // Le bordereau a été créé avec succès, c'est l'essentiel
+          AppLogger.debug(
+            'Erreur lors du rechargement après création (ignorée): $e',
+            tag: 'BORDEREAU_CONTROLLER',
+          );
+        });
+      });
 
       return true;
     } catch (e) {
@@ -137,6 +257,12 @@ class BordereauxController extends GetxController {
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
       }
+
+      AppLogger.error(
+        'Erreur lors de la création du bordereau: $e',
+        tag: 'BORDEREAU_CONTROLLER',
+        error: e,
+      );
 
       Get.snackbar(
         'Erreur',
@@ -236,6 +362,26 @@ class BordereauxController extends GetxController {
       final success = await _bordereauService.submitBordereau(bordereauId);
       if (success) {
         await loadBordereaux();
+
+        // Notifier de manière asynchrone (non-bloquant)
+        final bordereau = bordereaux.firstWhereOrNull(
+          (b) => b.id == bordereauId,
+        );
+        if (bordereau != null) {
+          NotificationHelper.notifySubmission(
+            entityType: 'bordereau',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bordereau',
+              bordereau,
+            ),
+            entityId: bordereauId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'bordereau',
+              bordereauId.toString(),
+            ),
+          );
+        }
+
         Get.snackbar(
           'Succès',
           'Bordereau soumis avec succès',
@@ -258,14 +404,61 @@ class BordereauxController extends GetxController {
   Future<void> approveBordereau(int bordereauId) async {
     try {
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('bordereaux_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement le statut
+      final bordereauIndex = bordereaux.indexWhere((b) => b.id == bordereauId);
+      Bordereau? originalBordereau;
+      if (bordereauIndex != -1) {
+        originalBordereau = bordereaux[bordereauIndex];
+        // Si on est sur l'onglet "En attente" (status = 1), retirer le bordereau de la liste
+        if (_currentStatus == 1) {
+          bordereaux.removeAt(bordereauIndex);
+        } else {
+          // Sinon, mettre à jour le statut (status = 2 pour approuvé)
+          final updatedBordereau = Bordereau(
+            id: originalBordereau.id,
+            reference: originalBordereau.reference,
+            clientId: originalBordereau.clientId,
+            commercialId: originalBordereau.commercialId,
+            devisId: originalBordereau.devisId,
+            dateCreation: originalBordereau.dateCreation,
+            dateValidation: originalBordereau.dateValidation,
+            notes: originalBordereau.notes,
+            status: 2, // Approuvé
+            items: originalBordereau.items,
+          );
+          bordereaux[bordereauIndex] = updatedBordereau;
+        }
+      }
+
       try {
         final success = await _bordereauService.approveBordereau(bordereauId);
 
         if (success) {
-          await loadBordereaux();
-
           // Rafraîchir les compteurs du dashboard patron
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
+
+          // Notifier de manière asynchrone (non-bloquant)
+          final bordereau = bordereaux.firstWhereOrNull(
+            (b) => b.id == bordereauId,
+          );
+          if (bordereau != null) {
+            NotificationHelper.notifyValidation(
+              entityType: 'bordereau',
+              entityName: NotificationHelper.getEntityDisplayName(
+                'bordereau',
+                bordereau,
+              ),
+              entityId: bordereauId.toString(),
+              route: NotificationHelper.getEntityRoute(
+                'bordereau',
+                bordereauId.toString(),
+              ),
+            );
+          }
 
           Get.snackbar(
             'Succès',
@@ -274,16 +467,30 @@ class BordereauxController extends GetxController {
             backgroundColor: Colors.green,
             colorText: Colors.white,
           );
+
+          // Recharger les données en arrière-plan après un court délai
+          // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+          Future.delayed(const Duration(milliseconds: 500), () {
+            loadBordereaux(status: _currentStatus).catchError((e) {
+              // En cas d'erreur, on garde la mise à jour optimiste
+            });
+          });
         } else {
+          // En cas d'échec, recharger pour restaurer l'état
+          await loadBordereaux(status: _currentStatus);
           throw Exception(
             'Erreur lors de l\'approbation - La réponse du serveur indique un échec',
           );
         }
       } catch (e) {
+        // En cas d'erreur, recharger pour restaurer l'état correct
+        if (originalBordereau != null) {
+          await loadBordereaux(status: _currentStatus);
+        }
         // Si le service a lancé une exception, la propager
         rethrow;
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bordereau: $e',
@@ -312,6 +519,26 @@ class BordereauxController extends GetxController {
           // Rafraîchir les compteurs du dashboard patron
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
 
+          // Notifier de manière asynchrone (non-bloquant)
+          final bordereau = bordereaux.firstWhereOrNull(
+            (b) => b.id == bordereauId,
+          );
+          if (bordereau != null) {
+            NotificationHelper.notifyRejection(
+              entityType: 'bordereau',
+              entityName: NotificationHelper.getEntityDisplayName(
+                'bordereau',
+                bordereau,
+              ),
+              entityId: bordereauId.toString(),
+              reason: commentaire,
+              route: NotificationHelper.getEntityRoute(
+                'bordereau',
+                bordereauId.toString(),
+              ),
+            );
+          }
+
           Get.snackbar(
             'Succès',
             'Bordereau rejeté avec succès',
@@ -328,7 +555,7 @@ class BordereauxController extends GetxController {
         // Si le service a lancé une exception, la propager
         rethrow;
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bordereau: $e',
@@ -498,11 +725,17 @@ class BordereauxController extends GetxController {
       isLoading.value = true;
 
       // Trouver le bordereau
-      final bordereau = bordereaux.firstWhere((b) => b.id == bordereauId);
+      final bordereau = bordereaux.firstWhere(
+        (b) => b.id == bordereauId,
+        orElse: () => throw Exception('Bordereau introuvable'),
+      );
 
       // Charger les données nécessaires
       final clients = await _clientService.getClients();
-      final client = clients.firstWhere((c) => c.id == bordereau.clientId);
+      final client = clients.firstWhere(
+        (c) => c.id == bordereau.clientId,
+        orElse: () => throw Exception('Client introuvable pour ce bordereau'),
+      );
       final items =
           bordereau.items
               .map(

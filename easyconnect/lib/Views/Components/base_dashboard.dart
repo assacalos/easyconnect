@@ -104,7 +104,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           icon: Icon(Icons.notifications),
           label: 'Notifications',
         ),
-        BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chat'),
+        // BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
       ],
       onTap: (index) {
@@ -120,10 +120,10 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           case 2:
             // Notifications
             break;
+          // case 3:
+          //   // Chat
+          //   break;
           case 3:
-            // Chat
-            break;
-          case 4:
             // Profil
             Get.toNamed('/profile');
             break;
@@ -191,17 +191,24 @@ abstract class BaseDashboard<T extends BaseDashboardController>
                 Get.toNamed('/reporting');
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.settings, color: Colors.white70),
-              title: const Text(
-                'Paramètres',
-                style: TextStyle(color: Colors.white70),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Ajouter la route des paramètres
-              },
-            ),
+            Obx(() {
+              final userRole = Get.find<AuthController>().userAuth.value?.role;
+              // Afficher le bouton paramètres seulement pour les admins
+              if (userRole == 1) {
+                return ListTile(
+                  leading: const Icon(Icons.settings, color: Colors.white70),
+                  title: const Text(
+                    'Paramètres',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Get.toNamed('/admin/settings');
+                  },
+                );
+              }
+              return const SizedBox.shrink();
+            }),
           ],
         ),
       ),

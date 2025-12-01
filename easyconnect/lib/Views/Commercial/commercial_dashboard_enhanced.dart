@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/commercial_dashboard_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/base_dashboard.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
@@ -89,7 +90,7 @@ class CommercialDashboardEnhanced
 
   Widget _buildPendingSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.orange.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -169,7 +170,7 @@ class CommercialDashboardEnhanced
 
   Widget _buildValidatedSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -207,6 +208,7 @@ class CommercialDashboardEnhanced
                 icon: Icons.verified_user,
                 color: Colors.blue,
                 subtitle: 'Clients actifs',
+                onTap: () => Get.toNamed('/clients?tab=1'),
               ),
               _buildValidatedCard(
                 title: 'Devis Validés',
@@ -214,6 +216,7 @@ class CommercialDashboardEnhanced
                 icon: Icons.assignment,
                 color: Colors.green,
                 subtitle: 'Devis approuvés',
+                onTap: () => Get.toNamed('/devis?tab=2'),
               ),
               _buildValidatedCard(
                 title: 'Bordereaux Validés',
@@ -221,6 +224,7 @@ class CommercialDashboardEnhanced
                 icon: Icons.assignment_turned_in,
                 color: Colors.orange,
                 subtitle: 'Bordereaux traités',
+                onTap: () => Get.toNamed('/bordereaux?tab=2'),
               ),
               _buildValidatedCard(
                 title: 'Bons Validés',
@@ -228,6 +232,7 @@ class CommercialDashboardEnhanced
                 icon: Icons.shopping_cart,
                 color: Colors.purple,
                 subtitle: 'Commandes confirmées',
+                onTap: () => Get.toNamed('/bon-commandes?tab=2'),
               ),
             ],
           ),
@@ -238,7 +243,7 @@ class CommercialDashboardEnhanced
 
   Widget _buildStatisticsSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.purple.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -315,7 +320,7 @@ class CommercialDashboardEnhanced
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             gradient: LinearGradient(
@@ -349,7 +354,7 @@ class CommercialDashboardEnhanced
               ),
               const SizedBox(height: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.orange,
                   borderRadius: BorderRadius.circular(12),
@@ -376,68 +381,73 @@ class CommercialDashboardEnhanced
     required IconData icon,
     required Color color,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 24, color: color),
               ),
-              child: Icon(icon, size: 24, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade800,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -557,6 +567,24 @@ class CommercialDashboardEnhanced
           Get.toNamed('/bon-commandes');
         },
       ),
+      // Bouton Paramètres (visible pour tous, mais accès restreint aux admins)
+      Obx(() {
+        final userRole = Get.find<AuthController>().userAuth.value?.role;
+        if (userRole == 1) {
+          return ListTile(
+            leading: const Icon(Icons.settings, color: Colors.white70),
+            title: const Text(
+              'Paramètres',
+              style: TextStyle(color: Colors.white70),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Get.toNamed('/admin/settings');
+            },
+          );
+        }
+        return const SizedBox.shrink();
+      }),
     ];
   }
 

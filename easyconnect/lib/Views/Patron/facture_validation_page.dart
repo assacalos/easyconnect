@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:intl/intl.dart';
 
 class FactureValidationPage extends StatefulWidget {
@@ -48,30 +50,26 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   }
 
   Future<void> _loadInvoices() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente - inclure tous les statuts en attente
-        // Ne pas filtrer par status ici, on chargera tout et filtrera côté client
-        status = null;
-        break;
-      case 2: // Validés
-        status = 'valide';
-        break;
-      case 3: // Rejetés
-        status = 'rejete';
-        break;
+    // Réinitialiser les filtres pour charger toutes les factures
+    controller.selectedStatus.value = 'all';
+    controller.startDate.value = null;
+    controller.endDate.value = null;
+    controller.searchQuery.value = '';
+
+    // Invalider le cache pour forcer le rechargement depuis le serveur
+    final authController = Get.find<AuthController>();
+    final user = authController.userAuth.value;
+    if (user != null) {
+      final cacheKey = 'invoices_${user.role}_all';
+      CacheHelper.remove(cacheKey);
+      // Invalider aussi les autres clés de cache possibles
+      CacheHelper.remove('invoices_${user.role}_en_attente');
+      CacheHelper.remove('invoices_${user.role}_valide');
+      CacheHelper.remove('invoices_${user.role}_rejete');
     }
 
-    controller.filterInvoices(status: status ?? 'all');
-
-    // Si on est sur l'onglet "En attente", recharger toutes les factures
-    // et filtrer côté client pour inclure tous les statuts en attente
-    if (_tabController.index == 1) {
-      await controller.loadInvoices();
-    }
+    // Charger toutes les factures, le filtrage par onglet se fait côté client
+    await controller.loadInvoices();
   }
 
   @override
@@ -601,10 +599,11 @@ class _FactureValidationPageState extends State<FactureValidationPage>
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.approveInvoice(invoice.id);
-        _loadInvoices();
+        await controller.approveInvoice(invoice.id);
+        // Recharger après validation pour afficher la facture dans le bon onglet
+        await _loadInvoices();
       },
     );
   }
@@ -630,7 +629,7 @@ class _FactureValidationPageState extends State<FactureValidationPage>
       textConfirm: 'Rejeter',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         if (reasonController.text.isEmpty) {
           Get.snackbar(
             'Erreur',
@@ -640,8 +639,9 @@ class _FactureValidationPageState extends State<FactureValidationPage>
           return;
         }
         Get.back();
-        controller.rejectInvoice(invoice.id, reasonController.text);
-        _loadInvoices();
+        await controller.rejectInvoice(invoice.id, reasonController.text);
+        // Recharger après rejet pour afficher la facture dans le bon onglet
+        await _loadInvoices();
       },
     );
   }

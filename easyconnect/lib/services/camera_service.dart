@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -11,22 +12,86 @@ class CameraService {
 
   // Vérifier et demander les permissions caméra
   Future<bool> requestCameraPermission() async {
-    final status = await Permission.camera.request();
-    return status == PermissionStatus.granted;
+    try {
+      final status = await Permission.camera.request();
+      if (status.isDenied) {
+        // Permission refusée, demander à nouveau
+        final reRequest = await Permission.camera.request();
+        return reRequest.isGranted;
+      }
+      return status.isGranted;
+    } catch (e) {
+      debugPrint(
+        '❌ [CameraService] Erreur lors de la demande de permission caméra: $e',
+      );
+      return false;
+    }
   }
 
-  // Vérifier et demander les permissions de stockage
+  // Vérifier et demander les permissions de stockage (compatible Android 13+)
   Future<bool> requestStoragePermission() async {
-    final status = await Permission.storage.request();
-    return status == PermissionStatus.granted;
+    try {
+      // Pour Android 13+ (API 33+), utiliser READ_MEDIA_IMAGES
+      // Pour les versions antérieures, utiliser READ_EXTERNAL_STORAGE
+      if (Platform.isAndroid) {
+        // Vérifier d'abord si on a déjà la permission
+        if (await Permission.photos.isGranted) {
+          return true;
+        }
+        if (await Permission.storage.isGranted) {
+          return true;
+        }
+
+        // Demander la permission appropriée
+        PermissionStatus status;
+        try {
+          // Essayer d'abord READ_MEDIA_IMAGES (Android 13+)
+          status = await Permission.photos.request();
+          if (status.isGranted) {
+            return true;
+          }
+        } catch (e) {
+          // Si READ_MEDIA_IMAGES n'est pas disponible, utiliser READ_EXTERNAL_STORAGE
+          debugPrint(
+            '⚠️ [CameraService] READ_MEDIA_IMAGES non disponible, utilisation de READ_EXTERNAL_STORAGE',
+          );
+        }
+
+        // Fallback sur READ_EXTERNAL_STORAGE pour Android < 13
+        status = await Permission.storage.request();
+        if (status.isDenied) {
+          // Permission refusée, demander à nouveau
+          final reRequest = await Permission.storage.request();
+          return reRequest.isGranted;
+        }
+        return status.isGranted;
+      } else if (Platform.isIOS) {
+        // Pour iOS, utiliser photos
+        final status = await Permission.photos.request();
+        if (status.isDenied) {
+          final reRequest = await Permission.photos.request();
+          return reRequest.isGranted;
+        }
+        return status.isGranted;
+      }
+      return false;
+    } catch (e) {
+      debugPrint(
+        '❌ [CameraService] Erreur lors de la demande de permission stockage: $e',
+      );
+      return false;
+    }
   }
 
   // Prendre une photo avec la caméra
   Future<File?> takePicture() async {
     try {
       // Vérifier les permissions
-      if (!await requestCameraPermission()) {
-        throw Exception('Permission caméra refusée');
+      final hasPermission = await requestCameraPermission();
+      if (!hasPermission) {
+        throw Exception(
+          'Permission caméra refusée. Veuillez autoriser l\'accès à la caméra dans les paramètres de l\'application.',
+        );
       }
 
       final XFile? image = await _picker.pickImage(
@@ -37,11 +102,18 @@ class CameraService {
       );
 
       if (image != null) {
-        return File(image.path);
+        final file = File(image.path);
+        // Vérifier que le fichier existe
+        if (await file.exists()) {
+          return file;
+        } else {
+          throw Exception('Le fichier image n\'existe pas: ${image.path}');
+        }
       }
       return null;
     } catch (e) {
-      return null;
+      debugPrint('❌ [CameraService] Erreur lors de la prise de photo: $e');
+      rethrow; // Propager l'erreur au lieu de retourner null silencieusement
     }
   }
 
@@ -49,8 +121,11 @@ class CameraService {
   Future<File?> pickImageFromGallery() async {
     try {
       // Vérifier les permissions
-      if (!await requestStoragePermission()) {
-        throw Exception('Permission stockage refusée');
+      final hasPermission = await requestStoragePermission();
+      if (!hasPermission) {
+        throw Exception(
+          'Permission d\'accès aux photos refusée. Veuillez autoriser l\'accès aux photos dans les paramètres de l\'application.',
+        );
       }
 
       final XFile? image = await _picker.pickImage(
@@ -61,11 +136,18 @@ class CameraService {
       );
 
       if (image != null) {
-        return File(image.path);
+        final file = File(image.path);
+        // Vérifier que le fichier existe
+        if (await file.exists()) {
+          return file;
+        } else {
+          throw Exception('Le fichier image n\'existe pas: ${image.path}');
+        }
       }
       return null;
     } catch (e) {
-      return null;
+      debugPrint('❌ [CameraService] Erreur lors de la sélection d\'image: $e');
+      rethrow; // Propager l'erreur au lieu de retourner null silencieusement
     }
   }
 

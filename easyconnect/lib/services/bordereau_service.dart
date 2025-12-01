@@ -108,6 +108,12 @@ class BordereauService {
 
       final bordereauJson = bordereau.toJson();
 
+      // Logger les données envoyées pour le débogage
+      AppLogger.debug(
+        'Données du bordereau à envoyer: $bordereauJson',
+        tag: 'BORDEREAU_SERVICE',
+      );
+
       final url = '${AppConfig.baseUrl}/bordereaux-create';
       AppLogger.httpRequest('POST', url, tag: 'BORDEREAU_SERVICE');
 
@@ -134,6 +140,7 @@ class BordereauService {
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
+      // Vérifier si la création a réussi (201 ou 200)
       if (response.statusCode == 201 || response.statusCode == 200) {
         try {
           final responseData = json.decode(response.body);
@@ -141,6 +148,16 @@ class BordereauService {
           // Gérer différents formats de réponse
           Map<String, dynamic> bordereauData;
           if (responseData is Map) {
+            // Vérifier si la réponse contient une erreur mais aussi des données
+            if (responseData['error'] != null && responseData['data'] != null) {
+              // Le serveur a créé l'entité mais a rencontré une erreur secondaire
+              // On considère quand même que la création a réussi
+              AppLogger.warning(
+                'Création réussie mais erreur secondaire détectée: ${responseData['error']}',
+                tag: 'BORDEREAU_SERVICE',
+              );
+            }
+
             if (responseData['data'] != null) {
               bordereauData =
                   responseData['data'] is Map<String, dynamic>
@@ -164,9 +181,82 @@ class BordereauService {
           }
 
           final createdBordereau = Bordereau.fromJson(bordereauData);
+
+          // Vérifier que l'entité a bien un ID (preuve que la création a réussi)
+          if (createdBordereau.id == null) {
+            throw Exception(
+              'Le bordereau a été créé mais sans ID. Veuillez réessayer.',
+            );
+          }
+
           return createdBordereau;
         } catch (parseError) {
+          // Si le parsing échoue mais que le status code est 201/200,
+          // vérifier si on peut extraire un ID depuis la réponse brute
+          try {
+            final responseData = json.decode(response.body);
+            if (responseData is Map && responseData['id'] != null) {
+              AppLogger.warning(
+                'Parsing partiel réussi, ID trouvé: ${responseData['id']}',
+                tag: 'BORDEREAU_SERVICE',
+              );
+              // Essayer de construire un bordereau minimal avec l'ID
+              final minimalBordereau = Bordereau.fromJson({
+                'id': responseData['id'],
+                ...bordereau.toJson(),
+              });
+              return minimalBordereau;
+            }
+          } catch (e) {
+            // Ignorer
+          }
           throw Exception('Erreur lors du parsing de la réponse: $parseError');
+        }
+      } else if (response.statusCode == 422) {
+        // Gestion spécifique de l'erreur 422 (Erreur de validation)
+        try {
+          final errorData = json.decode(response.body);
+          String errorMessage = 'Erreur de validation';
+
+          // Extraire le message principal
+          if (errorData['message'] != null) {
+            errorMessage = errorData['message'].toString();
+          }
+
+          // Extraire les erreurs de validation par champ
+          if (errorData['errors'] != null && errorData['errors'] is Map) {
+            final errors = errorData['errors'] as Map<String, dynamic>;
+            final List<String> validationErrors = [];
+
+            errors.forEach((field, messages) {
+              if (messages is List) {
+                for (var msg in messages) {
+                  validationErrors.add('${_formatFieldName(field)}: $msg');
+                }
+              } else {
+                validationErrors.add('${_formatFieldName(field)}: $messages');
+              }
+            });
+
+            if (validationErrors.isNotEmpty) {
+              errorMessage = validationErrors.join('\n');
+            }
+          }
+
+          AppLogger.error(
+            'Erreur 422 - Validation: $errorMessage',
+            tag: 'BORDEREAU_SERVICE',
+          );
+          throw Exception(errorMessage);
+        } catch (e) {
+          // Si le parsing de l'erreur échoue, utiliser le message par défaut
+          AppLogger.error(
+            'Erreur 422 - Impossible de parser: ${response.body}',
+            tag: 'BORDEREAU_SERVICE',
+          );
+          throw Exception(
+            'Erreur de validation. Veuillez vérifier les données saisies.',
+          );
         }
       } else if (response.statusCode == 403) {
         // Gestion spécifique de l'erreur 403 (Accès refusé)
@@ -206,10 +296,52 @@ class BordereauService {
       // Si c'est une erreur 401, elle a déjà été gérée
       if (response.statusCode == 401) {
         throw Exception('Session expirée');
+      } else if (response.statusCode == 500) {
+        // Pour l'erreur 500, vérifier si l'entité a quand même été créée
+        try {
+          final errorData = json.decode(response.body);
+          // Vérifier si la réponse contient un ID (preuve que la création a réussi)
+          if (errorData is Map && errorData['id'] != null) {
+            AppLogger.warning(
+              'Erreur 500 mais bordereau créé avec ID: ${errorData['id']}',
+              tag: 'BORDEREAU_SERVICE',
+            );
+            // Construire un bordereau minimal avec l'ID
+            final minimalBordereau = Bordereau.fromJson({
+              'id': errorData['id'],
+              ...bordereau.toJson(),
+            });
+            return minimalBordereau;
+          }
+        } catch (e) {
+          // Ignorer et continuer avec l'erreur normale
+        }
+
+        // Si pas d'ID trouvé, c'est une vraie erreur
+        try {
+          final errorData = json.decode(response.body);
+          final message =
+              errorData['message'] ??
+              'Erreur serveur lors de la création du bordereau (500)';
+          throw Exception(message);
+        } catch (e) {
+          throw Exception(
+            'Erreur serveur lors de la création du bordereau (500)',
+          );
+        }
       } else {
-        throw Exception(
-          'Erreur lors de la création du bordereau: ${response.statusCode}',
-        );
+        // Pour les autres erreurs, essayer d'extraire un message
+        try {
+          final errorData = json.decode(response.body);
+          final message =
+              errorData['message'] ??
+              'Erreur lors de la création du bordereau (${response.statusCode})';
+          throw Exception(message);
+        } catch (e) {
+          throw Exception(
+            'Erreur lors de la création du bordereau: ${response.statusCode}',
+          );
+        }
       }
     } catch (e) {
       // Gérer les erreurs d'authentification dans les exceptions
@@ -387,5 +519,37 @@ class BordereauService {
     } catch (e) {
       throw Exception('Erreur lors de la récupération des statistiques');
     }
+  }
+
+  // Helper pour formater les noms de champs de manière lisible
+  String _formatFieldName(String field) {
+    // Traduire les noms de champs courants
+    final translations = {
+      'client_id': 'Client',
+      'devis_id': 'Devis',
+      'reference': 'Référence',
+      'items': 'Articles',
+      'date_creation': 'Date de création',
+      'notes': 'Notes',
+      'status': 'Statut',
+      'user_id': 'Utilisateur',
+      'commercial_id': 'Commercial',
+    };
+
+    // Si on a une traduction, l'utiliser
+    if (translations.containsKey(field)) {
+      return translations[field]!;
+    }
+
+    // Sinon, formater le nom du champ (remplacer _ par des espaces et capitaliser)
+    return field
+        .split('_')
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? ''
+                  : word[0].toUpperCase() + word.substring(1).toLowerCase(),
+        )
+        .join(' ');
   }
 }

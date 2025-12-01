@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use App\Models\RecruitmentRequest;
 use App\Models\RecruitmentApplication;
 use Illuminate\Http\Request;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class RecruitmentController extends Controller
 {
+    use SendsNotifications;
     /**
      * Afficher la liste des demandes de recrutement
      */
@@ -446,6 +448,21 @@ class RecruitmentController extends Controller
 
             $recruitmentRequest->cancel($rejectionReason);
 
+            // Notifier le créateur de la demande
+            if ($recruitmentRequest->created_by) {
+                $reason = $rejectionReason ?? 'Rejeté';
+                $this->createNotification([
+                    'user_id' => $recruitmentRequest->created_by,
+                    'title' => 'Rejet Demande de Recrutement',
+                    'message' => "Demande de recrutement #{$recruitmentRequest->id} a été rejetée. Raison: {$reason}",
+                    'type' => 'error',
+                    'entity_type' => 'recruitment',
+                    'entity_id' => $recruitmentRequest->id,
+                    'action_route' => "/recruitment-requests/{$recruitmentRequest->id}",
+                    'metadata' => ['reason' => $reason],
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $this->formatRecruitmentRequest($recruitmentRequest->load(['creator', 'updater'])),
@@ -476,6 +493,19 @@ class RecruitmentController extends Controller
             }
 
             $recruitmentRequest->approve(request()->user()->id);
+
+            // Notifier le créateur de la demande
+            if ($recruitmentRequest->created_by) {
+                $this->createNotification([
+                    'user_id' => $recruitmentRequest->created_by,
+                    'title' => 'Approbation Demande de Recrutement',
+                    'message' => "Demande de recrutement #{$recruitmentRequest->id} a été approuvée",
+                    'type' => 'success',
+                    'entity_type' => 'recruitment',
+                    'entity_id' => $recruitmentRequest->id,
+                    'action_route' => "/recruitment-requests/{$recruitmentRequest->id}",
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

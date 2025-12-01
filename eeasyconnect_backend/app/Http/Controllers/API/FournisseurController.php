@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Fournisseur;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 
 class FournisseurController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des fournisseurs
      * Accessible par tous les utilisateurs authentifiés
@@ -393,6 +395,19 @@ class FournisseurController extends Controller
 
             DB::commit();
 
+            // Notifier l'auteur du fournisseur
+            if ($fournisseur->created_by) {
+                $this->createNotification([
+                    'user_id' => $fournisseur->created_by,
+                    'title' => 'Validation Fournisseur',
+                    'message' => "Fournisseur {$fournisseur->nom} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'supplier',
+                    'entity_id' => $fournisseur->id,
+                    'action_route' => "/fournisseurs/{$fournisseur->id}",
+                ]);
+            }
+
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();
             $fournisseur->load(['createdBy', 'validatedBy']);
@@ -460,6 +475,20 @@ class FournisseurController extends Controller
             $fournisseur->reject($request->reason, $request->get('comment'));
 
             DB::commit();
+
+            // Notifier l'auteur du fournisseur
+            if ($fournisseur->created_by) {
+                $this->createNotification([
+                    'user_id' => $fournisseur->created_by,
+                    'title' => 'Rejet Fournisseur',
+                    'message' => "Fournisseur {$fournisseur->nom} a été rejeté. Raison: {$request->reason}",
+                    'type' => 'error',
+                    'entity_type' => 'supplier',
+                    'entity_id' => $fournisseur->id,
+                    'action_route' => "/fournisseurs/{$fournisseur->id}",
+                    'metadata' => ['reason' => $request->reason],
+                ]);
+            }
 
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class TaxController extends GetxController {
   late final TaxService _taxService;
@@ -15,6 +18,7 @@ class TaxController extends GetxController {
   // Variables pour les filtres
   final RxString selectedStatus = 'all'.obs;
   final RxString searchQuery = ''.obs;
+  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
   @override
   void onInit() {
@@ -22,55 +26,111 @@ class TaxController extends GetxController {
 
     try {
       _taxService = Get.find<TaxService>();
-    } catch (e) {
+    } catch (e) {}
+
+    // Attendre que le token soit disponible avant de charger
+    _waitForTokenAndLoad();
+  }
+
+  Future<void> _waitForTokenAndLoad() async {
+    // Attendre jusqu'à 3 secondes que le token soit disponible
+    final storage = GetStorage();
+    for (int i = 0; i < 30; i++) {
+      final token = storage.read<String?>('token');
+      if (token != null) {
+        loadTaxes();
+        loadTaxStats();
+        return;
+      }
+      // Attendre 100ms avant de réessayer
+      await Future.delayed(const Duration(milliseconds: 100));
     }
 
+    // Si le token n'est toujours pas disponible après 3 secondes, essayer quand même
     loadTaxes();
     loadTaxStats();
   }
 
   // Charger toutes les taxes
-  Future<void> loadTaxes() async {
+  Future<void> loadTaxes({String? statusFilter}) async {
     try {
       isLoading.value = true;
-      // Tester la connectivité d'abord
-      final isConnected = await _taxService.testTaxConnection();
-      if (!isConnected) {
-        throw Exception('Impossible de se connecter à l\'API Laravel');
+      _currentStatusFilter =
+          statusFilter ??
+          (selectedStatus.value == 'all' ? null : selectedStatus.value);
+
+      // Vérifier que le token est disponible
+      final storage = GetStorage();
+      final token = storage.read<String?>('token');
+      if (token == null) {
+        // Ne pas afficher d'erreur si le token n'est pas disponible, juste attendre
+        return;
       }
 
-      // Charger toutes les taxes depuis l'API
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'taxes_${_currentStatusFilter ?? 'all'}';
+      final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
+      if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
+        allTaxes.assignAll(cachedTaxes);
+        applyFilters();
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
+      }
+
+      // Charger toutes les taxes depuis l'API (sans tester la connexion d'abord)
       final loadedTaxes = await _taxService.getTaxes(
         status: null, // Toujours charger toutes les taxes
         search: null, // Pas de recherche côté serveur
       );
-      // Stocker toutes les taxes
-      allTaxes.assignAll(loadedTaxes);
-      applyFilters();
+
+      // Ne remplacer la liste que si on a reçu des données
       if (loadedTaxes.isNotEmpty) {
-        Get.snackbar(
-          'Succès',
-          '${loadedTaxes.length} impôts chargés avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 2),
+        // Stocker toutes les taxes
+        allTaxes.assignAll(loadedTaxes);
+        applyFilters();
+        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+        CacheHelper.set(cacheKey, loadedTaxes);
+      } else if (allTaxes.isEmpty) {
+        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
+        allTaxes.clear();
+        taxes.clear();
+      }
+      // Si allTaxes n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
+
+      // Ne pas afficher de message de succès à chaque chargement automatique
+      // Seulement si l'utilisateur recharge manuellement
+    } catch (e) {
+      print('⚠️ [TAX_CONTROLLER] Erreur lors du chargement des taxes: $e');
+
+      // Ne pas vider la liste si elle contient déjà des données (du cache)
+      // Cela évite d'afficher une liste vide après une création réussie
+      if (allTaxes.isEmpty) {
+        allTaxes.value = [];
+        taxes.value = [];
+      } else {
+        // Si la liste contient des données, on garde ce qu'on a
+        // Cela permet d'afficher la taxe créée même si le rechargement échoue
+        print(
+          '✅ [TAX_CONTROLLER] Liste des taxes conservée (${allTaxes.length} taxes) malgré l\'erreur de rechargement',
         );
       }
-    } catch (e) {
-      // Vider la liste des impôts en cas d'erreur
-      allTaxes.value = [];
-      taxes.value = [];
 
       // Message d'erreur spécifique selon le type d'erreur
       String errorMessage;
       if (e.toString().contains('SocketException') ||
-          e.toString().contains('Connection refused')) {
+          e.toString().contains('Connection refused') ||
+          e.toString().contains('TimeoutException')) {
         errorMessage =
             'Impossible de se connecter au serveur. Vérifiez votre connexion internet.';
       } else if (e.toString().contains('401') ||
           e.toString().contains('Unauthorized')) {
-        errorMessage = 'Session expirée. Veuillez vous reconnecter.';
+        // Ne pas afficher d'erreur pour les erreurs 401, elles sont gérées par AuthErrorHandler
+        return;
+      } else if (e.toString().contains('404') ||
+          e.toString().contains('Not Found')) {
+        // L'endpoint n'existe peut-être pas encore, ne pas afficher d'erreur
+        return;
       } else if (e.toString().contains('500')) {
         errorMessage = 'Erreur serveur. Veuillez réessayer plus tard.';
       } else if (e.toString().contains('FormatException') ||
@@ -82,7 +142,9 @@ class TaxController extends GetxController {
         errorMessage =
             'Erreur de format des données. Contactez l\'administrateur.';
       } else {
-        errorMessage = 'Erreur lors du chargement des impôts: $e';
+        // Ne pas afficher d'erreur générique pour éviter de spammer l'utilisateur
+        // Logger l'erreur silencieusement
+        return;
       }
 
       Get.snackbar(
@@ -103,8 +165,7 @@ class TaxController extends GetxController {
     try {
       final stats = await _taxService.getTaxStats();
       taxStats.value = stats;
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Tester la connectivité à l'API
@@ -135,12 +196,10 @@ class TaxController extends GetxController {
             } else if (statusLower == 'paid') {
               matches = tax.isPaid;
             }
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     // Filtrer par recherche
     if (searchQuery.value.isNotEmpty) {
@@ -151,19 +210,16 @@ class TaxController extends GetxController {
             final matches =
                 tax.name.toLowerCase().contains(query) ||
                 (tax.description?.toLowerCase().contains(query) ?? false);
-            if (!matches) {
-            }
+            if (!matches) {}
             return matches;
           }).toList();
-    } else {
-    }
+    } else {}
 
     taxes.assignAll(filteredTaxes);
     // Debug final
     if (taxes.isEmpty) {
       if (allTaxes.isNotEmpty) {
-        for (final tax in allTaxes) {
-        }
+        for (final tax in allTaxes) {}
       }
     }
   }
@@ -185,6 +241,47 @@ class TaxController extends GetxController {
     try {
       isLoading.value = true;
 
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('taxes_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final taxIndex = taxes.indexWhere((t) => t.id == tax.id);
+      final allTaxIndex = allTaxes.indexWhere((t) => t.id == tax.id);
+
+      if (taxIndex != -1 || allTaxIndex != -1) {
+        final originalTax =
+            taxIndex != -1 ? taxes[taxIndex] : allTaxes[allTaxIndex];
+        final updatedTax = Tax(
+          id: originalTax.id,
+          category: originalTax.category,
+          comptableId: originalTax.comptableId,
+          comptable: originalTax.comptable,
+          reference: originalTax.reference,
+          period: originalTax.period,
+          periodStart: originalTax.periodStart,
+          periodEnd: originalTax.periodEnd,
+          dueDate: originalTax.dueDate,
+          baseAmount: originalTax.baseAmount,
+          taxRate: originalTax.taxRate,
+          taxAmount: originalTax.taxAmount,
+          totalAmount: originalTax.totalAmount,
+          status: 'validated', // Validée
+          statusLibelle: originalTax.statusLibelle,
+          description: originalTax.description,
+          notes: originalTax.notes,
+          calculationDetails: originalTax.calculationDetails,
+          createdAt: originalTax.createdAt,
+          updatedAt: originalTax.updatedAt,
+        );
+
+        if (taxIndex != -1) {
+          taxes[taxIndex] = updatedTax;
+        }
+        if (allTaxIndex != -1) {
+          allTaxes[allTaxIndex] = updatedTax;
+        }
+      }
+
       // Utiliser l'endpoint dédié pour la validation
       final success = await _taxService.approveTax(
         tax.id!,
@@ -192,9 +289,8 @@ class TaxController extends GetxController {
       );
 
       if (success) {
-        // Recharger les données
-        await loadTaxes();
-        await loadTaxStats();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('tax');
 
         Get.snackbar(
           'Succès',
@@ -203,10 +299,23 @@ class TaxController extends GetxController {
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadTaxes(statusFilter: _currentStatusFilter).catchError((e) {});
+          loadTaxStats().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadTaxes(statusFilter: _currentStatusFilter);
+        await loadTaxStats();
         throw Exception('Erreur lors de la validation');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadTaxes(statusFilter: _currentStatusFilter);
+      await loadTaxStats();
       Get.snackbar(
         'Erreur',
         'Impossible de valider la taxe: ${e.toString()}',
@@ -228,6 +337,47 @@ class TaxController extends GetxController {
     try {
       isLoading.value = true;
 
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('taxes_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final taxIndex = taxes.indexWhere((t) => t.id == tax.id);
+      final allTaxIndex = allTaxes.indexWhere((t) => t.id == tax.id);
+
+      if (taxIndex != -1 || allTaxIndex != -1) {
+        final originalTax =
+            taxIndex != -1 ? taxes[taxIndex] : allTaxes[allTaxIndex];
+        final updatedTax = Tax(
+          id: originalTax.id,
+          category: originalTax.category,
+          comptableId: originalTax.comptableId,
+          comptable: originalTax.comptable,
+          reference: originalTax.reference,
+          period: originalTax.period,
+          periodStart: originalTax.periodStart,
+          periodEnd: originalTax.periodEnd,
+          dueDate: originalTax.dueDate,
+          baseAmount: originalTax.baseAmount,
+          taxRate: originalTax.taxRate,
+          taxAmount: originalTax.taxAmount,
+          totalAmount: originalTax.totalAmount,
+          status: 'rejected', // Rejetée
+          statusLibelle: originalTax.statusLibelle,
+          description: originalTax.description,
+          notes: originalTax.notes,
+          calculationDetails: originalTax.calculationDetails,
+          createdAt: originalTax.createdAt,
+          updatedAt: originalTax.updatedAt,
+        );
+
+        if (taxIndex != -1) {
+          taxes[taxIndex] = updatedTax;
+        }
+        if (allTaxIndex != -1) {
+          allTaxes[allTaxIndex] = updatedTax;
+        }
+      }
+
       // Utiliser l'endpoint dédié pour le rejet
       final success = await _taxService.rejectTax(
         tax.id!,
@@ -236,9 +386,8 @@ class TaxController extends GetxController {
       );
 
       if (success) {
-        // Recharger les données
-        await loadTaxes();
-        await loadTaxStats();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter('tax');
 
         Get.snackbar(
           'Succès',
@@ -247,10 +396,23 @@ class TaxController extends GetxController {
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le filtre actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadTaxes(statusFilter: _currentStatusFilter).catchError((e) {});
+          loadTaxStats().catchError((e) {});
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadTaxes(statusFilter: _currentStatusFilter);
+        await loadTaxStats();
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadTaxes(statusFilter: _currentStatusFilter);
+      await loadTaxStats();
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter la taxe: ${e.toString()}',

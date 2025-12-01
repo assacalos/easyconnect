@@ -6,6 +6,7 @@ import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/services/client_service.dart';
@@ -17,6 +18,7 @@ import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Controllers/bordereau_controller.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
+import 'package:easyconnect/Controllers/auth_controller.dart';
 
 class CommercialDashboardController extends BaseDashboardController {
   var currentSection = 'dashboard'.obs;
@@ -152,9 +154,33 @@ class CommercialDashboardController extends BaseDashboardController {
 
   // Méthode pour recharger uniquement les entités en attente (appelée depuis l'extérieur)
   Future<void> refreshPendingEntities() async {
-    await _loadPendingEntities();
-    await _loadValidatedEntities();
-    await _loadStatistics();
+    // Vérifier si l'utilisateur est toujours connecté avant de charger
+    try {
+      if (!Get.isRegistered<AuthController>()) {
+        _setupTimer?.cancel();
+        _refreshTimer?.cancel();
+        return;
+      }
+
+      final authController = Get.find<AuthController>();
+      final token = authController.storage.read<String?>('token');
+      final user = authController.userAuth.value;
+
+      if (token == null || user == null) {
+        // L'utilisateur s'est déconnecté, arrêter le rafraîchissement
+        _setupTimer?.cancel();
+        _refreshTimer?.cancel();
+        return;
+      }
+
+      await _loadPendingEntities();
+      await _loadValidatedEntities();
+      await _loadStatistics();
+    } catch (e) {
+      // Si le contrôleur n'existe plus, arrêter les timers
+      _setupTimer?.cancel();
+      _refreshTimer?.cancel();
+    }
   }
 
   // Statistiques originales
@@ -231,21 +257,58 @@ class CommercialDashboardController extends BaseDashboardController {
   }
 
   @override
+  void loadCachedData() {
+    // Charger les données depuis le cache pour un affichage instantané
+    final cachedPendingClients = CacheHelper.get<int>(
+      'dashboard_commercial_pendingClients',
+    );
+    if (cachedPendingClients != null)
+      pendingClients.value = cachedPendingClients;
+
+    final cachedPendingDevis = CacheHelper.get<int>(
+      'dashboard_commercial_pendingDevis',
+    );
+    if (cachedPendingDevis != null) pendingDevis.value = cachedPendingDevis;
+
+    final cachedPendingBordereaux = CacheHelper.get<int>(
+      'dashboard_commercial_pendingBordereaux',
+    );
+    if (cachedPendingBordereaux != null)
+      pendingBordereaux.value = cachedPendingBordereaux;
+
+    final cachedPendingBonCommandes = CacheHelper.get<int>(
+      'dashboard_commercial_pendingBonCommandes',
+    );
+    if (cachedPendingBonCommandes != null)
+      pendingBonCommandes.value = cachedPendingBonCommandes;
+
+    final cachedValidatedClients = CacheHelper.get<int>(
+      'dashboard_commercial_validatedClients',
+    );
+    if (cachedValidatedClients != null)
+      validatedClients.value = cachedValidatedClients;
+
+    final cachedTotalRevenue = CacheHelper.get<double>(
+      'dashboard_commercial_totalRevenue',
+    );
+    if (cachedTotalRevenue != null) totalRevenue.value = cachedTotalRevenue;
+  }
+
+  @override
   Future<void> loadData() async {
     if (isLoading.value) return;
-    isLoading.value = true;
+    // Ne pas bloquer l'UI - charger en arrière-plan
+    isLoading.value = false; // Permettre l'affichage immédiat
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      // Charger les données des entités en attente (non-bloquant)
+      _loadPendingEntities().catchError((e) {});
 
-      // Charger les données des entités en attente
-      await _loadPendingEntities();
+      // Charger les données des entités validées (non-bloquant)
+      _loadValidatedEntities().catchError((e) {});
 
-      // Charger les données des entités validées
-      await _loadValidatedEntities();
-
-      // Charger les statistiques montants
-      await _loadStatistics();
+      // Charger les statistiques montants (non-bloquant)
+      _loadStatistics().catchError((e) {});
 
       // Simuler le chargement des données des graphiques
       revenueData.value = [
@@ -300,18 +363,36 @@ class CommercialDashboardController extends BaseDashboardController {
       ], eagerError: false);
 
       final clients = results[0] as List;
-      pendingClients.value =
+      final pendingClientsCount =
           clients.where((c) => c.status == 0 || c.status == null).length;
+      pendingClients.value = pendingClientsCount;
+      CacheHelper.set(
+        'dashboard_commercial_pendingClients',
+        pendingClientsCount,
+      );
 
       final devis = results[1] as List;
-      pendingDevis.value = devis.where((d) => d.status == 1).length;
+      final pendingDevisCount = devis.where((d) => d.status == 1).length;
+      pendingDevis.value = pendingDevisCount;
+      CacheHelper.set('dashboard_commercial_pendingDevis', pendingDevisCount);
 
       final bordereaux = results[2] as List;
-      pendingBordereaux.value = bordereaux.where((b) => b.status == 1).length;
+      final pendingBordereauxCount =
+          bordereaux.where((b) => b.status == 1).length;
+      pendingBordereaux.value = pendingBordereauxCount;
+      CacheHelper.set(
+        'dashboard_commercial_pendingBordereaux',
+        pendingBordereauxCount,
+      );
 
       final bonCommandes = results[3] as List;
-      pendingBonCommandes.value =
+      final pendingBonCommandesCount =
           bonCommandes.where((bc) => bc.status == 0).length;
+      pendingBonCommandes.value = pendingBonCommandesCount;
+      CacheHelper.set(
+        'dashboard_commercial_pendingBonCommandes',
+        pendingBonCommandesCount,
+      );
     } catch (e) {
       pendingClients.value = 0;
       pendingDevis.value = 0;
@@ -331,7 +412,12 @@ class CommercialDashboardController extends BaseDashboardController {
       ], eagerError: false);
 
       final clients = results[0] as List;
-      validatedClients.value = clients.where((c) => c.status == 1).length;
+      final validatedClientsCount = clients.where((c) => c.status == 1).length;
+      validatedClients.value = validatedClientsCount;
+      CacheHelper.set(
+        'dashboard_commercial_validatedClients',
+        validatedClientsCount,
+      );
 
       final devis = results[1] as List;
       validatedDevis.value = devis.length - pendingDevis.value;
@@ -355,7 +441,7 @@ class CommercialDashboardController extends BaseDashboardController {
       final invoices = await _invoiceService.getAllInvoices();
       // Calculer le total des factures validées (chiffre d'affaires)
       final statusLower = (String status) => status.toLowerCase().trim();
-      totalRevenue.value = invoices
+      final revenue = invoices
           .where((f) {
             final status = statusLower(f.status);
             return status == 'valide' ||
@@ -363,6 +449,8 @@ class CommercialDashboardController extends BaseDashboardController {
                 status == 'approved';
           })
           .fold(0.0, (sum, f) => sum + f.totalAmount);
+      totalRevenue.value = revenue;
+      CacheHelper.set('dashboard_commercial_totalRevenue', revenue);
 
       final allDevis = await _devisService.getDevis();
       pendingDevisAmount.value = allDevis

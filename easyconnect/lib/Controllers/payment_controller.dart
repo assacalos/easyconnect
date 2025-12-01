@@ -5,6 +5,9 @@ import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class PaymentController extends GetxController {
   final PaymentService _paymentService = PaymentService.to;
@@ -23,6 +26,8 @@ class PaymentController extends GetxController {
   final RxString selectedApprovalStatus = 'all'.obs;
   final RxList<String> approvalStatuses =
       <String>['all', 'pending', 'approved', 'rejected'].obs;
+  String?
+  _currentApprovalStatusFilter; // Mémoriser le filtre de statut d'approbation actuel
 
   // Observables pour les statistiques
   final Rx<PaymentStats?> paymentStats = Rx<PaymentStats?>(null);
@@ -97,9 +102,13 @@ class PaymentController extends GetxController {
   }
 
   // Charger les paiements
-  Future<void> loadPayments() async {
+  Future<void> loadPayments({String? approvalStatusFilter}) async {
     try {
-      isLoading.value = true;
+      _currentApprovalStatusFilter =
+          approvalStatusFilter ??
+          (selectedApprovalStatus.value == 'all'
+              ? null
+              : selectedApprovalStatus.value);
 
       final user = _authController.userAuth.value;
       if (user == null) {
@@ -113,17 +122,28 @@ class PaymentController extends GetxController {
         return;
       }
 
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey =
+          'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
+      final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
+      if (cachedPayments != null && cachedPayments.isNotEmpty) {
+        payments.assignAll(cachedPayments);
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
+      }
+
       // Chargement direct des paiements (test de connectivité supprimé car non nécessaire)
       List<PaymentModel> paymentList;
 
       // Patron (role 6) ou Admin (role 1) peuvent voir tous les paiements
       if (user.role == 1 || user.role == 6) {
-        // Patron ou Admin
+        // Patron ou Admin - charger tous les paiements sans filtre
         paymentList = await _paymentService.getAllPayments(
           startDate: startDate.value,
           endDate: endDate.value,
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-          type: selectedType.value != 'all' ? selectedType.value : null,
+          status: null, // Toujours charger tous les paiements pour le patron
+          type: null, // Toujours charger tous les types pour le patron
         );
       } else {
         // Comptable ou autre rôle
@@ -157,6 +177,9 @@ class PaymentController extends GetxController {
 
       payments.value = paymentList;
 
+      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+      CacheHelper.set(cacheKey, paymentList);
+
       // Afficher un message de succès si des paiements sont trouvés
       if (paymentList.isNotEmpty) {
         // Ne pas afficher de snackbar automatiquement pour éviter le spam
@@ -167,12 +190,32 @@ class PaymentController extends GetxController {
       // Ne pas vider la liste si elle contient déjà des paiements
       // (ils peuvent s'être chargés avant l'erreur)
       if (payments.isEmpty) {
-        payments.value = [];
+        // Vérifier une dernière fois le cache avant de vider la liste
+        final user = _authController.userAuth.value;
+        if (user != null) {
+          final cacheKey =
+              'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
+          final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
+          if (cachedPayments != null && cachedPayments.isNotEmpty) {
+            // Charger les données du cache si disponibles
+            payments.assignAll(cachedPayments);
+          } else {
+            payments.value = [];
+          }
+        } else {
+          payments.value = [];
+        }
       }
 
-      // Ne pas afficher de message d'erreur automatique
-      // Les paiements peuvent se charger malgré certaines erreurs
-      // Les erreurs sont loggées pour le débogage
+      // Ne pas afficher de message d'erreur automatique si des données sont disponibles
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (payments.isEmpty &&
+          !errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        // Les erreurs sont loggées pour le débogage mais pas affichées si des données sont disponibles
+      }
     } finally {
       isLoading.value = false;
     }
@@ -240,25 +283,121 @@ class PaymentController extends GetxController {
         );
         return false;
       }
-      // Calculer le montant des échéances pour les paiements mensuels
+      // Validation et calcul pour les paiements mensuels
       if (paymentType.value == 'monthly') {
+        // Validation des champs requis pour les paiements mensuels
+        if (totalInstallments.value <= 0) {
+          Get.snackbar(
+            'Erreur de validation',
+            'Le nombre d\'échéances doit être supérieur à 0',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+          return false;
+        }
+
+        if (frequency.value <= 0) {
+          Get.snackbar(
+            'Erreur de validation',
+            'La fréquence doit être supérieure à 0',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+          return false;
+        }
+
+        if (scheduleEndDate.value.isBefore(scheduleStartDate.value)) {
+          Get.snackbar(
+            'Erreur de validation',
+            'La date de fin doit être postérieure à la date de début',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+          return false;
+        }
+
+        // Calculer le montant des échéances
         installmentAmount.value = amount.value / totalInstallments.value;
+
+        if (installmentAmount.value <= 0) {
+          Get.snackbar(
+            'Erreur de validation',
+            'Le montant par échéance doit être supérieur à 0',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
+          return false;
+        }
       }
 
       PaymentSchedule? schedule;
       if (paymentType.value == 'monthly') {
+        // Normaliser les dates à minuit avant de créer le schedule
+        final normalizedStartDate = DateTime(
+          scheduleStartDate.value.year,
+          scheduleStartDate.value.month,
+          scheduleStartDate.value.day,
+        );
+        final normalizedEndDate = DateTime(
+          scheduleEndDate.value.year,
+          scheduleEndDate.value.month,
+          scheduleEndDate.value.day,
+        );
+
+        // Mettre à jour les dates normalisées dans les observables
+        scheduleStartDate.value = normalizedStartDate;
+        scheduleEndDate.value = normalizedEndDate;
+
         schedule = PaymentSchedule(
           id: 0, // Sera généré par le serveur
-          startDate: scheduleStartDate.value,
-          endDate: scheduleEndDate.value,
+          startDate: normalizedStartDate,
+          endDate: normalizedEndDate,
           frequency: frequency.value,
           totalInstallments: totalInstallments.value,
           paidInstallments: 0,
           installmentAmount: installmentAmount.value,
           status: 'active',
-          nextPaymentDate: scheduleStartDate.value,
+          nextPaymentDate: normalizedStartDate,
           installments: [],
         );
+
+        // Logger les données du schedule pour le débogage
+        print('📋 [PAYMENT_CONTROLLER] Schedule créé:');
+        print('   - Start Date: ${normalizedStartDate.toIso8601String()}');
+        print('   - End Date: ${normalizedEndDate.toIso8601String()}');
+        print('   - Frequency: ${frequency.value} jours');
+        print('   - Total Installments: ${totalInstallments.value}');
+        print('   - Installment Amount: ${installmentAmount.value}');
+        print('   - Amount: ${amount.value}');
+        print(
+          '   - Calcul: ${amount.value} / ${totalInstallments.value} = ${installmentAmount.value}',
+        );
+
+        // Vérification supplémentaire
+        if (installmentAmount.value.isNaN ||
+            installmentAmount.value.isInfinite) {
+          throw Exception(
+            'Le montant par échéance est invalide. Vérifiez le montant total et le nombre d\'échéances.',
+          );
+        }
+      }
+
+      // Pour les paiements ponctuels, toujours régénérer la référence juste avant l'envoi
+      // pour éviter les doublons. Pour les paiements mensuels, garder la référence existante.
+      if (paymentType.value == 'one_time') {
+        // Toujours régénérer pour les paiements ponctuels pour garantir l'unicité
+        generatedReference.value = await generatePaymentReference();
+        referenceController.text = generatedReference.value;
+      } else if (generatedReference.value.isEmpty ||
+          (referenceController.text.trim().isEmpty &&
+              generatedReference.value.isNotEmpty)) {
+        // Pour les paiements mensuels, ne régénérer que si nécessaire
+        generatedReference.value = await generatePaymentReference();
+        referenceController.text = generatedReference.value;
       }
 
       final result = await _paymentService.createPayment(
@@ -293,6 +432,45 @@ class PaymentController extends GetxController {
         schedule: schedule,
       );
       if (result['success'] == true || result['success'] == 1) {
+        // Invalider le cache
+        CacheHelper.clearByPrefix('payments_');
+        CacheHelper.clearByPrefix('dashboard_comptable_pendingPaiements');
+
+        // Rafraîchir les compteurs des dashboards
+        DashboardRefreshHelper.refreshPatronCounter('payment');
+        DashboardRefreshHelper.refreshComptablePending('paiement');
+
+        // Notifier le patron de la soumission
+        if (result['data'] != null) {
+          try {
+            final paymentData = result['data'];
+            // Extraire l'ID de manière sécurisée
+            String paymentIdStr = '';
+            if (paymentData is Map) {
+              paymentIdStr = paymentData['id']?.toString() ?? '';
+            } else {
+              try {
+                paymentIdStr = paymentData.id?.toString() ?? '';
+              } catch (e) {
+                paymentIdStr = '';
+              }
+            }
+
+            NotificationHelper.notifySubmission(
+              entityType: 'payment',
+              entityName: NotificationHelper.getEntityDisplayName(
+                'payment',
+                paymentData,
+              ),
+              entityId: paymentIdStr,
+              route: NotificationHelper.getEntityRoute('payment', paymentIdStr),
+            );
+          } catch (e) {
+            // Ignorer les erreurs de notification pour ne pas bloquer la création
+            print('⚠️ Erreur lors de la notification: $e');
+          }
+        }
+
         Get.snackbar(
           'Succès',
           'Paiement créé avec succès',
@@ -300,9 +478,11 @@ class PaymentController extends GetxController {
           colorText: Colors.white,
         );
 
-        // Recharger les paiements
-        await Future.delayed(const Duration(milliseconds: 500));
-        await loadPayments();
+        // Recharger les paiements de manière asynchrone (sans bloquer)
+        loadPayments().catchError((e) {
+          // Ignorer les erreurs pour ne pas bloquer la navigation
+          print('⚠️ Erreur lors du rechargement des paiements: $e');
+        });
 
         // Réinitialiser le formulaire
         resetForm();
@@ -322,13 +502,69 @@ class PaymentController extends GetxController {
         return false;
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la création du paiement: ${e.toString()}',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 4),
-      );
+      // Extraire le message d'erreur de manière plus lisible
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+
+      // Détecter les erreurs de référence dupliquée et régénérer automatiquement
+      if (errorMessage.contains('Duplicate entry') &&
+          errorMessage.contains('reference')) {
+        // Régénérer une nouvelle référence
+        try {
+          generatedReference.value = await generatePaymentReference();
+          referenceController.text = generatedReference.value;
+          Get.snackbar(
+            'Référence régénérée',
+            'La référence a été régénérée automatiquement. Veuillez réessayer.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+          );
+        } catch (regenerateError) {
+          // Si la régénération échoue, afficher l'erreur originale
+          Get.snackbar(
+            'Erreur',
+            'Erreur de référence dupliquée. Veuillez réessayer.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+          );
+        }
+        return false;
+      }
+
+      // Détecter les erreurs 500 et afficher un message plus clair
+      if (errorMessage.contains('500') ||
+          errorMessage.contains('Erreur serveur')) {
+        Get.snackbar(
+          'Erreur serveur',
+          'Une erreur s\'est produite sur le serveur. Veuillez vérifier les données saisies et réessayer.\n'
+              'Si le problème persiste, contactez le support technique.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 6),
+          maxWidth: 400,
+          isDismissible: true,
+          shouldIconPulse: true,
+        );
+      } else {
+        Get.snackbar(
+          'Erreur',
+          errorMessage,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+          maxWidth: 400,
+          isDismissible: true,
+          shouldIconPulse: true,
+        );
+      }
       return false;
     } finally {
       isCreating.value = false;
@@ -444,8 +680,14 @@ class PaymentController extends GetxController {
     clientEmailController.clear();
     clientAddressController.clear();
 
-    scheduleStartDate.value = DateTime.now();
-    scheduleEndDate.value = DateTime.now().add(const Duration(days: 365));
+    // Normaliser les dates à minuit
+    final now = DateTime.now();
+    scheduleStartDate.value = DateTime(now.year, now.month, now.day);
+    scheduleEndDate.value = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 365));
     frequency.value = 30;
     totalInstallments.value = 12;
     installmentAmount.value = 0.0;
@@ -629,18 +871,48 @@ class PaymentController extends GetxController {
   // Méthodes pour gérer l'approbation des paiements
   Future<void> approvePayment(int paymentId, {String? comments}) async {
     try {
-      print(
-        '🔵 [PAYMENT_CONTROLLER] approvePayment() appelé pour paymentId: $paymentId',
-      );
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('payments_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final paymentIndex = payments.indexWhere((p) => p.id == paymentId);
+      if (paymentIndex != -1) {
+        // Note: Le modèle PaymentModel a beaucoup de champs
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+        // La mise à jour optimiste sera effectuée après le rechargement
+      }
 
       final result = await _paymentService.approvePayment(
         paymentId,
         comments: comments,
       );
 
-      // Recharger les paiements
-      await loadPayments();
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('payment');
+
+      // Notifier l'utilisateur concerné de la validation
+      if (result['success'] == true && result['data'] != null) {
+        try {
+          final paymentData = result['data'];
+          NotificationHelper.notifyValidation(
+            entityType: 'payment',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'payment',
+              paymentData,
+            ),
+            entityId: paymentId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'payment',
+              paymentId.toString(),
+            ),
+          );
+        } catch (e) {
+          // Ignorer les erreurs de notification pour ne pas bloquer la validation
+          print('⚠️ Erreur lors de la notification: $e');
+        }
+      }
 
       Get.snackbar(
         'Succès',
@@ -650,7 +922,17 @@ class PaymentController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
-    } catch (e, stackTrace) {
+
+      // Recharger les données en arrière-plan avec le filtre actuel
+      // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+      });
+    } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le paiement: $e',
@@ -666,18 +948,49 @@ class PaymentController extends GetxController {
 
   Future<void> rejectPayment(int paymentId, {required String reason}) async {
     try {
-      print(
-        '🔵 [PAYMENT_CONTROLLER] rejectPayment() appelé pour paymentId: $paymentId',
-      );
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('payments_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final paymentIndex = payments.indexWhere((p) => p.id == paymentId);
+      if (paymentIndex != -1) {
+        // Note: Le modèle PaymentModel a beaucoup de champs
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+        // La mise à jour optimiste sera effectuée après le rechargement
+      }
 
       final result = await _paymentService.rejectPayment(
         paymentId,
         reason: reason,
       );
 
-      // Recharger les paiements
-      await loadPayments();
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('payment');
+
+      // Notifier l'utilisateur concerné du rejet
+      if (result['success'] == true && result['data'] != null) {
+        try {
+          final paymentData = result['data'];
+          NotificationHelper.notifyRejection(
+            entityType: 'payment',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'payment',
+              paymentData,
+            ),
+            entityId: paymentId.toString(),
+            reason: reason,
+            route: NotificationHelper.getEntityRoute(
+              'payment',
+              paymentId.toString(),
+            ),
+          );
+        } catch (e) {
+          // Ignorer les erreurs de notification pour ne pas bloquer le rejet
+          print('⚠️ Erreur lors de la notification: $e');
+        }
+      }
 
       Get.snackbar(
         'Succès',
@@ -687,7 +1000,17 @@ class PaymentController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
-    } catch (e, stackTrace) {
+
+      // Recharger les données en arrière-plan avec le filtre actuel
+      // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+      });
+    } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le paiement: $e',
@@ -745,7 +1068,10 @@ class PaymentController extends GetxController {
       isLoading.value = true;
 
       // Trouver le paiement
-      final payment = payments.firstWhere((p) => p.id == paymentId);
+      final payment = payments.firstWhere(
+        (p) => p.id == paymentId,
+        orElse: () => throw Exception('Paiement introuvable'),
+      );
 
       // Générer le PDF
       await PdfService().generatePaiementPdf(

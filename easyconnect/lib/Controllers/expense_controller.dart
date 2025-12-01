@@ -6,6 +6,10 @@ import 'package:easyconnect/Models/expense_model.dart';
 import 'package:easyconnect/services/expense_service.dart';
 import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class ExpenseController extends GetxController {
   final ExpenseService _expenseService = ExpenseService();
@@ -38,10 +42,13 @@ class ExpenseController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadExpenses();
-    loadExpenseStats();
-    loadPendingExpenses();
-    loadExpenseCategories();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadExpenses();
+      loadExpenseStats();
+      loadPendingExpenses();
+      loadExpenseCategories();
+    });
   }
 
   @override
@@ -56,20 +63,76 @@ class ExpenseController extends GetxController {
   // Charger toutes les dépenses
   Future<void> loadExpenses() async {
     try {
-      isLoading.value = true;
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey =
+          'expenses_${selectedStatus.value}_${selectedCategory.value}';
+      final cachedExpenses = CacheHelper.get<List<Expense>>(cacheKey);
+      if (cachedExpenses != null && cachedExpenses.isNotEmpty) {
+        expenses.assignAll(cachedExpenses);
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
+      }
+
+      // Charger les données fraîches en arrière-plan
       final loadedExpenses = await _expenseService.getExpenses(
         status: selectedStatus.value == 'all' ? null : selectedStatus.value,
         category:
             selectedCategory.value == 'all' ? null : selectedCategory.value,
         search: searchQuery.value.isEmpty ? null : searchQuery.value,
       );
-      expenses.assignAll(loadedExpenses);
+
+      // Ne remplacer la liste que si on a reçu des données
+      if (loadedExpenses.isNotEmpty) {
+        expenses.assignAll(loadedExpenses);
+        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+        CacheHelper.set(cacheKey, loadedExpenses);
+      } else if (expenses.isEmpty) {
+        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
+        expenses.clear();
+      }
+      // Si expenses n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les dépenses',
-        snackPosition: SnackPosition.BOTTOM,
+      AppLogger.error(
+        'Erreur lors du chargement des dépenses: $e',
+        tag: 'EXPENSE_CONTROLLER',
       );
+
+      // Ne pas afficher d'erreur si la liste n'est pas vide (données du cache disponibles)
+      // Cela évite d'afficher une erreur après une création réussie
+      // Ne pas vider la liste si elle contient déjà des données
+      if (expenses.isEmpty) {
+        // Vérifier une dernière fois le cache avant d'afficher l'erreur
+        final cacheKey =
+            'expenses_${selectedStatus.value == 'all' ? 'all' : selectedStatus.value}_${selectedCategory.value == 'all' ? 'all' : selectedCategory.value}';
+        final cachedExpenses = CacheHelper.get<List<Expense>>(cacheKey);
+        if (cachedExpenses == null || cachedExpenses.isEmpty) {
+          // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+          final errorString = e.toString().toLowerCase();
+          if (!errorString.contains('session expirée') &&
+              !errorString.contains('401') &&
+              !errorString.contains('unauthorized')) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les dépenses',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.orange,
+              colorText: Colors.white,
+              duration: const Duration(seconds: 3),
+            );
+          }
+        } else {
+          // Charger les données du cache si disponibles
+          expenses.assignAll(cachedExpenses);
+        }
+      } else {
+        // Si la liste contient des données, on garde ce qu'on a
+        // Cela permet d'afficher la dépense créée même si le rechargement échoue
+        AppLogger.info(
+          'Liste des dépenses conservée (${expenses.length} dépenses) malgré l\'erreur de rechargement',
+          tag: 'EXPENSE_CONTROLLER',
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -177,10 +240,34 @@ class ExpenseController extends GetxController {
         expenseData['justification'] = notesController.text.trim();
       }
 
-      await _expenseService.createExpense(expenseData);
-      await loadExpenses();
-      await loadExpenseStats();
+      final createdExpense = await _expenseService.createExpense(expenseData);
 
+      // Invalider le cache
+      CacheHelper.clearByPrefix('expenses_');
+
+      // Ajouter la dépense créée à la liste localement (mise à jour optimiste)
+      // S'assurer que la dépense est ajoutée avant de naviguer
+      if (createdExpense.id != null) {
+        expenses.add(createdExpense);
+        // Appliquer les filtres si nécessaire pour que la dépense apparaisse dans la liste filtrée
+        // La liste filtrée sera mise à jour automatiquement grâce à Obx
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'expense',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'expense',
+            createdExpense,
+          ),
+          entityId: createdExpense.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'expense',
+            createdExpense.id.toString(),
+          ),
+        );
+      }
+
+      // Afficher le message de succès immédiatement
       Get.snackbar(
         'Succès',
         'Dépense créée avec succès',
@@ -189,6 +276,27 @@ class ExpenseController extends GetxController {
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
       );
+
+      // Rafraîchir les compteurs et recharger en arrière-plan (non-bloquant)
+      Future.microtask(() {
+        DashboardRefreshHelper.refreshPatronCounter('expense');
+
+        // Recharger les données en arrière-plan sans bloquer l'UI
+        loadExpenses().catchError((e) {
+          AppLogger.error(
+            'Erreur lors du rechargement après création: $e',
+            tag: 'EXPENSE_CONTROLLER',
+          );
+          // Ne pas afficher d'erreur à l'utilisateur car la création a réussi
+        });
+
+        loadExpenseStats().catchError((e) {
+          AppLogger.error(
+            'Erreur lors du rechargement des stats: $e',
+            tag: 'EXPENSE_CONTROLLER',
+          );
+        });
+      });
 
       clearForm();
       return true;
@@ -365,6 +473,20 @@ class ExpenseController extends GetxController {
       );
 
       if (success) {
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'expense',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'expense',
+            expense,
+          ),
+          entityId: expense.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'expense',
+            expense.id.toString(),
+          ),
+        );
+
         await loadExpenses();
         await loadExpenseStats();
         await loadPendingExpenses();
@@ -406,6 +528,21 @@ class ExpenseController extends GetxController {
       );
 
       if (success) {
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'expense',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'expense',
+            expense,
+          ),
+          entityId: expense.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute(
+            'expense',
+            expense.id.toString(),
+          ),
+        );
+
         await loadExpenses();
         await loadExpenseStats();
         await loadPendingExpenses();

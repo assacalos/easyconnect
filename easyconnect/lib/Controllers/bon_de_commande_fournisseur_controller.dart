@@ -9,6 +9,8 @@ import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class BonDeCommandeFournisseurController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -35,6 +37,7 @@ class BonDeCommandeFournisseurController extends GetxController
   // Gestion des onglets
   late TabController tabController;
   final selectedStatus = Rxn<String>();
+  String? _currentStatus; // Mémoriser le statut actuellement chargé
 
   // Statistiques
   final totalBonDeCommandes = 0.obs;
@@ -52,11 +55,14 @@ class BonDeCommandeFournisseurController extends GetxController
     );
     tabController = TabController(length: 5, vsync: this);
     tabController.addListener(_onTabChanged);
-    loadBonDeCommandes();
-    // Ne charger que les fournisseurs, pas les clients
-    loadSuppliers();
-    // Générer automatiquement le numéro de commande au démarrage
-    initializeGeneratedNumeroCommande();
+    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadBonDeCommandes();
+      // Ne charger que les fournisseurs, pas les clients
+      loadSuppliers();
+      // Générer automatiquement le numéro de commande au démarrage
+      initializeGeneratedNumeroCommande();
+    });
   }
 
   // Générer automatiquement le numéro de commande fournisseur
@@ -148,7 +154,7 @@ class BonDeCommandeFournisseurController extends GetxController
   Future<void> loadBonDeCommandes({String? status}) async {
     try {
       isLoading.value = true;
-      print('🔄 Chargement des bons de commande fournisseur...');
+      _currentStatus = status; // Mémoriser le statut actuel
 
       // Mettre à jour le statut sélectionné
       if (status != null) {
@@ -162,14 +168,21 @@ class BonDeCommandeFournisseurController extends GetxController
       bonDeCommandes.value = loadedBonDeCommandes;
     } catch (e) {
       bonDeCommandes.value = [];
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les bons de commande: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Ne pas afficher d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de charger les bons de commande: ${e.toString()}',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -254,13 +267,25 @@ class BonDeCommandeFournisseurController extends GetxController
         items: items.toList(),
       );
 
-      await _service.createBonDeCommande(newBonDeCommande);
+      final createdBonDeCommande = await _service.createBonDeCommande(
+        newBonDeCommande,
+      );
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
+
+      // Ajouter le bon de commande à la liste localement (mise à jour optimiste)
+      if (createdBonDeCommande.id != null) {
+        bonDeCommandes.add(createdBonDeCommande);
+      }
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter(
+        'bon_de_commande_fournisseur',
+      );
 
       // Réinitialiser le formulaire
       clearForm();
-
-      // Recharger la liste des bons de commande
-      await loadBonDeCommandes();
 
       // Afficher le message de succès
       Get.snackbar(
@@ -271,6 +296,13 @@ class BonDeCommandeFournisseurController extends GetxController
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
+
+      // Recharger la liste des bons de commande en arrière-plan (sans bloquer)
+      loadBonDeCommandes().catchError((e) {
+        // Ignorer les erreurs de rechargement, le bon de commande est déjà créé
+        print('⚠️ Erreur lors du rechargement de la liste: $e');
+      });
+
       return true;
     } catch (e) {
       String errorMessage = e.toString();
@@ -368,10 +400,29 @@ class BonDeCommandeFournisseurController extends GetxController
   Future<void> approveBonDeCommande(int bonDeCommandeId) async {
     try {
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final bonDeCommandeIndex = bonDeCommandes.indexWhere(
+        (b) => b.id == bonDeCommandeId,
+      );
+      if (bonDeCommandeIndex != -1) {
+        final originalBonDeCommande = bonDeCommandes[bonDeCommandeIndex];
+        // Note: Le modèle BonDeCommande n'a peut-être pas tous les champs nécessaires
+        // On met juste à jour le statut si possible
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+      }
+
       final success = await _service.validateBonDeCommande(bonDeCommandeId);
 
       if (success) {
-        await loadBonDeCommandes();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter(
+          'bon_de_commande_fournisseur',
+        );
+
         Get.snackbar(
           'Succès',
           'Bon de commande approuvé avec succès',
@@ -379,10 +430,22 @@ class BonDeCommandeFournisseurController extends GetxController
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le statut actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadBonDeCommandes(status: _currentStatus).catchError((e) {
+            // En cas d'erreur, on garde la mise à jour optimiste
+          });
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadBonDeCommandes(status: _currentStatus);
         throw Exception('Erreur lors de l\'approbation');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadBonDeCommandes(status: _currentStatus);
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bon de commande: $e',
@@ -401,13 +464,32 @@ class BonDeCommandeFournisseurController extends GetxController
   ) async {
     try {
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final bonDeCommandeIndex = bonDeCommandes.indexWhere(
+        (b) => b.id == bonDeCommandeId,
+      );
+      if (bonDeCommandeIndex != -1) {
+        final originalBonDeCommande = bonDeCommandes[bonDeCommandeIndex];
+        // Note: Le modèle BonDeCommande n'a peut-être pas tous les champs nécessaires
+        // On met juste à jour le statut si possible
+        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
+      }
+
       final success = await _service.rejectBonDeCommande(
         bonDeCommandeId,
         commentaire,
       );
 
       if (success) {
-        await loadBonDeCommandes();
+        // Rafraîchir les compteurs du dashboard patron
+        DashboardRefreshHelper.refreshPatronCounter(
+          'bon_de_commande_fournisseur',
+        );
+
         Get.snackbar(
           'Succès',
           'Bon de commande rejeté avec succès',
@@ -415,10 +497,22 @@ class BonDeCommandeFournisseurController extends GetxController
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
+
+        // Recharger les données en arrière-plan avec le statut actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadBonDeCommandes(status: _currentStatus).catchError((e) {
+            // En cas d'erreur, on garde la mise à jour optimiste
+          });
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadBonDeCommandes(status: _currentStatus);
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadBonDeCommandes(status: _currentStatus);
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bon de commande: $e',

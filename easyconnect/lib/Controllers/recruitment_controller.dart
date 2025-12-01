@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/recruitment_service.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class RecruitmentController extends GetxController {
   final RecruitmentService _recruitmentService = RecruitmentService.to;
@@ -36,8 +37,10 @@ class RecruitmentController extends GetxController {
   final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
 
   // Variables pour le formulaire de création
-  final RxString selectedDepartmentForm = ''.obs;
-  final RxString selectedPositionForm = ''.obs;
+  final RxList<String> selectedDepartmentsForm =
+      <String>[].obs; // Sélection multiple
+  final RxList<String> selectedPositionsForm =
+      <String>[].obs; // Sélection multiple
   final RxString selectedEmploymentTypeForm = ''.obs;
   final RxString selectedExperienceLevelForm = ''.obs;
   final Rx<DateTime?> selectedDeadlineForm = Rx<DateTime?>(null);
@@ -104,12 +107,21 @@ class RecruitmentController extends GetxController {
       recruitmentRequests.value = requests;
       applyFilters();
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les demandes de recrutement',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 5),
-      );
+      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        if (recruitmentRequests.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les demandes de recrutement',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 5),
+          );
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -184,8 +196,8 @@ class RecruitmentController extends GetxController {
     try {
       // Vérification des champs obligatoires
       final title = titleController.text.trim();
-      final department = selectedDepartmentForm.value;
-      final position = selectedPositionForm.value;
+      final departments = selectedDepartmentsForm; // Liste de départements
+      final positions = selectedPositionsForm; // Liste de postes
       final description = descriptionController.text.trim();
       final requirements = requirementsController.text.trim();
       final responsibilities = responsibilitiesController.text.trim();
@@ -202,13 +214,13 @@ class RecruitmentController extends GetxController {
         return false;
       }
 
-      if (department.isEmpty) {
-        Get.snackbar('Erreur', 'Le département est obligatoire');
+      if (departments.isEmpty) {
+        Get.snackbar('Erreur', 'Au moins un département est obligatoire');
         return false;
       }
 
-      if (position.isEmpty) {
-        Get.snackbar('Erreur', 'Le poste est obligatoire');
+      if (positions.isEmpty) {
+        Get.snackbar('Erreur', 'Au moins un poste est obligatoire');
         return false;
       }
 
@@ -282,10 +294,14 @@ class RecruitmentController extends GetxController {
         return false;
       }
 
+      // Convertir les listes en chaînes séparées par des virgules pour le backend
+      final departmentString = departments.join(', ');
+      final positionString = positions.join(', ');
+
       final result = await _recruitmentService.createRecruitmentRequest(
         title: title,
-        department: department,
-        position: position,
+        department: departmentString,
+        position: positionString,
         description: description,
         requirements: requirements,
         responsibilities: responsibilities,
@@ -301,6 +317,21 @@ class RecruitmentController extends GetxController {
         // Publier automatiquement le recrutement créé
         if (result['data'] != null && result['data']['id'] != null) {
           final recruitmentId = result['data']['id'] as int;
+          final recruitmentData = result['data'];
+
+          // Notifier le patron de la soumission
+          NotificationHelper.notifySubmission(
+            entityType: 'recruitment',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'recruitment',
+              recruitmentData,
+            ),
+            entityId: recruitmentId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'recruitment',
+              recruitmentId.toString(),
+            ),
+          );
 
           try {
             final publishResult = await _recruitmentService
@@ -405,6 +436,20 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'recruitment',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'recruitment',
+            request,
+          ),
+          entityId: request.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'recruitment',
+            request.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Demande approuvée avec succès');
         // Recharger tous les recrutements pour mettre à jour la liste
         selectedStatus.value = 'all';
@@ -433,6 +478,21 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'recruitment',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'recruitment',
+            request,
+          ),
+          entityId: request.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute(
+            'recruitment',
+            request.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Demande rejetée');
         // Recharger tous les recrutements pour mettre à jour la liste
         selectedStatus.value = 'all';
@@ -527,14 +587,32 @@ class RecruitmentController extends GetxController {
     }
   }
 
-  // Sélectionner un département
-  void selectDepartment(String department) {
-    selectedDepartmentForm.value = department;
+  // Ajouter/Retirer un département (sélection multiple)
+  void toggleDepartment(String department) {
+    if (selectedDepartmentsForm.contains(department)) {
+      selectedDepartmentsForm.remove(department);
+    } else {
+      selectedDepartmentsForm.add(department);
+    }
   }
 
-  // Sélectionner un poste
-  void selectPosition(String position) {
-    selectedPositionForm.value = position;
+  // Ajouter/Retirer un poste (sélection multiple)
+  void togglePosition(String position) {
+    if (selectedPositionsForm.contains(position)) {
+      selectedPositionsForm.remove(position);
+    } else {
+      selectedPositionsForm.add(position);
+    }
+  }
+
+  // Vérifier si un département est sélectionné
+  bool isDepartmentSelected(String department) {
+    return selectedDepartmentsForm.contains(department);
+  }
+
+  // Vérifier si un poste est sélectionné
+  bool isPositionSelected(String position) {
+    return selectedPositionsForm.contains(position);
   }
 
   // Sélectionner un type d'emploi
@@ -555,8 +633,8 @@ class RecruitmentController extends GetxController {
     responsibilitiesController.clear();
     salaryRangeController.clear();
     locationController.clear();
-    selectedDepartmentForm.value = '';
-    selectedPositionForm.value = '';
+    selectedDepartmentsForm.clear();
+    selectedPositionsForm.clear();
     selectedEmploymentTypeForm.value = '';
     selectedExperienceLevelForm.value = '';
     selectedDeadlineForm.value = null;

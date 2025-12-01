@@ -678,7 +678,10 @@ class EmployeeForm extends StatelessWidget {
       success = await controller.updateEmployee(employee!);
     }
     if (success) {
-      Get.back(); // Retour automatique à la liste après succès
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offNamed(
+        '/employees',
+      ); // Redirection automatique vers la liste après succès
     }
   }
 }

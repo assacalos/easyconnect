@@ -60,7 +60,8 @@ class UniformAddButtonSimple extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: backgroundColor ?? Colors.green,
         foregroundColor: foregroundColor ?? Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: const Size(0, 36),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
@@ -91,7 +92,7 @@ class UniformFormButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         border: Border(top: BorderSide(color: Colors.grey.shade200)),
@@ -106,25 +107,30 @@ class UniformFormButtons extends StatelessWidget {
                 side: BorderSide(
                   color: cancelButtonColor ?? Colors.grey.shade400,
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                minimumSize: const Size(0, 40),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
               child: Text(
                 cancelText,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: ElevatedButton(
               onPressed: isLoading ? null : onSubmit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: submitButtonColor ?? Colors.deepPurple,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                minimumSize: const Size(0, 40),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -133,8 +139,8 @@ class UniformFormButtons extends StatelessWidget {
               child:
                   isLoading
                       ? const SizedBox(
-                        height: 20,
-                        width: 20,
+                        height: 18,
+                        width: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
@@ -144,7 +150,10 @@ class UniformFormButtons extends StatelessWidget {
                       )
                       : Text(
                         submitText,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
             ),
           ),
@@ -180,7 +189,8 @@ class UniformSectionAddButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: backgroundColor ?? Colors.green,
         foregroundColor: foregroundColor ?? Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         elevation: 1,
       ),

@@ -25,7 +25,10 @@ class _StockValidationPageState extends State<StockValidationPage>
     _tabController.addListener(() {
       _onTabChanged();
     });
-    _loadStocks();
+    // Charger les données après que le widget soit monté pour éviter de bloquer l'UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadStocks();
+    });
   }
 
   @override
@@ -77,7 +80,7 @@ class _StockValidationPageState extends State<StockValidationPage>
         children: [
           // Barre de recherche
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -163,7 +166,7 @@ class _StockValidationPageState extends State<StockValidationPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.inventory_2, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               _searchQuery.isEmpty
                   ? 'Aucun article trouvé'
@@ -171,7 +174,7 @@ class _StockValidationPageState extends State<StockValidationPage>
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             if (_searchQuery.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
@@ -245,7 +248,7 @@ class _StockValidationPageState extends State<StockValidationPage>
         ),
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -254,7 +257,7 @@ class _StockValidationPageState extends State<StockValidationPage>
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -275,7 +278,7 @@ class _StockValidationPageState extends State<StockValidationPage>
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _buildActionButtons(stock, statusColor),
               ],
             ),
@@ -296,20 +299,30 @@ class _StockValidationPageState extends State<StockValidationPage>
             children: [
               ElevatedButton.icon(
                 onPressed: () => _showApproveConfirmation(stock),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Valider', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 36),
                 ),
               ),
               ElevatedButton.icon(
                 onPressed: () => _showRejectDialog(stock),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('Rejeter', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 36),
                 ),
               ),
             ],
@@ -430,10 +443,10 @@ class _StockValidationPageState extends State<StockValidationPage>
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.approveStock(stock);
-        _loadStocks();
+        await controller.approveStock(stock);
+        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
       },
     );
   }
@@ -473,7 +486,7 @@ class _StockValidationPageState extends State<StockValidationPage>
           stock,
           commentaire: commentController.text.trim(),
         );
-        _loadStocks();
+        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
       },
     );
   }

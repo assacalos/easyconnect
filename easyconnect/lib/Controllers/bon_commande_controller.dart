@@ -8,7 +8,9 @@ import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/services/camera_service.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class BonCommandeController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -22,6 +24,7 @@ class BonCommandeController extends GetxController
   final isLoading = false.obs;
   final isLoadingClients = false.obs;
   final currentBonCommande = Rxn<BonCommande>();
+  int? _currentStatus; // Mémoriser le statut actuellement chargé
 
   // Fichiers scannés (liste de chemins locaux)
   final selectedFiles = <Map<String, dynamic>>[].obs;
@@ -41,13 +44,18 @@ class BonCommandeController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // Ne pas charger automatiquement - laisser les pages décider quand charger
     userId = int.parse(
       Get.find<AuthController>().userAuth.value!.id.toString(),
     );
     tabController = TabController(length: 5, vsync: this);
     tabController.addListener(_onTabChanged);
-    loadBonCommandes();
-    loadStats();
+    // Ne pas charger automatiquement - laisser les pages décider quand charger
+    // Cela évite les erreurs et ralentissements inutiles
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   loadBonCommandes();
+    //   loadStats();
+    // });
   }
 
   // Sélectionner des fichiers (scan ou sélection)
@@ -133,54 +141,92 @@ class BonCommandeController extends GetxController
           );
         }
       } else {
-        // Utiliser image_picker pour les images
-        final ImagePicker picker = ImagePicker();
-        final ImageSource source =
-            selectionType == 'camera'
-                ? ImageSource.camera
-                : ImageSource.gallery;
+        // Utiliser CameraService pour une meilleure gestion des permissions
+        final cameraService = CameraService();
+        File? imageFile;
 
-        final XFile? pickedFile = await picker.pickImage(
-          source: source,
-          imageQuality: 85,
-        );
-
-        if (pickedFile != null) {
-          final file = File(pickedFile.path);
-          final fileSize = await file.length();
-
-          // Vérifier la taille (max 10 MB)
-          if (fileSize > 10 * 1024 * 1024) {
-            Get.snackbar(
-              'Erreur',
-              'Le fichier est trop volumineux (max 10 MB)',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-            return;
+        try {
+          if (selectionType == 'camera') {
+            imageFile = await cameraService.takePicture();
+          } else {
+            imageFile = await cameraService.pickImageFromGallery();
           }
 
-          // Ajouter le fichier à la liste
-          selectedFiles.add({
-            'name': pickedFile.name,
-            'path': pickedFile.path,
-            'size': fileSize,
-            'type': 'image',
-            'extension': 'jpg',
-          });
+          if (imageFile != null && await imageFile.exists()) {
+            // Vérifier que le fichier existe
+            if (!await imageFile.exists()) {
+              throw Exception('Le fichier sélectionné n\'existe pas');
+            }
+
+            final fileSize = await imageFile.length();
+
+            // Vérifier la taille (max 10 MB)
+            if (fileSize > 10 * 1024 * 1024) {
+              Get.snackbar(
+                'Erreur',
+                'Le fichier est trop volumineux (max 10 MB)',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            // Valider l'image
+            try {
+              await cameraService.validateImage(imageFile);
+            } catch (e) {
+              Get.snackbar(
+                'Erreur',
+                'Image invalide: $e',
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 3),
+              );
+              return;
+            }
+
+            final fileName = imageFile.path.split('/').last;
+            final extension = fileName.split('.').last.toLowerCase();
+
+            // Ajouter le fichier à la liste
+            selectedFiles.add({
+              'name': fileName,
+              'path': imageFile.path,
+              'size': fileSize,
+              'type': 'image',
+              'extension': extension,
+            });
+
+            Get.snackbar(
+              'Succès',
+              'Fichier sélectionné',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+            );
+          }
+        } catch (e) {
+          // Gérer les erreurs de permissions et autres erreurs
+          String errorMessage = 'Erreur lors de la sélection du fichier';
+          if (e.toString().contains('Permission')) {
+            errorMessage =
+                'Permission refusée. Veuillez autoriser l\'accès à la caméra/photos dans les paramètres de l\'application.';
+          } else {
+            errorMessage = e.toString().replaceFirst('Exception: ', '');
+          }
 
           Get.snackbar(
-            'Succès',
-            'Fichier sélectionné',
+            'Erreur',
+            errorMessage,
             snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           );
         }
       }
     } catch (e) {
       Get.snackbar(
         'Erreur',
-        'Erreur lors de la sélection du fichier: $e',
+        'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
       );
     }
   }
@@ -215,19 +261,65 @@ class BonCommandeController extends GetxController
         .toList();
   }
 
-  Future<void> loadBonCommandes({int? status}) async {
+  Future<void> loadBonCommandes({
+    int? status,
+    bool forceRefresh = false,
+  }) async {
     try {
-      isLoading.value = true;
+      _currentStatus = status; // Mémoriser le statut actuel
+
+      // Si on ne force pas le rafraîchissement et que les données sont déjà chargées, ne rien faire
+      // MAIS seulement si on a vraiment des données (pas si la liste est vide)
+      if (!forceRefresh &&
+          bonCommandes.isNotEmpty &&
+          _currentStatus == status) {
+        return;
+      }
+
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'bon_commandes_${status ?? 'all'}';
+      final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(cacheKey);
+      if (cachedBonCommandes != null &&
+          cachedBonCommandes.isNotEmpty &&
+          !forceRefresh) {
+        bonCommandes.value = cachedBonCommandes;
+        isLoading.value = false; // Permettre l'affichage immédiat
+      } else {
+        isLoading.value = true;
+      }
+
+      // Charger les données fraîches en arrière-plan
       final loadedBonCommandes = await _bonCommandeService.getBonCommandes(
         status: status,
       );
       bonCommandes.value = loadedBonCommandes;
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les bons de commande',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si c'est une erreur d'authentification
+      // (elle est déjà gérée par AuthErrorHandler)
+      final errorString = e.toString().toLowerCase();
+      if (!errorString.contains('session expirée') &&
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
+        // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
+        if (bonCommandes.isEmpty) {
+          // Vérifier une dernière fois le cache avant d'afficher l'erreur
+          final cacheKey = 'bon_commandes_${status ?? 'all'}';
+          final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(
+            cacheKey,
+          );
+          if (cachedBonCommandes == null || cachedBonCommandes.isEmpty) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les bons de commande: ${e.toString()}',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 4),
+            );
+          } else {
+            // Charger les données du cache si disponibles
+            bonCommandes.value = cachedBonCommandes;
+          }
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -279,7 +371,20 @@ class BonCommandeController extends GetxController
         status: 1, // En attente
       );
 
-      await _bonCommandeService.createBonCommande(newBonCommande);
+      final createdBonCommande = await _bonCommandeService.createBonCommande(
+        newBonCommande,
+      );
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('bon_commandes_');
+
+      // Ajouter le bon de commande à la liste localement (mise à jour optimiste)
+      if (createdBonCommande.id != null) {
+        bonCommandes.add(createdBonCommande);
+      }
+
+      // Rafraîchir les compteurs du dashboard patron
+      DashboardRefreshHelper.refreshPatronCounter('bon_commande');
 
       // Si la création réussit, afficher le message de succès
       Get.snackbar(
@@ -433,24 +538,73 @@ class BonCommandeController extends GetxController
   Future<void> approveBonCommande(int bonCommandeId) async {
     try {
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('bon_commandes_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final bonCommandeIndex = bonCommandes.indexWhere(
+        (b) => b.id == bonCommandeId,
+      );
+      if (bonCommandeIndex != -1) {
+        final originalBonCommande = bonCommandes[bonCommandeIndex];
+        final updatedBonCommande = BonCommande(
+          id: originalBonCommande.id,
+          clientId: originalBonCommande.clientId,
+          commercialId: originalBonCommande.commercialId,
+          fichiers: originalBonCommande.fichiers,
+          status: 2, // Approuvé
+        );
+        bonCommandes[bonCommandeIndex] = updatedBonCommande;
+      }
+
       final success = await _bonCommandeService.approveBonCommande(
         bonCommandeId,
       );
       if (success) {
-        await loadBonCommandes();
-
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('boncommande');
+
+        // Notifier l'utilisateur concerné de la validation
+        final bonCommande = bonCommandes.firstWhereOrNull(
+          (b) => b.id == bonCommandeId,
+        );
+        if (bonCommande != null) {
+          NotificationHelper.notifyValidation(
+            entityType: 'bon_commande',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bon_commande',
+              bonCommande,
+            ),
+            entityId: bonCommandeId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'bon_commande',
+              bonCommandeId.toString(),
+            ),
+          );
+        }
 
         Get.snackbar(
           'Succès',
           'Bon de commande approuvé avec succès',
           snackPosition: SnackPosition.BOTTOM,
         );
+
+        // Recharger les données en arrière-plan avec le statut actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadBonCommandes(status: _currentStatus).catchError((e) {
+            // En cas d'erreur, on garde la mise à jour optimiste
+          });
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadBonCommandes(status: _currentStatus);
         throw Exception('Erreur lors de l\'approbation');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadBonCommandes(status: _currentStatus);
       Get.snackbar(
         'Erreur',
         'Impossible d\'approuver le bon de commande',
@@ -464,25 +618,75 @@ class BonCommandeController extends GetxController
   Future<void> rejectBonCommande(int bonCommandeId, String commentaire) async {
     try {
       isLoading.value = true;
+
+      // Invalider le cache avant l'appel API
+      CacheHelper.clearByPrefix('bon_commandes_');
+
+      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
+      final bonCommandeIndex = bonCommandes.indexWhere(
+        (b) => b.id == bonCommandeId,
+      );
+      if (bonCommandeIndex != -1) {
+        final originalBonCommande = bonCommandes[bonCommandeIndex];
+        final updatedBonCommande = BonCommande(
+          id: originalBonCommande.id,
+          clientId: originalBonCommande.clientId,
+          commercialId: originalBonCommande.commercialId,
+          fichiers: originalBonCommande.fichiers,
+          status: 3, // Rejeté
+        );
+        bonCommandes[bonCommandeIndex] = updatedBonCommande;
+      }
+
       final success = await _bonCommandeService.rejectBonCommande(
         bonCommandeId,
         commentaire,
       );
       if (success) {
-        await loadBonCommandes();
-
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('boncommande');
+
+        // Notifier l'utilisateur concerné du rejet
+        final bonCommande = bonCommandes.firstWhereOrNull(
+          (b) => b.id == bonCommandeId,
+        );
+        if (bonCommande != null) {
+          NotificationHelper.notifyRejection(
+            entityType: 'bon_commande',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bon_commande',
+              bonCommande,
+            ),
+            entityId: bonCommandeId.toString(),
+            reason: commentaire,
+            route: NotificationHelper.getEntityRoute(
+              'bon_commande',
+              bonCommandeId.toString(),
+            ),
+          );
+        }
 
         Get.snackbar(
           'Succès',
           'Bon de commande rejeté avec succès',
           snackPosition: SnackPosition.BOTTOM,
         );
+
+        // Recharger les données en arrière-plan avec le statut actuel
+        // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
+        Future.delayed(const Duration(milliseconds: 500), () {
+          loadBonCommandes(status: _currentStatus).catchError((e) {
+            // En cas d'erreur, on garde la mise à jour optimiste
+          });
+        });
       } else {
+        // En cas d'échec, recharger pour restaurer l'état
+        await loadBonCommandes(status: _currentStatus);
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
+      // En cas d'erreur, recharger pour restaurer l'état correct
+      await loadBonCommandes(status: _currentStatus);
       Get.snackbar(
         'Erreur',
         'Impossible de rejeter le bon de commande',

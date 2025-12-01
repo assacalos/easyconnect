@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Tax;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class TaxController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des taxes avec filtrage par statut
      */
@@ -112,6 +114,19 @@ public function validateTax(Request $request, $id): JsonResponse
                 'validation_comment' => $request->validation_comment
             ]);
 
+            // Notifier l'auteur de la taxe
+            if ($tax->comptable_id) {
+                $this->createNotification([
+                    'user_id' => $tax->comptable_id,
+                    'title' => 'Validation Taxe',
+                    'message' => "Taxe #{$tax->id} a été validée",
+                    'type' => 'success',
+                    'entity_type' => 'tax',
+                    'entity_id' => $tax->id,
+                    'action_route' => "/taxes/{$tax->id}",
+                ]);
+            }
+
             Log::info('Taxe validée', [
                 'tax_id' => $tax->id,
                 'validated_by' => auth()->id()
@@ -165,6 +180,20 @@ public function validateTax(Request $request, $id): JsonResponse
                 'rejection_reason' => $request->rejection_reason,
                 'rejection_comment' => $request->rejection_comment
             ]);
+
+            // Notifier l'auteur de la taxe
+            if ($tax->comptable_id) {
+                $this->createNotification([
+                    'user_id' => $tax->comptable_id,
+                    'title' => 'Rejet Taxe',
+                    'message' => "Taxe #{$tax->id} a été rejetée. Raison: {$request->rejection_reason}",
+                    'type' => 'error',
+                    'entity_type' => 'tax',
+                    'entity_id' => $tax->id,
+                    'action_route' => "/taxes/{$tax->id}",
+                    'metadata' => ['reason' => $request->rejection_reason],
+                ]);
+            }
 
             Log::info('Taxe rejetée', [
                 'tax_id' => $tax->id,

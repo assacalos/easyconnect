@@ -15,6 +15,11 @@ class LeaveForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final LeaveController controller = Get.put(LeaveController());
 
+    // Charger les employés si la liste est vide
+    if (controller.employees.isEmpty) {
+      controller.loadEmployees();
+    }
+
     // Si on édite une demande existante, remplir le formulaire
     if (request != null) {
       // TODO: Implémenter la méthode fillForm
@@ -47,8 +52,28 @@ class LeaveForm extends StatelessWidget {
 
               // Sélection de l'employé (si RH/Patron)
               if (controller.canViewAllLeaves.value) ...[
-                Obx(
-                  () => DropdownButtonFormField<String>(
+                Obx(() {
+                  final employeeOptions =
+                      controller.employeeOptions
+                          .where((emp) => emp['value'] != 'all')
+                          .toList();
+
+                  // Si la liste est vide, afficher un message
+                  if (employeeOptions.isEmpty) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Chargement des employés...',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        const LinearProgressIndicator(),
+                      ],
+                    );
+                  }
+
+                  return DropdownButtonFormField<String>(
                     value:
                         controller.selectedEmployeeForm.value.isEmpty
                             ? null
@@ -59,15 +84,12 @@ class LeaveForm extends StatelessWidget {
                       prefixIcon: Icon(Icons.person),
                     ),
                     items:
-                        controller.employeeOptions
-                            .where((emp) => emp['value'] != 'all')
-                            .map<DropdownMenuItem<String>>((emp) {
-                              return DropdownMenuItem<String>(
-                                value: emp['value']!,
-                                child: Text(emp['label']!),
-                              );
-                            })
-                            .toList(),
+                        employeeOptions.map<DropdownMenuItem<String>>((emp) {
+                          return DropdownMenuItem<String>(
+                            value: emp['value']!,
+                            child: Text(emp['label']!),
+                          );
+                        }).toList(),
                     onChanged: (value) => controller.selectEmployee(value!),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -75,8 +97,8 @@ class LeaveForm extends StatelessWidget {
                       }
                       return null;
                     },
-                  ),
-                ),
+                  );
+                }),
                 const SizedBox(height: 16),
               ],
 
@@ -473,7 +495,10 @@ class LeaveForm extends StatelessWidget {
     if (request == null) {
       final success = await controller.createLeaveRequest();
       if (success) {
-        Get.back(); // Retour automatique à la liste après succès
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed(
+          '/leaves',
+        ); // Redirection automatique vers la liste après succès
       }
     } else {
       // TODO: Implémenter la mise à jour

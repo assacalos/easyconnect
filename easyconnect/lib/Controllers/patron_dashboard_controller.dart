@@ -3,9 +3,11 @@ import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
 import 'package:easyconnect/Views/Patron/patron_permissions.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/logger.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
@@ -239,20 +241,102 @@ class PatronDashboardController extends BaseDashboardController {
   }
 
   @override
+  void loadCachedData() {
+    // Charger les données depuis le cache pour un affichage instantané
+    final cachedPendingClients = CacheHelper.get<int>(
+      'dashboard_patron_pendingClients',
+    );
+    if (cachedPendingClients != null)
+      pendingClients.value = cachedPendingClients;
+
+    final cachedPendingDevis = CacheHelper.get<int>(
+      'dashboard_patron_pendingDevis',
+    );
+    if (cachedPendingDevis != null) pendingDevis.value = cachedPendingDevis;
+
+    final cachedPendingBordereaux = CacheHelper.get<int>(
+      'dashboard_patron_pendingBordereaux',
+    );
+    if (cachedPendingBordereaux != null)
+      pendingBordereaux.value = cachedPendingBordereaux;
+
+    final cachedPendingBonCommandes = CacheHelper.get<int>(
+      'dashboard_patron_pendingBonCommandes',
+    );
+    if (cachedPendingBonCommandes != null)
+      pendingBonCommandes.value = cachedPendingBonCommandes;
+
+    final cachedPendingFactures = CacheHelper.get<int>(
+      'dashboard_patron_pendingFactures',
+    );
+    if (cachedPendingFactures != null)
+      pendingFactures.value = cachedPendingFactures;
+
+    final cachedPendingPaiements = CacheHelper.get<int>(
+      'dashboard_patron_pendingPaiements',
+    );
+    if (cachedPendingPaiements != null)
+      pendingPaiements.value = cachedPendingPaiements;
+
+    final cachedPendingDepenses = CacheHelper.get<int>(
+      'dashboard_patron_pendingDepenses',
+    );
+    if (cachedPendingDepenses != null)
+      pendingDepenses.value = cachedPendingDepenses;
+
+    final cachedPendingSalaires = CacheHelper.get<int>(
+      'dashboard_patron_pendingSalaires',
+    );
+    if (cachedPendingSalaires != null)
+      pendingSalaires.value = cachedPendingSalaires;
+
+    final cachedPendingInterventions = CacheHelper.get<int>(
+      'dashboard_patron_pendingInterventions',
+    );
+    if (cachedPendingInterventions != null)
+      pendingInterventions.value = cachedPendingInterventions;
+
+    final cachedPendingTaxes = CacheHelper.get<int>(
+      'dashboard_patron_pendingTaxes',
+    );
+    if (cachedPendingTaxes != null) pendingTaxes.value = cachedPendingTaxes;
+
+    final cachedValidatedClients = CacheHelper.get<int>(
+      'dashboard_patron_validatedClients',
+    );
+    if (cachedValidatedClients != null)
+      validatedClients.value = cachedValidatedClients;
+
+    final cachedTotalRevenue = CacheHelper.get<double>(
+      'dashboard_patron_totalRevenue',
+    );
+    if (cachedTotalRevenue != null) totalRevenue.value = cachedTotalRevenue;
+  }
+
+  @override
   Future<void> loadData() async {
     if (isLoading.value) {
       return;
     }
-    isLoading.value = true;
+    // Ne pas bloquer l'UI - charger en arrière-plan
+    isLoading.value = false; // Permettre l'affichage immédiat
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      // Charger les données des validations en attente (non-bloquant)
+      _loadPendingValidations().catchError((e) {
+        AppLogger.error(
+          'Erreur lors du chargement des validations: $e',
+          tag: 'PATRON_DASHBOARD',
+        );
+      });
 
-      // Charger les données des validations en attente
-      await _loadPendingValidations();
-
-      // Charger les métriques de performance
-      await _loadPerformanceMetrics();
+      // Charger les métriques de performance (non-bloquant)
+      _loadPerformanceMetrics().catchError((e) {
+        AppLogger.error(
+          'Erreur lors du chargement des métriques: $e',
+          tag: 'PATRON_DASHBOARD',
+        );
+      });
 
       // Simuler le chargement des données des graphiques
       revenueData.value = [
@@ -292,9 +376,25 @@ class PatronDashboardController extends BaseDashboardController {
       updateChartData('tickets', ticketData);
       updateChartData('leaves', leaveData);
     } catch (e) {
-    } finally {
-      isLoading.value = false;
+      // Logger l'erreur pour le débogage
+      AppLogger.error(
+        'Erreur lors du chargement des données du dashboard: $e',
+        tag: 'PATRON_DASHBOARD',
+        error: e,
+      );
+
+      // Afficher un message à l'utilisateur seulement si c'est une erreur critique
+      if (e.toString().contains('401') ||
+          e.toString().contains('Unauthorized')) {
+        Get.snackbar(
+          'Erreur d\'authentification',
+          'Votre session a expiré. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 5),
+        );
+      }
     }
+    // Ne pas mettre isLoading à false ici car on charge en arrière-plan
   }
 
   Future<void> _loadPendingValidations() async {
@@ -376,7 +476,7 @@ class PatronDashboardController extends BaseDashboardController {
       final factures = await _invoiceService.getAllInvoices();
       // Calculer le total des factures validées (chiffre d'affaires)
       final statusLower = (String status) => status.toLowerCase().trim();
-      totalRevenue.value = factures
+      final revenue = factures
           .where((facture) {
             final status = statusLower(facture.status);
             return status == 'valide' ||
@@ -384,6 +484,8 @@ class PatronDashboardController extends BaseDashboardController {
                 status == 'approved';
           })
           .fold(0.0, (sum, facture) => sum + facture.totalAmount);
+      totalRevenue.value = revenue;
+      CacheHelper.set('dashboard_patron_totalRevenue', revenue);
     } catch (e) {
       totalRevenue.value = 0.0;
     }
@@ -410,10 +512,12 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadValidatedClients() async {
     try {
       final clients = await _clientService.getClients();
-      validatedClients.value =
+      final count =
           clients
               .where((client) => client.status == 1) // 1 = validé
               .length;
+      validatedClients.value = count;
+      CacheHelper.set('dashboard_patron_validatedClients', count);
     } catch (e) {
       validatedClients.value = 0;
     }
@@ -423,10 +527,13 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingClients() async {
     try {
       final clients = await _clientService.getClients();
-      pendingClients.value =
+      final count =
           clients
               .where((client) => client.status == 0 || client.status == null)
               .length;
+      pendingClients.value = count;
+      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+      CacheHelper.set('dashboard_patron_pendingClients', count);
     } catch (e) {
       pendingClients.value = 0;
     }
@@ -435,12 +542,14 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingDevis() async {
     try {
       final devis = await _devisService.getDevis();
-      pendingDevis.value =
+      final count =
           devis
               .where(
                 (devis) => devis.status == 1, // 1 = en attente
               )
               .length;
+      pendingDevis.value = count;
+      CacheHelper.set('dashboard_patron_pendingDevis', count);
     } catch (e) {
       pendingDevis.value = 0;
     }
@@ -449,12 +558,14 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingBordereaux() async {
     try {
       final bordereaux = await _bordereauService.getBordereaux();
-      pendingBordereaux.value =
+      final count =
           bordereaux
               .where(
                 (bordereau) => bordereau.status == 1, // 1 = en attente
               )
               .length;
+      pendingBordereaux.value = count;
+      CacheHelper.set('dashboard_patron_pendingBordereaux', count);
     } catch (e) {
       pendingBordereaux.value = 0;
     }
@@ -463,12 +574,14 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingBonCommandes() async {
     try {
       final bonCommandes = await _bonCommandeService.getBonCommandes();
-      pendingBonCommandes.value =
+      final count =
           bonCommandes
               .where(
-                (bon) => bon.status == 0, // 0 = en attente
+                (bon) => bon.status == 1, // 1 = en attente
               )
               .length;
+      pendingBonCommandes.value = count;
+      CacheHelper.set('dashboard_patron_pendingBonCommandes', count);
     } catch (e) {
       pendingBonCommandes.value = 0;
     }
@@ -484,7 +597,7 @@ class PatronDashboardController extends BaseDashboardController {
 
       final factures = await _invoiceService.getAllInvoices();
       final statusLower = (String status) => status.toLowerCase().trim();
-      pendingFactures.value =
+      final count =
           factures.where(
             (facture) {
               final status = statusLower(facture.status);
@@ -494,6 +607,8 @@ class PatronDashboardController extends BaseDashboardController {
                   status == 'en attente';
             }, // draft, en_attente, pending ou en attente = en attente
           ).length;
+      pendingFactures.value = count;
+      CacheHelper.set('dashboard_patron_pendingFactures', count);
     } catch (e, stackTrace) {
       pendingFactures.value = 0;
     }
@@ -509,8 +624,9 @@ class PatronDashboardController extends BaseDashboardController {
 
       final paiements = await _paymentService.getAllPayments();
       // Utiliser la propriété isPending du modèle qui gère tous les cas (pending, submitted, draft)
-      pendingPaiements.value =
-          paiements.where((paiement) => paiement.isPending).length;
+      final count = paiements.where((paiement) => paiement.isPending).length;
+      pendingPaiements.value = count;
+      CacheHelper.set('dashboard_patron_pendingPaiements', count);
     } catch (e, stackTrace) {
       pendingPaiements.value = 0;
     }
@@ -519,8 +635,10 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingDepenses() async {
     try {
       final depenses = await _expenseService.getExpenses();
-      pendingDepenses.value =
+      final count =
           depenses.where((depense) => depense.status == 'pending').length;
+      pendingDepenses.value = count;
+      CacheHelper.set('dashboard_patron_pendingDepenses', count);
     } catch (e) {
       pendingDepenses.value = 0;
     }
@@ -529,8 +647,10 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingSalaires() async {
     try {
       final salaires = await _salaryService.getSalaries();
-      pendingSalaires.value =
+      final count =
           salaires.where((salaire) => salaire.status == 'pending').length;
+      pendingSalaires.value = count;
+      CacheHelper.set('dashboard_patron_pendingSalaires', count);
     } catch (e) {
       pendingSalaires.value = 0;
     }
@@ -539,8 +659,10 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingReporting() async {
     try {
       final reports = await _reportingService.getAllReports();
-      pendingReporting.value =
+      final count =
           reports.where((report) => report.status == 'submitted').length;
+      pendingReporting.value = count;
+      CacheHelper.set('dashboard_patron_pendingReporting', count);
     } catch (e) {
       pendingReporting.value = 0;
     }
@@ -549,10 +671,12 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingPointages() async {
     try {
       final pointages = await _attendanceService.getAttendances();
-      pendingPointages.value =
+      final count =
           pointages
               .where((pointage) => pointage.status.toLowerCase() == 'pending')
               .length;
+      pendingPointages.value = count;
+      CacheHelper.set('dashboard_patron_pendingPointages', count);
     } catch (e) {
       pendingPointages.value = 0;
     }
@@ -561,13 +685,15 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingInterventions() async {
     try {
       final interventions = await _interventionService.getInterventions();
-      pendingInterventions.value =
+      final count =
           interventions
               .where(
                 (intervention) =>
                     intervention.status.toLowerCase() == 'pending',
               )
               .length;
+      pendingInterventions.value = count;
+      CacheHelper.set('dashboard_patron_pendingInterventions', count);
     } catch (e) {
       pendingInterventions.value = 0;
     }
@@ -583,7 +709,9 @@ class PatronDashboardController extends BaseDashboardController {
 
       final taxes = await _taxService.getTaxes();
       // Utiliser la propriété isPending du modèle qui gère tous les cas
-      pendingTaxes.value = taxes.where((tax) => tax.isPending).length;
+      final count = taxes.where((tax) => tax.isPending).length;
+      pendingTaxes.value = count;
+      CacheHelper.set('dashboard_patron_pendingTaxes', count);
     } catch (e, stackTrace) {
       pendingTaxes.value = 0;
     }
@@ -705,23 +833,33 @@ class PatronDashboardController extends BaseDashboardController {
           await _loadPendingBordereaux();
           break;
         case 'boncommande':
+        case 'bon_commande':
         case 'bon_commandes':
+        case 'boncommandes':
           await _loadPendingBonCommandes();
           break;
         case 'facture':
         case 'factures':
+        case 'invoice':
+        case 'invoices':
           await _loadPendingFactures();
           break;
         case 'paiement':
         case 'paiements':
+        case 'payment':
+        case 'payments':
           await _loadPendingPaiements();
           break;
         case 'depense':
         case 'depenses':
+        case 'expense':
+        case 'expenses':
           await _loadPendingDepenses();
           break;
         case 'salaire':
         case 'salaires':
+        case 'salary':
+        case 'salaries':
           await _loadPendingSalaires();
           break;
         case 'reporting':

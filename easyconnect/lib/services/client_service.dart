@@ -15,16 +15,25 @@ class ClientService {
   Future<List<Client>> getClients({
     int? status,
     bool? isPending = false,
+    bool forceRefresh = false,
   }) async {
     try {
-      // OPTIMISATION : Vérifier le cache d'abord
-      final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
-      final cached = CacheHelper.get<List<Client>>(cacheKey);
-      if (cached != null) {
-        AppLogger.debug('Using cached clients', tag: 'CLIENT_SERVICE');
-        return cached;
+      // OPTIMISATION : Vérifier le cache d'abord (sauf si forceRefresh)
+      if (!forceRefresh) {
+        final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
+        final cached = CacheHelper.get<List<Client>>(cacheKey);
+        if (cached != null && cached.isNotEmpty) {
+          AppLogger.debug(
+            'Using cached clients: ${cached.length} clients',
+            tag: 'CLIENT_SERVICE',
+          );
+          // Retourner le cache immédiatement, puis charger en arrière-plan
+          _refreshClientsInBackground(status, isPending, cacheKey);
+          return cached;
+        }
       }
 
+      // Pas de cache ou forceRefresh, charger depuis le serveur
       List<Client> allClients;
 
       // Si status est null, on veut TOUS les statuts
@@ -43,6 +52,7 @@ class ClientService {
       }
 
       // Mettre en cache pour 5 minutes
+      final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
       CacheHelper.set(
         cacheKey,
         allClients,
@@ -51,8 +61,51 @@ class ClientService {
 
       return allClients;
     } catch (e) {
+      // Si erreur, on laisse l'erreur se propager
+      // Le contrôleur gérera l'affichage du cache s'il est disponible
       throw Exception('Erreur lors de la récupération des clients: $e');
     }
+  }
+
+  // Charger les données en arrière-plan pour mettre à jour le cache
+  void _refreshClientsInBackground(
+    int? status,
+    bool? isPending,
+    String cacheKey,
+  ) {
+    // Ne pas attendre, charger en arrière-plan
+    Future.microtask(() async {
+      try {
+        List<Client> allClients;
+        if (status == null) {
+          final results = await Future.wait([
+            _fetchClientsByStatus(0, isPending),
+            _fetchClientsByStatus(1, isPending),
+            _fetchClientsByStatus(2, isPending),
+          ], eagerError: false);
+          allClients = results.expand((list) => list).toList();
+        } else {
+          allClients = await _fetchClientsByStatus(status, isPending);
+        }
+
+        // Mettre à jour le cache avec les nouvelles données
+        CacheHelper.set(
+          cacheKey,
+          allClients,
+          duration: AppConfig.defaultCacheDuration,
+        );
+        AppLogger.debug(
+          'Cache mis à jour en arrière-plan: ${allClients.length} clients',
+          tag: 'CLIENT_SERVICE',
+        );
+      } catch (e) {
+        // Ignorer les erreurs en arrière-plan, on a déjà le cache
+        AppLogger.debug(
+          'Erreur lors de la mise à jour en arrière-plan (ignorée): $e',
+          tag: 'CLIENT_SERVICE',
+        );
+      }
+    });
   }
 
   Future<List<Client>> _fetchClientsByStatus(
@@ -99,9 +152,11 @@ class ClientService {
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 200) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
         try {
-          final responseData = json.decode(response.body);
+          final responseData = result['data'];
           List<dynamic> data = [];
 
           // Gérer différents formats de réponse de l'API
@@ -122,12 +177,6 @@ class ClientService {
                 data = responseData['clients'];
               }
             }
-          }
-          if (data.isEmpty &&
-              responseData is Map &&
-              responseData.containsKey('success') &&
-              responseData['success'] == true) {
-            return [];
           }
 
           // Filtrer par statut (double vérification côté client)
@@ -153,7 +202,7 @@ class ClientService {
         } catch (e) {
           throw Exception('Erreur de parsing JSON: $e');
         }
-      } else if (response.statusCode == 403) {
+      } else if (result['statusCode'] == 403) {
         throw Exception(
           'Accès refusé (403). Vous n\'avez pas les permissions pour accéder aux clients. Vérifiez vos droits d\'accès.',
         );
@@ -214,27 +263,22 @@ class ClientService {
       AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 201) {
-        final responseData = json.decode(response.body);
-        if (responseData['data'] != null) {
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        final responseData = result['data'];
+        if (responseData != null) {
           AppLogger.info('Client créé avec succès', tag: 'CLIENT_SERVICE');
-          return Client.fromJson(responseData['data']);
+          return Client.fromJson(responseData);
         }
-        // Si pas de data mais status 201, le client a été créé
+        // Si pas de data mais success true, le client a été créé
         // On retourne le client original
         return client;
       }
-      // Essayer d'extraire le message d'erreur de la réponse
-      String errorMessage = 'Erreur lors de la création du client';
-      try {
-        final errorData = json.decode(response.body);
-        if (errorData['message'] != null) {
-          errorMessage = errorData['message'];
-        }
-      } catch (_) {
-        // Si le parsing échoue, utiliser le message par défaut
-      }
-      throw Exception(errorMessage);
+
+      throw Exception(
+        result['message'] ?? 'Erreur lors de la création du client',
+      );
     } catch (e, stackTrace) {
       AppLogger.error(
         'Erreur lors de la création du client: $e',
@@ -263,10 +307,15 @@ class ClientService {
         body: json.encode(client.toJson()),
       );
 
-      if (response.statusCode == 200) {
-        return Client.fromJson(json.decode(response.body)['data']);
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return Client.fromJson(result['data']);
       }
-      throw Exception('Erreur lors de la mise à jour du client');
+
+      throw Exception(
+        result['message'] ?? 'Erreur lors de la mise à jour du client',
+      );
     } catch (e) {
       throw Exception('Erreur lors de la mise à jour du client');
     }
@@ -284,11 +333,20 @@ class ClientService {
           'Authorization': 'Bearer $token',
         },
       );
-      if (response.statusCode == 200) {
+
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      // Utiliser ApiService.parseResponse pour gérer le format standardisé
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        // Invalider le cache après validation
+        CacheHelper.clearByPrefix('clients_');
         return true;
-      } else {
-        return false;
       }
+
+      return false;
     } catch (e) {
       return false;
     }
@@ -308,14 +366,17 @@ class ClientService {
         },
         body: body,
       );
-      // Log spécial pour les erreurs 500
-      if (response.statusCode == 500) {}
 
-      if (response.statusCode == 200) {
+      // Gérer les erreurs d'authentification
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      final result = ApiService.parseResponse(response);
+      if (result['success'] == true) {
+        // Invalider le cache après rejet
+        CacheHelper.clearByPrefix('clients_');
         return true;
-      } else {
-        return false;
       }
+      return false;
     } catch (e) {
       return false;
     }
@@ -332,7 +393,8 @@ class ClientService {
         },
       );
 
-      return response.statusCode == 200;
+      final result = ApiService.parseResponse(response);
+      return result['success'] == true;
     } catch (e) {
       return false;
     }
@@ -349,10 +411,15 @@ class ClientService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body)['data'];
+      final result = ApiService.parseResponse(response);
+
+      if (result['success'] == true) {
+        return result['data'] ?? {};
       }
-      throw Exception('Erreur lors de la récupération des statistiques');
+
+      throw Exception(
+        result['message'] ?? 'Erreur lors de la récupération des statistiques',
+      );
     } catch (e) {
       throw Exception('Erreur lors de la récupération des statistiques');
     }

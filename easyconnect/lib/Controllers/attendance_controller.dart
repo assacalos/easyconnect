@@ -52,13 +52,16 @@ class AttendanceController extends GetxController {
 
       final user = _authController.userAuth.value;
       if (user == null) {
+        print('⚠️ [ATTENDANCE_CONTROLLER] Utilisateur non connecté');
         return;
       }
 
+      print(
+        '📋 [ATTENDANCE_CONTROLLER] Chargement des pointages pour utilisateur: ${user.id}, rôle: ${user.role}',
+      );
+
       // Charger l'historique de pointage
-
       // Si c'est un patron, charger tous les pointages, sinon seulement ceux de l'utilisateur
-
       final history =
           user.role == Roles.PATRON
               ? await _attendanceService
@@ -67,14 +70,16 @@ class AttendanceController extends GetxController {
                 userId: user.id,
               ); // Pointages de l'utilisateur
 
-      if (history.isNotEmpty) {
-      } else {}
+      print('📋 [ATTENDANCE_CONTROLLER] Pointages chargés: ${history.length}');
+
       // Mettre à jour la liste observable (utiliser value pour déclencher la réactivité)
       attendanceHistory.value = history;
 
       // Vérifier le statut actuel
       await checkCurrentStatus();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [ATTENDANCE_CONTROLLER] Erreur lors du chargement: $e');
+      print('❌ [ATTENDANCE_CONTROLLER] StackTrace: $stackTrace');
       /*  Get.snackbar(
         'Erreur',
         'Impossible de charger les données de pointage: $e',
@@ -186,7 +191,6 @@ class AttendanceController extends GetxController {
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        Get.snackbar('Erreur', 'Utilisateur non connecté');
         return;
       }
 
@@ -208,14 +212,12 @@ class AttendanceController extends GetxController {
       if (currentLocation.value == null) {
         await getCurrentLocation();
         if (currentLocation.value == null) {
-          Get.snackbar('Erreur', 'Position requise pour pointer');
           return;
         }
       }
 
       // Vérifier si la photo est requise (toujours obligatoire dans le nouveau système)
       if (photoPath.value == null) {
-        Get.snackbar('Erreur', 'Photo requise pour pointer');
         return;
       }
 
@@ -278,7 +280,6 @@ class AttendanceController extends GetxController {
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        Get.snackbar('Erreur', 'Utilisateur non connecté');
         return;
       }
 
@@ -293,7 +294,6 @@ class AttendanceController extends GetxController {
 
       if (result['success'] == true) {
         currentStatus.value = 'checked_out';
-        Get.snackbar('Succès', 'Pointage de départ enregistré');
 
         // Recharger les données
         await loadAttendanceData();
@@ -301,11 +301,9 @@ class AttendanceController extends GetxController {
         // Réinitialiser le formulaire
         notesController.clear();
         notes.value = '';
-      } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du pointage');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du pointage de départ: $e');
+      // Erreur silencieuse - ne pas afficher de message
     } finally {
       isCheckingOut.value = false;
     }

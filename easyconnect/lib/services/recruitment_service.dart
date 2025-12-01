@@ -527,23 +527,40 @@ class RecruitmentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final departments = List<String>.from(data['data'] ?? []);
-        // S'assurer que "Ressources Humaines" est toujours dans la liste
-        if (departments.isNotEmpty) {
-          if (!departments.contains('Ressources Humaines')) {
-            departments.add('Ressources Humaines');
-          }
-          return departments;
-        }
+        final apiDepartments = List<String>.from(data['data'] ?? []);
+
+        // Liste des départements par défaut
+        final defaultDepartments = [
+          'Ressources Humaines',
+          'Commercial',
+          'Comptabilité',
+          'Informatique',
+          'Technique',
+          'Technicien',
+          'Support',
+          'Direction',
+          'Administration',
+        ];
+
+        // Fusionner les départements de l'API avec les départements par défaut
+        final allDepartments = <String>{};
+        allDepartments.addAll(apiDepartments);
+        allDepartments.addAll(defaultDepartments);
+
+        // Retourner une liste triée et sans doublons
+        return allDepartments.toList()..sort();
       }
       // Retourner des départements par défaut si le backend ne retourne rien
       return [
         'Ressources Humaines',
         'Commercial',
         'Comptabilité',
+        'Informatique',
         'Technique',
+        'Technicien',
         'Support',
         'Direction',
+        'Administration',
       ];
     } catch (e) {
       // Retourner des départements par défaut en cas d'erreur
@@ -551,9 +568,12 @@ class RecruitmentService extends GetxService {
         'Ressources Humaines',
         'Commercial',
         'Comptabilité',
+        'Informatique',
         'Technique',
+        'Technicien',
         'Support',
         'Direction',
+        'Administration',
       ];
     }
   }
@@ -566,30 +586,88 @@ class RecruitmentService extends GetxService {
         headers: ApiService.headers(),
       );
 
+      // Liste des postes par défaut
+      final defaultPositions = [
+        'Développeur',
+        'Développeur Web',
+        'Développeur Mobile',
+        'Chef de projet',
+        'Chef de projet IT',
+        'Comptable',
+        'Comptable Général',
+        'Commercial',
+        'Commercial B2B',
+        'Technicien',
+        'Technicien Informatique',
+        'Technicien Réseau',
+        'Technicien Maintenance',
+        'Informaticien',
+        'Administrateur Système',
+        'Assistant RH',
+        'Manager',
+        'Manager Commercial',
+        'Manager Technique',
+        'Responsable Comptabilité',
+      ];
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<String>.from(data['data']);
+        final apiPositions = List<String>.from(data['data'] ?? []);
+
+        // Fusionner les postes de l'API avec les postes par défaut
+        final allPositions = <String>{};
+        allPositions.addAll(apiPositions);
+        allPositions.addAll(defaultPositions);
+
+        // Retourner une liste triée et sans doublons
+        return allPositions.toList()..sort();
       } else {
         // Retourner des postes par défaut en cas d'erreur
         return [
           'Développeur',
+          'Développeur Web',
+          'Développeur Mobile',
           'Chef de projet',
+          'Chef de projet IT',
           'Comptable',
+          'Comptable Général',
           'Commercial',
+          'Commercial B2B',
           'Technicien',
+          'Technicien Informatique',
+          'Technicien Réseau',
+          'Technicien Maintenance',
+          'Informaticien',
+          'Administrateur Système',
           'Assistant RH',
           'Manager',
+          'Manager Commercial',
+          'Manager Technique',
+          'Responsable Comptabilité',
         ];
       }
     } catch (e) {
       return [
         'Développeur',
+        'Développeur Web',
+        'Développeur Mobile',
         'Chef de projet',
+        'Chef de projet IT',
         'Comptable',
+        'Comptable Général',
         'Commercial',
+        'Commercial B2B',
         'Technicien',
+        'Technicien Informatique',
+        'Technicien Réseau',
+        'Technicien Maintenance',
+        'Informaticien',
+        'Administrateur Système',
         'Assistant RH',
         'Manager',
+        'Manager Commercial',
+        'Manager Technique',
+        'Responsable Comptabilité',
       ];
     }
   }

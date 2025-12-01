@@ -169,13 +169,16 @@ class _PaymentFormState extends State<PaymentForm> {
                     : () async {
                       final success = await controller.createPayment();
                       if (success) {
+                        // Recharger les paiements avant de revenir à la liste
+                        await controller.loadPayments();
                         Get.back();
                       }
                     },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              minimumSize: const Size(0, 44),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -256,18 +259,29 @@ class _PaymentFormState extends State<PaymentForm> {
           children: [
             Row(
               children: [
-                const Text(
-                  'Informations client',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    'Informations client',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
-                const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: () => _showClientSelectionDialog(controller),
-                  icon: const Icon(Icons.person_search),
-                  label: const Text('Sélectionner un client'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showClientSelectionDialog(controller),
+                    icon: const Icon(Icons.person_search, size: 18),
+                    label: const Text(
+                      'Sélectionner',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -469,7 +483,7 @@ class _PaymentFormState extends State<PaymentForm> {
                     items: const [
                       DropdownMenuItem(
                         value: 'bank_transfer',
-                        child: Text('Virement bancaire'),
+                        child: Text('Virement banque'),
                       ),
                       DropdownMenuItem(value: 'check', child: Text('Chèque')),
                       DropdownMenuItem(value: 'cash', child: Text('Espèces')),
@@ -534,7 +548,12 @@ class _PaymentFormState extends State<PaymentForm> {
                               ),
                             );
                             if (date != null) {
-                              controller.scheduleStartDate.value = date;
+                              // Normaliser la date à minuit pour éviter les problèmes d'heure
+                              controller.scheduleStartDate.value = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                              );
                             }
                           },
                           icon: const Icon(Icons.calendar_today),
@@ -564,7 +583,12 @@ class _PaymentFormState extends State<PaymentForm> {
                               ),
                             );
                             if (date != null) {
-                              controller.scheduleEndDate.value = date;
+                              // Normaliser la date à minuit pour éviter les problèmes d'heure
+                              controller.scheduleEndDate.value = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                              );
                             }
                           },
                           icon: const Icon(Icons.calendar_today),
@@ -583,13 +607,28 @@ class _PaymentFormState extends State<PaymentForm> {
               children: [
                 Expanded(
                   child: TextField(
+                    controller: TextEditingController(
+                        text: controller.frequency.value.toString(),
+                      )
+                      ..selection = TextSelection.fromPosition(
+                        TextPosition(
+                          offset: controller.frequency.value.toString().length,
+                        ),
+                      ),
                     onChanged: (value) {
-                      controller.frequency.value = int.tryParse(value) ?? 30;
+                      final parsed = int.tryParse(value);
+                      if (parsed != null && parsed > 0) {
+                        controller.frequency.value = parsed;
+                      } else if (value.isEmpty) {
+                        controller.frequency.value = 30; // Valeur par défaut
+                      }
                     },
                     decoration: const InputDecoration(
-                      labelText: 'Fréquence (jours)',
+                      labelText: 'Fréquence (jours) *',
                       border: OutlineInputBorder(),
                       suffixText: 'jours',
+                      helperText:
+                          'Nombre de jours entre chaque paiement (min: 1)',
                     ),
                     keyboardType: TextInputType.number,
                   ),
@@ -597,13 +636,35 @@ class _PaymentFormState extends State<PaymentForm> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: TextField(
+                    controller: TextEditingController(
+                        text: controller.totalInstallments.value.toString(),
+                      )
+                      ..selection = TextSelection.fromPosition(
+                        TextPosition(
+                          offset:
+                              controller.totalInstallments.value
+                                  .toString()
+                                  .length,
+                        ),
+                      ),
                     onChanged: (value) {
-                      controller.totalInstallments.value =
-                          int.tryParse(value) ?? 12;
+                      final parsed = int.tryParse(value);
+                      if (parsed != null && parsed > 0) {
+                        controller.totalInstallments.value = parsed;
+                        // Recalculer le montant par échéance
+                        if (controller.amount.value > 0) {
+                          controller.installmentAmount.value =
+                              controller.amount.value / parsed;
+                        }
+                      } else if (value.isEmpty) {
+                        controller.totalInstallments.value =
+                            12; // Valeur par défaut
+                      }
                     },
                     decoration: const InputDecoration(
-                      labelText: 'Nombre d\'échéances',
+                      labelText: 'Nombre d\'échéances *',
                       border: OutlineInputBorder(),
+                      helperText: 'Nombre total de paiements (min: 1)',
                     ),
                     keyboardType: TextInputType.number,
                   ),
@@ -743,19 +804,24 @@ class _PaymentFormState extends State<PaymentForm> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isTotal ? 16 : 14,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: isTotal ? 16 : 14,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isTotal ? 16 : 14,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-              color: isTotal ? Colors.green : null,
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: isTotal ? 16 : 14,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                color: isTotal ? Colors.green : null,
+              ),
             ),
           ),
         ],

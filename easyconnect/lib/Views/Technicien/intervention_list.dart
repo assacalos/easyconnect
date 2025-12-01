@@ -142,7 +142,7 @@ class InterventionList extends StatelessWidget {
       }
 
       return ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         itemCount: interventions.length,
         itemBuilder: (context, index) {
           final intervention = interventions[index];
@@ -218,7 +218,7 @@ class InterventionList extends StatelessWidget {
         },
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -492,7 +492,11 @@ class InterventionList extends StatelessWidget {
               controller.startIntervention(intervention);
               Get.back();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 36),
+            ),
             child: const Text('Démarrer'),
           ),
         ],
@@ -567,7 +571,11 @@ class InterventionList extends StatelessWidget {
               controller.completeIntervention(intervention);
               Get.back();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 36),
+            ),
             child: const Text('Terminer'),
           ),
         ],
@@ -609,7 +617,11 @@ class InterventionList extends StatelessWidget {
               controller.approveIntervention(intervention);
               Get.back();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 36),
+            ),
             child: const Text('Approuver'),
           ),
         ],

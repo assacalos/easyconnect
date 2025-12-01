@@ -37,33 +37,8 @@ use App\Http\Controllers\API\LeaveBalanceController;
 /* ROUTES PUBLIQUES (SANS AUTHENTIFICATION) */
 /* -------------------------------------------------------------- */
 
-Route::post('/login', [UserController::class, 'login']);
+Route::post('/login', [UserController::class, 'login'])->middleware('throttle:login');
 
-// Route de test temporaire
-Route::get('/test-auth', function() {
-    return response()->json([
-        'message' => 'Route publique accessible',
-        'timestamp' => now()
-    ]);
-});
-
-// Route de debug pour les rôles
-Route::middleware(['auth:sanctum'])->get('/debug-role', function() {
-    $user = auth()->user();
-    return response()->json([
-        'user_id' => $user->id,
-        'user_role' => $user->role,
-        'role_type' => gettype($user->role),
-        'role_comparison' => [
-            'role == 2' => $user->role == 2,
-            'role === 2' => $user->role === 2,
-            'role == "2"' => $user->role == "2",
-            'role === "2"' => $user->role === "2",
-            'in_array(role, [1,2,6])' => in_array($user->role, [1,2,6]),
-            'in_array(role, ["1","2","6"])' => in_array($user->role, ["1","2","6"])
-        ]
-    ]);
-});
 
 /* -------------------------------------------------------------- */
 /* ROUTES PROTÉGÉES PAR AUTHENTIFICATION */
@@ -106,7 +81,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/leave-requests', [LeaveRequestController::class, 'index']);
     
     // Routes pour les notifications (tous les utilisateurs)
-    Route::get('/notifications', [NotificationController::class, 'index']);
+    // Nouvelles routes selon la documentation
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::put('/{id}/read', [NotificationController::class, 'markAsRead']);
+        Route::put('/read-all', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+    
+    // Routes existantes pour compatibilité
     Route::get('/notifications/{id}', [NotificationController::class, 'show']);
     Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
@@ -137,7 +120,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/fournisseurs-show/{id}', [FournisseurController::class, 'show']);
 
     // Routes pour la liste et consultation (commercial, comptable, technicien, admin, patron)
-    Route::middleware(['role:1,2,3,5,6'])->group(function () {
+    Route::middleware(['role:1,2,3,4,5,6'])->group(function () {
         Route::get('/factures-show/{id}', [FactureController::class, 'show']);
 
         // Routes pour les pointages
@@ -149,6 +132,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/attendances/{id}', [AttendanceController::class, 'update']);
         Route::delete('/attendances/{id}', [AttendanceController::class, 'destroy']);
         Route::get('/attendances/current-status', [AttendanceController::class, 'currentStatus']);
+        Route::get('/attendances/can-punch', [AttendanceController::class, 'canPunch']);
         Route::get('/attendances-statistics', [AttendanceController::class, 'statistics']);
         Route::get('/attendance-settings', [AttendanceController::class, 'settings']);
     });
@@ -209,9 +193,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/users-deactivate/{id}', [UserController::class, 'deactivate']);
         Route::get('/users-statistics', [UserController::class, 'statistics']);
 
-        // Routes pour les pointages
+        // Routes pour les pointages (approbation/rejet par patron/admin)
         Route::post('/attendances-validate/{id}', [AttendanceController::class, 'approve']);
         Route::post('/attendances-reject/{id}', [AttendanceController::class, 'reject']);
+       
 
         // Routes pour les reportings
         Route::post('/user-reportings-validate/{id}', [UserReportingController::class, 'approve']);

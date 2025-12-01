@@ -6,6 +6,7 @@ import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/services/api_service.dart';
 
 class BonCommandeService {
   final storage = GetStorage();
@@ -48,25 +49,35 @@ class BonCommandeService {
       // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
-      if (response.statusCode == 200) {
-        try {
-          final responseData = json.decode(response.body);
+      // Utiliser ApiService.parseResponse pour gérer le format standardisé
+      final result = ApiService.parseResponse(response);
 
-          // Gérer différents formats de réponse
+      if (result['success'] == true) {
+        try {
+          final responseData = result['data'];
+
+          // Gérer différents formats de réponse (pagination Laravel)
           List<dynamic> data;
           if (responseData is List) {
             // La réponse est directement une liste
             data = responseData;
-          } else if (responseData['data'] != null) {
-            // La réponse contient une clé 'data'
-            if (responseData['data'] is List) {
+          } else if (responseData is Map<String, dynamic>) {
+            // Format de pagination Laravel: {"current_page": 1, "data": [...]}
+            if (responseData.containsKey('data') &&
+                responseData['data'] is List) {
               data = responseData['data'];
-            } else if (responseData['data']['data'] != null) {
-              // Cas où data contient un objet avec une clé 'data' (pagination)
+            } else if (responseData.containsKey('data') &&
+                responseData['data'] is Map &&
+                responseData['data']['data'] != null &&
+                responseData['data']['data'] is List) {
+              // Cas où data contient un objet avec une clé 'data' (pagination imbriquée)
               data = responseData['data']['data'];
-            } else {
+            } else if (responseData.containsKey('data') &&
+                responseData['data'] != null) {
               // Si data n'est pas une liste, essayer de la convertir
               data = [responseData['data']];
+            } else {
+              return [];
             }
           } else {
             return [];
@@ -78,6 +89,10 @@ class BonCommandeService {
                     try {
                       return BonCommande.fromJson(json);
                     } catch (e) {
+                      AppLogger.warning(
+                        'Erreur lors du parsing d\'un bon de commande: $e',
+                        tag: 'BON_COMMANDE_SERVICE',
+                      );
                       return null;
                     }
                   })
@@ -87,53 +102,20 @@ class BonCommandeService {
 
           return bonCommandeList;
         } catch (e) {
-          // Essayer de nettoyer les caractères invalides
-          try {
-            String cleanedBody =
-                response.body
-                    .replaceAll(
-                      RegExp(r'[\x00-\x1F\x7F-\x9F]'),
-                      '',
-                    ) // Supprimer les caractères de contrôle
-                    .replaceAll(
-                      RegExp(r'\\[^"\\/bfnrt]'),
-                      '',
-                    ) // Supprimer les échappements invalides
-                    .replaceAll(
-                      RegExp(r'[^\x20-\x7E]'),
-                      '',
-                    ) // Supprimer tous les caractères non-ASCII
-                    .trim();
-
-            if (cleanedBody.isEmpty) {
-              return [];
-            }
-
-            final responseData = jsonDecode(cleanedBody);
-
-            // Continuer avec le parsing normal
-            List<dynamic> data = [];
-            if (responseData['data'] != null) {
-              if (responseData['data'] is List) {
-                data = responseData['data'];
-              } else if (responseData['data']['data'] != null) {
-                data = responseData['data']['data'];
-              }
-            }
-
-            if (data.isEmpty) {
-              return [];
-            }
-
-            return data.map((json) => BonCommande.fromJson(json)).toList();
-          } catch (cleanError) {
-            return [];
-          }
+          AppLogger.error(
+            'Erreur lors du parsing de la réponse: $e',
+            tag: 'BON_COMMANDE_SERVICE',
+            error: e,
+          );
+          print('❌ [BON_COMMANDE] Erreur parsing: $e');
+          throw Exception('Erreur lors du parsing de la réponse: $e');
         }
       }
 
+      // Si success == false, utiliser le message d'erreur
       throw Exception(
-        'Erreur lors de la récupération des bons de commande: ${response.statusCode}',
+        result['message'] ??
+            'Erreur lors de la récupération des bons de commande',
       );
     } catch (e, stackTrace) {
       AppLogger.error(

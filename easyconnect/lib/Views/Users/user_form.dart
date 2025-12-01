@@ -109,12 +109,14 @@ class _UserFormState extends State<UserForm> {
                         passwordController.text,
                       );
                       if (success) {
-                        Get.back();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        Get.offNamed('/admin/users');
                       }
                     } else {
                       final success = await controller.updateUser(user);
                       if (success) {
-                        Get.back();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        Get.offNamed('/admin/users');
                       }
                     }
                   }

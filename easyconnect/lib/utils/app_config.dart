@@ -12,7 +12,7 @@ class AppConfig {
 
   /// Récupère l'URL de base de l'API
   static String get baseUrl {
-    // Vérifier si une URL personnalisée est stockée
+    // Vérifier si une URL personnalisée est stockée (priorité la plus haute)
     final customUrl = _storage.read<String>('api_base_url');
     if (customUrl != null && customUrl.isNotEmpty) {
       return customUrl;
@@ -27,9 +27,7 @@ class AppConfig {
       return _productionBaseUrl;
     }
 
-    // Par défaut, utiliser l'URL de production pour tous les builds
-    // (debug, profile, release) sauf si on est en mode debug ET qu'on n'a pas forcé
-    // Utiliser l'URL locale uniquement si explicitement demandé via variable d'environnement
+    // Vérifier si on veut utiliser l'URL locale via variable d'environnement
     const bool useLocalUrl = bool.fromEnvironment(
       'USE_LOCAL_URL',
       defaultValue: false,
@@ -41,7 +39,28 @@ class AppConfig {
     }
 
     // Par défaut, utiliser l'URL de production (pour debug, profile et release)
+    // ⚠️ IMPORTANT: Même en mode debug, l'URL de production est utilisée par défaut
+    // Pour utiliser l'URL locale en debug, il faut compiler avec:
+    // flutter build apk --debug --dart-define=USE_LOCAL_URL=true
     return _productionBaseUrl;
+  }
+
+  /// Retourne l'URL de production
+  static String get productionUrl => _productionBaseUrl;
+
+  /// Retourne l'URL locale (pour développement)
+  static String get localUrl => _defaultBaseUrl;
+
+  /// Vérifie quelle URL est actuellement utilisée
+  static String getCurrentUrlInfo() {
+    final currentUrl = baseUrl;
+    if (currentUrl == _productionBaseUrl) {
+      return 'Production: $_productionBaseUrl';
+    } else if (currentUrl == _defaultBaseUrl) {
+      return 'Locale: $_defaultBaseUrl';
+    } else {
+      return 'Personnalisée: $currentUrl';
+    }
   }
 
   /// Définit l'URL de base de l'API
@@ -75,4 +94,52 @@ class AppConfig {
   // Version
   static const String appVersion = '1.0.0';
   static const String appName = 'EasyConnect';
+
+  // Affichage des erreurs
+  /// Masquer les messages d'erreur techniques aux utilisateurs finaux
+  /// En production, les erreurs techniques ne sont pas affichées
+  static bool get showErrorMessagesToUsers {
+    // En mode debug, on peut afficher les erreurs pour le développement
+    // En production (release), on masque les erreurs techniques
+    return kDebugMode;
+  }
+
+  /// Retourne un message utilisateur-friendly pour les erreurs
+  static String getUserFriendlyErrorMessage(dynamic error) {
+    // Ne jamais afficher les détails techniques aux utilisateurs
+    if (!showErrorMessagesToUsers) {
+      // Messages génériques pour les utilisateurs finaux
+      final errorString = error.toString().toLowerCase();
+
+      if (errorString.contains('timeout') ||
+          errorString.contains('timed out')) {
+        return 'Connexion lente. Veuillez réessayer.';
+      }
+      if (errorString.contains('network') ||
+          errorString.contains('connection')) {
+        return 'Problème de connexion. Vérifiez votre internet.';
+      }
+      if (errorString.contains('404') || errorString.contains('not found')) {
+        return 'Ressource introuvable.';
+      }
+      if (errorString.contains('500') || errorString.contains('server')) {
+        return 'Erreur serveur. Réessayez plus tard.';
+      }
+      if (errorString.contains('401') || errorString.contains('unauthorized')) {
+        return 'Session expirée. Veuillez vous reconnecter.';
+      }
+      if (errorString.contains('403') || errorString.contains('forbidden')) {
+        return 'Accès refusé.';
+      }
+      if (errorString.contains('422') || errorString.contains('validation')) {
+        return 'Données invalides. Vérifiez vos saisies.';
+      }
+
+      // Message générique par défaut
+      return 'Une erreur est survenue. Veuillez réessayer.';
+    }
+
+    // En mode debug, on peut afficher l'erreur complète
+    return error.toString();
+  }
 }

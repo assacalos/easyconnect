@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\API\Controller;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\CommandeEntreprise;
 
 class CommandeEntrepriseController extends Controller
 {
+    use SendsNotifications;
     /**
      * Liste des commandes entreprise avec filtres
      */
@@ -245,6 +247,19 @@ class CommandeEntrepriseController extends Controller
                 'status' => 2,
             ]);
 
+            // Notifier l'auteur de la commande
+            if ($commande->user_id) {
+                $this->createNotification([
+                    'user_id' => $commande->user_id,
+                    'title' => 'Validation Commande',
+                    'message' => "Commande #{$commande->id} a été validée",
+                    'type' => 'success',
+                    'entity_type' => 'commande_entreprise',
+                    'entity_id' => $commande->id,
+                    'action_route' => "/commandes-entreprise/{$commande->id}",
+                ]);
+            }
+
             $commande->load(['client', 'commercial']);
 
             return response()->json([
@@ -294,9 +309,25 @@ class CommandeEntrepriseController extends Controller
                 ], 400);
             }
 
+            $reason = $request->input('reason', $request->input('commentaire', 'Rejeté'));
+
             $commande->update([
                 'status' => 3,
             ]);
+
+            // Notifier l'auteur de la commande
+            if ($commande->user_id) {
+                $this->createNotification([
+                    'user_id' => $commande->user_id,
+                    'title' => 'Rejet Commande',
+                    'message' => "Commande #{$commande->id} a été rejetée. Raison: {$reason}",
+                    'type' => 'error',
+                    'entity_type' => 'commande_entreprise',
+                    'entity_id' => $commande->id,
+                    'action_route' => "/commandes-entreprise/{$commande->id}",
+                    'metadata' => ['reason' => $reason],
+                ]);
+            }
 
             $commande->load(['client', 'commercial']);
 

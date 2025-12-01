@@ -525,3 +525,89 @@ class InterventionInfo {
     return null;
   }
 }
+
+class RhMetrics {
+  final int employesRecrutes;
+  final int demandesCongeTraitees;
+  final int demandesCongeApprouvees;
+  final int demandesCongeRejetees;
+  final int contratsCrees;
+  final int contratsRenouveles;
+  final int pointagesValides;
+  final int entretiensRealises;
+  final int formationsOrganisees;
+  final int evaluationsEffectuees;
+
+  // Champs de notes pour chaque métrique
+  final String? noteEmployesRecrutes;
+  final String? noteDemandesCongeTraitees;
+  final String? noteContratsCrees;
+  final String? notePointagesValides;
+  final String? noteEntretiensRealises;
+  final String? noteFormationsOrganisees;
+  final String? noteEvaluationsEffectuees;
+
+  RhMetrics({
+    required this.employesRecrutes,
+    required this.demandesCongeTraitees,
+    required this.demandesCongeApprouvees,
+    required this.demandesCongeRejetees,
+    required this.contratsCrees,
+    required this.contratsRenouveles,
+    required this.pointagesValides,
+    required this.entretiensRealises,
+    required this.formationsOrganisees,
+    required this.evaluationsEffectuees,
+    this.noteEmployesRecrutes,
+    this.noteDemandesCongeTraitees,
+    this.noteContratsCrees,
+    this.notePointagesValides,
+    this.noteEntretiensRealises,
+    this.noteFormationsOrganisees,
+    this.noteEvaluationsEffectuees,
+  });
+
+  factory RhMetrics.fromJson(Map<String, dynamic> json) {
+    return RhMetrics(
+      employesRecrutes: json['employes_recrutes'] ?? 0,
+      demandesCongeTraitees: json['demandes_conge_traitees'] ?? 0,
+      demandesCongeApprouvees: json['demandes_conge_approuvees'] ?? 0,
+      demandesCongeRejetees: json['demandes_conge_rejetees'] ?? 0,
+      contratsCrees: json['contrats_crees'] ?? 0,
+      contratsRenouveles: json['contrats_renouveles'] ?? 0,
+      pointagesValides: json['pointages_valides'] ?? 0,
+      entretiensRealises: json['entretiens_realises'] ?? 0,
+      formationsOrganisees: json['formations_organisees'] ?? 0,
+      evaluationsEffectuees: json['evaluations_effectuees'] ?? 0,
+      noteEmployesRecrutes: json['note_employes_recrutes'],
+      noteDemandesCongeTraitees: json['note_demandes_conge_traitees'],
+      noteContratsCrees: json['note_contrats_crees'],
+      notePointagesValides: json['note_pointages_valides'],
+      noteEntretiensRealises: json['note_entretiens_realises'],
+      noteFormationsOrganisees: json['note_formations_organisees'],
+      noteEvaluationsEffectuees: json['note_evaluations_effectuees'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'employes_recrutes': employesRecrutes,
+      'demandes_conge_traitees': demandesCongeTraitees,
+      'demandes_conge_approuvees': demandesCongeApprouvees,
+      'demandes_conge_rejetees': demandesCongeRejetees,
+      'contrats_crees': contratsCrees,
+      'contrats_renouveles': contratsRenouveles,
+      'pointages_valides': pointagesValides,
+      'entretiens_realises': entretiensRealises,
+      'formations_organisees': formationsOrganisees,
+      'evaluations_effectuees': evaluationsEffectuees,
+      'note_employes_recrutes': noteEmployesRecrutes,
+      'note_demandes_conge_traitees': noteDemandesCongeTraitees,
+      'note_contrats_crees': noteContratsCrees,
+      'note_pointages_valides': notePointagesValides,
+      'note_entretiens_realises': noteEntretiensRealises,
+      'note_formations_organisees': noteFormationsOrganisees,
+      'note_evaluations_effectuees': noteEvaluationsEffectuees,
+    };
+  }
+}

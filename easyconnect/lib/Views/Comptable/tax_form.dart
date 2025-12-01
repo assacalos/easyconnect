@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 
 class TaxForm extends StatefulWidget {
   final Tax? tax;
@@ -304,9 +306,23 @@ class _TaxFormState extends State<TaxForm> {
       controller.isLoading.value = true;
 
       bool success = false;
+      Tax? createdTax;
       if (widget.tax == null) {
-        await taxService.createTax(tax);
+        createdTax = await taxService.createTax(tax);
         success = true;
+
+        // Invalider le cache
+        CacheHelper.clearByPrefix('taxes_');
+
+        // Ajouter la taxe créée à la liste localement (mise à jour optimiste)
+        if (createdTax.id != null) {
+          controller.allTaxes.add(createdTax);
+          controller.applyFilters();
+          // Sauvegarder dans le cache pour un affichage instantané
+          final cacheKey = 'taxes_all';
+          CacheHelper.set(cacheKey, controller.allTaxes.toList());
+        }
+
         Get.snackbar(
           'Succès',
           'Taxe créée avec succès',
@@ -316,8 +332,12 @@ class _TaxFormState extends State<TaxForm> {
           duration: const Duration(seconds: 2),
         );
       } else {
-        await taxService.updateTax(tax);
+        createdTax = await taxService.updateTax(tax);
         success = true;
+
+        // Invalider le cache
+        CacheHelper.clearByPrefix('taxes_');
+
         Get.snackbar(
           'Succès',
           'Taxe mise à jour avec succès',
@@ -328,15 +348,29 @@ class _TaxFormState extends State<TaxForm> {
         );
       }
 
-      // Attendre un peu pour que le snackbar s'affiche
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Rafraîchir les compteurs et recharger en arrière-plan (non-bloquant)
+      Future.microtask(() {
+        DashboardRefreshHelper.refreshPatronCounter('tax');
 
-      // Recharger les taxes
-      await controller.loadTaxes();
+        // Recharger les données en arrière-plan sans bloquer l'UI
+        controller.loadTaxes().catchError((e) {
+          print(
+            '⚠️ [TAX_CONTROLLER] Erreur lors du rechargement après création: $e',
+          );
+          // Ne pas afficher d'erreur à l'utilisateur car la création a réussi
+        });
 
-      // Fermer automatiquement le formulaire après succès
+        controller.loadTaxStats().catchError((e) {
+          print(
+            '⚠️ [TAX_CONTROLLER] Erreur lors du rechargement des stats: $e',
+          );
+        });
+      });
+
+      // Rediriger vers la page de liste après succès
       if (success && mounted) {
-        Get.back();
+        await Future.delayed(const Duration(milliseconds: 500));
+        Get.offNamed('/taxes');
       }
     } catch (e) {
       Get.snackbar(
@@ -525,7 +559,8 @@ class _TaxFormState extends State<TaxForm> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          minimumSize: const Size(0, 44),
                         ),
                         child:
                             controller.isLoading.value
@@ -549,7 +584,8 @@ class _TaxFormState extends State<TaxForm> {
                       child: OutlinedButton(
                         onPressed: () => Get.back(),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          minimumSize: const Size(0, 44),
                         ),
                         child: const Text('Annuler'),
                       ),
