@@ -18,10 +18,10 @@ deployment:
     # 2. DEPLOIEMENT DU BACKEND LARAVEL
     # A. Installation des dépendances Composer
     # Assurez-vous que ce chemin pour composer est correct sur votre serveur
-# Nouvelle Tentative : Utilisation du chemin cPanel standard
-    - /opt/cpanel/composer/bin/composer install --no-dev --prefer-dist --working-dir=$BACKEND_PATH     
-    # B. Optimisation et Configuration Laravel
+    # Nouvelle Tentative : Utilisation du chemin cPanel standard
+    - /opt/cpanel/composer/bin/composer install --no-dev --prefer-dist --working-dir=$BACKEND_PATH --no-scripts --optimize-autoloader    # B. Optimisation et Configuration Laravel
     # Créez le fichier .env si nécessaire (MANUELLE ou via un autre script)
+    - /usr/local/bin/php $BACKEND_PATH/artisan optimize
     - /usr/local/bin/php $BACKEND_PATH/artisan key:generate --force
     - /usr/local/bin/php $BACKEND_PATH/artisan config:cache
     - /usr/local/bin/php $BACKEND_PATH/artisan route:cache
