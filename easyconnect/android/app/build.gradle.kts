@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,10 +8,27 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val localProperties = Properties()
+localProperties.load(FileInputStream(rootProject.file("key.properties")))
+
+val flutter_key_storeFile = localProperties.getProperty("storeFile")
+val flutter_key_storePassword = localProperties.getProperty("storePassword")
+val flutter_key_keyAlias = localProperties.getProperty("keyAlias")
+val flutter_key_keyPassword = localProperties.getProperty("keyPassword")
+
 android {
     namespace = "com.example.easyconnect"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(flutter_key_storeFile)
+            storePassword = flutter_key_storePassword
+            keyAlias = flutter_key_keyAlias
+            keyPassword = flutter_key_keyPassword
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -51,6 +71,7 @@ android {
     buildTypes {
         release {
             // Configuration de signature temporairement désactivée pour les tests
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
         }

@@ -41,3 +41,4 @@ deployment:
 
     # 4. FIN DE LA MAINTENANCE (Optionnel)
     # - /usr/local/bin/php $BACKEND_PATH/artisan up
+    # 5. Déblocage du déploiement - Test [DATE]
