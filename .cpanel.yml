@@ -10,8 +10,7 @@ deployment:
     # Le chemin du frontend (easyconnect)
     - export FRONTEND_PATH=/home/amyv4492/git_repositories/easyconnect_git/easyconnect/
     # Le chemin public où tout sera visible (à l'intérieur de public_html)
-    - export WEB_ROOT=/home/amyv4492/public_html/
-    
+    - export WEB_ROOT=/home/amyv4492/easykonect.smil-app.com/easykonect_prod/    
     # ----------------------------------------------------
     # 1. MAINTENANCE (Optionnel)
     # - /usr/local/bin/php $BACKEND_PATH/artisan down
