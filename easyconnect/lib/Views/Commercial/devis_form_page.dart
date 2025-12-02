@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DevisFormPage extends StatefulWidget {
   final bool isEditing;
@@ -470,7 +471,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
               width: double.maxFinite,
               child: Obx(() {
                 if (controller.isLoading.value) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonSearchResults(itemCount: 4);
                 }
 
                 if (controller.clients.isEmpty) {

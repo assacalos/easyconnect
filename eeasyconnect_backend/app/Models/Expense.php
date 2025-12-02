@@ -337,8 +337,11 @@ class Expense extends Model
 
     public function uploadReceipt($file)
     {
-        if ($file) {
-            $path = $file->store('expense_receipts', 'private');
+        if ($file && $file->isValid()) {
+            // Utiliser storeAs pour éviter de charger tout le fichier en mémoire
+            // Générer un nom de fichier unique
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('expense_receipts', $filename, 'private');
             $this->update(['receipt_path' => $path]);
             return $path;
         }

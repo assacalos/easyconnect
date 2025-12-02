@@ -6,6 +6,7 @@ import 'package:easyconnect/Views/Rh/recruitment_form.dart';
 import 'package:easyconnect/Views/Rh/recruitment_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class RecruitmentList extends StatelessWidget {
   const RecruitmentList({super.key});
@@ -75,7 +76,7 @@ class RecruitmentList extends StatelessWidget {
   ) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       // Filtrer selon le statut

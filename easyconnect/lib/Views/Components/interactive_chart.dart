@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/utils/permissions.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class InteractiveChart extends StatelessWidget {
   final String title;
@@ -39,7 +40,7 @@ class InteractiveChart extends StatelessWidget {
         child: Container(
           height: 300,
           padding: const EdgeInsets.all(16),
-          child: const Center(child: CircularProgressIndicator()),
+          child: const SkeletonCard(height: 300),
         ),
       );
     }

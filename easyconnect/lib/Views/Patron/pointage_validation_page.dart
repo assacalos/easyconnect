@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
 import 'package:easyconnect/Views/Rh/pointage_detail.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PointageValidationPage extends StatefulWidget {
   const PointageValidationPage({super.key});
@@ -100,7 +101,7 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                   .attendanceHistory
                   .length; // Accès pour déclencher la réactivité
               return controller.isLoading.value
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const SkeletonSearchResults(itemCount: 6)
                   : _buildAttendanceList();
             }),
           ),

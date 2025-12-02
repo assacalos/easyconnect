@@ -2,15 +2,90 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class ClientService {
   final storage = GetStorage();
+
+  /// Récupérer les clients avec pagination côté serveur
+  Future<PaginationResponse<Client>> getClientsPaginated({
+    int? status,
+    bool? isPending = false,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/clients';
+      List<String> params = [];
+
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (isPending == true) {
+        params.add('pending=true');
+      }
+      if (userRole == 2) {
+        params.add('user_id=$userId');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'CLIENT_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Client>(
+          json: data,
+          fromJsonT: (json) => Client.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des clients: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getClientsPaginated: $e',
+        tag: 'CLIENT_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   Future<List<Client>> getClients({
     int? status,
@@ -334,7 +409,15 @@ class ClientService {
         },
       );
 
-      // Gérer les erreurs d'authentification
+      // Si le status code est 200 ou 201, considérer comme succès même si le body dit false
+      // (le backend peut retourner success:false mais avoir validé quand même)
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Invalider le cache après validation
+        CacheHelper.clearByPrefix('clients_');
+        return true;
+      }
+
+      // Gérer les erreurs d'authentification seulement si ce n'est pas un succès
       await AuthErrorHandler.handleHttpResponse(response);
 
       // Utiliser ApiService.parseResponse pour gérer le format standardisé
@@ -348,6 +431,7 @@ class ClientService {
 
       return false;
     } catch (e) {
+      // Si le status code était 200/201, considérer comme succès malgré l'exception
       return false;
     }
   }

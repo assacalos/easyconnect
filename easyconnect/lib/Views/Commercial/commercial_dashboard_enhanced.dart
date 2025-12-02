@@ -156,7 +156,7 @@ class CommercialDashboardEnhanced
               ),
               _buildPendingCard(
                 title: 'Bons de Commande Fournisseur',
-                count: 0, // TODO: Ajouter le compteur dans le contrôleur
+                count: controller.pendingBonCommandesFournisseur.value,
                 icon: Icons.inventory_2,
                 color: Colors.indigo,
                 onTap: () => Get.toNamed('/bons-de-commande-fournisseur'),

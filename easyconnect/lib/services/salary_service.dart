@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/salary_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class SalaryService {
   final storage = GetStorage();
@@ -30,6 +32,83 @@ class SalaryService {
       return response.statusCode == 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Récupérer les salaires avec pagination côté serveur
+  Future<PaginationResponse<Salary>> getSalariesPaginated({
+    String? status,
+    String? month,
+    int? year,
+    String? search,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/salaries';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (month != null && month.isNotEmpty) {
+        params.add('month=$month');
+      }
+      if (year != null) {
+        params.add('year=$year');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Filtrer par userId pour les comptables (role 3)
+      if (userRole == 3 && userId != null) {
+        params.add('user_id=$userId');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'SALARY_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation: () => http.get(
+          Uri.parse(url),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'SALARY_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Salary>(
+          json: data,
+          fromJsonT: (json) => Salary.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des salaires: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getSalariesPaginated: $e',
+        tag: 'SALARY_SERVICE',
+      );
+      rethrow;
     }
   }
 
@@ -70,6 +149,49 @@ class SalaryService {
         },
       );
 
+      // Si le status code est 200 ou 201, considérer comme succès même si parseResponse dit false
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final responseData = jsonDecode(response.body);
+          List<dynamic> data = [];
+
+          // Gérer différents formats de réponse de l'API Laravel
+          if (responseData is List) {
+            data = responseData;
+          } else if (responseData is Map) {
+            // Essayer d'abord le format standard Laravel
+            if (responseData['data'] != null) {
+              if (responseData['data'] is List) {
+                data = responseData['data'];
+              } else if (responseData['data'] is Map && responseData['data']['data'] != null) {
+                data = responseData['data']['data'];
+              }
+            }
+            // Essayer le format spécifique aux salaires
+            else if (responseData['salaries'] != null) {
+              if (responseData['salaries'] is List) {
+                data = responseData['salaries'];
+              }
+            }
+          }
+          
+          if (data.isEmpty) {
+            return [];
+          }
+
+          try {
+            return data.map((json) {
+              return Salary.fromJson(json);
+            }).toList();
+          } catch (e) {
+            throw Exception('Erreur de format des données: $e');
+          }
+        } catch (e) {
+          throw Exception('Erreur de format des données: $e');
+        }
+      }
+      
+      // Si le status code n'est pas 200/201, utiliser parseResponse
       final result = ApiService.parseResponse(response);
 
       if (result['success'] == true) {
@@ -90,20 +212,14 @@ class SalaryService {
                 data = responseData['data']['data'];
               }
             }
-          }
-          // Essayer le format spécifique aux salaires
-          else if (responseData['salaries'] != null) {
-            if (responseData['salaries'] is List) {
-              data = responseData['salaries'];
+            // Essayer le format spécifique aux salaires
+            else if (responseData['salaries'] != null) {
+              if (responseData['salaries'] is List) {
+                data = responseData['salaries'];
+              }
             }
           }
-          // Essayer le format avec success
-          else if (responseData['success'] == true &&
-              responseData['salaries'] != null) {
-            if (responseData['salaries'] is List) {
-              data = responseData['salaries'];
-            }
-          }
+          
           if (data.isEmpty) {
             return [];
           }
@@ -495,65 +611,127 @@ class SalaryService {
       );
 
       AppLogger.httpResponse(response.statusCode, url, tag: 'SALARY_SERVICE');
-      await AuthErrorHandler.handleHttpResponse(response);
+      
+      // Parser directement le body au lieu d'utiliser ApiService.parseResponse
+      // car parseResponse peut retourner success:false même avec status 200
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final body = json.decode(response.body);
+          
+          // Gérer les erreurs d'authentification seulement si ce n'est pas un succès
+          await AuthErrorHandler.handleHttpResponse(response);
+          
+          // Extraire les données selon le format de la réponse
+          dynamic data;
+          if (body is Map) {
+            if (body['success'] == true && body['data'] != null) {
+              data = body['data'];
+            } else if (body['data'] != null) {
+              data = body['data'];
+            } else {
+              // Le body peut être directement la liste
+              data = body;
+            }
+          } else if (body is List) {
+            data = body;
+          } else {
+            return [];
+          }
 
-      final result = ApiService.parseResponse(response);
+          // Gérer différents formats de réponse
+          List<dynamic> dataList = [];
 
-      if (result['success'] == true) {
-        final data = result['data'];
-
-        if (data != null && data is Map) {
-          // Le backend peut retourner soit une liste directe, soit un objet paginé
-          List<dynamic> dataList;
-
-          if (data['data'] is List) {
-            // Format simple : {"success": true, "data": [...]}
-            dataList = data['data'] as List;
-          } else if (data['data'] is Map && data['data']['data'] != null) {
-            // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
-            dataList = data['data']['data'] as List;
+          if (data is List) {
+            // Format direct : {"success": true, "data": [...]}
+            dataList = data;
+          } else if (data != null && data is Map) {
+            // Le backend peut retourner soit une liste directe, soit un objet paginé
+            if (data['data'] is List) {
+              // Format simple : {"success": true, "data": {"data": [...]}}
+              dataList = data['data'] as List;
+            } else if (data['data'] is Map && data['data']['data'] != null) {
+              // Format paginé : {"success": true, "data": {"current_page": 1, "data": [...]}}
+              dataList = data['data']['data'] as List;
+            } else if (data['employees'] is List) {
+              // Format alternatif : {"success": true, "data": {"employees": [...]}}
+              dataList = data['employees'] as List;
+            } else {
+              AppLogger.warning(
+                'Format de données inattendu dans la réponse',
+                tag: 'SALARY_SERVICE',
+              );
+              return [];
+            }
           } else {
             AppLogger.warning(
-              'Format de données inattendu dans la réponse',
+              'Aucune donnée dans la réponse',
               tag: 'SALARY_SERVICE',
             );
             return [];
           }
 
-          // Transformer les données pour inclure toutes les informations de l'employé
-          final employees =
-              dataList.map((json) {
-                final employee = Map<String, dynamic>.from(json);
-                // Construire le nom complet depuis first_name et last_name
-                final firstName = employee['first_name'] ?? '';
-                final lastName = employee['last_name'] ?? '';
-                employee['name'] = '$firstName $lastName'.trim();
-                // S'assurer que le salaire est correctement formaté
-                if (employee['salary'] != null) {
-                  final salary = employee['salary'];
-                  if (salary is String) {
-                    employee['salary'] = double.tryParse(salary);
-                  } else if (salary is num) {
-                    employee['salary'] = salary.toDouble();
-                  }
+        if (dataList.isEmpty) {
+          return [];
+        }
+
+        // Transformer les données pour inclure toutes les informations de l'employé
+        final employees =
+            dataList.map((json) {
+              final employee = Map<String, dynamic>.from(json);
+              // Construire le nom complet depuis first_name et last_name
+              final firstName = employee['first_name'] ?? '';
+              final lastName = employee['last_name'] ?? '';
+              employee['name'] = '$firstName $lastName'.trim();
+              // S'assurer que le salaire est correctement formaté
+              if (employee['salary'] != null) {
+                final salary = employee['salary'];
+                if (salary is String) {
+                  employee['salary'] = double.tryParse(salary);
+                } else if (salary is num) {
+                  employee['salary'] = salary.toDouble();
                 }
-                return employee;
-              }).toList();
+              }
+              return employee;
+            }).toList();
 
           AppLogger.info(
             '${employees.length} employé(s) récupéré(s)',
             tag: 'SALARY_SERVICE',
           );
           return employees;
-        } else {
-          AppLogger.warning(
-            'Aucune donnée dans la réponse',
-            tag: 'SALARY_SERVICE',
-          );
-          return [];
+        } catch (e) {
+          // Fallback: essayer avec ApiService.parseResponse
+          try {
+            final result = ApiService.parseResponse(response);
+            if (result['success'] == true && result['data'] != null) {
+              final fallbackData = result['data'];
+              if (fallbackData is List) {
+                final employees = fallbackData.map((json) {
+                  final employee = Map<String, dynamic>.from(json);
+                  final firstName = employee['first_name'] ?? '';
+                  final lastName = employee['last_name'] ?? '';
+                  employee['name'] = '$firstName $lastName'.trim();
+                  if (employee['salary'] != null) {
+                    final salary = employee['salary'];
+                    if (salary is String) {
+                      employee['salary'] = double.tryParse(salary);
+                    } else if (salary is num) {
+                      employee['salary'] = salary.toDouble();
+                    }
+                  }
+                  return employee;
+                }).toList();
+                return employees;
+              }
+            }
+          } catch (e2) {
+            // Erreur silencieuse lors du fallback
+          }
+          rethrow;
         }
       } else {
-        // Ne jamais retourner de données fictives - lever une exception
+        // Gérer les erreurs d'authentification pour les status non-200
+        await AuthErrorHandler.handleHttpResponse(response);
         final errorMessage =
             'Erreur lors de la récupération des employés: ${response.statusCode}';
         AppLogger.error(errorMessage, tag: 'SALARY_SERVICE');

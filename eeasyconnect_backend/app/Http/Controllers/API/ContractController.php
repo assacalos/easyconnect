@@ -10,8 +10,11 @@ use App\Models\ContractAttachment;
 use App\Models\ContractTemplate;
 use App\Models\ContractAmendment;
 use App\Models\User;
+use App\Http\Resources\ContractResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class ContractController extends Controller
 {
@@ -22,6 +25,15 @@ class ContractController extends Controller
     public function index(Request $request)
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Contract::with(['employee', 'creator', 'approver', 'clauses', 'attachments', 'amendments']);
 
             // Filtrage par statut
@@ -81,38 +93,19 @@ class ContractController extends Controller
                 }
             }
 
-            // Pagination optionnelle
-            $perPage = $request->get('per_page');
-            $limit = $request->get('limit');
-            
-            // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
-            if (!$perPage && !$limit) {
-                $contracts = $query->orderBy('created_at', 'desc')->get();
-                
-                // Transformer les données
-                $formattedContracts = $contracts->map(function ($contract) {
-                    return $this->formatContract($contract);
-                });
-
-                return response()->json([
-                    'success' => true,
-                    'data' => $formattedContracts,
-                    'message' => 'Liste des contrats récupérée avec succès'
-                ]);
-            }
-            
-            // Sinon, utiliser la pagination
-            $perPage = $perPage ?? $limit ?? 15;
+            // Pagination
+            $perPage = $request->get('per_page', 15);
             $contracts = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
-            // Transformer les données
-            $contracts->getCollection()->transform(function ($contract) {
-                return $this->formatContract($contract);
-            });
             
             return response()->json([
                 'success' => true,
-                'data' => $contracts,
+                'data' => ContractResource::collection($contracts->items()),
+                'pagination' => [
+                    'current_page' => $contracts->currentPage(),
+                    'last_page' => $contracts->lastPage(),
+                    'per_page' => $contracts->perPage(),
+                    'total' => $contracts->total(),
+                ],
                 'message' => 'Liste des contrats récupérée avec succès'
             ]);
         } catch (\Exception $e) {
@@ -140,7 +133,7 @@ class ContractController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatContract($contract),
+                'data' => new ContractResource($contract),
                 'message' => 'Contrat récupéré avec succès'
             ]);
 
@@ -1317,17 +1310,21 @@ class ContractController extends Controller
             $attachment = ContractAttachment::where('contract_id', $contractId)
                 ->findOrFail($attachmentId);
             
-            // Construire le chemin complet du fichier
-            $filePath = storage_path('app/public/' . str_replace('/storage/', '', $attachment->file_path));
+            // Utiliser Storage pour éviter les problèmes de chemin
+            $filePath = str_replace('/storage/', '', $attachment->file_path);
             
-            if (!file_exists($filePath)) {
+            if (!Storage::disk('public')->exists($filePath)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Fichier non trouvé'
                 ], 404);
             }
             
-            return response()->download($filePath, $attachment->file_name);
+            // Utiliser streamDownload pour éviter les problèmes de mémoire
+            return Storage::disk('public')->download($filePath, $attachment->file_name, [
+                'Content-Type' => $attachment->file_type ?? 'application/octet-stream',
+                'Content-Disposition' => 'attachment; filename="' . $attachment->file_name . '"',
+            ]);
             
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
@@ -1335,6 +1332,13 @@ class ContractController extends Controller
                 'message' => 'Contrat ou pièce jointe non trouvé(e)'
             ], 404);
         } catch (\Exception $e) {
+            Log::error('Contract attachment download error', [
+                'contract_id' => $contractId,
+                'attachment_id' => $attachmentId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()

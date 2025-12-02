@@ -44,29 +44,34 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           // Profil utilisateur
           UserProfileCard(showPermissions: false),
 
-          // Graphiques
+          // Graphiques - Obx ciblé uniquement sur les données de chaque graphique
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
               children:
                   charts.entries.map((entry) {
+                    final chartKey = entry.key;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: Obx(
-                        () => InteractiveChart(
+                      // Obx ciblé uniquement sur les données de ce graphique spécifique
+                      child: Obx(() {
+                        final chartData =
+                            controller.chartData[chartKey]?.value ?? [];
+                        final isLoading = controller.isLoading.value;
+                        return InteractiveChart(
                           title: entry.value.title,
-                          data: controller.chartData[entry.key]?.value ?? [],
+                          data: chartData,
                           type: entry.value.type,
                           color: entry.value.color,
-                          isLoading: controller.isLoading.value,
+                          isLoading: isLoading,
                           subtitle: entry.value.subtitle,
                           requiredPermission: entry.value.requiredPermission,
                           enableZoom: entry.value.enableZoom,
                           showTooltips: entry.value.showTooltips,
                           showLegend: entry.value.showLegend,
                           onDataPointTap: entry.value.onDataPointTap,
-                        ),
-                      ),
+                        );
+                      }),
                     );
                   }).toList(),
             ),

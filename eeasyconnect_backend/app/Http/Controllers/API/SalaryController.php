@@ -11,6 +11,7 @@ use App\Models\Payroll;
 use App\Models\PayrollSetting;
 use App\Models\User;
 use App\Models\Employee;
+use App\Http\Resources\SalaryResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +25,14 @@ class SalaryController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Salary::with(['employee', 'hr', 'salaryItems.salaryComponent']);
 
             // Filtrage par statut
@@ -63,98 +72,15 @@ class SalaryController extends Controller
             $perPage = $request->get('per_page', 15);
             $salaries = $query->orderBy('salary_date', 'desc')->paginate($perPage);
 
-            // Transformer les données avec compatibilité Flutter
-            $salaries->getCollection()->transform(function ($salary) {
-                // Extraire month et year de period (format "YYYY-MM")
-                $month = null;
-                $year = null;
-                if ($salary->period) {
-                    $parts = explode('-', $salary->period);
-                    if (count($parts) === 2) {
-                        $year = (int)$parts[0];
-                        $month = $parts[1]; // Format "MM"
-                    }
-                }
-
-                // Mapper le status pour compatibilité Flutter
-                $statusFlutter = $salary->status;
-                if ($salary->status === 'draft' || $salary->status === 'calculated') {
-                    $statusFlutter = 'pending';
-                } elseif ($salary->status === 'cancelled') {
-                    $statusFlutter = 'rejected';
-                }
-
-                return [
-                    // Champs standards backend
-                    'id' => $salary->id,
-                    'employee_id' => $salary->employee_id,
-                    'hr_id' => $salary->employee_id, // Compatibilité Flutter (alias)
-                    'employee_name' => $salary->employee_name,
-                    'employee_email' => $salary->employee?->email ?? null, // Compatibilité Flutter
-                    'salary_number' => $salary->salary_number,
-                    'hr_name' => $salary->hr_name,
-                    'period' => $salary->period,
-                    'period_start' => $salary->period_start?->format('Y-m-d'),
-                    'period_end' => $salary->period_end?->format('Y-m-d'),
-                    'salary_date' => $salary->salary_date?->format('Y-m-d'),
-                    'payment_date' => $salary->salary_date?->format('Y-m-d'),
-                    'base_salary' => $salary->base_salary,
-                    'gross_salary' => $salary->gross_salary,
-                    'net_salary' => $salary->net_salary,
-                    'total_allowances' => $salary->total_allowances,
-                    'total_deductions' => $salary->total_deductions,
-                    'total_taxes' => $salary->total_taxes,
-                    'total_social_security' => $salary->total_social_security,
-                    // Champs compatibilité Flutter
-                    'bonus' => $salary->total_allowances ?? 0.0, // Alias pour Flutter
-                    'deductions' => $salary->total_deductions ?? 0.0, // Alias pour Flutter
-                    'month' => $month, // Extraits de period
-                    'year' => $year, // Extraits de period
-                    'status' => $statusFlutter, // Mappé pour Flutter
-                    'status_libelle' => $salary->status_libelle,
-                    'notes' => $salary->notes,
-                    'justificatif' => $salary->justificatif ?? [],
-                    'created_by' => $salary->employee_id, // Compatibilité Flutter
-                    'approved_by' => $salary->approved_by,
-                    'approved_at' => $salary->approved_at?->format('Y-m-d H:i:s'),
-                    'paid_at' => $salary->paid_at?->format('Y-m-d H:i:s'),
-                    'paid_by' => $salary->paid_by,
-                    'rejection_reason' => $salary->status === 'cancelled' ? $salary->notes : null, // Compatibilité Flutter
-                    'calculated_at' => $salary->calculated_at?->format('Y-m-d H:i:s'),
-                    'created_at' => $salary->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $salary->updated_at->format('Y-m-d H:i:s'),
-                    // Champs formatés (optionnel)
-                    'formatted_base_salary' => $salary->formatted_base_salary,
-                    'formatted_gross_salary' => $salary->formatted_gross_salary,
-                    'formatted_net_salary' => $salary->formatted_net_salary,
-                    'is_overdue' => $salary->is_overdue,
-                    'days_since_payment' => $salary->days_since_payment,
-                    'salary_items' => $salary->salaryItems->map(function ($item) {
-                        return [
-                            'id' => $item->id,
-                            'name' => $item->name,
-                            'type' => $item->type,
-                            'type_libelle' => $item->type_libelle,
-                            'amount' => $item->amount,
-                            'formatted_amount' => $item->formatted_amount,
-                            'rate' => $item->rate,
-                            'unit' => $item->unit,
-                            'formatted_rate' => $item->formatted_rate,
-                            'quantity' => $item->quantity,
-                            'description' => $item->description,
-                            'is_taxable' => $item->is_taxable,
-                            'is_social_security' => $item->is_social_security,
-                            'tax_amount' => $item->getTaxAmount(),
-                            'social_security_amount' => $item->getSocialSecurityAmount(),
-                            'net_amount' => $item->getNetAmount()
-                        ];
-                    }),
-                ];
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $salaries,
+                'data' => SalaryResource::collection($salaries->items()),
+                'pagination' => [
+                    'current_page' => $salaries->currentPage(),
+                    'last_page' => $salaries->lastPage(),
+                    'per_page' => $salaries->perPage(),
+                    'total' => $salaries->total(),
+                ],
                 'message' => 'Liste des salaires récupérée avec succès'
             ]);
 
@@ -238,7 +164,7 @@ class SalaryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new SalaryResource($salary),
                 'message' => 'Salaire récupéré avec succès'
             ]);
 

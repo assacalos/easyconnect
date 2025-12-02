@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Evaluation;
 use App\Models\User;
 use App\Models\Notification;
+use App\Http\Resources\EvaluationResource;
 use Carbon\Carbon;
 
 class EvaluationController extends Controller
@@ -17,7 +18,17 @@ class EvaluationController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Evaluation::with(['user', 'evaluateur']);
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Evaluation::with(['user', 'evaluateur']);
         
         // Filtrage par statut si fourni
         if ($request->has('statut')) {
@@ -49,15 +60,41 @@ class EvaluationController extends Controller
         }
         
         // Si technicien → filtre ses propres évaluations
-        if (auth()->user()->isTechnicien()) {
-            $query->where('user_id', auth()->id());
+        if ($user->isTechnicien()) {
+            $query->where('user_id', $user->id);
         }
         
-        $evaluations = $query->orderBy('date_evaluation', 'desc')->get();
+        $perPage = $request->get('per_page', 15);
+        $evaluations = $query->orderBy('date_evaluation', 'desc')->paginate($perPage);
         
         return response()->json([
             'success' => true,
-            'evaluations' => $evaluations,
+            'data' => EvaluationResource::collection($evaluations->items()),
+            'pagination' => [
+                'current_page' => $evaluations->currentPage(),
+                'last_page' => $evaluations->lastPage(),
+                'per_page' => $evaluations->perPage(),
+                'total' => $evaluations->total(),
+            ],
+            'message' => 'Liste des évaluations récupérée avec succès'
+        ], 200);
+        
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des évaluations: ' . $e->getMessage()
+            ], 500);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => EvaluationResource::collection($evaluations->items()),
+            'pagination' => [
+                'current_page' => $evaluations->currentPage(),
+                'last_page' => $evaluations->lastPage(),
+                'per_page' => $evaluations->perPage(),
+                'total' => $evaluations->total(),
+            ],
             'message' => 'Liste des évaluations récupérée avec succès'
         ]);
     }
@@ -80,7 +117,7 @@ class EvaluationController extends Controller
         
         return response()->json([
             'success' => true,
-            'evaluation' => $evaluation,
+            'data' => new EvaluationResource($evaluation),
             'message' => 'Évaluation récupérée avec succès'
         ]);
     }
@@ -386,7 +423,7 @@ class EvaluationController extends Controller
             'finalisee' => 'Évaluation finalisée'
         ];
         
-        Notification::create([
+        \App\Jobs\SendNotificationJob::dispatch([
             'user_id' => $evaluation->user_id,
             'type' => 'evaluation',
             'titre' => $titres[$action],
@@ -410,7 +447,7 @@ class EvaluationController extends Controller
             ? "L'employé a signé son évaluation"
             : "L'évaluation nécessite votre attention";
             
-        Notification::create([
+        \App\Jobs\SendNotificationJob::dispatch([
             'user_id' => $evaluation->evaluateur_id,
             'type' => 'evaluation',
             'titre' => 'Évaluation - Action requise',

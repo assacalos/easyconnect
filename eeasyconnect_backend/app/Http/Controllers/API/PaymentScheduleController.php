@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\PaymentSchedule;
 use App\Models\PaymentInstallment;
 use App\Models\Paiement;
+use App\Http\Resources\PaymentScheduleResource;
 use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
@@ -17,7 +18,17 @@ class PaymentScheduleController extends Controller
      */
     public function index(Request $request)
     {
-        $query = PaymentSchedule::with(['payment.facture.client', 'installments', 'creator']);
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = PaymentSchedule::with(['payment.facture.client', 'installments', 'creator']);
 
         // Filtrage par statut
         if ($request->has('status')) {
@@ -45,7 +56,13 @@ class PaymentScheduleController extends Controller
 
         return response()->json([
             'success' => true,
-            'schedules' => $schedules,
+            'data' => PaymentScheduleResource::collection($schedules->items()),
+            'pagination' => [
+                'current_page' => $schedules->currentPage(),
+                'last_page' => $schedules->lastPage(),
+                'per_page' => $schedules->perPage(),
+                'total' => $schedules->total(),
+            ],
             'message' => 'Liste des plannings récupérée avec succès'
         ]);
     }
@@ -64,7 +81,7 @@ class PaymentScheduleController extends Controller
 
         return response()->json([
             'success' => true,
-            'schedule' => $schedule,
+            'data' => new PaymentScheduleResource($schedule),
             'message' => 'Planning récupéré avec succès'
         ]);
     }

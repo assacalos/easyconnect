@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/expense_model.dart';
 import 'package:easyconnect/Views/Comptable/expense_form.dart';
 import 'package:easyconnect/Views/Comptable/expense_detail.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ExpenseList extends StatefulWidget {
   const ExpenseList({super.key});
@@ -133,7 +134,7 @@ class _ExpenseListState extends State<ExpenseList>
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonSearchResults(itemCount: 6);
               }
               return _filteredExpenses.isEmpty
                   ? const Center(child: Text('Aucune dépense trouvée'))

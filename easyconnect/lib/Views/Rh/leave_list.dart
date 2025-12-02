@@ -6,6 +6,7 @@ import 'package:easyconnect/Views/Rh/leave_form.dart';
 import 'package:easyconnect/Views/Rh/leave_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class LeaveList extends StatelessWidget {
   const LeaveList({super.key});
@@ -67,7 +68,7 @@ class LeaveList extends StatelessWidget {
   Widget _buildLeaveList(String status, LeaveController controller) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       // Filtrer selon le statut

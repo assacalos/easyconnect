@@ -667,36 +667,42 @@ class _ContractFormState extends State<ContractForm> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
-                  ...controller.selectedAttachments.asMap().entries.map((
-                    entry,
-                  ) {
-                    final index = entry.key;
-                    final file = entry.value;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: Icon(
-                          _getFileIcon(file['type'] ?? ''),
-                          color: Colors.blue,
-                        ),
-                        title: Text(
-                          file['name'] ?? 'Fichier',
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        subtitle:
-                            file['size'] != null
-                                ? Text(
-                                  _formatFileSize(file['size']),
-                                  style: const TextStyle(fontSize: 12),
-                                )
-                                : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close, color: Colors.red),
-                          onPressed: () => controller.removeAttachment(index),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                  if (controller.selectedAttachments.isEmpty)
+                    const Text('Aucun fichier sélectionné')
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: controller.selectedAttachments.length,
+                      itemBuilder: (context, index) {
+                        final file = controller.selectedAttachments[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: Icon(
+                              _getFileIcon(file['type'] ?? ''),
+                              color: Colors.blue,
+                            ),
+                            title: Text(
+                              file['name'] ?? 'Fichier',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            subtitle:
+                                file['size'] != null
+                                    ? Text(
+                                      _formatFileSize(file['size']),
+                                      style: const TextStyle(fontSize: 12),
+                                    )
+                                    : null,
+                            trailing: IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed:
+                                  () => controller.removeAttachment(index),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   const SizedBox(height: 8),
                 ],
               );

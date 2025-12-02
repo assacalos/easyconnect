@@ -28,6 +28,14 @@ class ExpenseController extends GetxController {
   final RxString selectedCategory = 'all'.obs;
   final Rx<Expense?> selectedExpense = Rx<Expense?>(null);
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Contrôleurs de formulaire
   final TextEditingController titleController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
@@ -61,37 +69,70 @@ class ExpenseController extends GetxController {
   }
 
   // Charger toutes les dépenses
-  Future<void> loadExpenses() async {
+  Future<void> loadExpenses({int page = 1}) async {
     try {
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey =
           'expenses_${selectedStatus.value}_${selectedCategory.value}';
       final cachedExpenses = CacheHelper.get<List<Expense>>(cacheKey);
-      if (cachedExpenses != null && cachedExpenses.isNotEmpty) {
+      if (cachedExpenses != null && cachedExpenses.isNotEmpty && page == 1) {
         expenses.assignAll(cachedExpenses);
         isLoading.value = false; // Permettre l'affichage immédiat
       } else {
         isLoading.value = true;
       }
 
-      // Charger les données fraîches en arrière-plan
-      final loadedExpenses = await _expenseService.getExpenses(
-        status: selectedStatus.value == 'all' ? null : selectedStatus.value,
-        category:
-            selectedCategory.value == 'all' ? null : selectedCategory.value,
-        search: searchQuery.value.isEmpty ? null : searchQuery.value,
-      );
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _expenseService.getExpensesPaginated(
+          status: selectedStatus.value == 'all' ? null : selectedStatus.value,
+          category:
+              selectedCategory.value == 'all' ? null : selectedCategory.value,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          page: page,
+          perPage: perPage.value,
+        );
 
-      // Ne remplacer la liste que si on a reçu des données
-      if (loadedExpenses.isNotEmpty) {
-        expenses.assignAll(loadedExpenses);
-        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-        CacheHelper.set(cacheKey, loadedExpenses);
-      } else if (expenses.isEmpty) {
-        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
-        expenses.clear();
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          expenses.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          expenses.addAll(paginatedResponse.data);
+        }
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        final loadedExpenses = await _expenseService.getExpenses(
+          status: selectedStatus.value == 'all' ? null : selectedStatus.value,
+          category:
+              selectedCategory.value == 'all' ? null : selectedCategory.value,
+          search: searchQuery.value.isEmpty ? null : searchQuery.value,
+        );
+        if (loadedExpenses.isNotEmpty) {
+          if (page == 1) {
+            expenses.value = loadedExpenses;
+          } else {
+            expenses.addAll(loadedExpenses);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedExpenses);
+          }
+        } else if (expenses.isEmpty) {
+          expenses.clear();
+        }
       }
-      // Si expenses n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
     } catch (e) {
       AppLogger.error(
         'Erreur lors du chargement des dépenses: $e',
@@ -135,6 +176,20 @@ class ExpenseController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadExpenses(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadExpenses(page: currentPage.value - 1);
     }
   }
 

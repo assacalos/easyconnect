@@ -5,6 +5,7 @@ import '../../services/attendance_punch_service.dart';
 import '../../services/location_service.dart';
 import '../../services/camera_service.dart';
 import '../../Models/attendance_punch_model.dart';
+import '../../Views/Components/skeleton_loaders.dart';
 
 class AttendancePunchPage extends StatefulWidget {
   const AttendancePunchPage({super.key});
@@ -287,7 +288,7 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
       ),
       body:
           _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? const SkeletonPage(listItemCount: 6)
               : SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(

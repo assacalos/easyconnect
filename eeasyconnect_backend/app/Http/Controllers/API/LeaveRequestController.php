@@ -4,21 +4,33 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
+use App\Traits\CachesData;
 use App\Models\EmployeeLeave;
 use App\Models\Employee;
+use App\Http\Resources\EmployeeLeaveResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class LeaveRequestController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, CachesData;
     /**
      * Liste de toutes les demandes de congé
      */
     public function index(Request $request)
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = EmployeeLeave::with(['employee', 'approver', 'creator']);
 
             // Filtrage par statut
@@ -51,35 +63,19 @@ class LeaveRequestController extends Controller
                 $query->where('end_date', '<=', $request->end_date);
             }
 
-            // Pagination optionnelle
-            $perPage = $request->get('per_page');
-            $limit = $request->get('limit');
-            
-            // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
-            if (!$perPage && !$limit) {
-                $leaves = $query->orderBy('created_at', 'desc')->get();
-                
-                return response()->json([
-                    'success' => true,
-                    'data' => $leaves->map(function ($leave) {
-                        return $this->formatLeaveRequest($leave);
-                    }),
-                    'message' => 'Liste des demandes de congé récupérée avec succès'
-                ]);
-            }
-            
-            // Sinon, utiliser la pagination
-            $perPage = $perPage ?? $limit ?? 15;
+            // Pagination
+            $perPage = $request->get('per_page', 15);
             $leaves = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
-            // Transformer les données
-            $leaves->getCollection()->transform(function ($leave) {
-                return $this->formatLeaveRequest($leave);
-            });
 
             return response()->json([
                 'success' => true,
-                'data' => $leaves,
+                'data' => EmployeeLeaveResource::collection($leaves->items()),
+                'pagination' => [
+                    'current_page' => $leaves->currentPage(),
+                    'last_page' => $leaves->lastPage(),
+                    'per_page' => $leaves->perPage(),
+                    'total' => $leaves->total(),
+                ],
                 'message' => 'Liste des demandes de congé récupérée avec succès'
             ]);
 
@@ -115,13 +111,18 @@ class LeaveRequestController extends Controller
                 $query->where('end_date', '<=', $request->end_date);
             }
 
-            $leaves = $query->orderBy('created_at', 'desc')->get();
+            $perPage = $request->get('per_page', 15);
+            $leaves = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => $leaves->map(function ($leave) {
-                    return $this->formatLeaveRequest($leave);
-                }),
+                'data' => EmployeeLeaveResource::collection($leaves->items()),
+                'pagination' => [
+                    'current_page' => $leaves->currentPage(),
+                    'last_page' => $leaves->lastPage(),
+                    'per_page' => $leaves->perPage(),
+                    'total' => $leaves->total(),
+                ],
                 'message' => 'Demandes de congé récupérées avec succès'
             ]);
 
@@ -148,11 +149,9 @@ class LeaveRequestController extends Controller
                 ], 404);
             }
 
-            $formatted = $this->formatLeaveRequest($leave, true);
-
             return response()->json([
                 'success' => true,
-                'data' => $formatted,
+                'data' => new EmployeeLeaveResource($leave),
                 'message' => 'Demande de congé récupérée avec succès'
             ]);
 
@@ -229,7 +228,7 @@ class LeaveRequestController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé créée avec succès',
-                'data' => $this->formatLeaveRequest($leave)
+                'data' => new EmployeeLeaveResource($leave)
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -319,7 +318,7 @@ class LeaveRequestController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé mise à jour avec succès',
-                'data' => $this->formatLeaveRequest($leave)
+                'data' => new EmployeeLeaveResource($leave)
             ]);
 
         } catch (\Exception $e) {
@@ -422,7 +421,7 @@ class LeaveRequestController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé approuvée avec succès',
-                'data' => $this->formatLeaveRequest($leave)
+                'data' => new EmployeeLeaveResource($leave)
             ]);
 
         } catch (\Exception $e) {
@@ -482,7 +481,7 @@ class LeaveRequestController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé rejetée',
-                'data' => $this->formatLeaveRequest($leave)
+                'data' => new EmployeeLeaveResource($leave)
             ]);
 
         } catch (\Exception $e) {
@@ -533,7 +532,7 @@ class LeaveRequestController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé annulée',
-                'data' => $this->formatLeaveRequest($leave)
+                'data' => new EmployeeLeaveResource($leave)
             ]);
 
         } catch (\Exception $e) {
@@ -584,57 +583,62 @@ class LeaveRequestController extends Controller
     public function statistics(Request $request)
     {
         try {
-            $query = EmployeeLeave::query();
+            $startDate = $request->get('start_date', Carbon::now()->startOfMonth());
+            $endDate = $request->get('end_date', Carbon::now()->endOfMonth());
+            $dateKey = Carbon::parse($startDate)->format('Y-m-d');
+            $employeeId = $request->get('employee_id');
+            $cacheKey = $employeeId ? "leave_stats:{$dateKey}:{$employeeId}" : "leave_stats:{$dateKey}";
 
-            // Filtrage par date
-            if ($request->has('start_date')) {
-                $query->where('start_date', '>=', $request->start_date);
-            }
+            $formattedStats = $this->rememberDailyStats($cacheKey, $dateKey, function () use ($request, $startDate, $endDate) {
+                $query = EmployeeLeave::query();
 
-            if ($request->has('end_date')) {
-                $query->where('start_date', '<=', $request->end_date);
-            }
+                // Filtrage par date
+                if ($request->has('start_date')) {
+                    $query->where('start_date', '>=', $startDate);
+                }
 
-            // Filtrage par employé
-            if ($request->has('employee_id')) {
-                $query->where('employee_id', $request->employee_id);
-            }
+                if ($request->has('end_date')) {
+                    $query->where('start_date', '<=', $endDate);
+                }
 
-            $leaves = $query->get();
-            $stats = EmployeeLeave::getLeaveStats(
-                $request->start_date,
-                $request->end_date
-            );
+                // Filtrage par employé
+                if ($request->has('employee_id')) {
+                    $query->where('employee_id', $request->employee_id);
+                }
 
-            // Formater les statistiques
-            $formattedStats = [
-                'total_requests' => $stats['total_leaves'] ?? 0,
-                'pending_requests' => $stats['pending_leaves'] ?? 0,
-                'approved_requests' => $stats['approved_leaves'] ?? 0,
-                'rejected_requests' => $stats['rejected_leaves'] ?? 0,
-                'cancelled_requests' => $leaves->where('status', 'cancelled')->count(),
-                'average_approval_time' => 0, // TODO: Calculer le temps moyen d'approbation
-                'requests_by_type' => [
-                    'annual' => $stats['annual_leaves'] ?? 0,
-                    'sick' => $stats['sick_leaves'] ?? 0,
-                    'maternity' => $stats['maternity_leaves'] ?? 0,
-                    'paternity' => $stats['paternity_leaves'] ?? 0,
-                    'personal' => $stats['personal_leaves'] ?? 0,
-                    'emergency' => $leaves->where('type', 'emergency')->count(),
-                    'unpaid' => $stats['unpaid_leaves'] ?? 0
-                ],
-                'requests_by_month' => $this->getRequestsByMonth($leaves),
-                'recent_requests' => $leaves->sortByDesc('created_at')->take(10)->map(function ($leave) {
-                    return [
-                        'id' => $leave->id,
-                        'employee_name' => $leave->employee->full_name ?? 'N/A',
-                        'leave_type' => $leave->type,
-                        'start_date' => $leave->start_date->format('Y-m-d\TH:i:s\Z'),
-                        'end_date' => $leave->end_date->format('Y-m-d\TH:i:s\Z'),
-                        'status' => $leave->status
-                    ];
-                })->values()->toArray()
-            ];
+                $leaves = $query->get();
+                $stats = EmployeeLeave::getLeaveStats($startDate, $endDate);
+
+                // Formater les statistiques
+                return [
+                    'total_requests' => $stats['total_leaves'] ?? 0,
+                    'pending_requests' => $stats['pending_leaves'] ?? 0,
+                    'approved_requests' => $stats['approved_leaves'] ?? 0,
+                    'rejected_requests' => $stats['rejected_leaves'] ?? 0,
+                    'cancelled_requests' => $leaves->where('status', 'cancelled')->count(),
+                    'average_approval_time' => 0, // TODO: Calculer le temps moyen d'approbation
+                    'requests_by_type' => [
+                        'annual' => $stats['annual_leaves'] ?? 0,
+                        'sick' => $stats['sick_leaves'] ?? 0,
+                        'maternity' => $stats['maternity_leaves'] ?? 0,
+                        'paternity' => $stats['paternity_leaves'] ?? 0,
+                        'personal' => $stats['personal_leaves'] ?? 0,
+                        'emergency' => $leaves->where('type', 'emergency')->count(),
+                        'unpaid' => $stats['unpaid_leaves'] ?? 0
+                    ],
+                    'requests_by_month' => $this->getRequestsByMonth($leaves),
+                    'recent_requests' => $leaves->sortByDesc('created_at')->take(10)->map(function ($leave) {
+                        return [
+                            'id' => $leave->id,
+                            'employee_name' => $leave->employee->full_name ?? 'N/A',
+                            'leave_type' => $leave->type,
+                            'start_date' => $leave->start_date->format('Y-m-d\TH:i:s\Z'),
+                            'end_date' => $leave->end_date->format('Y-m-d\TH:i:s\Z'),
+                            'status' => $leave->status
+                        ];
+                    })->values()->toArray()
+                ];
+            });
 
             return response()->json([
                 'success' => true,
@@ -655,64 +659,66 @@ class LeaveRequestController extends Controller
      */
     public function getLeaveTypes()
     {
-        $types = [
-            [
-                'value' => 'annual',
-                'label' => 'Congés payés',
-                'description' => 'Congés annuels payés',
-                'requires_approval' => true,
-                'max_days' => 30,
-                'is_paid' => true
-            ],
-            [
-                'value' => 'sick',
-                'label' => 'Congé maladie',
-                'description' => 'Congé pour maladie',
-                'requires_approval' => true,
-                'max_days' => 90,
-                'is_paid' => true
-            ],
-            [
-                'value' => 'maternity',
-                'label' => 'Congé maternité',
-                'description' => 'Congé de maternité',
-                'requires_approval' => true,
-                'max_days' => 98,
-                'is_paid' => true
-            ],
-            [
-                'value' => 'paternity',
-                'label' => 'Congé paternité',
-                'description' => 'Congé de paternité',
-                'requires_approval' => true,
-                'max_days' => 11,
-                'is_paid' => true
-            ],
-            [
-                'value' => 'personal',
-                'label' => 'Congé personnel',
-                'description' => 'Congé pour affaires personnelles',
-                'requires_approval' => true,
-                'max_days' => 5,
-                'is_paid' => false
-            ],
-            [
-                'value' => 'emergency',
-                'label' => 'Congé d\'urgence',
-                'description' => 'Congé pour urgence familiale',
-                'requires_approval' => true,
-                'max_days' => 3,
-                'is_paid' => false
-            ],
-            [
-                'value' => 'unpaid',
-                'label' => 'Congé sans solde',
-                'description' => 'Congé non rémunéré',
-                'requires_approval' => true,
-                'max_days' => 30,
-                'is_paid' => false
-            ]
-        ];
+        $types = $this->rememberStatic('leave_types', function () {
+            return [
+                [
+                    'value' => 'annual',
+                    'label' => 'Congés payés',
+                    'description' => 'Congés annuels payés',
+                    'requires_approval' => true,
+                    'max_days' => 30,
+                    'is_paid' => true
+                ],
+                [
+                    'value' => 'sick',
+                    'label' => 'Congé maladie',
+                    'description' => 'Congé pour maladie',
+                    'requires_approval' => true,
+                    'max_days' => 90,
+                    'is_paid' => true
+                ],
+                [
+                    'value' => 'maternity',
+                    'label' => 'Congé maternité',
+                    'description' => 'Congé de maternité',
+                    'requires_approval' => true,
+                    'max_days' => 98,
+                    'is_paid' => true
+                ],
+                [
+                    'value' => 'paternity',
+                    'label' => 'Congé paternité',
+                    'description' => 'Congé de paternité',
+                    'requires_approval' => true,
+                    'max_days' => 11,
+                    'is_paid' => true
+                ],
+                [
+                    'value' => 'personal',
+                    'label' => 'Congé personnel',
+                    'description' => 'Congé pour affaires personnelles',
+                    'requires_approval' => true,
+                    'max_days' => 5,
+                    'is_paid' => false
+                ],
+                [
+                    'value' => 'emergency',
+                    'label' => 'Congé d\'urgence',
+                    'description' => 'Congé pour urgence familiale',
+                    'requires_approval' => true,
+                    'max_days' => 3,
+                    'is_paid' => false
+                ],
+                [
+                    'value' => 'unpaid',
+                    'label' => 'Congé sans solde',
+                    'description' => 'Congé non rémunéré',
+                    'requires_approval' => true,
+                    'max_days' => 30,
+                    'is_paid' => false
+                ]
+            ];
+        });
 
         return response()->json([
             'success' => true,

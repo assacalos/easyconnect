@@ -482,9 +482,6 @@ class InvoiceForm extends StatelessWidget {
                           : () async {
                             final success = await controller.createInvoice();
                             if (success) {
-                              await Future.delayed(
-                                const Duration(milliseconds: 500),
-                              );
                               Get.offNamed('/invoices');
                             }
                           },

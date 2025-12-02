@@ -590,7 +590,7 @@ class RhMetrics {
   }
 
   Map<String, dynamic> toJson() {
-    return {
+    final json = <String, dynamic>{
       'employes_recrutes': employesRecrutes,
       'demandes_conge_traitees': demandesCongeTraitees,
       'demandes_conge_approuvees': demandesCongeApprouvees,
@@ -601,13 +601,31 @@ class RhMetrics {
       'entretiens_realises': entretiensRealises,
       'formations_organisees': formationsOrganisees,
       'evaluations_effectuees': evaluationsEffectuees,
-      'note_employes_recrutes': noteEmployesRecrutes,
-      'note_demandes_conge_traitees': noteDemandesCongeTraitees,
-      'note_contrats_crees': noteContratsCrees,
-      'note_pointages_valides': notePointagesValides,
-      'note_entretiens_realises': noteEntretiensRealises,
-      'note_formations_organisees': noteFormationsOrganisees,
-      'note_evaluations_effectuees': noteEvaluationsEffectuees,
     };
+    
+    // Ajouter les notes seulement si elles ne sont pas null et non vides
+    if (noteEmployesRecrutes != null && noteEmployesRecrutes!.trim().isNotEmpty) {
+      json['note_employes_recrutes'] = noteEmployesRecrutes!.trim();
+    }
+    if (noteDemandesCongeTraitees != null && noteDemandesCongeTraitees!.trim().isNotEmpty) {
+      json['note_demandes_conge_traitees'] = noteDemandesCongeTraitees!.trim();
+    }
+    if (noteContratsCrees != null && noteContratsCrees!.trim().isNotEmpty) {
+      json['note_contrats_crees'] = noteContratsCrees!.trim();
+    }
+    if (notePointagesValides != null && notePointagesValides!.trim().isNotEmpty) {
+      json['note_pointages_valides'] = notePointagesValides!.trim();
+    }
+    if (noteEntretiensRealises != null && noteEntretiensRealises!.trim().isNotEmpty) {
+      json['note_entretiens_realises'] = noteEntretiensRealises!.trim();
+    }
+    if (noteFormationsOrganisees != null && noteFormationsOrganisees!.trim().isNotEmpty) {
+      json['note_formations_organisees'] = noteFormationsOrganisees!.trim();
+    }
+    if (noteEvaluationsEffectuees != null && noteEvaluationsEffectuees!.trim().isNotEmpty) {
+      json['note_evaluations_effectuees'] = noteEvaluationsEffectuees!.trim();
+    }
+    
+    return json;
   }
 }

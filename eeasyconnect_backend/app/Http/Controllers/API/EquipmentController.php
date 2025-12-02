@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Traits\CachesData;
 use App\Models\EquipmentNew;
 use App\Models\EquipmentCategory;
 use App\Models\EquipmentMaintenance;
 use App\Models\EquipmentAssignment;
+use App\Http\Resources\EquipmentResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class EquipmentController extends Controller
 {
+    use CachesData;
     /**
      * Afficher la liste des équipements
      */
@@ -22,6 +25,14 @@ class EquipmentController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = EquipmentNew::with(['creator', 'updater', 'maintenance', 'assignments']);
 
             // Filtrage par statut
@@ -96,14 +107,15 @@ class EquipmentController extends Controller
             $perPage = $request->get('per_page', 15);
             $equipment = $query->orderBy('name')->paginate($perPage);
 
-            // Transformer les données
-            $equipment->getCollection()->transform(function ($item) {
-                return $this->transformEquipment($item);
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $equipment,
+                'data' => EquipmentResource::collection($equipment->items()),
+                'pagination' => [
+                    'current_page' => $equipment->currentPage(),
+                    'last_page' => $equipment->lastPage(),
+                    'per_page' => $equipment->perPage(),
+                    'total' => $equipment->total(),
+                ],
                 'message' => 'Liste des équipements récupérée avec succès'
             ]);
 
@@ -131,11 +143,9 @@ class EquipmentController extends Controller
             }
 
             // Transformer les données pour correspondre au format de index()
-            $data = $this->transformEquipment($equipment);
-
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new EquipmentResource($equipment),
                 'message' => 'Équipement récupéré avec succès'
             ]);
 
@@ -204,12 +214,11 @@ class EquipmentController extends Controller
 
             DB::commit();
 
-            $equipment->load(['creator', 'updater']);
-            $data = $this->transformEquipment($equipment);
+            $equipment->load(['creator', 'updater', 'maintenance', 'assignments']);
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new EquipmentResource($equipment),
                 'message' => 'Équipement créé avec succès'
             ], 201);
 
@@ -265,11 +274,10 @@ class EquipmentController extends Controller
             ]));
 
             $equipment->load(['creator', 'updater', 'maintenance', 'assignments']);
-            $data = $this->transformEquipment($equipment);
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new EquipmentResource($equipment),
                 'message' => 'Équipement mis à jour avec succès'
             ]);
 
@@ -430,7 +438,10 @@ class EquipmentController extends Controller
     public function statistics(Request $request)
     {
         try {
-            $stats = EquipmentNew::getEquipmentStats();
+            $dateKey = \Carbon\Carbon::now()->format('Y-m-d');
+            $stats = $this->rememberDailyStats('equipment_stats', $dateKey, function () {
+                return EquipmentNew::getEquipmentStats();
+            });
 
             return response()->json([
                 'success' => true,

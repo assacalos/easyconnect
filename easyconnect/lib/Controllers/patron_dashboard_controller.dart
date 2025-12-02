@@ -322,20 +322,33 @@ class PatronDashboardController extends BaseDashboardController {
     isLoading.value = false; // Permettre l'affichage immédiat
 
     try {
-      // Charger les données des validations en attente (non-bloquant)
-      _loadPendingValidations().catchError((e) {
+      // OPTIMISATION : Limiter le nombre de requêtes simultanées pour éviter la surcharge
+      // Charger les données prioritaires d'abord (clients, devis, bordereaux)
+      _loadPriorityData().catchError((e) {
         AppLogger.error(
-          'Erreur lors du chargement des validations: $e',
+          'Erreur lors du chargement des données prioritaires: $e',
           tag: 'PATRON_DASHBOARD',
         );
       });
 
+      // Charger les autres données en arrière-plan après un court délai
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _loadPendingValidations().catchError((e) {
+          AppLogger.error(
+            'Erreur lors du chargement des validations: $e',
+            tag: 'PATRON_DASHBOARD',
+          );
+        });
+      });
+
       // Charger les métriques de performance (non-bloquant)
-      _loadPerformanceMetrics().catchError((e) {
-        AppLogger.error(
-          'Erreur lors du chargement des métriques: $e',
-          tag: 'PATRON_DASHBOARD',
-        );
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        _loadPerformanceMetrics().catchError((e) {
+          AppLogger.error(
+            'Erreur lors du chargement des métriques: $e',
+            tag: 'PATRON_DASHBOARD',
+          );
+        });
       });
 
       // Simuler le chargement des données des graphiques
@@ -397,8 +410,18 @@ class PatronDashboardController extends BaseDashboardController {
     // Ne pas mettre isLoading à false ici car on charge en arrière-plan
   }
 
+  /// Charger les données prioritaires (clients, devis, bordereaux) en premier
+  Future<void> _loadPriorityData() async {
+    await Future.wait([
+      _loadPendingClients(),
+      _loadPendingDevis(),
+      _loadPendingBordereaux(),
+    ], eagerError: false);
+  }
+
   Future<void> _loadPendingValidations() async {
     // OPTIMISATION : Charger toutes les entités en parallèle au lieu de séquentiellement
+    // Mais limiter à 5 requêtes simultanées pour éviter la surcharge
     // Cela réduit le temps de chargement de ~15s à ~2-3s
     await Future.wait([
       // Charger les clients en attente (status = 0 ou null)
@@ -511,47 +534,77 @@ class PatronDashboardController extends BaseDashboardController {
 
   Future<void> _loadValidatedClients() async {
     try {
-      final clients = await _clientService.getClients();
-      final count =
-          clients
-              .where((client) => client.status == 1) // 1 = validé
-              .length;
+      // OPTIMISATION : Utiliser la pagination avec filtre status=1 au lieu de charger tous les clients
+      final paginatedResponse = await _clientService.getClientsPaginated(
+        status: 1, // Validé
+        page: 1,
+        perPage: 1, // On veut juste le total, pas les données
+      );
+      final count = paginatedResponse.meta.total;
       validatedClients.value = count;
       CacheHelper.set('dashboard_patron_validatedClients', count);
     } catch (e) {
-      validatedClients.value = 0;
+      // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
+      try {
+        final clients = await _clientService.getClients(status: 1);
+        final count = clients.length;
+        validatedClients.value = count;
+        CacheHelper.set('dashboard_patron_validatedClients', count);
+      } catch (fallbackError) {
+        validatedClients.value = 0;
+      }
     }
   }
 
   // Méthodes de chargement individuelles pour chaque entité
   Future<void> _loadPendingClients() async {
     try {
-      final clients = await _clientService.getClients();
-      final count =
-          clients
-              .where((client) => client.status == 0 || client.status == null)
-              .length;
+      // OPTIMISATION : Utiliser la pagination avec filtre status=0 au lieu de charger tous les clients
+      final paginatedResponse = await _clientService.getClientsPaginated(
+        status: 0, // En attente
+        page: 1,
+        perPage: 1, // On veut juste le total, pas les données
+      );
+      final count = paginatedResponse.meta.total;
       pendingClients.value = count;
       // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
       CacheHelper.set('dashboard_patron_pendingClients', count);
     } catch (e) {
-      pendingClients.value = 0;
+      // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
+      try {
+        final clients = await _clientService.getClients(status: 0);
+        final count = clients.length;
+        pendingClients.value = count;
+        CacheHelper.set('dashboard_patron_pendingClients', count);
+      } catch (fallbackError) {
+        pendingClients.value = 0;
+      }
     }
   }
 
   Future<void> _loadPendingDevis() async {
     try {
-      final devis = await _devisService.getDevis();
-      final count =
-          devis
-              .where(
-                (devis) => devis.status == 1, // 1 = en attente
-              )
-              .length;
+      // OPTIMISATION : Utiliser la pagination avec filtre status=1 au lieu de charger tous les devis
+      // Cela réduit drastiquement le temps de chargement
+      final paginatedResponse = await _devisService.getDevisPaginated(
+        status: 1, // En attente
+        page: 1,
+        perPage: 1, // On veut juste le total, pas les données
+      );
+      final count = paginatedResponse.meta.total;
       pendingDevis.value = count;
+      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
       CacheHelper.set('dashboard_patron_pendingDevis', count);
     } catch (e) {
-      pendingDevis.value = 0;
+      // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
+      try {
+        final devis = await _devisService.getDevis(status: 1);
+        final count = devis.length;
+        pendingDevis.value = count;
+        CacheHelper.set('dashboard_patron_pendingDevis', count);
+      } catch (fallbackError) {
+        pendingDevis.value = 0;
+      }
     }
   }
 

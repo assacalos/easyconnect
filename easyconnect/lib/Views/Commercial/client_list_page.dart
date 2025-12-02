@@ -4,6 +4,7 @@ import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ClientsPage extends StatefulWidget {
   final bool isPatron;
@@ -133,7 +134,7 @@ class _ClientsPageState extends State<ClientsPage>
     final ClientController controller = Get.find<ClientController>();
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       // Filtrer les clients par statut

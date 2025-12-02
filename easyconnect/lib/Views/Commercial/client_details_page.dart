@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ClientDetailsPage extends StatelessWidget {
   final ClientController controller = Get.find<ClientController>();
@@ -23,7 +24,7 @@ class ClientDetailsPage extends StatelessWidget {
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return const SkeletonPage(listItemCount: 6);
         }
 
         final client = controller.clients.firstWhere(

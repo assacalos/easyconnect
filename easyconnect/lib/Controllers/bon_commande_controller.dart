@@ -33,6 +33,15 @@ class BonCommandeController extends GetxController
   late TabController tabController;
   final selectedStatus = Rxn<int>();
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+  final RxString searchQuery = ''.obs;
+
   // Statistiques
   final totalBonCommandes = 0.obs;
   final bonCommandesEnvoyes = 0.obs;
@@ -264,35 +273,95 @@ class BonCommandeController extends GetxController
   Future<void> loadBonCommandes({
     int? status,
     bool forceRefresh = false,
+    int page = 1,
   }) async {
     try {
       _currentStatus = status; // Mémoriser le statut actuel
 
       // Si on ne force pas le rafraîchissement et que les données sont déjà chargées, ne rien faire
       // MAIS seulement si on a vraiment des données (pas si la liste est vide)
+      // ET seulement si c'est la même page
       if (!forceRefresh &&
           bonCommandes.isNotEmpty &&
-          _currentStatus == status) {
+          _currentStatus == status &&
+          currentPage.value == page &&
+          page == 1) {
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'bon_commandes_${status ?? 'all'}';
       final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(cacheKey);
       if (cachedBonCommandes != null &&
           cachedBonCommandes.isNotEmpty &&
-          !forceRefresh) {
+          !forceRefresh &&
+          page == 1) {
         bonCommandes.value = cachedBonCommandes;
         isLoading.value = false; // Permettre l'affichage immédiat
       } else {
         isLoading.value = true;
       }
 
-      // Charger les données fraîches en arrière-plan
-      final loadedBonCommandes = await _bonCommandeService.getBonCommandes(
-        status: status,
-      );
-      bonCommandes.value = loadedBonCommandes;
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _bonCommandeService
+            .getBonCommandesPaginated(
+              status: status,
+              page: page,
+              perPage: perPage.value,
+              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+            );
+
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          bonCommandes.value = paginatedResponse.data;
+        } else {
+          bonCommandes.addAll(paginatedResponse.data);
+        }
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e) {
+        try {
+          final loadedBonCommandes = await _bonCommandeService.getBonCommandes(
+            status: status,
+          );
+          if (page == 1) {
+            bonCommandes.value = loadedBonCommandes;
+          } else {
+            bonCommandes.addAll(loadedBonCommandes);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedBonCommandes);
+          }
+        } catch (fallbackError) {
+          // Si le fallback échoue aussi, vérifier le cache
+          if (cachedBonCommandes == null ||
+              cachedBonCommandes.isEmpty ||
+              page > 1) {
+            if (bonCommandes.isEmpty) {
+              final cacheKey = 'bon_commandes_${status ?? 'all'}';
+              final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(
+                cacheKey,
+              );
+              if (cachedBonCommandes != null && cachedBonCommandes.isNotEmpty) {
+                bonCommandes.value = cachedBonCommandes;
+                return; // Ne pas afficher d'erreur si on a du cache
+              }
+            }
+            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+          }
+        }
+      }
     } catch (e) {
       // Ne pas afficher d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
@@ -322,6 +391,20 @@ class BonCommandeController extends GetxController
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadBonCommandes(status: _currentStatus, page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadBonCommandes(status: _currentStatus, page: currentPage.value - 1);
     }
   }
 
@@ -600,16 +683,29 @@ class BonCommandeController extends GetxController
       } else {
         // En cas d'échec, recharger pour restaurer l'état
         await loadBonCommandes(status: _currentStatus);
-        throw Exception('Erreur lors de l\'approbation');
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
       }
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadBonCommandes(status: _currentStatus);
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible d\'approuver le bon de commande',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     } finally {
       isLoading.value = false;
     }

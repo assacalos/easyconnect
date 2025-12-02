@@ -18,6 +18,7 @@ class UserProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final AuthController authController = Get.find<AuthController>();
 
+    // Obx ciblé uniquement sur userAuth - ne reconstruit que si l'utilisateur change
     return Obx(() {
       final user = authController.userAuth.value;
       if (user == null) return const SizedBox.shrink();

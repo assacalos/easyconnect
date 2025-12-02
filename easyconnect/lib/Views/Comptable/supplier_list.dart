@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/Views/Comptable/supplier_detail.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class SupplierList extends StatelessWidget {
   const SupplierList({super.key});
@@ -204,11 +205,28 @@ class SupplierList extends StatelessWidget {
 
   Widget _buildSupplierList(SupplierController controller) {
     return Obx(() {
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] _buildSupplierList appelé');
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] isLoading = ${controller.isLoading.value}');
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] allSuppliers.length = ${controller.allSuppliers.length}');
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] suppliers.length = ${controller.suppliers.length}');
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] selectedStatus = ${controller.selectedStatus.value}');
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] searchQuery = "${controller.searchQuery.value}"');
+      
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        print('🟠 [SUPPLIER_LIST_COMPTABLE] Affichage du skeleton loader');
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       if (controller.suppliers.isEmpty) {
+        print('🟠 [SUPPLIER_LIST_COMPTABLE] suppliers est vide, affichage du message "Aucun fournisseur trouvé"');
+        print('🟠 [SUPPLIER_LIST_COMPTABLE] allSuppliers.length = ${controller.allSuppliers.length}');
+        if (controller.allSuppliers.isNotEmpty) {
+          print('🟠 [SUPPLIER_LIST_COMPTABLE] ⚠️ ATTENTION: allSuppliers n\'est pas vide mais suppliers est vide!');
+          print('🟠 [SUPPLIER_LIST_COMPTABLE] Vérification des statuts dans allSuppliers:');
+          for (var supplier in controller.allSuppliers.take(5)) {
+            print('🟠 [SUPPLIER_LIST_COMPTABLE]   - ${supplier.nom}: statut=${supplier.statut}, isPending=${supplier.isPending}, isValidated=${supplier.isValidated}, isRejected=${supplier.isRejected}');
+          }
+        }
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -229,6 +247,7 @@ class SupplierList extends StatelessWidget {
         );
       }
 
+      print('🟠 [SUPPLIER_LIST_COMPTABLE] Affichage de ${controller.suppliers.length} fournisseurs');
       return ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: controller.suppliers.length,

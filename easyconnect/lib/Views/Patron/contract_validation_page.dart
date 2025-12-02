@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/contract_controller.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ContractValidationPage extends StatefulWidget {
   const ContractValidationPage({super.key});
@@ -124,7 +125,7 @@ class _ContractValidationPageState extends State<ContractValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildContractList(),
             ),
           ),

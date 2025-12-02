@@ -176,12 +176,10 @@ class Devis {
     return Devis(
       id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
       clientId:
-          (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'])
-                  is String
-              ? int.tryParse(
-                json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
-              )
-              : (json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id']),
+          _parseInt(
+            json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
+          ) ??
+          0, // Valeur par défaut si null
       reference: json['reference'],
       dateCreation: DateTime.parse(json['date_creation']),
       dateValidite:
@@ -189,10 +187,12 @@ class Devis {
               ? DateTime.parse(json['date_validite'])
               : null,
       notes: json['notes'],
-      status:
-          json['status'] is String
-              ? int.tryParse(json['status']) ?? 0
-              : json['status'],
+      status: () {
+        final parsedStatus = _parseInt(json['status']) ?? 1;
+        return parsedStatus == 0
+            ? 1
+            : parsedStatus; // Traiter 0 comme 1 (en attente)
+      }(),
       items:
           (json['items'] as List)
               .map((item) => DevisItem.fromJson(item))
@@ -204,7 +204,11 @@ class Devis {
       tva: json['tva'] != null ? _parseDouble(json['tva']) : null,
       conditions: json['conditions'],
       commentaire: json['commentaire'],
-      commercialId: json['user_id'],
+      commercialId:
+          _parseInt(
+            json['user_id'] ?? json['commercial_id'] ?? json['commercialId'],
+          ) ??
+          0, // Valeur par défaut si null
       submittedBy: json['submitted_by'],
       rejectionComment: json['rejection_comment'],
       submittedAt:
@@ -219,9 +223,28 @@ class Devis {
   }
 
   static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
     if (value is double) return value;
     if (value is int) return value.toDouble();
-    if (value is String) return double.parse(value);
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (e) {
+        return 0.0;
+      }
+    }
     return 0.0;
+  }
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    if (value is double) {
+      return value.toInt();
+    }
+    return null;
   }
 }

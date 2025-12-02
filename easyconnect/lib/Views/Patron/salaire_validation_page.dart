@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/salary_controller.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class SalaireValidationPage extends StatefulWidget {
   const SalaireValidationPage({super.key});
@@ -124,7 +125,7 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildSalaryList(),
             ),
           ),

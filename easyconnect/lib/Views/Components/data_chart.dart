@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:easyconnect/utils/permissions.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DataChart extends StatelessWidget {
   final String title;
@@ -29,7 +30,7 @@ class DataChart extends StatelessWidget {
         child: Container(
           height: 300,
           padding: const EdgeInsets.all(16),
-          child: const Center(child: CircularProgressIndicator()),
+          child: const SkeletonCard(height: 300),
         ),
       );
     }
@@ -43,23 +44,15 @@ class DataChart extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             if (subtitle != null)
               Text(
                 subtitle!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             const SizedBox(height: 16),
-            Expanded(
-              child: _buildChart(),
-            ),
+            Expanded(child: _buildChart()),
           ],
         ),
       ),
@@ -73,15 +66,18 @@ class DataChart extends StatelessWidget {
           LineChartData(
             gridData: FlGridData(show: false),
             titlesData: FlTitlesData(
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
               topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             borderData: FlBorderData(show: false),
             lineBarsData: [
               LineChartBarData(
-                spots: data
-                    .map((d) => FlSpot(d.x.toDouble(), d.y.toDouble()))
-                    .toList(),
+                spots:
+                    data
+                        .map((d) => FlSpot(d.x.toDouble(), d.y.toDouble()))
+                        .toList(),
                 isCurved: true,
                 color: color,
                 barWidth: 3,
@@ -100,41 +96,45 @@ class DataChart extends StatelessWidget {
           BarChartData(
             gridData: FlGridData(show: false),
             titlesData: FlTitlesData(
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
               topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             borderData: FlBorderData(show: false),
-            barGroups: data
-                .map(
-                  (d) => BarChartGroupData(
-                    x: d.x,
-                    barRods: [
-                      BarChartRodData(
-                        toY: d.y.toDouble(),
-                        color: color,
-                        width: 16,
-                        borderRadius: BorderRadius.circular(4),
+            barGroups:
+                data
+                    .map(
+                      (d) => BarChartGroupData(
+                        x: d.x,
+                        barRods: [
+                          BarChartRodData(
+                            toY: d.y.toDouble(),
+                            color: color,
+                            width: 16,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-                .toList(),
+                    )
+                    .toList(),
           ),
         );
 
       case ChartType.pie:
         return PieChart(
           PieChartData(
-            sections: data
-                .map(
-                  (d) => PieChartSectionData(
-                    value: d.y.toDouble(),
-                    title: d.label ?? '',
-                    color: color,
-                    radius: 100,
-                  ),
-                )
-                .toList(),
+            sections:
+                data
+                    .map(
+                      (d) => PieChartSectionData(
+                        value: d.y.toDouble(),
+                        title: d.label ?? '',
+                        color: color,
+                        radius: 100,
+                      ),
+                    )
+                    .toList(),
           ),
         );
     }

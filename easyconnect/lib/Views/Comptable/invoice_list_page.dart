@@ -5,6 +5,7 @@ import '../../services/invoice_service.dart';
 import '../../Controllers/auth_controller.dart';
 import '../../Controllers/invoice_controller.dart';
 import 'invoice_detail.dart';
+import '../../Views/Components/skeleton_loaders.dart';
 
 class InvoiceListPage extends StatefulWidget {
   const InvoiceListPage({super.key});
@@ -182,7 +183,7 @@ class _InvoiceListPageState extends State<InvoiceListPage>
           Expanded(
             child:
                 _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const SkeletonSearchResults(itemCount: 6)
                     : _filteredInvoices.isEmpty
                     ? Center(
                       child: Column(

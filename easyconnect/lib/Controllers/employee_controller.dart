@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/services/employee_service.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 
 class EmployeeController extends GetxController {
   final EmployeeService _employeeService = EmployeeService.to;
@@ -25,6 +26,14 @@ class EmployeeController extends GetxController {
   final RxString selectedStatus = 'all'.obs;
   final RxString selectedSortBy = 'name'.obs;
   final RxBool sortAscending = true.obs;
+
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
 
   // Variables pour le formulaire
   final TextEditingController firstNameController = TextEditingController();
@@ -189,13 +198,28 @@ class EmployeeController extends GetxController {
     super.onClose();
   }
 
-  // Charger les employés
-  Future<void> loadEmployees({bool loadAll = false}) async {
+  // Charger les employés avec pagination
+  Future<void> loadEmployees({bool loadAll = false, int page = 1}) async {
     try {
-      isLoading.value = true;
+      // Afficher immédiatement les données du cache si disponibles (seulement pour la première page)
+      if (page == 1) {
+        final cacheKey =
+            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+        final cachedEmployees = CacheHelper.get<List<Employee>>(cacheKey);
+        if (cachedEmployees != null && cachedEmployees.isNotEmpty) {
+          employees.value = cachedEmployees;
+          isLoading.value = false; // Permettre l'affichage immédiat
+        } else {
+          isLoading.value = true;
+        }
+      } else {
+        isLoading.value = true;
+      }
 
-      // Charger avec pagination pour éviter les réponses trop grandes
-      final employeesList = await _employeeService.getEmployees(
+      currentPage.value = page;
+
+      // Utiliser la méthode paginée pour obtenir les métadonnées
+      final paginatedResponse = await _employeeService.getEmployeesPaginated(
         search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
         department:
             selectedDepartment.value != 'all' &&
@@ -206,42 +230,66 @@ class EmployeeController extends GetxController {
             selectedPosition.value != 'all' && selectedPosition.value.isNotEmpty
                 ? selectedPosition.value
                 : null,
-        // Ne pas filtrer par statut si loadAll est true ou si on veut charger tous les employés
         status:
             (loadAll || selectedStatus.value == 'all')
                 ? null
                 : selectedStatus.value,
-        page: 1, // Charger la première page
-        limit:
-            100, // Limite de 100 employés par page pour éviter les réponses trop grandes
+        page: page,
+        perPage: perPage.value,
       );
 
-      // Fusionner les listes pour préserver les mises à jour optimistes
-      // Créer une map pour éviter les doublons
-      final Map<int, Employee> employeesMap = {
-        for (var emp in employees) emp.id!: emp,
-      };
+      // Mettre à jour les métadonnées de pagination
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Ajouter/mettre à jour avec les nouvelles données
-      for (var emp in employeesList) {
-        if (emp.id != null) {
-          employeesMap[emp.id!] = emp;
-        }
+      // Mettre à jour la liste des employés
+      final employeesList = paginatedResponse.data;
+
+      // Si c'est la première page, remplacer la liste
+      // Sinon, ajouter à la liste existante (pour le scroll infini)
+      if (page == 1) {
+        employees.value = employeesList;
+        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+        final cacheKey =
+            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+        CacheHelper.set(cacheKey, employeesList);
+      } else {
+        // Ajouter les nouveaux éléments à la liste existante
+        final existingIds = employees.map((e) => e.id).toSet();
+        final newEmployees =
+            employeesList
+                .where((e) => e.id != null && !existingIds.contains(e.id))
+                .toList();
+        employees.addAll(newEmployees);
       }
 
-      // Convertir la map en liste triée
-      employees.value =
-          employeesMap.values.toList()..sort((a, b) {
-            // Trier par nom puis prénom
-            final nameA = '${a.lastName} ${a.firstName}'.toLowerCase();
-            final nameB = '${b.lastName} ${b.firstName}'.toLowerCase();
-            return nameA.compareTo(nameB);
-          });
+      // Trier la liste
+      employees.sort((a, b) {
+        final nameA = '${a.lastName} ${a.firstName}'.toLowerCase();
+        final nameB = '${b.lastName} ${b.firstName}'.toLowerCase();
+        return nameA.compareTo(nameB);
+      });
     } catch (e) {
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
+      }
+
+      // Vérifier le cache en cas d'erreur réseau (seulement pour la première page)
+      if (page == 1 && employees.isEmpty) {
+        final cacheKey =
+            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+        final cachedEmployees = CacheHelper.get<List<Employee>>(cacheKey);
+        if (cachedEmployees != null && cachedEmployees.isNotEmpty) {
+          // Charger les données du cache si disponibles
+          employees.value = cachedEmployees;
+          // Ne pas afficher d'erreur si on a des données en cache
+          return;
+        }
       }
 
       // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
@@ -267,6 +315,25 @@ class EmployeeController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Charger la page suivante (pour scroll infini)
+  Future<void> loadNextPage() async {
+    if (hasNextPage.value && !isLoading.value) {
+      await loadEmployees(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  Future<void> loadPreviousPage() async {
+    if (hasPreviousPage.value && !isLoading.value) {
+      await loadEmployees(page: currentPage.value - 1);
+    }
+  }
+
+  /// Recharger la page actuelle
+  Future<void> reloadCurrentPage() async {
+    await loadEmployees(page: currentPage.value);
   }
 
   // Charger les statistiques

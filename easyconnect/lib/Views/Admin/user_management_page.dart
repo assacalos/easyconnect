@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/user_management_controller.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class UserManagementPage extends StatelessWidget {
   const UserManagementPage({super.key});
@@ -132,7 +133,7 @@ class UserManagementPage extends StatelessWidget {
             Expanded(
               child: Obx(() {
                 if (controller.isLoading.value) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonSearchResults(itemCount: 6);
                 }
 
                 final filteredUsers = controller.getFilteredUsers();

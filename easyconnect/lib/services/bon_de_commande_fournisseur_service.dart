@@ -359,10 +359,21 @@ class BonDeCommandeFournisseurService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        return responseData['success'] == true;
+      // Si le status code est 200 ou 201, considérer comme succès
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
       }
+      
+      // Vérifier le body même si le status code n'est pas 200/201
+      try {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          return true;
+        }
+      } catch (e) {
+        // Ignorer l'erreur de parsing
+      }
+      
       return false;
     } catch (e) {
       return false;

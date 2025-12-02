@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/global_search_controller.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class GlobalSearchPage extends StatelessWidget {
   const GlobalSearchPage({super.key});
@@ -67,11 +68,15 @@ class GlobalSearchPage extends StatelessWidget {
         ),
       ),
       body: Obx(() {
-        if (controller.isSearching.value) {
-          return const Center(child: CircularProgressIndicator());
+        // Obx ciblé uniquement sur isSearching et searchQuery
+        final isSearching = controller.isSearching.value;
+        final searchQuery = controller.searchQuery.value;
+
+        if (isSearching) {
+          return const SkeletonSearchResults(itemCount: 6);
         }
 
-        if (controller.searchQuery.value.isEmpty) {
+        if (searchQuery.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -92,7 +97,8 @@ class GlobalSearchPage extends StatelessWidget {
           );
         }
 
-        if (controller.hasNoResults.value) {
+        final hasNoResults = controller.hasNoResults.value;
+        if (hasNoResults) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -113,87 +119,67 @@ class GlobalSearchPage extends StatelessWidget {
           );
         }
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Clients
-              if (controller.clientsResults.isNotEmpty) ...[
-                _buildSectionHeader(
-                  'Clients',
-                  controller.clientsResults.length,
-                ),
-                const SizedBox(height: 8),
-                ...controller.clientsResults.map(
-                  (client) => _buildClientCard(client),
-                ),
-                const SizedBox(height: 16),
-              ],
+        // Extraire les valeurs une seule fois pour éviter les accès multiples
+        final clientsResults = controller.clientsResults;
+        final invoicesResults = controller.invoicesResults;
+        final paymentsResults = controller.paymentsResults;
+        final employeesResults = controller.employeesResults;
+        final suppliersResults = controller.suppliersResults;
+        final stocksResults = controller.stocksResults;
 
-              // Factures
-              if (controller.invoicesResults.isNotEmpty) ...[
-                _buildSectionHeader(
-                  'Factures',
-                  controller.invoicesResults.length,
-                ),
-                const SizedBox(height: 8),
-                ...controller.invoicesResults.map(
-                  (invoice) => _buildInvoiceCard(invoice),
-                ),
-                const SizedBox(height: 16),
-              ],
+        return CustomScrollView(
+          slivers: [
+            // Clients - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: clientsResults,
+              title: 'Clients',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildClientCard,
+            ),
 
-              // Paiements
-              if (controller.paymentsResults.isNotEmpty) ...[
-                _buildSectionHeader(
-                  'Paiements',
-                  controller.paymentsResults.length,
-                ),
-                const SizedBox(height: 8),
-                ...controller.paymentsResults.map(
-                  (payment) => _buildPaymentCard(payment),
-                ),
-                const SizedBox(height: 16),
-              ],
+            // Factures - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: invoicesResults,
+              title: 'Factures',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildInvoiceCard,
+            ),
 
-              // Employés
-              if (controller.employeesResults.isNotEmpty) ...[
-                _buildSectionHeader(
-                  'Employés',
-                  controller.employeesResults.length,
-                ),
-                const SizedBox(height: 8),
-                ...controller.employeesResults.map(
-                  (employee) => _buildEmployeeCard(employee),
-                ),
-                const SizedBox(height: 16),
-              ],
+            // Paiements - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: paymentsResults,
+              title: 'Paiements',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildPaymentCard,
+            ),
 
-              // Fournisseurs
-              if (controller.suppliersResults.isNotEmpty) ...[
-                _buildSectionHeader(
-                  'Fournisseurs',
-                  controller.suppliersResults.length,
-                ),
-                const SizedBox(height: 8),
-                ...controller.suppliersResults.map(
-                  (supplier) => _buildSupplierCard(supplier),
-                ),
-                const SizedBox(height: 16),
-              ],
+            // Employés - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: employeesResults,
+              title: 'Employés',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildEmployeeCard,
+            ),
 
-              // Stocks
-              if (controller.stocksResults.isNotEmpty) ...[
-                _buildSectionHeader('Stocks', controller.stocksResults.length),
-                const SizedBox(height: 8),
-                ...controller.stocksResults.map(
-                  (stock) => _buildStockCard(stock),
-                ),
-                const SizedBox(height: 16),
-              ],
-            ],
-          ),
+            // Fournisseurs - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: suppliersResults,
+              title: 'Fournisseurs',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildSupplierCard,
+            ),
+
+            // Stocks - Obx ciblé uniquement sur cette liste
+            _ReactiveSearchSection(
+              list: stocksResults,
+              title: 'Stocks',
+              buildHeader: _buildSectionHeader,
+              buildCard: _buildStockCard,
+            ),
+
+            // Padding final
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
         );
       }),
     );
@@ -340,5 +326,54 @@ class GlobalSearchPage extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// Widget réactif pour une section de recherche - ne reconstruit que si sa liste change
+class _ReactiveSearchSection extends StatelessWidget {
+  final RxList list;
+  final String title;
+  final Widget Function(String, int) buildHeader;
+  final Widget Function(dynamic) buildCard;
+
+  const _ReactiveSearchSection({
+    required this.list,
+    required this.title,
+    required this.buildHeader,
+    required this.buildCard,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Obx ciblé uniquement sur cette liste spécifique
+    return Obx(() {
+      if (list.isEmpty) {
+        return const SliverToBoxAdapter(child: SizedBox.shrink());
+      }
+
+      return SliverMainAxisGroup(
+        slivers: [
+          // En-tête de section
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: buildHeader(title, list.length),
+            ),
+          ),
+          // Liste des résultats
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = list[index];
+                return buildCard(item);
+              }, childCount: list.length),
+            ),
+          ),
+          // Espacement après la section
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        ],
+      );
+    });
   }
 }

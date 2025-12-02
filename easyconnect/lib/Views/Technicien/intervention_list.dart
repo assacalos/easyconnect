@@ -8,6 +8,7 @@ import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class InterventionList extends StatelessWidget {
   final int? clientId;
@@ -117,7 +118,7 @@ class InterventionList extends StatelessWidget {
       }
 
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       if (interventions.isEmpty) {

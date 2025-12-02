@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/devis_model.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DevisSelectionDialog extends StatefulWidget {
   final List<Devis> devis;
@@ -115,7 +116,7 @@ class _DevisSelectionDialogState extends State<DevisSelectionDialog> {
             Expanded(
               child:
                   widget.isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 4)
                       : _filteredDevis.isEmpty
                       ? const Center(child: Text('Aucun devis trouvé'))
                       : ListView.builder(

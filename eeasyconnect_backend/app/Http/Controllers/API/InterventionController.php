@@ -4,16 +4,18 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
+use App\Traits\CachesData;
 use App\Models\Intervention;
 use App\Models\Equipment;
 use App\Models\InterventionReport;
 use App\Models\Client;
+use App\Http\Resources\InterventionResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class InterventionController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, CachesData;
     /**
      * Afficher la liste des interventions
      */
@@ -21,6 +23,14 @@ class InterventionController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Intervention::with(['creator', 'approver', 'client', 'reports.technician']);
 
             // Filtrage par statut
@@ -66,29 +76,14 @@ class InterventionController extends Controller
             $perPage = $request->get('per_page', 15);
             $interventions = $query->orderBy('scheduled_date', 'desc')->paginate($perPage);
 
-            // Transformer les données au format Flutter
-            $transformed = $interventions->getCollection()->map(function ($intervention) {
-                return $this->transformInterventionForFlutter($intervention);
-            });
-
-            // Si Flutter envoie un paramètre search, retourner directement la liste (pas de pagination)
-            if ($request->has('search')) {
-                return response()->json([
-                    'success' => true,
-                    'data' => $transformed,
-                    'message' => 'Liste des interventions récupérée avec succès'
-                ]);
-            }
-
-            // Sinon, retourner avec pagination
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'data' => $transformed,
+                'data' => InterventionResource::collection($interventions->items()),
+                'pagination' => [
                     'current_page' => $interventions->currentPage(),
+                    'last_page' => $interventions->lastPage(),
                     'per_page' => $interventions->perPage(),
                     'total' => $interventions->total(),
-                    'last_page' => $interventions->lastPage(),
                 ],
                 'message' => 'Liste des interventions récupérée avec succès'
             ]);
@@ -118,7 +113,7 @@ class InterventionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->transformInterventionForFlutter($intervention),
+                'data' => new InterventionResource($intervention),
                 'message' => 'Intervention récupérée avec succès'
             ]);
 
@@ -535,7 +530,10 @@ class InterventionController extends Controller
             $startDate = $request->get('date_debut');
             $endDate = $request->get('date_fin');
 
-            $stats = Intervention::getInterventionStats($startDate, $endDate);
+            $dateKey = Carbon::parse($startDate)->format('Y-m-d');
+            $stats = $this->rememberDailyStats('intervention_stats', $dateKey, function () use ($startDate, $endDate) {
+                return Intervention::getInterventionStats($startDate, $endDate);
+            });
 
             return response()->json([
                 'success' => true,
@@ -601,19 +599,21 @@ class InterventionController extends Controller
     public function pending()
     {
         try {
+            $perPage = request()->get('per_page', 15);
             $interventions = Intervention::where('status', 'pending')
                 ->with(['creator', 'approver', 'client'])
                 ->orderBy('scheduled_date', 'asc')
-                ->get();
-
-            // Transformer les données au format Flutter
-            $data = $interventions->map(function ($intervention) {
-                return $this->transformInterventionForFlutter($intervention);
-            });
+                ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => InterventionResource::collection($interventions->items()),
+                'pagination' => [
+                    'current_page' => $interventions->currentPage(),
+                    'last_page' => $interventions->lastPage(),
+                    'per_page' => $interventions->perPage(),
+                    'total' => $interventions->total(),
+                ],
                 'message' => 'Interventions en attente récupérées avec succès'
             ]);
 
@@ -669,20 +669,22 @@ class InterventionController extends Controller
     public function types()
     {
         try {
-            $types = [
-                [
-                    'value' => 'external',
-                    'label' => 'Externe',
-                    'icon' => 'location_on',
-                    'color' => '#3B82F6'
-                ],
-                [
-                    'value' => 'on_site',
-                    'label' => 'Sur place',
-                    'icon' => 'home',
-                    'color' => '#10B981'
-                ]
-            ];
+            $types = $this->rememberStatic('intervention_types', function () {
+                return [
+                    [
+                        'value' => 'external',
+                        'label' => 'Externe',
+                        'icon' => 'location_on',
+                        'color' => '#3B82F6'
+                    ],
+                    [
+                        'value' => 'on_site',
+                        'label' => 'Sur place',
+                        'icon' => 'home',
+                        'color' => '#10B981'
+                    ]
+                ];
+            });
 
             return response()->json([
                 'success' => true,

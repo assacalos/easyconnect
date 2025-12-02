@@ -9,6 +9,7 @@ use App\Models\StockMovement;
 use App\Models\StockAlert;
 use App\Models\StockOrder;
 use App\Models\StockOrderItem;
+use App\Http\Resources\StockResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -22,6 +23,14 @@ class StockController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             // Ne charger que les relations qui existent (movements, alerts)
             // Retirer creator et updater car created_by/updated_by n'existent pas dans la migration
             $query = Stock::with(['movements', 'alerts']);
@@ -75,63 +84,15 @@ class StockController extends Controller
             $perPage = $request->get('per_page', 15);
             $stocks = $query->orderBy('name')->paginate($perPage);
 
-            // Transformer les données avec uniquement les champs qui existent
-            $stocks->getCollection()->transform(function ($stock) {
-                return [
-                    'id' => $stock->id,
-                    'name' => $stock->name,
-                    'description' => $stock->description,
-                    'category' => $stock->category,
-                    'sku' => $stock->sku,
-                    'quantity' => $stock->quantity ?? $stock->current_quantity, // Utiliser les accesseurs
-                    'current_quantity' => $stock->current_quantity,
-                    'minimum_quantity' => $stock->minimum_quantity,
-                    'maximum_quantity' => $stock->maximum_quantity,
-                    'reorder_point' => $stock->reorder_point,
-                    'unit_price' => $stock->unit_price ?? $stock->unit_cost, // Utiliser les accesseurs
-                    'unit_cost' => $stock->unit_cost,
-                    'commentaire' => $stock->commentaire ?? $stock->notes, // Utiliser les accesseurs
-                    'notes' => $stock->notes,
-                    'status' => $stock->status,
-                    'status_libelle' => $stock->status_libelle,
-                    'formatted_current_quantity' => $this->formatQuantity($stock->current_quantity),
-                    'formatted_minimum_quantity' => $this->formatQuantity($stock->minimum_quantity),
-                    'formatted_maximum_quantity' => $stock->maximum_quantity ? $this->formatQuantity($stock->maximum_quantity) : 'N/A',
-                    'formatted_reorder_point' => $this->formatQuantity($stock->reorder_point),
-                    'formatted_unit_cost' => $this->formatCost($stock->unit_cost),
-                    'stock_value' => $stock->stock_value,
-                    'formatted_stock_value' => $this->formatCost($stock->stock_value),
-                    'is_low_stock' => $stock->is_low_stock,
-                    'is_out_of_stock' => $stock->is_out_of_stock,
-                    'is_overstock' => $stock->is_overstock,
-                    'needs_reorder' => $stock->needs_reorder,
-                    'movements' => $stock->movements->map(function ($movement) {
-                        return [
-                            'id' => $movement->id,
-                            'type' => $movement->type,
-                            'quantity' => $movement->quantity,
-                            'reason' => $movement->reason,
-                            'status' => $movement->status ?? 'en_attente',
-                            'created_at' => $movement->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'alerts' => $stock->alerts->map(function ($alert) {
-                        return [
-                            'id' => $alert->id,
-                            'type' => $alert->type,
-                            'status' => $alert->status,
-                            'message' => $alert->message,
-                            'created_at' => $alert->created_at->format('Y-m-d H:i:s')
-                        ];
-                    }),
-                    'created_at' => $stock->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $stock->updated_at->format('Y-m-d H:i:s')
-                ];
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $stocks,
+                'data' => StockResource::collection($stocks->items()),
+                'pagination' => [
+                    'current_page' => $stocks->currentPage(),
+                    'last_page' => $stocks->lastPage(),
+                    'per_page' => $stocks->perPage(),
+                    'total' => $stocks->total(),
+                ],
                 'message' => 'Liste des stocks récupérée avec succès'
             ]);
 
@@ -162,61 +123,9 @@ class StockController extends Controller
                 ], 404);
             }
 
-            // Transformer les données comme dans index()
-            $data = [
-                'id' => $stock->id,
-                'name' => $stock->name,
-                'description' => $stock->description,
-                'category' => $stock->category,
-                'sku' => $stock->sku,
-                'quantity' => $stock->quantity ?? $stock->current_quantity,
-                'current_quantity' => $stock->current_quantity,
-                'minimum_quantity' => $stock->minimum_quantity,
-                'maximum_quantity' => $stock->maximum_quantity,
-                'reorder_point' => $stock->reorder_point,
-                'unit_price' => $stock->unit_price ?? $stock->unit_cost,
-                'unit_cost' => $stock->unit_cost,
-                'commentaire' => $stock->commentaire ?? $stock->notes,
-                'notes' => $stock->notes,
-                'status' => $stock->status,
-                'status_libelle' => $stock->status_libelle,
-                'formatted_current_quantity' => $this->formatQuantity($stock->current_quantity),
-                'formatted_minimum_quantity' => $this->formatQuantity($stock->minimum_quantity),
-                'formatted_maximum_quantity' => $stock->maximum_quantity ? $this->formatQuantity($stock->maximum_quantity) : 'N/A',
-                'formatted_reorder_point' => $this->formatQuantity($stock->reorder_point),
-                'formatted_unit_cost' => $this->formatCost($stock->unit_cost),
-                'stock_value' => $stock->stock_value,
-                'formatted_stock_value' => $this->formatCost($stock->stock_value),
-                'is_low_stock' => $stock->is_low_stock,
-                'is_out_of_stock' => $stock->is_out_of_stock,
-                'is_overstock' => $stock->is_overstock,
-                'needs_reorder' => $stock->needs_reorder,
-                'movements' => $stock->movements->map(function ($movement) {
-                    return [
-                        'id' => $movement->id,
-                        'type' => $movement->type,
-                        'quantity' => $movement->quantity,
-                        'reason' => $movement->reason,
-                        'status' => $movement->status ?? 'en_attente',
-                        'created_at' => $movement->created_at->format('Y-m-d H:i:s')
-                    ];
-                }),
-                'alerts' => $stock->alerts->map(function ($alert) {
-                    return [
-                        'id' => $alert->id,
-                        'type' => $alert->type,
-                        'status' => $alert->status,
-                        'message' => $alert->message,
-                        'created_at' => $alert->created_at->format('Y-m-d H:i:s')
-                    ];
-                }),
-                'created_at' => $stock->created_at->format('Y-m-d H:i:s'),
-                'updated_at' => $stock->updated_at->format('Y-m-d H:i:s')
-            ];
-
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new StockResource($stock),
                 'message' => 'Stock récupéré avec succès'
             ]);
 

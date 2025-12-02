@@ -2,11 +2,99 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class InterventionService {
   final storage = GetStorage();
+
+  /// Récupérer les interventions avec pagination côté serveur
+  Future<PaginationResponse<Intervention>> getInterventionsPaginated({
+    String? status,
+    String? type,
+    String? priority,
+    String? search,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/interventions';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (type != null && type.isNotEmpty) {
+        params.add('type=$type');
+      }
+      if (priority != null && priority.isNotEmpty) {
+        params.add('priority=$priority');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Filtrer par userId uniquement pour les techniciens (role 5)
+      if (userRole == 5 && userId != null) {
+        params.add('user_id=$userId');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'INTERVENTION_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'INTERVENTION_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Intervention>(
+          json: data,
+          fromJsonT: (json) => Intervention.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des interventions: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getInterventionsPaginated: $e',
+        tag: 'INTERVENTION_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   // Récupérer toutes les interventions
   Future<List<Intervention>> getInterventions({
@@ -240,6 +328,11 @@ class InterventionService {
         },
         body: json.encode({'notes': notes}),
       );
+
+      // Si le status code est 200 ou 201, considérer comme succès
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
 
       final result = ApiService.parseResponse(response);
       return result['success'] == true;

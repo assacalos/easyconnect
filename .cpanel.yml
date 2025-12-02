@@ -1,14 +1,44 @@
 ---
+# Ce fichier est exécuté dans le dossier sécurisé: /home/amyv4492/git_repositories/easyconnect_git/
+
 deployment:
   tasks:
-    # Définition du chemin de destination pour le Frontend
-    - export DEPLOYPATH=/home/amyv4492/public_html/easyConnect/
+    # ----------------------------------------------------
+    # CONFIGURATION DES CHEMINS
+    # Le chemin du backend (eeasyconnect_backend)
+    - export BACKEND_PATH=/home/amyv4492/git_repositories/easyconnect_git/eeasyconnect_backend/
+    # Le chemin du frontend (easyconnect)
+    - export FRONTEND_PATH=/home/amyv4492/git_repositories/easyconnect_git/easyconnect/
+    # Le chemin public où tout sera visible (à l'intérieur de public_html)
+    - export WEB_ROOT=/home/amyv4492/public_html/
     
-    # 1. Copie du contenu du dossier 'easyconnect' vers le dossier public
-    # Assurez-vous que cette commande copie le contenu, pas le dossier lui-même.
-    - /bin/cp -R easyConnect/* $DEPLOYPATH
+    # ----------------------------------------------------
+    # 1. MAINTENANCE (Optionnel)
+    # - /usr/local/bin/php $BACKEND_PATH/artisan down
+
+    # 2. DEPLOIEMENT DU BACKEND LARAVEL
+    # A. Installation des dépendances Composer
+    # Assurez-vous que ce chemin pour composer est correct sur votre serveur
+    - /usr/local/bin/composer install --no-dev --prefer-dist --working-dir=$BACKEND_PATH
     
-    # 2. Si vous avez besoin d'exécuter npm install ou npm run build :
-    # Si votre frontend est en React, Vue, etc., vous devez le construire ici.
-    # Ex: - /usr/bin/npm install --prefix easyconnect
-    # Ex: - /usr/bin/npm run build --prefix easyconnect
+    # B. Optimisation et Configuration Laravel
+    # Créez le fichier .env si nécessaire (MANUELLE ou via un autre script)
+    - /usr/local/bin/php $BACKEND_PATH/artisan key:generate --force
+    - /usr/local/bin/php $BACKEND_PATH/artisan config:cache
+    - /usr/local/bin/php $BACKEND_PATH/artisan route:cache
+    - /usr/local/bin/php $BACKEND_PATH/artisan view:cache
+    - /usr/local/bin/php $BACKEND_PATH/artisan migrate --force
+
+    # C. Copie du Laravel Public (API)
+    # Le dossier public de Laravel ira dans /public_html/api
+    - /bin/mkdir -p $WEB_ROOT/api/
+    - /bin/cp -R $BACKEND_PATH/public/* $WEB_ROOT/api/
+    
+    # ----------------------------------------------------
+    # 3. DEPLOIEMENT DU FRONTEND FLUTTER
+    # On suppose que le build web a été fait localement dans easyconnect/build/web
+    # Le frontend sera à la racine de public_html
+    - /bin/cp -R $FRONTEND_PATH/build/web/* $WEB_ROOT/
+
+    # 4. FIN DE LA MAINTENANCE (Optionnel)
+    # - /usr/local/bin/php $BACKEND_PATH/artisan up

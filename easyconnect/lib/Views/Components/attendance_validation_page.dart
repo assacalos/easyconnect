@@ -4,6 +4,7 @@ import '../../Models/attendance_punch_model.dart';
 import '../../services/attendance_punch_service.dart';
 import '../../Controllers/auth_controller.dart';
 import '../../utils/roles.dart';
+import '../../Views/Components/skeleton_loaders.dart';
 
 class AttendanceValidationPage extends StatefulWidget {
   const AttendanceValidationPage({super.key});
@@ -154,7 +155,7 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
           Expanded(
             child:
                 _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const SkeletonSearchResults(itemCount: 6)
                     : _filteredAttendances.isEmpty
                     ? Center(
                       child: Column(

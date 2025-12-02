@@ -34,6 +34,14 @@ class LeaveController extends GetxController {
   final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
   final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Variables pour le formulaire de création
   final RxString selectedEmployeeForm = ''.obs;
   final RxString selectedLeaveTypeForm = ''.obs;
@@ -155,32 +163,65 @@ class LeaveController extends GetxController {
   }
 
   // Charger les demandes de congés
-  Future<void> loadLeaveRequests() async {
+  Future<void> loadLeaveRequests({int page = 1}) async {
     try {
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) return;
 
-      List<LeaveRequest> requests;
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _leaveService.getLeaveRequestsPaginated(
+          startDate: selectedStartDate.value,
+          endDate: selectedEndDate.value,
+          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          leaveType:
+              selectedLeaveType.value != 'all' ? selectedLeaveType.value : null,
+          employeeId: canViewAllLeaves.value ? null : user.id,
+          page: page,
+          perPage: perPage.value,
+          search:
+              searchController.text.isNotEmpty ? searchController.text : null,
+        );
 
-      if (canViewAllLeaves.value) {
-        // RH ou Patron : voir toutes les demandes
-        requests = await _leaveService.getAllLeaveRequests(
-          startDate: selectedStartDate.value,
-          endDate: selectedEndDate.value,
-        );
-      } else {
-        // Employé : voir ses propres demandes
-        requests = await _leaveService.getEmployeeLeaveRequests(
-          employeeId: user.id,
-          startDate: selectedStartDate.value,
-          endDate: selectedEndDate.value,
-        );
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          leaveRequests.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          leaveRequests.addAll(paginatedResponse.data);
+        }
+        applyFilters();
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        List<LeaveRequest> requests;
+        if (canViewAllLeaves.value) {
+          requests = await _leaveService.getAllLeaveRequests(
+            startDate: selectedStartDate.value,
+            endDate: selectedEndDate.value,
+          );
+        } else {
+          requests = await _leaveService.getEmployeeLeaveRequests(
+            employeeId: user.id,
+            startDate: selectedStartDate.value,
+            endDate: selectedEndDate.value,
+          );
+        }
+        if (page == 1) {
+          leaveRequests.value = requests;
+        } else {
+          leaveRequests.addAll(requests);
+        }
+        applyFilters();
       }
-
-      leaveRequests.value = requests;
-      applyFilters();
     } catch (e) {
       // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
       // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)

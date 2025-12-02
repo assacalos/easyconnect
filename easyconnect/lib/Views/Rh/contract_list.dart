@@ -6,6 +6,7 @@ import 'package:easyconnect/Views/Rh/contract_form.dart';
 import 'package:easyconnect/Views/Rh/contract_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ContractList extends StatelessWidget {
   const ContractList({super.key});
@@ -76,7 +77,7 @@ class ContractList extends StatelessWidget {
   Widget _buildContractList(String status, ContractController controller) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       // Filtrer selon le statut

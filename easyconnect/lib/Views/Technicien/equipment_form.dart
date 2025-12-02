@@ -541,15 +541,24 @@ class EquipmentForm extends StatelessWidget {
   }
 
   void _saveEquipment(EquipmentController controller) async {
+    print('📝 [EQUIPMENT FORM] Début de _saveEquipment');
     bool success = false;
     if (equipment == null) {
+      print('📝 [EQUIPMENT FORM] Appel de createEquipment');
       success = await controller.createEquipment();
+      print('📝 [EQUIPMENT FORM] Résultat de createEquipment: $success');
     } else {
+      print('📝 [EQUIPMENT FORM] Appel de updateEquipment');
       success = await controller.updateEquipment(equipment!);
+      print('📝 [EQUIPMENT FORM] Résultat de updateEquipment: $success');
     }
     if (success) {
-      await Future.delayed(const Duration(milliseconds: 500));
+      print('✅ [EQUIPMENT FORM] Succès! Fermeture du formulaire...');
+      // Fermer immédiatement le formulaire après succès
       Get.offNamed('/equipments');
+      print('✅ [EQUIPMENT FORM] Get.offNamed appelé');
+    } else {
+      print('❌ [EQUIPMENT FORM] Échec! Le formulaire reste ouvert');
     }
   }
 }

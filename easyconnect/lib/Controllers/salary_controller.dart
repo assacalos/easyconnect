@@ -31,6 +31,14 @@ class SalaryController extends GetxController {
   final Rx<Salary?> selectedSalary = Rx<Salary?>(null);
   String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Contrôleurs de formulaire
   final TextEditingController employeeSearchController =
       TextEditingController();
@@ -71,16 +79,16 @@ class SalaryController extends GetxController {
   }
 
   // Charger tous les salaires
-  Future<void> loadSalaries({String? statusFilter}) async {
+  Future<void> loadSalaries({String? statusFilter, int page = 1}) async {
     try {
       _currentStatusFilter =
           statusFilter ??
           (selectedStatus.value == 'all' ? null : selectedStatus.value);
 
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
       final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
-      if (cachedSalaries != null && cachedSalaries.isNotEmpty) {
+      if (cachedSalaries != null && cachedSalaries.isNotEmpty && page == 1) {
         allSalaries.assignAll(cachedSalaries);
         applyFilters();
         isLoading.value = false; // Permettre l'affichage immédiat
@@ -88,32 +96,60 @@ class SalaryController extends GetxController {
         isLoading.value = true;
       }
 
-      // Tester la connectivité d'abord
-      final isConnected = await _salaryService.testSalaryConnection();
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _salaryService.getSalariesPaginated(
+          status: _currentStatusFilter,
+          month: selectedMonth.value != 'all' ? selectedMonth.value : null,
+          year: selectedYear.value,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          page: page,
+          perPage: perPage.value,
+        );
 
-      if (!isConnected) {
-        throw Exception('Impossible de se connecter à l\'API Laravel');
-      }
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Charger toutes les salaires depuis l'API
-      final loadedSalaries = await _salaryService.getSalaries(
-        status: null, // Toujours charger tous les salaires
-        month: null, // Pas de filtre côté serveur
-        year: null, // Pas de filtre côté serveur
-        search: null, // Pas de recherche côté serveur
-      );
-
-      // Ne remplacer la liste que si on a reçu des données
-      if (loadedSalaries.isNotEmpty) {
-        // Stocker tous les salaires
-        allSalaries.assignAll(loadedSalaries);
+        // Mettre à jour la liste
+        if (page == 1) {
+          allSalaries.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          allSalaries.addAll(paginatedResponse.data);
+        }
         applyFilters();
-        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-        CacheHelper.set(cacheKey, loadedSalaries);
-      } else if (allSalaries.isEmpty) {
-        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
-        allSalaries.clear();
-        salaries.clear();
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        final loadedSalaries = await _salaryService.getSalaries(
+          status: null,
+          month: null,
+          year: null,
+          search: null,
+        );
+        if (loadedSalaries.isNotEmpty) {
+          if (page == 1) {
+            allSalaries.value = loadedSalaries;
+          } else {
+            allSalaries.addAll(loadedSalaries);
+          }
+          applyFilters();
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedSalaries);
+          }
+        } else if (allSalaries.isEmpty) {
+          // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
+          allSalaries.clear();
+          salaries.clear();
+        }
       }
       // Si allSalaries n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
 

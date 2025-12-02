@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Models/client_model.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ClientValidationPage extends StatefulWidget {
   const ClientValidationPage({super.key});
@@ -181,7 +182,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildClientList(),
             ),
           ),

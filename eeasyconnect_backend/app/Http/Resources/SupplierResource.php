@@ -34,15 +34,29 @@ class SupplierResource extends JsonResource
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
                     'id' => $this->createdBy->id,
-                    'name' => $this->createdBy->name,
+                    'name' => $this->createdBy->nom . ' ' . $this->createdBy->prenom,
                     'email' => $this->createdBy->email,
                 ];
             }),
             'updated_by' => $this->whenLoaded('updatedBy', function () {
                 return [
                     'id' => $this->updatedBy->id,
-                    'name' => $this->updatedBy->name,
+                    'name' => $this->updatedBy->nom . ' ' . $this->updatedBy->prenom,
                     'email' => $this->updatedBy->email,
+                ];
+            }),
+            'validated_by' => $this->whenLoaded('validatedBy', function () {
+                return [
+                    'id' => $this->validatedBy->id,
+                    'name' => $this->validatedBy->nom . ' ' . $this->validatedBy->prenom,
+                    'email' => $this->validatedBy->email,
+                ];
+            }),
+            'rejected_by' => $this->whenLoaded('rejectedBy', function () {
+                return [
+                    'id' => $this->rejectedBy->id,
+                    'name' => $this->rejectedBy->nom . ' ' . $this->rejectedBy->prenom,
+                    'email' => $this->rejectedBy->email,
                 ];
             }),
         ];

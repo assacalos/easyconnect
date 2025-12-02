@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class TaxController extends GetxController {
   late final TaxService _taxService;
@@ -19,6 +20,14 @@ class TaxController extends GetxController {
   final RxString selectedStatus = 'all'.obs;
   final RxString searchQuery = ''.obs;
   String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
+
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
 
   @override
   void onInit() {
@@ -52,7 +61,7 @@ class TaxController extends GetxController {
   }
 
   // Charger toutes les taxes
-  Future<void> loadTaxes({String? statusFilter}) async {
+  Future<void> loadTaxes({String? statusFilter, int page = 1}) async {
     try {
       isLoading.value = true;
       _currentStatusFilter =
@@ -67,10 +76,10 @@ class TaxController extends GetxController {
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'taxes_${_currentStatusFilter ?? 'all'}';
       final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
-      if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
+      if (cachedTaxes != null && cachedTaxes.isNotEmpty && page == 1) {
         allTaxes.assignAll(cachedTaxes);
         applyFilters();
         isLoading.value = false; // Permettre l'affichage immédiat
@@ -78,36 +87,80 @@ class TaxController extends GetxController {
         isLoading.value = true;
       }
 
-      // Charger toutes les taxes depuis l'API (sans tester la connexion d'abord)
-      final loadedTaxes = await _taxService.getTaxes(
-        status: null, // Toujours charger toutes les taxes
-        search: null, // Pas de recherche côté serveur
-      );
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _taxService.getTaxesPaginated(
+          status: _currentStatusFilter,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          page: page,
+          perPage: perPage.value,
+        );
 
-      // Ne remplacer la liste que si on a reçu des données
-      if (loadedTaxes.isNotEmpty) {
-        // Stocker toutes les taxes
-        allTaxes.assignAll(loadedTaxes);
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          allTaxes.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          allTaxes.addAll(paginatedResponse.data);
+        }
         applyFilters();
-        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-        CacheHelper.set(cacheKey, loadedTaxes);
-      } else if (allTaxes.isEmpty) {
-        // Si la liste est vide et qu'on n'a pas reçu de données, vider la liste
-        allTaxes.clear();
-        taxes.clear();
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        AppLogger.warning(
+          'Erreur avec pagination, fallback vers méthode classique: $e',
+          tag: 'TAX_CONTROLLER',
+        );
+        final loadedTaxes = await _taxService.getTaxes(
+          status: null,
+          search: null,
+        );
+        if (loadedTaxes.isNotEmpty) {
+          allTaxes.assignAll(loadedTaxes);
+          applyFilters();
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedTaxes);
+          }
+        } else if (allTaxes.isEmpty) {
+          allTaxes.clear();
+          taxes.clear();
+        }
       }
-      // Si allTaxes n'est pas vide, on garde ce qu'on a (mise à jour optimiste)
 
       // Ne pas afficher de message de succès à chaque chargement automatique
       // Seulement si l'utilisateur recharge manuellement
     } catch (e) {
       print('⚠️ [TAX_CONTROLLER] Erreur lors du chargement des taxes: $e');
 
-      // Ne pas vider la liste si elle contient déjà des données (du cache)
-      // Cela évite d'afficher une liste vide après une création réussie
+      // Vérifier le cache en cas d'erreur réseau (si la liste est vide)
       if (allTaxes.isEmpty) {
-        allTaxes.value = [];
-        taxes.value = [];
+        final cacheKey = 'taxes_${_currentStatusFilter ?? 'all'}';
+        final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
+        if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
+          // Charger les données du cache si disponibles
+          allTaxes.assignAll(cachedTaxes);
+          applyFilters();
+          print(
+            '✅ [TAX_CONTROLLER] Données chargées depuis le cache (${cachedTaxes.length} taxes)',
+          );
+          // Ne pas afficher d'erreur si on a des données en cache
+          return;
+        } else {
+          // Vider la liste seulement si aucune donnée n'est disponible
+          allTaxes.value = [];
+          taxes.value = [];
+        }
       } else {
         // Si la liste contient des données, on garde ce qu'on a
         // Cela permet d'afficher la taxe créée même si le rechargement échoue
@@ -157,6 +210,26 @@ class TaxController extends GetxController {
       );
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadTaxes(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value + 1,
+      );
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadTaxes(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value - 1,
+      );
     }
   }
 

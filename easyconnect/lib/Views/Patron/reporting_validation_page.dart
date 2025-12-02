@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ReportingValidationPage extends StatefulWidget {
   const ReportingValidationPage({super.key});
@@ -108,7 +109,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildReportList(),
             ),
           ),

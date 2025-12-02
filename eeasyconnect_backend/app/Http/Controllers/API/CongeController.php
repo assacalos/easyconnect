@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Conge;
 use App\Models\User;
 use App\Models\Notification;
+use App\Http\Resources\CongeResource;
 use Carbon\Carbon;
 
 class CongeController extends Controller
@@ -17,7 +18,17 @@ class CongeController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Conge::with(['user', 'approbateur']);
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Conge::with(['user', 'approbateur']);
         
         // Filtrage par statut si fourni
         if ($request->has('statut')) {
@@ -49,15 +60,41 @@ class CongeController extends Controller
         }
         
         // Si technicien → filtre ses propres congés
-        if (auth()->user()->isTechnicien()) {
-            $query->where('user_id', auth()->id());
+        if ($user->isTechnicien()) {
+            $query->where('user_id', $user->id);
         }
         
-        $conges = $query->orderBy('created_at', 'desc')->get();
+        $perPage = $request->get('per_page', 15);
+        $conges = $query->orderBy('created_at', 'desc')->paginate($perPage);
         
         return response()->json([
             'success' => true,
-            'conges' => $conges,
+            'data' => CongeResource::collection($conges->items()),
+            'pagination' => [
+                'current_page' => $conges->currentPage(),
+                'last_page' => $conges->lastPage(),
+                'per_page' => $conges->perPage(),
+                'total' => $conges->total(),
+            ],
+            'message' => 'Liste des congés récupérée avec succès'
+        ], 200);
+        
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des congés: ' . $e->getMessage()
+            ], 500);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => CongeResource::collection($conges->items()),
+            'pagination' => [
+                'current_page' => $conges->currentPage(),
+                'last_page' => $conges->lastPage(),
+                'per_page' => $conges->perPage(),
+                'total' => $conges->total(),
+            ],
             'message' => 'Liste des congés récupérée avec succès'
         ]);
     }
@@ -80,7 +117,7 @@ class CongeController extends Controller
         
         return response()->json([
             'success' => true,
-            'conge' => $conge,
+            'data' => new CongeResource($conge),
             'message' => 'Congé récupéré avec succès'
         ]);
     }
@@ -364,7 +401,7 @@ class CongeController extends Controller
         $rhUsers = User::whereIn('role', [1, 4, 6])->get();
         
         foreach ($rhUsers as $rhUser) {
-            Notification::create([
+            \App\Jobs\SendNotificationJob::dispatch([
                 'user_id' => $rhUser->id,
                 'type' => 'conge',
                 'titre' => 'Nouvelle demande de congé',
@@ -389,7 +426,7 @@ class CongeController extends Controller
             ? "Votre demande de congé a été approuvée"
             : "Votre demande de congé a été rejetée";
             
-        Notification::create([
+        \App\Jobs\SendNotificationJob::dispatch([
             'user_id' => $conge->user_id,
             'type' => 'conge',
             'titre' => $action === 'approuve' ? 'Congé approuvé' : 'Congé rejeté',

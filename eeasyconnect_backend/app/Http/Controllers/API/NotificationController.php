@@ -16,7 +16,14 @@ class NotificationController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
         
         $query = Notification::where('user_id', $user->id)
             ->orderBy('created_at', 'desc');
@@ -350,7 +357,8 @@ class NotificationController extends Controller
             'date_expiration' => 'nullable|date|after:now'
         ]);
 
-        $notification = Notification::create([
+        // Dispatch le job pour créer la notification en arrière-plan
+        \App\Jobs\SendNotificationJob::dispatch([
             'user_id' => $request->user_id,
             'type' => $request->type,
             'titre' => $request->titre,
@@ -363,8 +371,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'success' => true,
-            'notification' => $notification,
-            'message' => 'Notification créée avec succès'
+            'message' => 'Notification en cours de création'
         ], 201);
     }
 

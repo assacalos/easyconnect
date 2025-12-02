@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/Views/Rh/employee_form.dart';
 import 'package:easyconnect/Views/Rh/employee_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class EmployeeList extends StatelessWidget {
   const EmployeeList({super.key});
@@ -81,7 +82,7 @@ class EmployeeList extends StatelessWidget {
   ) {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       final employeeList =

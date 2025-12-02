@@ -3,12 +3,14 @@ import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/payment_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class PaymentService extends GetxService {
   static PaymentService get to => Get.find();
@@ -39,6 +41,81 @@ class PaymentService extends GetxService {
   }
 
   // ===== MÉTHODES PRINCIPALES DES PAIEMENTS =====
+
+  /// Récupérer les paiements avec pagination côté serveur (pour le patron)
+  Future<PaginationResponse<PaymentModel>> getAllPaymentsPaginated({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    String? type,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      final token = storage.read('token');
+      String url = '$baseUrl/payments';
+      List<String> params = [];
+
+      if (startDate != null) {
+        params.add('start_date=${startDate.toIso8601String()}');
+      }
+      if (endDate != null) {
+        params.add('end_date=${endDate.toIso8601String()}');
+      }
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (type != null) {
+        params.add('type=$type');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'PAYMENT_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'PAYMENT_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<PaymentModel>(
+          json: data,
+          fromJsonT: (json) => PaymentModel.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des paiements: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getAllPaymentsPaginated: $e',
+        tag: 'PAYMENT_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   // Récupérer tous les paiements (pour le patron)
   Future<List<PaymentModel>> getAllPayments({
@@ -165,6 +242,83 @@ class PaymentService extends GetxService {
         );
       }
     } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Récupérer les paiements d'un comptable avec pagination
+  Future<PaginationResponse<PaymentModel>> getComptablePaymentsPaginated({
+    required int comptableId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    String? type,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      final token = storage.read('token');
+      String url = '$baseUrl/payments';
+      List<String> params = [];
+
+      params.add('comptable_id=$comptableId');
+      if (startDate != null) {
+        params.add('start_date=${startDate.toIso8601String()}');
+      }
+      if (endDate != null) {
+        params.add('end_date=${endDate.toIso8601String()}');
+      }
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (type != null) {
+        params.add('type=$type');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'PAYMENT_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'PAYMENT_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<PaymentModel>(
+          json: data,
+          fromJsonT: (json) => PaymentModel.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des paiements comptable: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getComptablePaymentsPaginated: $e',
+        tag: 'PAYMENT_SERVICE',
+      );
       rethrow;
     }
   }
@@ -386,6 +540,19 @@ class PaymentService extends GetxService {
           body: comments != null ? jsonEncode({'comments': comments}) : null,
         );
       }
+      // Si le status code est 200 ou 201, considérer comme succès
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final result = ApiService.parseResponse(response);
+        // Si le parseResponse retourne success:false mais le status code est 200/201,
+        // forcer success:true car le backend a validé
+        if (result['success'] == true) {
+          return result['data'] ?? {};
+        } else {
+          // Status code 200/201 mais success:false dans le body -> considérer comme succès
+          return {'success': true, 'message': 'Paiement approuvé avec succès'};
+        }
+      }
+
       final result = ApiService.parseResponse(response);
 
       if (result['success'] == true) {

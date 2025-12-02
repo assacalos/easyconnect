@@ -81,7 +81,17 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
             ]),
             const SizedBox(height: 16),
             _card('Articles', [
-              ...bon.items.map((item) => _buildItemRow(item, nf)),
+              if (bon.items.isEmpty)
+                const Text('Aucun article')
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: bon.items.length,
+                  itemBuilder: (context, index) {
+                    return _buildItemRow(bon.items[index], nf);
+                  },
+                ),
             ]),
             const SizedBox(height: 16),
             _card('Montants', [

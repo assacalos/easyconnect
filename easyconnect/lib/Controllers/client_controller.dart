@@ -13,6 +13,15 @@ class ClientController extends GetxController {
   int? _currentStatus; // Mémoriser le statut actuellement chargé
   bool _isLoadingInProgress = false; // Protection contre les appels multiples
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+  final RxString searchQuery = ''.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -21,7 +30,11 @@ class ClientController extends GetxController {
     // Les pages appelleront loadClients() quand nécessaire
   }
 
-  Future<void> loadClients({int? status, bool forceRefresh = false}) async {
+  Future<void> loadClients({
+    int? status,
+    bool forceRefresh = false,
+    int page = 1,
+  }) async {
     // Protection contre les appels multiples simultanés
     if (_isLoadingInProgress) {
       AppLogger.debug(
@@ -35,10 +48,13 @@ class ClientController extends GetxController {
       // Si on ne force pas le rafraîchissement et que les données sont déjà chargées avec le même statut, ne rien faire
       // MAIS seulement si on a vraiment des données (pas si la liste est vide)
       // ET seulement si le statut a déjà été défini (pas au premier chargement)
+      // ET seulement si c'est la même page
       if (!forceRefresh &&
           clients.isNotEmpty &&
           _currentStatus == status &&
-          _currentStatus != null) {
+          _currentStatus != null &&
+          currentPage.value == page &&
+          page == 1) {
         AppLogger.debug(
           'Données déjà chargées, pas de rechargement nécessaire',
           tag: 'CLIENT_CONTROLLER',
@@ -54,7 +70,10 @@ class ClientController extends GetxController {
           'clients_${status ?? 'all'}_false'; // Utiliser la même clé que le service
       final cachedClients = CacheHelper.get<List<Client>>(cacheKey);
       final hasCache =
-          cachedClients != null && cachedClients.isNotEmpty && !forceRefresh;
+          cachedClients != null &&
+          cachedClients.isNotEmpty &&
+          !forceRefresh &&
+          page == 1;
 
       if (hasCache) {
         // Afficher le cache immédiatement pour que l'utilisateur voie quelque chose tout de suite
@@ -69,50 +88,71 @@ class ClientController extends GetxController {
         isLoading.value = true;
       }
 
-      AppLogger.info(
-        'Chargement des clients${status != null ? ' (status: $status)' : ''}',
-        tag: 'CLIENT_CONTROLLER',
-      );
-
-      // Charger les données fraîches en arrière-plan (sans bloquer l'affichage du cache)
-      List<Client>? loadedClients;
+      // Charger les données avec pagination
       try {
-        loadedClients = await _clientService.getClients(
+        final paginatedResponse = await _clientService.getClientsPaginated(
           status: status,
-          forceRefresh: forceRefresh,
+          page: page,
+          perPage: perPage.value,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
         );
-        // Mettre à jour avec les données fraîches seulement si elles sont différentes
-        if (!hasCache ||
-            loadedClients.length != clients.length ||
-            loadedClients.any(
-              (client) => !clients.any((c) => c.id == client.id),
-            )) {
-          clients.assignAll(loadedClients);
-        }
-      } catch (e) {
-        // Si le chargement échoue mais qu'on a du cache, on garde le cache
-        if (!hasCache) {
-          rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
-        }
-        AppLogger.warning(
-          'Erreur lors du chargement frais, utilisation du cache: $e',
-          tag: 'CLIENT_CONTROLLER',
-        );
-      }
 
-      // Le service met déjà en cache, donc pas besoin de le refaire ici
-      // Mais on peut mettre à jour le cache du contrôleur si nécessaire
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      if (loadedClients != null) {
-        AppLogger.info(
-          '${loadedClients.length} clients chargés avec succès',
-          tag: 'CLIENT_CONTROLLER',
-        );
-      } else if (hasCache) {
-        AppLogger.info(
-          '${clients.length} clients affichés depuis le cache',
-          tag: 'CLIENT_CONTROLLER',
-        );
+        // Mettre à jour la liste
+        if (page == 1) {
+          clients.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          clients.addAll(paginatedResponse.data);
+        }
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e, stackTrace) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        try {
+          final loadedClients = await _clientService.getClients(
+            status: status,
+            isPending: false,
+          );
+          if (page == 1) {
+            clients.value = loadedClients;
+          } else {
+            clients.addAll(loadedClients);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedClients);
+          }
+        } catch (fallbackError) {
+          // Si le fallback échoue aussi, vérifier le cache
+          if (!hasCache || page > 1) {
+            if (clients.isEmpty) {
+              final cacheKey = 'clients_${status ?? 'all'}_false';
+              final cachedClients = CacheHelper.get<List<Client>>(cacheKey);
+              if (cachedClients != null && cachedClients.isNotEmpty) {
+                clients.assignAll(cachedClients);
+                AppLogger.warning(
+                  'Erreur réseau, utilisation du cache: $fallbackError',
+                  tag: 'CLIENT_CONTROLLER',
+                );
+                return; // Ne pas afficher d'erreur si on a du cache
+              }
+            }
+            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+          }
+          AppLogger.warning(
+            'Erreur lors du chargement frais, utilisation du cache: $fallbackError',
+            tag: 'CLIENT_CONTROLLER',
+          );
+        }
       }
     } catch (e, stackTrace) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
@@ -151,16 +191,36 @@ class ClientController extends GetxController {
     }
   }
 
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadClients(status: _currentStatus, page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadClients(status: _currentStatus, page: currentPage.value - 1);
+    }
+  }
+
   Future<void> createClient(Client client) async {
     try {
       isLoading.value = true;
 
       // Créer le client
-      await _clientService.createClient(client);
+      final createdClient = await _clientService.createClient(client);
+
+      // Invalider le cache
+      CacheHelper.clearByPrefix('clients_');
+
+      // Ajouter le nouveau client à la liste localement (mise à jour optimiste)
+      clients.insert(0, createdClient);
 
       // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
       try {
-        await loadClients();
+        await loadClients(forceRefresh: true);
       } catch (e) {
         // Si le rechargement échoue, on ne fait rien car le client a été créé avec succès
         // L'utilisateur peut recharger manuellement si nécessaire
@@ -190,6 +250,7 @@ class ClientController extends GetxController {
       CacheHelper.clearByPrefix('clients_');
 
       // Ajouter le nouveau client à la liste localement (mise à jour optimiste)
+      clients.insert(0, createdClient);
       // Le client créé a toujours le status 0 (en attente)
       if (createdClient.id != null) {
         clients.add(createdClient);
@@ -336,18 +397,30 @@ class ClientController extends GetxController {
       } else {
         // En cas d'échec, recharger les données pour restaurer l'état
         await loadClients(status: _currentStatus);
-        throw Exception(
-          'Erreur lors de la validation - Service a retourné false',
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
+        // (le service peut retourner false même si le status code était 200/201)
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
         );
       }
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadClients(status: _currentStatus);
-      Get.snackbar(
-        'Erreur',
-        'Impossible de valider le client: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible de valider le client: $e',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
     }
   }
 

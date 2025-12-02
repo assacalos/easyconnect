@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bordereau_controller.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BordereauValidationPage extends StatefulWidget {
   const BordereauValidationPage({super.key});
@@ -130,7 +131,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildBordereauList(),
             ),
           ),
@@ -293,7 +294,17 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                ...bordereau.items.map((item) => _buildItemDetails(item)),
+                if (bordereau.items.isEmpty)
+                  const Text('Aucun article')
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: bordereau.items.length,
+                    itemBuilder: (context, index) {
+                      return _buildItemDetails(bordereau.items[index]);
+                    },
+                  ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),

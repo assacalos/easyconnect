@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/recruitment_controller.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class RecruitmentValidationPage extends StatefulWidget {
   const RecruitmentValidationPage({super.key});
@@ -125,7 +126,7 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildRecruitmentList(),
             ),
           ),

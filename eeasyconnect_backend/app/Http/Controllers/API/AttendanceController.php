@@ -6,6 +6,7 @@ use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
 use App\Models\Attendance;
 use App\Models\User;
+use App\Http\Resources\AttendanceResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -129,8 +130,16 @@ class AttendanceController extends Controller
             }
 
             // Upload de la photo
-            $photoPath = $this->uploadPhoto($request->file('photo'), $user->id);
-            Log::info('Photo uploaded', ['path' => $photoPath]);
+            try {
+                $photoPath = $this->uploadPhoto($request->file('photo'), $user->id);
+                Log::info('Photo uploaded', ['path' => $photoPath]);
+            } catch (\Exception $e) {
+                Log::error('Photo upload failed', [
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw new \Exception('Erreur lors de l\'upload de la photo: ' . $e->getMessage(), 0, $e);
+            }
 
             // Préparer les données de localisation en JSON
             $locationData = [
@@ -187,15 +196,21 @@ class AttendanceController extends Controller
 
                 if ($todayAttendance) {
                     // Mettre à jour avec le check-out
-                    $locationData['check_out_location'] = [
-                        'latitude' => $request->latitude,
-                        'longitude' => $request->longitude,
-                        'address' => $request->address,
-                        'accuracy' => $request->accuracy,
+                    $existingLocation = is_array($todayAttendance->location) ? $todayAttendance->location : [];
+                    $checkOutLocation = [
+                        'check_out_location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude,
+                            'address' => $request->address,
+                            'accuracy' => $request->accuracy,
+                        ]
                     ];
+                    
+                    $mergedLocation = array_merge($existingLocation, $locationData, $checkOutLocation);
+                    
                     $todayAttendance->update([
                         'check_out_time' => now(),
-                        'location' => array_merge($todayAttendance->location ?? [], $locationData),
+                        'location' => $mergedLocation,
                         'notes' => $request->notes ?? $todayAttendance->notes,
                     ]);
                     $attendance = $todayAttendance;
@@ -209,10 +224,21 @@ class AttendanceController extends Controller
 
             Log::info('Attendance created', ['attendance_id' => $attendance->id]);
 
+            // Charger la relation user avec gestion d'erreur
+            try {
+                $attendance->load('user');
+            } catch (\Exception $e) {
+                Log::warning('Failed to load user relation', [
+                    'attendance_id' => $attendance->id,
+                    'error' => $e->getMessage()
+                ]);
+                // Continuer même si la relation ne peut pas être chargée
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Pointage enregistré avec succès',
-                'data' => $attendance->load('user')
+                'data' => new AttendanceResource($attendance)
             ], 201);
 
         } catch (\Exception $e) {
@@ -220,12 +246,27 @@ class AttendanceController extends Controller
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'line' => $e->getLine(),
+                'user_id' => $request->user()?->id,
+                'type' => $request->input('type'),
             ]);
+            
+            $errorMessage = 'Erreur lors de l\'enregistrement du pointage';
+            $errorDetails = null;
+            
+            if (config('app.debug')) {
+                $errorDetails = [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ];
+                $errorMessage = $e->getMessage();
+            }
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'enregistrement du pointage',
-                'error' => config('app.debug') ? $e->getMessage() : 'Une erreur est survenue'
+                'message' => $errorMessage,
+                'error' => $errorDetails
             ], 500);
         }
     }
@@ -235,7 +276,17 @@ class AttendanceController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Attendance::with(['user', 'validator']);
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Attendance::with(['user', 'validator']);
 
         // Filtres
         if ($request->has('status')) {
@@ -259,8 +310,25 @@ class AttendanceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $attendances
+            'data' => AttendanceResource::collection($attendances->items()),
+            'pagination' => [
+                'current_page' => $attendances->currentPage(),
+                'last_page' => $attendances->lastPage(),
+                'per_page' => $attendances->perPage(),
+                'total' => $attendances->total(),
+            ]
         ]);
+        } catch (\Exception $e) {
+            Log::error('Attendance index error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des pointages: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -270,7 +338,7 @@ class AttendanceController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => $attendance->load(['user', 'approver'])
+            'data' => new AttendanceResource($attendance->load(['user', 'approver', 'validator', 'rejector']))
         ]);
     }
 
@@ -577,14 +645,42 @@ class AttendanceController extends Controller
                 throw new \Exception('Fichier photo invalide');
             }
 
-            // Utiliser Storage pour l'upload
-            $stored = Storage::disk('public')->put($path, file_get_contents($photo->getRealPath()));
+            // Optimiser l'upload : utiliser directement le fichier sans le charger en mémoire
+            // Utiliser storeAs pour éviter de charger tout le fichier en mémoire
+            $stored = $photo->storeAs('attendances/' . $userId, $filename, 'public');
             
             if (!$stored) {
                 throw new \Exception('Échec de l\'upload du fichier');
             }
+            
+            // Le chemin retourné par storeAs est déjà relatif au disk
+            $path = $stored;
 
             Log::info('Photo uploaded successfully', ['path' => $path]);
+            
+            // Traiter l'image en arrière-plan (redimensionnement, optimisation)
+            // Cela améliore les temps de réponse de l'API
+            // Gérer l'erreur si le job n'existe pas ou échoue
+            try {
+                if (class_exists(\App\Jobs\ProcessImageJob::class)) {
+                    \App\Jobs\ProcessImageJob::dispatch($path, [
+                        'disk' => 'public',
+                        'width' => 1200,
+                        'height' => 1200,
+                        'quality' => 85,
+                        'thumbnail' => [
+                            'width' => 300,
+                            'height' => 300
+                        ]
+                    ]);
+                }
+            } catch (\Exception $e) {
+                // Ne pas faire échouer l'upload si le job échoue
+                Log::warning('Failed to dispatch ProcessImageJob', [
+                    'path' => $path,
+                    'error' => $e->getMessage()
+                ]);
+            }
             
             return $path;
         } catch (\Exception $e) {

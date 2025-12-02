@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/patron_reports_controller.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PatronReportsPage extends StatelessWidget {
   const PatronReportsPage({super.key});
@@ -25,7 +26,7 @@ class PatronReportsPage extends StatelessWidget {
       body: Obx(
         () =>
             controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
+                ? const SkeletonPage(listItemCount: 8)
                 : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(

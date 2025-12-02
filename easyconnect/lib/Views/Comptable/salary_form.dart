@@ -449,6 +449,11 @@ class _SalaryFormState extends State<SalaryForm> {
   }
 
   void _showEmployeeDialog(SalaryController controller) {
+    // Recharger les employés si la liste est vide
+    if (controller.employees.isEmpty) {
+      controller.loadEmployees();
+    }
+    
     Get.dialog(
       AlertDialog(
         title: const Text('Sélectionner un employé'),

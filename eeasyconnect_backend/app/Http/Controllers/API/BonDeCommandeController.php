@@ -9,6 +9,7 @@ use App\Models\BonDeCommande;
 use App\Models\BonDeCommandeItem;
 use App\Models\Fournisseur;
 use App\Models\User;
+use App\Http\Resources\BonDeCommandeResource;
 use Illuminate\Support\Facades\DB;
 
 class BonDeCommandeController extends Controller
@@ -22,6 +23,14 @@ class BonDeCommandeController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = BonDeCommande::with(['fournisseur', 'createur', 'items']);
             
             // Filtrage par rôle : Commercial ne voit que ses propres bons de commande
@@ -70,18 +79,19 @@ class BonDeCommandeController extends Controller
             //           ->where('statut', '!=', 'livre');
             // }
             
-            // Pagination optionnelle
-            if ($request->has('per_page') || $request->has('page')) {
-                $perPage = $request->get('per_page', 15);
-                $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
-            } else {
-                // Si pas de pagination demandée, retourner tous les résultats
-                $bons = $query->orderBy('date_commande', 'desc')->get();
-            }
+            // Pagination
+            $perPage = $request->get('per_page', 15);
+            $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => $bons,
+                'data' => BonDeCommandeResource::collection($bons->items()),
+                'pagination' => [
+                    'current_page' => $bons->currentPage(),
+                    'last_page' => $bons->lastPage(),
+                    'per_page' => $bons->perPage(),
+                    'total' => $bons->total(),
+                ],
                 'message' => 'Bons de commande récupérés avec succès'
             ]);
             
@@ -103,7 +113,7 @@ class BonDeCommandeController extends Controller
         
         return response()->json([
             'success' => true,
-            'bon_de_commande' => $bon,
+            'data' => new BonDeCommandeResource($bon),
             'message' => 'Bon de commande récupéré avec succès'
         ]);
     }
@@ -200,7 +210,7 @@ class BonDeCommandeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'bon_de_commande' => $bon,
+                'data' => new BonDeCommandeResource($bon),
                 'message' => 'Bon de commande créé avec succès'
             ], 201);
 
@@ -331,7 +341,7 @@ class BonDeCommandeController extends Controller
             $this->createNotification([
                 'user_id' => $bon->user_id,
                 'title' => 'Validation Bon de Commande',
-                'message' => "Bon de commande #{$bon->numero} a été validé",
+                'message' => "Bon de commande #{$bon->numero_commande} a été validé",
                 'type' => 'success',
                 'entity_type' => 'bon_commande',
                 'entity_id' => $bon->id,
@@ -377,7 +387,7 @@ class BonDeCommandeController extends Controller
             $this->createNotification([
                 'user_id' => $bon->user_id,
                 'title' => 'Rejet Bon de Commande',
-                'message' => "Bon de commande #{$bon->numero} a été rejeté. Raison: {$request->commentaire}",
+                'message' => "Bon de commande #{$bon->numero_commande} a été rejeté. Raison: {$request->commentaire}",
                 'type' => 'error',
                 'entity_type' => 'bon_commande',
                 'entity_id' => $bon->id,

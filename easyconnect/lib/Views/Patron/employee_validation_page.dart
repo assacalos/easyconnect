@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/employee_controller.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class EmployeeValidationPage extends StatefulWidget {
   const EmployeeValidationPage({super.key});
@@ -115,7 +116,7 @@ class _EmployeeValidationPageState extends State<EmployeeValidationPage>
   Widget _buildEmployeeList() {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       List<Employee> filteredEmployees = controller.employees;

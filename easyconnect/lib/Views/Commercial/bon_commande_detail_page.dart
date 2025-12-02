@@ -45,18 +45,26 @@ class BonCommandeDetailPage extends StatelessWidget {
               _card('Fichiers scannés', [
                 Text('Nombre de fichiers: ${bon.fichiers.length}'),
                 const SizedBox(height: 8),
-                ...bon.fichiers.map(
-                  (fichier) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.attach_file, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(fichier)),
-                      ],
-                    ),
+                if (bon.fichiers.isEmpty)
+                  const Text('Aucun fichier')
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: bon.fichiers.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.attach_file, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(bon.fichiers[index])),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ),
               ]),
             ],
           ],

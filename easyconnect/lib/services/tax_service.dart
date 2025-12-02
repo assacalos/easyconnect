@@ -2,8 +2,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/tax_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class TaxService {
   final storage = GetStorage();
@@ -24,6 +30,111 @@ class TaxService {
       return response.statusCode == 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Récupérer les taxes avec pagination côté serveur
+  Future<PaginationResponse<Tax>> getTaxesPaginated({
+    String? status,
+    String? type,
+    String? search,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      String url = '${AppConfig.baseUrl}/taxes';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (type != null && type.isNotEmpty) {
+        params.add('type=$type');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'TAX_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'TAX_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        try {
+          return PaginationHelper.parseResponse<Tax>(
+            json: data,
+            fromJsonT: (json) => Tax.fromJson(json),
+          );
+        } catch (e) {
+          // Fallback si PaginationHelper échoue
+          AppLogger.warning(
+            'PaginationHelper a échoué, tentative de parsing manuel: $e',
+            tag: 'TAX_SERVICE',
+          );
+
+          // Essayer de parser manuellement
+          List<Tax> taxes = [];
+          if (data['data'] != null) {
+            if (data['data'] is List) {
+              taxes =
+                  (data['data'] as List)
+                      .map((json) => Tax.fromJson(json as Map<String, dynamic>))
+                      .toList();
+            } else if (data['data'] is Map &&
+                (data['data'] as Map)['data'] != null) {
+              final nestedData = (data['data'] as Map)['data'];
+              if (nestedData is List) {
+                taxes =
+                    nestedData
+                        .map(
+                          (json) => Tax.fromJson(json as Map<String, dynamic>),
+                        )
+                        .toList();
+              }
+            }
+          }
+
+          // Créer une réponse paginée simulée
+          return PaginationResponse<Tax>(
+            data: taxes,
+            meta: PaginationMeta.fromJson({
+              'current_page': data['current_page'] ?? 1,
+              'last_page': data['last_page'] ?? 1,
+              'per_page': data['per_page'] ?? perPage,
+              'total': data['total'] ?? taxes.length,
+            }),
+          );
+        }
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des taxes: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Erreur dans getTaxesPaginated: $e', tag: 'TAX_SERVICE');
+      rethrow;
     }
   }
 
@@ -53,6 +164,49 @@ class TaxService {
           'Authorization': 'Bearer $token',
         },
       );
+
+      // Si le status code est 200 ou 201, traiter directement
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final responseData = jsonDecode(response.body);
+          List<dynamic> data = [];
+
+          // Gérer différents formats de réponse de l'API Laravel
+          if (responseData is List) {
+            data = responseData;
+          } else if (responseData is Map) {
+            if (responseData['data'] != null) {
+              if (responseData['data'] is List) {
+                data = responseData['data'];
+              } else if (responseData['data'] is Map &&
+                  responseData['data']['data'] != null) {
+                data = responseData['data']['data'];
+              }
+            }
+            // Essayer le format spécifique aux impôts
+            else if (responseData['taxes'] != null) {
+              if (responseData['taxes'] is List) {
+                data = responseData['taxes'];
+              }
+            }
+          }
+
+          if (data.isEmpty) {
+            return [];
+          }
+
+          try {
+            return data.map((json) {
+              return Tax.fromJson(json);
+            }).toList();
+          } catch (e) {
+            throw Exception('Erreur de format des données: $e');
+          }
+        } catch (e) {
+          throw Exception('Erreur de format des données: $e');
+        }
+      }
+
       final result = ApiService.parseResponse(response);
 
       if (result['success'] == true) {

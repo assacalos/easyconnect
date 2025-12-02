@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/comptable_dashboard_controller.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class FinancesPage extends StatelessWidget {
   const FinancesPage({super.key});
@@ -25,7 +26,7 @@ class FinancesPage extends StatelessWidget {
       body: Obx(
         () =>
             controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
+                ? const SkeletonPage(listItemCount: 8)
                 : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(

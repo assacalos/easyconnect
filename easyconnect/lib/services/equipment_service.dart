@@ -2,10 +2,170 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class EquipmentService {
   final storage = GetStorage();
+
+  /// Récupérer les équipements avec pagination côté serveur
+  Future<PaginationResponse<Equipment>> getEquipmentsPaginated({
+    String? status,
+    String? category,
+    String? condition,
+    String? search,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      String url = '${AppConfig.baseUrl}/equipment';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (category != null && category.isNotEmpty) {
+        params.add('category=$category');
+      }
+      if (condition != null && condition.isNotEmpty) {
+        params.add('condition=$condition');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'EQUIPMENT_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'EQUIPMENT_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        print('🔍 [EQUIPMENT_SERVICE] Status 200, début du parsing...');
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        print('🔍 [EQUIPMENT_SERVICE] Parsing de la réponse paginée...');
+        print('🔍 [EQUIPMENT_SERVICE] Structure JSON: ${data.keys.toList()}');
+        print(
+          '🔍 [EQUIPMENT_SERVICE] Type de data: ${data['data']?.runtimeType}',
+        );
+        if (data['data'] is List) {
+          print(
+            '🔍 [EQUIPMENT_SERVICE] data est une List avec ${(data['data'] as List).length} éléments',
+          );
+        }
+
+        try {
+          final paginatedResponse = PaginationHelper.parseResponse<Equipment>(
+            json: data,
+            fromJsonT: (json) {
+              print(
+                '🔍 [EQUIPMENT_SERVICE] Parsing d\'un équipement depuis pagination...',
+              );
+              try {
+                return Equipment.fromJson(json);
+              } catch (e, stackTrace) {
+                print(
+                  '❌ [EQUIPMENT_SERVICE] Erreur lors du parsing d\'un équipement: $e',
+                );
+                print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+                print('❌ [EQUIPMENT_SERVICE] JSON: $json');
+                rethrow;
+              }
+            },
+          );
+
+          print(
+            '🔍 [EQUIPMENT_SERVICE] Réponse paginée parsée: ${paginatedResponse.data.length} équipements',
+          );
+          if (paginatedResponse.data.isNotEmpty) {
+            print(
+              '🔍 [EQUIPMENT_SERVICE] Premier équipement: ${paginatedResponse.data.first.name}, status: ${paginatedResponse.data.first.status}',
+            );
+          } else {
+            print(
+              '⚠️ [EQUIPMENT_SERVICE] ATTENTION: La réponse paginée contient 0 équipements!',
+            );
+          }
+
+          return paginatedResponse;
+        } catch (e, stackTrace) {
+          print(
+            '❌ [EQUIPMENT_SERVICE] Erreur dans PaginationHelper.parseResponse: $e',
+          );
+          print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+          // Si le parsing échoue, essayer de parser manuellement
+          if (data.containsKey('data') && data['data'] is List) {
+            print('🔄 [EQUIPMENT_SERVICE] Tentative de parsing manuel...');
+            final dataList = data['data'] as List;
+            final equipments = <Equipment>[];
+            for (var item in dataList) {
+              try {
+                if (item is Map<String, dynamic>) {
+                  equipments.add(Equipment.fromJson(item));
+                }
+              } catch (e) {
+                print(
+                  '⚠️ [EQUIPMENT_SERVICE] Erreur lors du parsing manuel d\'un équipement: $e',
+                );
+              }
+            }
+            print(
+              '🔄 [EQUIPMENT_SERVICE] Parsing manuel: ${equipments.length} équipements parsés',
+            );
+            return PaginationResponse<Equipment>(
+              data: equipments,
+              meta: PaginationMeta(
+                currentPage: 1,
+                lastPage: 1,
+                perPage: equipments.length,
+                total: equipments.length,
+                path: '',
+              ),
+            );
+          }
+          rethrow;
+        }
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des équipements: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getEquipmentsPaginated: $e',
+        tag: 'EQUIPMENT_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   // Récupérer tous les équipements
   Future<List<Equipment>> getEquipments({
@@ -38,6 +198,13 @@ class EquipmentService {
 
       if (response.statusCode == 200) {
         final decodedBody = json.decode(response.body);
+
+        print(
+          '🔍 [EQUIPMENT_SERVICE] Réponse brute (premiers 500 caractères): ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
+        );
+        print(
+          '🔍 [EQUIPMENT_SERVICE] Type de decodedBody: ${decodedBody.runtimeType}',
+        );
 
         // Gérer différents formats de réponse
         List<dynamic> data = [];
@@ -94,14 +261,40 @@ class EquipmentService {
 
         // Parser les équipements
         final equipments = <Equipment>[];
+        print(
+          '🔍 [EQUIPMENT_SERVICE] Nombre d\'éléments à parser: ${data.length}',
+        );
         for (var item in data) {
           try {
             if (item is Map<String, dynamic>) {
-              equipments.add(Equipment.fromJson(item));
+              // Debug: Afficher le statut brut du JSON
+              final rawStatus = item['status'];
+              print(
+                '🔍 [EQUIPMENT_SERVICE] Équipement "${item['name']}": status brut = $rawStatus (type: ${rawStatus.runtimeType})',
+              );
+
+              final equipment = Equipment.fromJson(item);
+              print(
+                '🔍 [EQUIPMENT_SERVICE] Équipement "${equipment.name}": status parsé = "${equipment.status}"',
+              );
+              equipments.add(equipment);
             }
-          } catch (e) {
+          } catch (e, stackTrace) {
+            print(
+              '❌ [EQUIPMENT_SERVICE] Erreur lors du parsing d\'un équipement: $e',
+            );
+            print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+            print('❌ [EQUIPMENT_SERVICE] Item: $item');
             // Ignorer les éléments invalides mais continuer
           }
+        }
+
+        print(
+          '🔍 [EQUIPMENT_SERVICE] Nombre d\'équipements parsés: ${equipments.length}',
+        );
+        if (equipments.isNotEmpty) {
+          final allStatuses = equipments.map((e) => e.status).toSet();
+          print('🔍 [EQUIPMENT_SERVICE] Tous les statuts parsés: $allStatuses');
         }
 
         return equipments;
@@ -143,6 +336,11 @@ class EquipmentService {
     try {
       final token = storage.read('token');
 
+      print(
+        '📤 [EQUIPMENT_SERVICE] Envoi de la requête POST vers $baseUrl/equipment-create',
+      );
+      print('📤 [EQUIPMENT_SERVICE] Données: ${equipment.toJson()}');
+
       final response = await http.post(
         Uri.parse('$baseUrl/equipment-create'),
         headers: {
@@ -151,6 +349,13 @@ class EquipmentService {
           'Authorization': 'Bearer $token',
         },
         body: json.encode(equipment.toJson()),
+      );
+
+      print(
+        '📥 [EQUIPMENT_SERVICE] Réponse reçue: Status ${response.statusCode}',
+      );
+      print(
+        '📥 [EQUIPMENT_SERVICE] Body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -169,12 +374,72 @@ class EquipmentService {
           throw Exception('Format de réponse inattendu pour la création');
         }
 
+        print(
+          '✅ [EQUIPMENT_SERVICE] Équipement créé avec succès: ID ${equipmentData['id']}',
+        );
         return Equipment.fromJson(equipmentData);
       }
+
+      // Gérer les erreurs 500 - vérifier si l'équipement a quand même été créé
+      if (response.statusCode == 500) {
+        print(
+          '⚠️ [EQUIPMENT_SERVICE] Erreur 500 détectée, vérification si équipement créé...',
+        );
+        try {
+          final errorBody = json.decode(response.body);
+          print('📋 [EQUIPMENT_SERVICE] Body de l\'erreur: $errorBody');
+
+          // Chercher un ID dans la réponse d'erreur
+          int? equipmentId;
+          if (errorBody is Map) {
+            // Essayer différents chemins pour trouver l'ID
+            if (errorBody['data'] != null && errorBody['data'] is Map) {
+              final data = errorBody['data'] as Map<String, dynamic>;
+              if (data['equipment'] != null && data['equipment'] is Map) {
+                equipmentId = data['equipment']['id'] as int?;
+              } else if (data['id'] != null) {
+                equipmentId = data['id'] as int?;
+              }
+            } else if (errorBody['equipment'] != null &&
+                errorBody['equipment'] is Map) {
+              equipmentId = errorBody['equipment']['id'] as int?;
+            } else if (errorBody['id'] != null) {
+              equipmentId = errorBody['id'] as int?;
+            }
+          }
+
+          if (equipmentId != null) {
+            print(
+              '✅ [EQUIPMENT_SERVICE] ID trouvé dans l\'erreur 500: $equipmentId',
+            );
+            // Construire un équipement avec l'ID trouvé
+            final equipmentData = equipment.toJson();
+            equipmentData['id'] = equipmentId;
+            equipmentData['created_at'] = DateTime.now().toIso8601String();
+            equipmentData['updated_at'] = DateTime.now().toIso8601String();
+
+            print(
+              '✅ [EQUIPMENT_SERVICE] Équipement retourné malgré l\'erreur 500: ID $equipmentId',
+            );
+            return Equipment.fromJson(equipmentData);
+          } else {
+            print('❌ [EQUIPMENT_SERVICE] Aucun ID trouvé dans l\'erreur 500');
+          }
+        } catch (e) {
+          print(
+            '⚠️ [EQUIPMENT_SERVICE] Erreur lors de l\'analyse de l\'erreur 500: $e',
+          );
+        }
+      }
+
+      print(
+        '❌ [EQUIPMENT_SERVICE] Erreur ${response.statusCode}: ${response.body}',
+      );
       throw Exception(
         'Erreur lors de la création de l\'équipement: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
+      print('❌ [EQUIPMENT_SERVICE] Exception capturée: $e');
       throw Exception('Erreur lors de la création de l\'équipement: $e');
     }
   }

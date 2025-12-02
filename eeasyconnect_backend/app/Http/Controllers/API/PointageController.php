@@ -7,6 +7,7 @@ use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Pointage;
 use App\Models\User;
+use App\Http\Resources\PointageResource;
 use Carbon\Carbon;
 
 class PointageController extends Controller
@@ -18,7 +19,17 @@ class PointageController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Pointage::with('user');
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Pointage::with('user');
         
         // Filtrage par utilisateur si fourni
         if ($request->has('user_id')) {
@@ -41,15 +52,37 @@ class PointageController extends Controller
         
         // Si RH → peut voir tous les pointages
         // Si Technicien → ne peut voir que ses propres pointages
-        if (auth()->user()->isTechnicien()) {
-            $query->where('user_id', auth()->id());
+        if ($user->isTechnicien()) {
+            $query->where('user_id', $user->id);
         }
         
-        $pointages = $query->orderBy('date_pointage', 'desc')->get();
+        $perPage = $request->get('per_page', 15);
+        $pointages = $query->orderBy('date_pointage', 'desc')->paginate($perPage);
         
         return response()->json([
             'success' => true,
-            'pointages' => $pointages,
+            'data' => PointageResource::collection($pointages->items()),
+            'pagination' => [
+                'current_page' => $pointages->currentPage(),
+                'last_page' => $pointages->lastPage(),
+                'per_page' => $pointages->perPage(),
+                'total' => $pointages->total(),
+            ],
+            'message' => 'Liste des pointages récupérée avec succès'
+        ], 200);
+        
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des pointages: ' . $e->getMessage()
+            ], 500);
+        }
+            'pagination' => [
+                'current_page' => $pointages->currentPage(),
+                'last_page' => $pointages->lastPage(),
+                'per_page' => $pointages->perPage(),
+                'total' => $pointages->total(),
+            ],
             'message' => 'Liste des pointages récupérée avec succès'
         ]);
     }
@@ -72,7 +105,7 @@ class PointageController extends Controller
         
         return response()->json([
             'success' => true,
-            'pointage' => $pointage,
+            'data' => new PointageResource($pointage),
             'message' => 'Pointage récupéré avec succès'
         ]);
     }

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DevisValidationPage extends StatefulWidget {
   const DevisValidationPage({super.key});
@@ -129,7 +130,7 @@ class _DevisValidationPageState extends State<DevisValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildDevisList(),
             ),
           ),
@@ -282,7 +283,17 @@ class _DevisValidationPageState extends State<DevisValidationPage>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                ...devis.items.map((item) => _buildItemDetails(item)),
+                if (devis.items.isEmpty)
+                  const Text('Aucun article')
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: devis.items.length,
+                    itemBuilder: (context, index) {
+                      return _buildItemDetails(devis.items[index]);
+                    },
+                  ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -485,8 +496,14 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     }
   }
 
-  Color _getStatusColor(int status) {
-    switch (status) {
+  Color _getStatusColor(int? status) {
+    // Traiter null ou 0 comme "En attente" (1)
+    final normalizedStatus = status ?? 1;
+    if (normalizedStatus == 0) {
+      return Colors.orange;
+    }
+
+    switch (normalizedStatus) {
       case 1: // En attente
         return Colors.orange;
       case 2: // Validé
@@ -498,8 +515,14 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     }
   }
 
-  IconData _getStatusIcon(int status) {
-    switch (status) {
+  IconData _getStatusIcon(int? status) {
+    // Traiter null ou 0 comme "En attente" (1)
+    final normalizedStatus = status ?? 1;
+    if (normalizedStatus == 0) {
+      return Icons.pending;
+    }
+
+    switch (normalizedStatus) {
       case 1: // En attente
         return Icons.pending;
       case 2: // Validé
@@ -511,8 +534,14 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     }
   }
 
-  String _getStatusText(int status) {
-    switch (status) {
+  String _getStatusText(int? status) {
+    // Traiter null ou 0 comme "En attente" (1)
+    final normalizedStatus = status ?? 1;
+    if (normalizedStatus == 0) {
+      return 'En attente';
+    }
+
+    switch (normalizedStatus) {
       case 1: // En attente
         return 'En attente';
       case 2: // Validé
@@ -531,11 +560,12 @@ class _DevisValidationPageState extends State<DevisValidationPage>
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.acceptDevis(devis.id!);
-        // Ne pas recharger immédiatement - le contrôleur gère déjà la mise à jour optimiste
-        // et rechargera en arrière-plan après succès
+        await controller.acceptDevis(devis.id!);
+        // Recharger la liste après validation pour voir le changement de statut
+        await Future.delayed(const Duration(milliseconds: 800));
+        _loadDevis();
       },
     );
   }

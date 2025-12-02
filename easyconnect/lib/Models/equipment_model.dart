@@ -72,8 +72,36 @@ class Equipment {
 
     // Helper function pour normaliser le statut
     String _normalizeStatus(dynamic statusValue) {
-      if (statusValue == null) return 'active';
+      print('🔍 [EQUIPMENT_MODEL] Normalisation du statut: $statusValue (type: ${statusValue.runtimeType})');
+      
+      if (statusValue == null) {
+        print('⚠️ [EQUIPMENT_MODEL] Statut null, utilisation de "active" par défaut');
+        return 'active';
+      }
+      
+      // Si c'est un entier, mapper vers les valeurs de statut
+      if (statusValue is int) {
+        print('🔍 [EQUIPMENT_MODEL] Statut est un entier: $statusValue');
+        final intStatusMap = {
+          1: 'active',
+          0: 'inactive',
+          2: 'maintenance',
+          3: 'broken',
+          4: 'retired',
+          5: 'pending',
+        };
+        if (intStatusMap.containsKey(statusValue)) {
+          final normalized = intStatusMap[statusValue]!;
+          print('✅ [EQUIPMENT_MODEL] Statut entier $statusValue mappé vers "$normalized"');
+          return normalized;
+        }
+        print('⚠️ [EQUIPMENT_MODEL] Statut entier $statusValue non reconnu, utilisation de "active" par défaut');
+        return 'active';
+      }
+      
       final statusStr = statusValue.toString().toLowerCase().trim();
+      print('🔍 [EQUIPMENT_MODEL] Statut en string: "$statusStr"');
+      
       // Mapper les libellés français vers les valeurs anglaises
       final statusMap = {
         'actif': 'active',
@@ -88,7 +116,9 @@ class Equipment {
       };
       // Vérifier si c'est un libellé français
       if (statusMap.containsKey(statusStr)) {
-        return statusMap[statusStr]!;
+        final normalized = statusMap[statusStr]!;
+        print('✅ [EQUIPMENT_MODEL] Statut français "$statusStr" mappé vers "$normalized"');
+        return normalized;
       }
       // Vérifier si c'est déjà une valeur valide
       if ([
@@ -100,8 +130,10 @@ class Equipment {
         'pending',
         'en_attente',
       ].contains(statusStr)) {
+        print('✅ [EQUIPMENT_MODEL] Statut "$statusStr" est déjà valide');
         return statusStr;
       }
+      print('⚠️ [EQUIPMENT_MODEL] Statut "$statusStr" non reconnu, utilisation de "active" par défaut');
       return 'active'; // Valeur par défaut
     }
 

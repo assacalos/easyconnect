@@ -30,6 +30,14 @@ class StockController extends GetxController {
   final RxBool sortAscending = true.obs;
   String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Variables pour le formulaire
   final TextEditingController nameController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
@@ -178,41 +186,77 @@ class StockController extends GetxController {
   }
 
   // Charger les stocks
-  Future<void> loadStocks({String? statusFilter}) async {
+  Future<void> loadStocks({String? statusFilter, int page = 1}) async {
     try {
       isLoading.value = true;
       _currentStatusFilter = statusFilter; // Mémoriser le filtre actuel
-      AppLogger.info('Chargement des stocks', tag: 'STOCK_CONTROLLER');
-
-      // Charger tous les stocks depuis l'API directement
-      // (on ne teste plus la connectivité car ça peut échouer même si l'API fonctionne)
-      final loadedStocks = await _stockService.getStocks(
-        search: null, // Pas de recherche côté serveur
-        category: null, // Pas de filtre côté serveur
-        status: null, // Pas de filtre côté serveur
-      );
-      // Stocker tous les stocks
-      allStocks.assignAll(loadedStocks);
-
-      // Copier tous les stocks dans la liste filtrée par défaut
-      // Le filtrage par onglet se fait dans la vue
-      stocks.assignAll(loadedStocks);
-
       AppLogger.info(
-        '${loadedStocks.length} stocks chargés avec succès',
+        'Chargement des stocks - Page $page',
         tag: 'STOCK_CONTROLLER',
       );
 
-      // Afficher un message de succès si des stocks sont trouvés
-      if (loadedStocks.isNotEmpty) {
-        Get.snackbar(
-          'Succès',
-          '${loadedStocks.length} stocks chargés avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 2),
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _stockService.getStocksPaginated(
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          category:
+              selectedCategoryFilter.value != 'all'
+                  ? selectedCategoryFilter.value
+                  : null,
+          status:
+              statusFilter != null && statusFilter != 'all'
+                  ? statusFilter
+                  : null,
+          page: page,
+          perPage: perPage.value,
         );
+
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          allStocks.value = paginatedResponse.data;
+          stocks.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          allStocks.addAll(paginatedResponse.data);
+          stocks.addAll(paginatedResponse.data);
+        }
+
+        AppLogger.info(
+          '${paginatedResponse.data.length} stocks chargés (Page $page/${paginatedResponse.meta.lastPage})',
+          tag: 'STOCK_CONTROLLER',
+        );
+
+        // Afficher un message de succès si des stocks sont trouvés (seulement page 1)
+        if (paginatedResponse.data.isNotEmpty && page == 1) {
+          Get.snackbar(
+            'Succès',
+            '${paginatedResponse.data.length} stocks chargés avec succès',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 2),
+          );
+        }
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        AppLogger.warning(
+          'Erreur avec pagination, fallback vers méthode classique: $e',
+          tag: 'STOCK_CONTROLLER',
+        );
+        final loadedStocks = await _stockService.getStocks(
+          search: null,
+          category: null,
+          status: null,
+        );
+        allStocks.assignAll(loadedStocks);
+        stocks.assignAll(loadedStocks);
       }
     } catch (e) {
       // Vider la liste des stocks en cas d'erreur

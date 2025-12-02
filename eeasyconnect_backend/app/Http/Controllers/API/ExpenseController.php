@@ -9,6 +9,7 @@ use App\Models\ExpenseCategory;
 use App\Models\ExpenseApproval;
 use App\Models\ExpenseBudget;
 use App\Models\User;
+use App\Http\Resources\ExpenseResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +24,14 @@ class ExpenseController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Expense::with(['expenseCategory', 'employee', 'comptable', 'approvals.approver']);
 
             // Filtrage par statut
@@ -39,18 +48,15 @@ class ExpenseController extends Controller
             $perPage = $request->get('per_page', 15);
             $expenses = $query->orderBy('expense_date', 'desc')->paginate($perPage);
 
-            // Formater les dépenses pour le frontend
-            $expenses->getCollection()->transform(function ($expense) {
-                return $this->formatExpenseForFrontend($expense);
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $expenses->items(),
-                'current_page' => $expenses->currentPage(),
-                'last_page' => $expenses->lastPage(),
-                'per_page' => $expenses->perPage(),
-                'total' => $expenses->total(),
+                'data' => ExpenseResource::collection($expenses->items()),
+                'pagination' => [
+                    'current_page' => $expenses->currentPage(),
+                    'last_page' => $expenses->lastPage(),
+                    'per_page' => $expenses->perPage(),
+                    'total' => $expenses->total(),
+                ],
                 'message' => 'Liste des dépenses récupérée avec succès'
             ]);
 
@@ -189,7 +195,7 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatExpenseForFrontend($expense->load(['expenseCategory', 'employee'])),
+                'data' => new ExpenseResource($expense->load(['expenseCategory', 'employee', 'comptable', 'approvals.approver'])),
                 'message' => 'Dépense créée avec succès'
             ], 201);
 
@@ -277,7 +283,7 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatExpenseForFrontend($expense),
+                'data' => new ExpenseResource($expense),
                 'message' => 'Dépense récupérée avec succès'
             ]);
 
@@ -322,7 +328,7 @@ class ExpenseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatExpenseForFrontend($expense->load(['expenseCategory', 'employee'])),
+                'data' => new ExpenseResource($expense->load(['expenseCategory', 'employee', 'comptable', 'approvals.approver'])),
                 'message' => 'Dépense mise à jour avec succès'
             ]);
 

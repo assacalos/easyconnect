@@ -13,6 +13,7 @@ import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
+import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
@@ -30,6 +31,8 @@ class CommercialDashboardController extends BaseDashboardController {
   final DevisService _devisService = Get.find<DevisService>();
   final BordereauService _bordereauService = Get.find<BordereauService>();
   final BonCommandeService _bonCommandeService = Get.find<BonCommandeService>();
+  final BonDeCommandeFournisseurService _bonCommandeFournisseurService =
+      Get.find<BonDeCommandeFournisseurService>();
   final InvoiceService _invoiceService = Get.find<InvoiceService>();
 
   List<Filter> get filters =>
@@ -46,7 +49,8 @@ class CommercialDashboardController extends BaseDashboardController {
   final pendingClients = 0.obs;
   final pendingDevis = 0.obs;
   final pendingBordereaux = 0.obs;
-  final pendingBonCommandes = 0.obs;
+  final pendingBonCommandes = 0.obs; // Bons de commande entreprise
+  final pendingBonCommandesFournisseur = 0.obs; // Bons de commande fournisseur
 
   // Deuxième partie - Entités validées
   final validatedClients = 0.obs;
@@ -360,6 +364,7 @@ class CommercialDashboardController extends BaseDashboardController {
         _devisService.getDevis(),
         _bordereauService.getBordereaux(),
         _bonCommandeService.getBonCommandes(),
+        _bonCommandeFournisseurService.getBonDeCommandes(),
       ], eagerError: false);
 
       final clients = results[0] as List;
@@ -385,19 +390,36 @@ class CommercialDashboardController extends BaseDashboardController {
         pendingBordereauxCount,
       );
 
+      // Bons de commande entreprise (status 1 = en attente)
       final bonCommandes = results[3] as List;
       final pendingBonCommandesCount =
-          bonCommandes.where((bc) => bc.status == 0).length;
+          bonCommandes.where((bc) => bc.status == 1).length;
       pendingBonCommandes.value = pendingBonCommandesCount;
       CacheHelper.set(
         'dashboard_commercial_pendingBonCommandes',
         pendingBonCommandesCount,
+      );
+
+      // Bons de commande fournisseur (statut 'en_attente' ou 'pending')
+      final bonCommandesFournisseur = results[4] as List;
+      final pendingBonCommandesFournisseurCount = bonCommandesFournisseur
+          .where((bc) {
+            final statut = bc.statut?.toString().toLowerCase().trim() ?? '';
+            return statut == 'en_attente' || statut == 'pending';
+          })
+          .length;
+      pendingBonCommandesFournisseur.value =
+          pendingBonCommandesFournisseurCount;
+      CacheHelper.set(
+        'dashboard_commercial_pendingBonCommandesFournisseur',
+        pendingBonCommandesFournisseurCount,
       );
     } catch (e) {
       pendingClients.value = 0;
       pendingDevis.value = 0;
       pendingBordereaux.value = 0;
       pendingBonCommandes.value = 0;
+      pendingBonCommandesFournisseur.value = 0;
     }
   }
 

@@ -3,16 +3,38 @@
 namespace App\Traits;
 
 use App\Models\Notification;
+use App\Jobs\SendNotificationJob;
 
 trait SendsNotifications
 {
     /**
-     * Créer une notification
+     * Créer une notification (via queue job pour performance)
+     * 
+     * @param array $data
+     * @param bool $sync Si true, crée la notification de manière synchrone (pour les cas critiques)
+     * @return Notification|null
+     */
+    protected function createNotification(array $data, bool $sync = false)
+    {
+        if ($sync) {
+            // Création synchrone pour les cas critiques
+            return $this->createNotificationSync($data);
+        }
+
+        // Dispatch le job en arrière-plan pour améliorer les performances
+        SendNotificationJob::dispatch($data);
+
+        // Retourner null car la notification sera créée de manière asynchrone
+        return null;
+    }
+
+    /**
+     * Créer une notification de manière synchrone (pour les cas critiques)
      * 
      * @param array $data
      * @return Notification
      */
-    protected function createNotification(array $data)
+    protected function createNotificationSync(array $data)
     {
         // Préparer les données pour la création
         $notificationData = [

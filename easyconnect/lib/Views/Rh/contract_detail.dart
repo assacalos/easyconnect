@@ -367,7 +367,14 @@ class ContractDetail extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             if (contract.history?.isNotEmpty == true) ...[
-              ...contract.history!.map((entry) => _buildHistoryEntry(entry)),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: contract.history!.length,
+                itemBuilder: (context, index) {
+                  return _buildHistoryEntry(contract.history![index]);
+                },
+              ),
             ] else ...[
               Text(
                 'Aucun historique disponible',

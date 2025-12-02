@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/equipment_model.dart';
 import 'package:easyconnect/Views/Technicien/equipment_form.dart';
 import 'package:easyconnect/Views/Technicien/equipment_detail.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class EquipmentList extends StatelessWidget {
   const EquipmentList({super.key});
@@ -67,15 +68,43 @@ class EquipmentList extends StatelessWidget {
     return Obx(() {
       // Filtrer les équipements par statut (normaliser pour la comparaison)
       final normalizedStatus = status.toLowerCase().trim();
+      
+      // Debug: Afficher tous les statuts des équipements
+      print('🔍 [EQUIPMENT_LIST] ===== _buildEquipmentTab REBUILD =====');
+      print('🔍 [EQUIPMENT_LIST] Statut recherché: "$status" (normalisé: "$normalizedStatus")');
+      print('🔍 [EQUIPMENT_LIST] isLoading: ${controller.isLoading.value}');
+      print('🔍 [EQUIPMENT_LIST] Nombre total d\'équipements dans controller.equipments: ${controller.equipments.length}');
+      print('🔍 [EQUIPMENT_LIST] HashCode du controller: ${controller.hashCode}');
+      
+      if (controller.equipments.isNotEmpty) {
+        final allStatuses = controller.equipments.map((e) => e.status).toSet();
+        print('🔍 [EQUIPMENT_LIST] Tous les statuts trouvés: $allStatuses');
+        print('🔍 [EQUIPMENT_LIST] Recherche du statut: "$normalizedStatus"');
+        
+        // Afficher tous les équipements avec leurs statuts
+        for (var eq in controller.equipments) {
+          print('🔍 [EQUIPMENT_LIST] Équipement dans liste: "${eq.name}", status="${eq.status}", status.toLowerCase()="${eq.status.toLowerCase()}"');
+        }
+      } else {
+        print('⚠️ [EQUIPMENT_LIST] La liste d\'équipements est VIDE!');
+      }
+      
       final equipments =
           controller.equipments.where((equipment) {
             // Normaliser le statut de l'équipement pour la comparaison
             final equipmentStatus = equipment.status.toLowerCase().trim();
-            return equipmentStatus == normalizedStatus;
+            final matches = equipmentStatus == normalizedStatus;
+            
+            // Debug pour chaque équipement
+            print('🔍 [EQUIPMENT_LIST] Filtrage - Équipement "${equipment.name}": status="$equipmentStatus" (recherché: "$normalizedStatus") -> $matches');
+            
+            return matches;
           }).toList();
+      
+      print('🔍 [EQUIPMENT_LIST] Équipements filtrés pour "$normalizedStatus": ${equipments.length}');
 
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       if (equipments.isEmpty) {

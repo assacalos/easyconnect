@@ -2,6 +2,7 @@ import 'package:easyconnect/Controllers/userController.dart';
 import 'package:easyconnect/Views/Users/user_form.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class UserPage extends StatelessWidget {
   final UserController controller = Get.put(UserController());
@@ -20,7 +21,7 @@ class UserPage extends StatelessWidget {
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return Center(child: CircularProgressIndicator());
+          return const SkeletonSearchResults(itemCount: 6);
         }
         if (controller.users.isEmpty) {
           return Center(child: Text("Aucun utilisateur trouvé"));

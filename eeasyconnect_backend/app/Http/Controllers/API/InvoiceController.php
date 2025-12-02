@@ -8,6 +8,7 @@ use App\Models\InvoiceItem;
 use App\Models\InvoiceTemplate;
 use App\Models\Client;
 use App\Models\User;
+use App\Http\Resources\InvoiceResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -21,6 +22,14 @@ class InvoiceController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Invoice::with(['client', 'commercial', 'items']);
 
             // Filtrage par statut
@@ -56,50 +65,15 @@ class InvoiceController extends Controller
             $perPage = $request->get('per_page', 15);
             $invoices = $query->orderBy('invoice_date', 'desc')->paginate($perPage);
 
-            // Ajouter les informations client et commercial
-            $invoices->getCollection()->transform(function ($invoice) {
-                return [
-                    'id' => $invoice->id,
-                    'invoice_number' => $invoice->invoice_number,
-                    'client_id' => $invoice->client_id,
-                    'client_name' => $invoice->client_name,
-                    'client_email' => $invoice->client_email,
-                    'client_address' => $invoice->client_address,
-                    'commercial_id' => $invoice->commercial_id,
-                    'commercial_name' => $invoice->commercial_name,
-                    'invoice_date' => $invoice->invoice_date->format('Y-m-d'),
-                    'due_date' => $invoice->due_date->format('Y-m-d'),
-                    'status' => $invoice->status,
-                    'subtotal' => $invoice->subtotal,
-                    'tax_rate' => $invoice->tax_rate,
-                    'tax_amount' => $invoice->tax_amount,
-                    'total_amount' => $invoice->total_amount,
-                    'currency' => $invoice->currency,
-                    'notes' => $invoice->notes,
-                    'terms' => $invoice->terms,
-                    'payment_info' => $invoice->payment_info,
-                    'items' => $invoice->items->map(function ($item) {
-                        return [
-                            'id' => $item->id,
-                            'description' => $item->description,
-                            'quantity' => $item->quantity,
-                            'unit_price' => $item->unit_price,
-                            'total_price' => $item->total_price,
-                            'unit' => $item->unit,
-                        ];
-                    }),
-                    'sent_at' => $invoice->sent_at?->format('Y-m-d H:i:s'),
-                    'paid_at' => $invoice->paid_at?->format('Y-m-d H:i:s'),
-                    'is_overdue' => $invoice->is_overdue,
-                    'days_until_due' => $invoice->days_until_due,
-                    'created_at' => $invoice->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $invoice->updated_at->format('Y-m-d H:i:s'),
-                ];
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $invoices,
+                'data' => InvoiceResource::collection($invoices->items()),
+                'pagination' => [
+                    'current_page' => $invoices->currentPage(),
+                    'last_page' => $invoices->lastPage(),
+                    'per_page' => $invoices->perPage(),
+                    'total' => $invoices->total(),
+                ],
                 'message' => 'Liste des factures récupérée avec succès'
             ]);
 

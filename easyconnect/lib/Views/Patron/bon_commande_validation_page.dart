@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/services/pdf_service.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonCommandeValidationPage extends StatefulWidget {
   const BonCommandeValidationPage({super.key});
@@ -130,7 +131,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildBonCommandeList(),
             ),
           ),
@@ -266,18 +267,28 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                           'Liste des fichiers:',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        ...bonCommande.fichiers.map(
-                          (fichier) => Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.attach_file, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(fichier)),
-                              ],
-                            ),
+                        if (bonCommande.fichiers.isEmpty)
+                          const Text('Aucun fichier')
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: bonCommande.fichiers.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.attach_file, size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(bonCommande.fichiers[index]),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
-                        ),
                       ],
                     ],
                   ),

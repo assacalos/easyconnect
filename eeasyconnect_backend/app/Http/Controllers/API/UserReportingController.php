@@ -6,6 +6,7 @@ use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
 use App\Models\Reporting;
 use App\Models\User;
+use App\Http\Resources\ReportingResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -20,6 +21,14 @@ class UserReportingController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = Reporting::with(['user', 'approver']);
 
             // Filtrage par statut
@@ -50,35 +59,15 @@ class UserReportingController extends Controller
             $perPage = $request->get('per_page', 15);
             $reportings = $query->orderBy('report_date', 'desc')->paginate($perPage);
 
-            // Ajouter les informations utilisateur et les notes
-            $reportings->getCollection()->transform(function ($reporting) use ($user) {
-                $data = [
-                    'id' => $reporting->id,
-                    'user_id' => $reporting->user_id,
-                    'user_name' => $reporting->user_name,
-                    'user_role' => $reporting->user_role,
-                    'report_date' => $reporting->report_date?->format('Y-m-d'),
-                    'metrics' => $reporting->metrics,
-                    'notes' => $reporting->getAllNotes(), // Inclure toutes les notes
-                    'status' => $reporting->status,
-                    'submitted_at' => $reporting->submitted_at?->format('Y-m-d H:i:s'),
-                    'approved_at' => $reporting->approved_at?->format('Y-m-d H:i:s'),
-                    'comments' => $reporting->comments,
-                    'created_at' => $reporting->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $reporting->updated_at->format('Y-m-d H:i:s'),
-                ];
-                
-                // Ajouter patron_note uniquement pour Patron et Admin
-                if (in_array($user->role, [1, 6])) {
-                    $data['patron_note'] = $reporting->patron_note;
-                }
-                
-                return $data;
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $reportings,
+                'data' => ReportingResource::collection($reportings->items()),
+                'pagination' => [
+                    'current_page' => $reportings->currentPage(),
+                    'last_page' => $reportings->lastPage(),
+                    'per_page' => $reportings->perPage(),
+                    'total' => $reportings->total(),
+                ],
                 'message' => 'Liste des reportings récupérée avec succès'
             ]);
 
@@ -93,7 +82,7 @@ class UserReportingController extends Controller
     /**
      * Afficher un reporting spécifique
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
             $reporting = Reporting::with(['user', 'approver'])->find($id);
@@ -105,32 +94,9 @@ class UserReportingController extends Controller
                 ], 404);
             }
 
-            $user = $request->user();
-            
-            $data = [
-                'id' => $reporting->id,
-                'user_id' => $reporting->user_id,
-                'user_name' => $reporting->user_name,
-                'user_role' => $reporting->user_role,
-                'report_date' => $reporting->report_date?->format('Y-m-d'),
-                'metrics' => $reporting->metrics,
-                'notes' => $reporting->getAllNotes(), // Inclure toutes les notes
-                'status' => $reporting->status,
-                'submitted_at' => $reporting->submitted_at?->format('Y-m-d H:i:s'),
-                'approved_at' => $reporting->approved_at?->format('Y-m-d H:i:s'),
-                'comments' => $reporting->comments,
-                'created_at' => $reporting->created_at->format('Y-m-d H:i:s'),
-                'updated_at' => $reporting->updated_at->format('Y-m-d H:i:s'),
-            ];
-            
-            // Ajouter patron_note uniquement pour Patron et Admin
-            if (in_array($user->role, [1, 6])) {
-                $data['patron_note'] = $reporting->patron_note;
-            }
-
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => new ReportingResource($reporting),
                 'message' => 'Reporting récupéré avec succès'
             ]);
 
@@ -199,7 +165,7 @@ class UserReportingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $reporting->load(['user', 'approver']),
+                'data' => new ReportingResource($reporting->load(['user', 'approver'])),
                 'message' => 'Reporting créé et soumis avec succès'
             ], 201);
 
@@ -255,7 +221,7 @@ class UserReportingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $reporting->load(['user', 'approver']),
+                'data' => new ReportingResource($reporting->load(['user', 'approver'])),
                 'message' => 'Reporting mis à jour avec succès'
             ]);
 
@@ -290,7 +256,7 @@ class UserReportingController extends Controller
             if ($reporting->status === 'submitted') {
                 return response()->json([
                     'success' => true,
-                    'data' => $reporting->load(['user', 'approver']),
+                    'data' => new ReportingResource($reporting->load(['user', 'approver'])),
                     'message' => 'Ce reporting est déjà soumis (les reportings sont soumis automatiquement lors de leur création)'
                 ]);
             }
@@ -313,7 +279,7 @@ class UserReportingController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'data' => $reporting->load(['user', 'approver']),
+                    'data' => new ReportingResource($reporting->load(['user', 'approver'])),
                     'message' => 'Reporting soumis avec succès'
                 ]);
             } else {
@@ -368,7 +334,7 @@ class UserReportingController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'data' => $reporting->load(['user', 'approver']),
+                    'data' => new ReportingResource($reporting->load(['user', 'approver'])),
                     'message' => 'Reporting approuvé avec succès'
                 ]);
             } else {

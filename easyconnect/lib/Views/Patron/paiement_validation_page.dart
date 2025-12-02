@@ -5,6 +5,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaiementValidationPage extends StatefulWidget {
   const PaiementValidationPage({super.key});
@@ -125,14 +126,15 @@ class _PaiementValidationPageState extends State<PaiementValidationPage>
               },
             ),
           ),
-          // Contenu des onglets
+          // Contenu des onglets - Obx ciblé uniquement sur isLoading
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildPaymentList(),
-            ),
+            child: Obx(() {
+              if (controller.isLoading.value) {
+                return const SkeletonSearchResults(itemCount: 6);
+              }
+              // _buildPaymentList() contient son propre Obx pour la liste
+              return _buildPaymentList();
+            }),
           ),
         ],
       ),

@@ -2,10 +2,90 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/expense_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class ExpenseService {
   final storage = GetStorage();
+
+  /// Récupérer les dépenses avec pagination côté serveur
+  Future<PaginationResponse<Expense>> getExpensesPaginated({
+    String? status,
+    String? category,
+    String? search,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/expenses';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (category != null && category.isNotEmpty) {
+        params.add('category=$category');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Filtrer par userId pour les comptables (role 3)
+      if (userRole == 3 && userId != null) {
+        params.add('user_id=$userId');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'EXPENSE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'EXPENSE_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Expense>(
+          json: data,
+          fromJsonT: (json) => Expense.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des dépenses: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getExpensesPaginated: $e',
+        tag: 'EXPENSE_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   // Récupérer toutes les dépenses
   Future<List<Expense>> getExpenses({

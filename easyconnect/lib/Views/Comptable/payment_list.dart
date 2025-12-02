@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaymentList extends StatefulWidget {
   final int? clientId;
@@ -132,7 +133,7 @@ class _PaymentListState extends State<PaymentList>
             Expanded(
               child:
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _filteredPayments.isEmpty
                       ? const Center(child: Text('Aucun paiement trouvé'))
                       : ListView.builder(

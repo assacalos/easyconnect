@@ -3,11 +3,13 @@ import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/stock_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class StockService extends GetxService {
   static StockService get to => Get.find();
@@ -42,6 +44,73 @@ class StockService extends GetxService {
         stackTrace: stackTrace,
       );
       return false;
+    }
+  }
+
+  /// Récupérer les stocks avec pagination côté serveur
+  Future<PaginationResponse<Stock>> getStocksPaginated({
+    String? search,
+    String? category,
+    String? status,
+    int page = 1,
+    int perPage = 15,
+  }) async {
+    try {
+      final token = storage.read('token');
+      String url = '${AppConfig.baseUrl}/stocks';
+      List<String> params = [];
+
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      if (category != null && category.isNotEmpty) {
+        params.add('category=$category');
+      }
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'STOCK_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'STOCK_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Stock>(
+          json: data,
+          fromJsonT: (json) => Stock.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des stocks: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getStocksPaginated: $e',
+        tag: 'STOCK_SERVICE',
+      );
+      rethrow;
     }
   }
 

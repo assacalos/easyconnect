@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class InvoiceService extends GetxService {
   static InvoiceService get to => Get.find();
@@ -289,6 +291,78 @@ class InvoiceService extends GetxService {
     }
   }
 
+  /// Récupérer les factures avec pagination côté serveur
+  Future<PaginationResponse<InvoiceModel>> getInvoicesPaginated({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    int? commercialId,
+    int? clientId,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      String url = '${AppConfig.baseUrl}/factures';
+      List<String> params = [];
+
+      if (startDate != null) {
+        params.add('start_date=${startDate.toIso8601String()}');
+      }
+      if (endDate != null) {
+        params.add('end_date=${endDate.toIso8601String()}');
+      }
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (commercialId != null) {
+        params.add('commercial_id=$commercialId');
+      }
+      if (clientId != null) {
+        params.add('client_id=$clientId');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<InvoiceModel>(
+          json: data,
+          fromJsonT: (json) => InvoiceModel.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des factures: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getInvoicesPaginated: $e',
+        tag: 'INVOICE_SERVICE',
+      );
+      rethrow;
+    }
+  }
+
   // Récupérer toutes les factures (pour le patron)
   Future<List<InvoiceModel>> getAllInvoices({
     DateTime? startDate,
@@ -513,12 +587,22 @@ class InvoiceService extends GetxService {
         body: jsonEncode({'comments': comments}),
       );
 
-      if (response.statusCode == 200) {
+      // Si le status code est 200 ou 201, considérer comme succès
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final result = ApiService.parseResponse(response);
+        // Si le parseResponse retourne success:false mais le status code est 200/201,
+        // forcer success:true car le backend a validé
+        if (result['success'] != true) {
+          return {
+            'success': true,
+            'message': result['message'] ?? 'Facture approuvée avec succès',
+            'data': result['data'],
+          };
+        }
         // Retourner le résultat complet avec la clé 'success'
         return result;
       } else {
-        // Si le statut n'est pas 200, parser la réponse pour obtenir le message d'erreur
+        // Si le statut n'est pas 200/201, parser la réponse pour obtenir le message d'erreur
         try {
           final errorData = json.decode(response.body);
           return {

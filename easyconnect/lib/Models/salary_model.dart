@@ -85,7 +85,7 @@ class Salary {
         month: json['month']?.toString(),
         year:
             json['year'] != null ? int.tryParse(json['year'].toString()) : null,
-        status: json['status']?.toString() ?? 'pending',
+        status: _normalizeStatus(json['status']),
         notes: json['notes']?.toString(),
         createdAt:
             json['created_at'] != null
@@ -149,9 +149,50 @@ class Salary {
     };
   }
 
+  // Normaliser le statut pour gérer les variations de format
+  static String _normalizeStatus(dynamic statusValue) {
+    if (statusValue == null) {
+      return 'pending';
+    }
+    
+    // Si c'est un entier, mapper vers les valeurs de statut
+    if (statusValue is int) {
+      final intStatusMap = {
+        0: 'pending',
+        1: 'approved',
+        2: 'paid',
+        3: 'rejected',
+      };
+      return intStatusMap[statusValue] ?? 'pending';
+    }
+    
+    final statusStr = statusValue.toString().toLowerCase().trim();
+    
+    // Mapper les libellés français vers les valeurs anglaises
+    final statusMap = {
+      'en_attente': 'pending',
+      'en attente': 'pending',
+      'pending': 'pending',
+      'approuvé': 'approved',
+      'approuve': 'approved',
+      'approved': 'approved',
+      'validé': 'approved',
+      'valide': 'approved',
+      'payé': 'paid',
+      'paye': 'paid',
+      'paid': 'paid',
+      'rejeté': 'rejected',
+      'rejete': 'rejected',
+      'rejected': 'rejected',
+    };
+    
+    return statusMap[statusStr] ?? 'pending';
+  }
+
   // Méthodes utilitaires
   String get statusText {
-    switch (status) {
+    final normalizedStatus = _normalizeStatus(status);
+    switch (normalizedStatus) {
       case 'pending':
         return 'En attente';
       case 'approved':
@@ -161,12 +202,13 @@ class Salary {
       case 'rejected':
         return 'Rejeté';
       default:
-        return 'Inconnu';
+        return 'En attente'; // Par défaut, considérer comme "En attente" au lieu de "Inconnu"
     }
   }
 
   Color get statusColor {
-    switch (status) {
+    final normalizedStatus = _normalizeStatus(status);
+    switch (normalizedStatus) {
       case 'pending':
         return Colors.orange;
       case 'approved':
@@ -176,12 +218,13 @@ class Salary {
       case 'rejected':
         return Colors.red;
       default:
-        return Colors.grey;
+        return Colors.orange; // Par défaut, considérer comme "En attente"
     }
   }
 
   IconData get statusIcon {
-    switch (status) {
+    final normalizedStatus = _normalizeStatus(status);
+    switch (normalizedStatus) {
       case 'pending':
         return Icons.schedule;
       case 'approved':
@@ -191,7 +234,7 @@ class Salary {
       case 'rejected':
         return Icons.cancel;
       default:
-        return Icons.help;
+        return Icons.schedule; // Par défaut, considérer comme "En attente"
     }
   }
 

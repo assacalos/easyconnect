@@ -7,6 +7,7 @@ import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/services/location_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class AttendanceController extends GetxController {
   final AttendancePunchService _attendanceService = AttendancePunchService();
@@ -25,6 +26,15 @@ class AttendanceController extends GetxController {
       <AttendancePunchModel>[].obs;
   // final Rx<AttendanceStats?> attendanceStats = Rx<AttendanceStats?>(null);
   // final Rx<AttendanceSettings?> attendanceSettings = Rx<AttendanceSettings?>(null);
+
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+  final RxString searchQuery = ''.obs;
 
   // Variables pour le formulaire
   final TextEditingController notesController = TextEditingController();
@@ -46,40 +56,58 @@ class AttendanceController extends GetxController {
   }
 
   // Charger les données de pointage
-  Future<void> loadAttendanceData() async {
+  Future<void> loadAttendanceData({int page = 1}) async {
     try {
       isLoading.value = true;
 
       final user = _authController.userAuth.value;
       if (user == null) {
-        print('⚠️ [ATTENDANCE_CONTROLLER] Utilisateur non connecté');
         return;
       }
 
-      print(
-        '📋 [ATTENDANCE_CONTROLLER] Chargement des pointages pour utilisateur: ${user.id}, rôle: ${user.role}',
-      );
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _attendanceService
+            .getAttendancesPaginated(
+              userId: user.role == Roles.PATRON ? null : user.id,
+              page: page,
+              perPage: perPage.value,
+              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+            );
 
-      // Charger l'historique de pointage
-      // Si c'est un patron, charger tous les pointages, sinon seulement ceux de l'utilisateur
-      final history =
-          user.role == Roles.PATRON
-              ? await _attendanceService
-                  .getAttendances() // Tous les pointages pour le patron
-              : await _attendanceService.getAttendances(
-                userId: user.id,
-              ); // Pointages de l'utilisateur
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      print('📋 [ATTENDANCE_CONTROLLER] Pointages chargés: ${history.length}');
-
-      // Mettre à jour la liste observable (utiliser value pour déclencher la réactivité)
-      attendanceHistory.value = history;
+        // Mettre à jour la liste
+        if (page == 1) {
+          attendanceHistory.value = paginatedResponse.data;
+        } else {
+          attendanceHistory.addAll(paginatedResponse.data);
+        }
+      } catch (e, stackTrace) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        try {
+          final history =
+              user.role == Roles.PATRON
+                  ? await _attendanceService.getAttendances()
+                  : await _attendanceService.getAttendances(userId: user.id);
+          if (page == 1) {
+            attendanceHistory.value = history;
+          } else {
+            attendanceHistory.addAll(history);
+          }
+        } catch (fallbackError) {
+          rethrow;
+        }
+      }
 
       // Vérifier le statut actuel
       await checkCurrentStatus();
     } catch (e, stackTrace) {
-      print('❌ [ATTENDANCE_CONTROLLER] Erreur lors du chargement: $e');
-      print('❌ [ATTENDANCE_CONTROLLER] StackTrace: $stackTrace');
       /*  Get.snackbar(
         'Erreur',
         'Impossible de charger les données de pointage: $e',
@@ -87,6 +115,20 @@ class AttendanceController extends GetxController {
       ); */
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadAttendanceData(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadAttendanceData(page: currentPage.value - 1);
     }
   }
 

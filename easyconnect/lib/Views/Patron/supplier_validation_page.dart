@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class SupplierValidationPage extends StatefulWidget {
   const SupplierValidationPage({super.key});
@@ -41,23 +42,8 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
   }
 
   Future<void> _loadSuppliers() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = null; // Charger tous, filtrer côté client
-        break;
-      case 2: // Validés
-        status = 'valide';
-        break;
-      case 3: // Rejetés
-        status = 'rejete';
-        break;
-    }
-
-    controller.selectedStatus.value = status ?? 'all';
+    // Toujours charger tous les fournisseurs, le filtrage se fait côté client dans _buildSupplierList
+    controller.selectedStatus.value = 'all';
     await controller.loadSuppliers();
   }
 
@@ -129,52 +115,49 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
   Widget _buildSupplierList() {
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
-      List<Supplier> filteredSuppliers = controller.suppliers;
+      // Utiliser allSuppliers au lieu de suppliers pour avoir tous les fournisseurs
+      List<Supplier> filteredSuppliers = List.from(controller.allSuppliers);
 
       // Filtrer selon l'onglet actif
       switch (_tabController.index) {
         case 0: // Tous
-          filteredSuppliers = controller.suppliers;
+          filteredSuppliers = controller.allSuppliers;
           break;
         case 1: // En attente
           filteredSuppliers =
-              controller.suppliers
+              controller.allSuppliers
                   .where((supplier) => supplier.isPending)
                   .toList();
           break;
         case 2: // Validés
           filteredSuppliers =
-              controller.suppliers
+              controller.allSuppliers
                   .where((supplier) => supplier.isValidated)
                   .toList();
           break;
         case 3: // Rejetés
           filteredSuppliers =
-              controller.suppliers
+              controller.allSuppliers
                   .where((supplier) => supplier.isRejected)
                   .toList();
           break;
         default:
-          filteredSuppliers = controller.suppliers;
+          filteredSuppliers = controller.allSuppliers;
       }
-
-      // Filtrer par recherche
+      
+      // Appliquer aussi le filtre de recherche
       if (_searchQuery.isNotEmpty) {
-        filteredSuppliers =
-            filteredSuppliers
-                .where(
-                  (supplier) =>
-                      supplier.nom.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      supplier.email.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ),
-                )
-                .toList();
+        final query = _searchQuery.toLowerCase();
+        filteredSuppliers = filteredSuppliers.where((supplier) {
+          return supplier.nom.toLowerCase().contains(query) ||
+              supplier.email.toLowerCase().contains(query) ||
+              supplier.telephone.toLowerCase().contains(query) ||
+              supplier.ville.toLowerCase().contains(query) ||
+              supplier.pays.toLowerCase().contains(query);
+        }).toList();
       }
 
       if (filteredSuppliers.isEmpty) {
@@ -454,15 +437,17 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Get.back();
-              controller.approveSupplier(
+              await controller.approveSupplier(
                 supplier,
                 validationComment:
                     commentsController.text.trim().isEmpty
                         ? null
                         : commentsController.text.trim(),
               );
+              // Recharger la liste après validation pour voir le changement
+              await Future.delayed(const Duration(milliseconds: 800));
               _loadSuppliers();
             },
             style: ElevatedButton.styleFrom(

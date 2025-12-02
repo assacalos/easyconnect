@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonCommandeListPage extends StatefulWidget {
   const BonCommandeListPage({super.key});
@@ -48,7 +49,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildBonCommandeList(),
             ),
           ),

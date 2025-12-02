@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaginatedDataView extends StatelessWidget {
   final List<Widget> children;
@@ -40,12 +41,7 @@ class PaginatedDataView extends StatelessWidget {
                   return children[index];
                 }
                 if (isLoading && hasMoreData) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
+                  return const SkeletonPaginationLoader();
                 }
                 return null;
               },

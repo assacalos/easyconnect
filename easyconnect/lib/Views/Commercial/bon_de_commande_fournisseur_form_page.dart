@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonDeCommandeFournisseurFormPage extends StatefulWidget {
   final bool isEditing;
@@ -610,7 +611,7 @@ class _BonDeCommandeFournisseurFormPageState
         title: const Text('Sélectionner un fournisseur'),
         content: Obx(() {
           if (controller.isLoadingSuppliers.value) {
-            return const Center(child: CircularProgressIndicator());
+            return const SkeletonSearchResults(itemCount: 4);
           }
           if (controller.availableSuppliers.isEmpty) {
             return const Text('Aucun fournisseur disponible');

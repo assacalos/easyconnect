@@ -237,7 +237,14 @@ class InvoiceDetail extends StatelessWidget {
                 ),
               )
             else
-              ...invoice.items.map((item) => _buildItemRow(item)).toList(),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: invoice.items.length,
+                itemBuilder: (context, index) {
+                  return _buildItemRow(invoice.items[index]);
+                },
+              ),
           ],
         ),
       ),

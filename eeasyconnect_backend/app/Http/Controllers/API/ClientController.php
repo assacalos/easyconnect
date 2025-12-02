@@ -4,12 +4,15 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
+use App\Traits\CachesData;
 use Illuminate\Http\Request;
 use App\Models\Client;
+use App\Http\Resources\ClientResource;
+use Carbon\Carbon;
 
 class ClientController extends Controller
 {
-    use SendsNotifications;
+    use CachesData, SendsNotifications;
     // Liste des clients avec filtre rôle et statut
     // Accessible aux commerciaux, comptables, techniciens, admin et patron
     // Seuls les commerciaux (role 2) voient uniquement leurs propres clients
@@ -19,7 +22,15 @@ class ClientController extends Controller
         try {
             $status = $request->query('status'); // optionnel
             $user = $request->user();             // utilisateur connecté
-            $query = Client::query();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Client::with(['user']);
 
             // Filtre par statut
             if ($status !== null) {
@@ -50,32 +61,18 @@ class ClientController extends Controller
                 $query->where('user_id', $user->id);
             }
 
-            $clients = $query->orderBy('nom')->orderBy('prenom')->get();
-
-            // Transformer les données pour faciliter la sélection côté Flutter
-            $data = $clients->map(function ($client) {
-                return [
-                    'id' => $client->id,
-                    'nom' => $client->nom,
-                    'prenom' => $client->prenom,
-                    'email' => $client->email,
-                    'contact' => $client->contact,
-                    'adresse' => $client->adresse,
-                    'nom_entreprise' => $client->nom_entreprise,
-                    'situation_geographique' => $client->situation_geographique,
-                    'status' => $client->status,
-                    'status_label' => $this->getStatusLabel($client->status),
-                    'created_at' => $client->created_at->format('Y-m-d H:i:s'),
-                    'updated_at' => $client->updated_at->format('Y-m-d H:i:s'),
-                    // Champs calculés pour faciliter l'affichage et la sélection
-                    'full_name' => trim($client->nom . ' ' . ($client->prenom ?? '')),
-                    'display_name' => $client->nom_entreprise ?: trim($client->nom . ' ' . ($client->prenom ?? '')),
-                ];
-            });
+            $perPage = $request->get('per_page', 15);
+            $clients = $query->orderBy('nom')->orderBy('prenom')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
+                'data' => ClientResource::collection($clients->items()),
+                'pagination' => [
+                    'current_page' => $clients->currentPage(),
+                    'last_page' => $clients->lastPage(),
+                    'per_page' => $clients->perPage(),
+                    'total' => $clients->total(),
+                ],
                 'message' => 'Liste des clients récupérée avec succès'
             ], 200);
 
@@ -104,17 +101,18 @@ class ClientController extends Controller
     // Afficher un client
     public function show($id)
     {
-        $client = Client::findOrFail($id);
+        $client = Client::with(['user'])->findOrFail($id);
         return response()->json([
             'success' => true,
-            'data' => $client
+            'data' => new ClientResource($client)
         ], 200);
     }
 
     // Créer un client
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        try {
+            $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:clients',
@@ -130,11 +128,25 @@ class ClientController extends Controller
         $client->status = $validated['status'] ?? 0; // toujours "en attente" par défaut
         $client->save();
 
-        return response()->json([
-            'success' => true,
-            'data' => $client,
-            'message' => 'Client créé avec succès'
-        ], 201);
+        $client->load(['user']);
+
+            return response()->json([
+                'success' => true,
+                'data' => new ClientResource($client),
+                'message' => 'Client créé avec succès'
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la création du client: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     // Mettre à jour un client
@@ -154,10 +166,11 @@ class ClientController extends Controller
         ]);
 
         $client->update($request->all());
+        $client->load(['user']);
 
         return response()->json([
             'success' => true,
-            'data' => $client,
+            'data' => new ClientResource($client),
             'message' => 'Client mis à jour avec succès'
         ], 200);
     }
@@ -179,10 +192,11 @@ class ClientController extends Controller
         $client = Client::findOrFail($id);
         $client->status = 1; // validé
         $client->save();
+        $client->load(['user']);
 
         // Notifier l'auteur du client
         if ($client->user_id) {
-            $clientName = $client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom);
+            $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
             $this->createNotification([
                 'user_id' => $client->user_id,
                 'title' => 'Validation Client',
@@ -196,7 +210,7 @@ class ClientController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $client,
+            'data' => new ClientResource($client),
             'message' => 'Client validé avec succès'
         ], 200);
     }
@@ -208,11 +222,12 @@ class ClientController extends Controller
         $client->status = 2; // rejeté
         $client->commentaire = $request->commentaire;
         $client->save();
+        $client->load(['user']);
 
         // Notifier l'auteur du client
         if ($client->user_id) {
             $reason = $request->commentaire ?? 'Rejeté';
-            $clientName = $client->nomEntreprise ?? ($client->nom . ' ' . $client->prenom);
+            $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
             $this->createNotification([
                 'user_id' => $client->user_id,
                 'title' => 'Rejet Client',
@@ -227,7 +242,7 @@ class ClientController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $client,
+            'data' => new ClientResource($client),
             'message' => 'Client rejeté avec succès'
         ], 200);
     }
@@ -236,49 +251,56 @@ class ClientController extends Controller
     public function stats(Request $request)
     {
         $user = $request->user();
-        $query = Client::query();
+        $dateKey = Carbon::now()->format('Y-m-d');
+        $cacheKey = $user->role == 2 ? "client_stats:{$dateKey}:{$user->id}" : "client_stats:{$dateKey}";
 
-        // Si commercial → filtre uniquement ses clients
-        if ($user->role == 2) { // 2 = commercial
-            $query->where('user_id', $user->id);
-        }
+        $data = $this->rememberDailyStats($cacheKey, $dateKey, function () use ($user) {
+            $query = Client::with(['user']);
 
-        $totalClients = $query->count();
-        $clientsEnAttente = $query->where('status', 0)->count();
-        $clientsValides = $query->where('status', 1)->count();
-        $clientsRejetes = $query->where('status', 2)->count();
+            // Si commercial → filtre uniquement ses clients
+            if ($user->role == 2) { // 2 = commercial
+                $query->where('user_id', $user->id);
+            }
 
-        // Statistiques par mois (derniers 12 mois)
-        $clientsParMois = $query->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as mois, COUNT(*) as total')
-            ->where('created_at', '>=', now()->subMonths(12))
-            ->groupBy('mois')
-            ->orderBy('mois')
-            ->get();
+            $totalClients = $query->count();
+            $clientsEnAttente = $query->where('status', 0)->count();
+            $clientsValides = $query->where('status', 1)->count();
+            $clientsRejetes = $query->where('status', 2)->count();
 
-        // Top 5 des situations géographiques
-        $topSituations = $query->selectRaw('situation_geographique, COUNT(*) as total')
-            ->groupBy('situation_geographique')
-            ->orderBy('total', 'desc')
-            ->limit(5)
-            ->get();
+            // Statistiques par mois (derniers 12 mois)
+            $clientsParMois = $query->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as mois, COUNT(*) as total')
+                ->where('created_at', '>=', now()->subMonths(12))
+                ->groupBy('mois')
+                ->orderBy('mois')
+                ->get();
 
-        // Répartition par statut
-        $repartitionStatuts = [
-            'en_attente' => $clientsEnAttente,
-            'valides' => $clientsValides,
-            'rejetes' => $clientsRejetes
-        ];
+            // Top 5 des situations géographiques
+            $topSituations = $query->selectRaw('situation_geographique, COUNT(*) as total')
+                ->groupBy('situation_geographique')
+                ->orderBy('total', 'desc')
+                ->limit(5)
+                ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => [
+            // Répartition par statut
+            $repartitionStatuts = [
+                'en_attente' => $clientsEnAttente,
+                'valides' => $clientsValides,
+                'rejetes' => $clientsRejetes
+            ];
+
+            return [
                 'total_clients' => $totalClients,
                 'repartition_statuts' => $repartitionStatuts,
                 'clients_par_mois' => $clientsParMois,
                 'top_situations_geographiques' => $topSituations,
                 'taux_validation' => $totalClients > 0 ? round(($clientsValides / $totalClients) * 100, 2) : 0,
                 'taux_rejet' => $totalClients > 0 ? round(($clientsRejetes / $totalClients) * 100, 2) : 0
-            ]
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
         ], 200);
     }
 }

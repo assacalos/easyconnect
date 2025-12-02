@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BordereauListPage extends StatelessWidget {
   final int? clientId;
@@ -62,7 +63,7 @@ class BordereauListPage extends StatelessWidget {
 
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       var bordereauList =

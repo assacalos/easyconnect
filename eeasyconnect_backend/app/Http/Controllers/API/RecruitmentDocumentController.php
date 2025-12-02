@@ -245,9 +245,21 @@ class RecruitmentDocumentController extends Controller
                 ], 404);
             }
 
-            return Storage::disk('public')->download($document->file_path, $document->file_name);
+            // Utiliser streamDownload pour éviter les problèmes de mémoire
+            // Ajouter les headers appropriés pour les téléchargements
+            return Storage::disk('public')->download($document->file_path, $document->file_name, [
+                'Content-Type' => $document->file_type ?? 'application/octet-stream',
+                'Content-Disposition' => 'attachment; filename="' . $document->file_name . '"',
+                'Content-Length' => $document->file_size ?? Storage::disk('public')->size($document->file_path),
+            ]);
 
         } catch (\Exception $e) {
+            \Log::error('Recruitment document download error', [
+                'document_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()

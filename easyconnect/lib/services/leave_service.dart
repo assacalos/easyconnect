@@ -2,8 +2,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/leave_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class LeaveService extends GetxService {
   static LeaveService get to => Get.find();
@@ -86,6 +92,78 @@ class LeaveService extends GetxService {
         );
       }
     } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Récupérer les demandes de congé avec pagination côté serveur
+  Future<PaginationResponse<LeaveRequest>> getLeaveRequestsPaginated({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    String? leaveType,
+    int? employeeId,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      String url = '${AppConfig.baseUrl}/leave-requests';
+      List<String> params = [];
+
+      if (startDate != null) {
+        params.add('start_date=${startDate.toIso8601String()}');
+      }
+      if (endDate != null) {
+        params.add('end_date=${endDate.toIso8601String()}');
+      }
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (leaveType != null) {
+        params.add('leave_type=$leaveType');
+      }
+      if (employeeId != null) {
+        params.add('employee_id=$employeeId');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'LEAVE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(response.statusCode, url, tag: 'LEAVE_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<LeaveRequest>(
+          json: data,
+          fromJsonT: (json) => LeaveRequest.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des demandes de congé: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getLeaveRequestsPaginated: $e',
+        tag: 'LEAVE_SERVICE',
+      );
       rethrow;
     }
   }

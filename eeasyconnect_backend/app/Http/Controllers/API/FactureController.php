@@ -9,6 +9,7 @@ use App\Models\Facture;
 use App\Models\FactureItem;
 use App\Models\Client;
 use App\Models\User;
+use App\Http\Resources\FactureResource;
 
 class FactureController extends Controller
 {
@@ -19,73 +20,72 @@ class FactureController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Facture::with(['client', 'items', 'user']);
-        
-        // Filtrage par status si fourni
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-        
-        // Filtrage par client_id si fourni
-        if ($request->has('client_id')) {
-            $query->where('client_id', $request->client_id);
-        }
-        
-        // Filtrage par commercial_id si fourni
-        if ($request->has('commercial_id')) {
-            $query->where('user_id', $request->commercial_id);
-        }
-        
-        // Filtrage par date de début (start_date ou date_debut)
-        if ($request->has('start_date') || $request->has('date_debut')) {
-            $date = $request->start_date ?? $request->date_debut;
-            $query->where('date_facture', '>=', $date);
-        }
-        
-        // Filtrage par date de fin (end_date ou date_fin)
-        if ($request->has('end_date') || $request->has('date_fin')) {
-            $date = $request->end_date ?? $request->date_fin;
-            $query->where('date_facture', '<=', $date);
-        }
-        
-        // Si commercial → filtre ses propres factures
-        if (auth()->user()->isCommercial()) {
-            $query->where('user_id', auth()->id());
-        }
-        
-        // Pagination optionnelle
-        $perPage = $request->get('per_page');
-        $limit = $request->get('limit');
-        
-        // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
-        if (!$perPage && !$limit) {
-            $factures = $query->orderBy('created_at', 'desc')->get();
+        try {
+            $user = $request->user();
             
-            $formattedFactures = $factures->map(function ($facture) {
-                return $this->formatFactureForFrontend($facture);
-            });
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Facture::with(['client', 'items', 'user']);
+            
+            // Filtrage par status si fourni
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+            
+            // Filtrage par client_id si fourni
+            if ($request->has('client_id')) {
+                $query->where('client_id', $request->client_id);
+            }
+            
+            // Filtrage par commercial_id si fourni
+            if ($request->has('commercial_id')) {
+                $query->where('user_id', $request->commercial_id);
+            }
+            
+            // Filtrage par date de début (start_date ou date_debut)
+            if ($request->has('start_date') || $request->has('date_debut')) {
+                $date = $request->start_date ?? $request->date_debut;
+                $query->where('date_facture', '>=', $date);
+            }
+            
+            // Filtrage par date de fin (end_date ou date_fin)
+            if ($request->has('end_date') || $request->has('date_fin')) {
+                $date = $request->end_date ?? $request->date_fin;
+                $query->where('date_facture', '<=', $date);
+            }
+            
+            // Si commercial → filtre ses propres factures
+            if ($user->isCommercial()) {
+                $query->where('user_id', $user->id);
+            }
+            
+            // Pagination
+            $perPage = $request->get('per_page', 15);
+            $factures = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => $formattedFactures,
+                'data' => FactureResource::collection($factures->items()),
+                'pagination' => [
+                    'current_page' => $factures->currentPage(),
+                    'last_page' => $factures->lastPage(),
+                    'per_page' => $factures->perPage(),
+                    'total' => $factures->total(),
+                ],
                 'message' => 'Liste des factures récupérée avec succès'
-            ]);
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des factures: ' . $e->getMessage()
+            ], 500);
         }
-        
-        // Sinon, utiliser la pagination
-        $perPage = $perPage ?? $limit ?? 15;
-        $factures = $query->orderBy('created_at', 'desc')->paginate($perPage);
-        
-        // Formater pour le frontend
-        $factures->getCollection()->transform(function ($facture) {
-            return $this->formatFactureForFrontend($facture);
-        });
-        
-        return response()->json([
-            'success' => true,
-            'data' => $factures,
-            'message' => 'Liste des factures récupérée avec succès'
-        ]);
     }
 
     /**
@@ -94,7 +94,7 @@ class FactureController extends Controller
      */
     public function show($id)
     {
-        $facture = Facture::with(['client', 'items', 'user', 'paiements'])->findOrFail($id);
+        $facture = Facture::with(['client', 'items', 'user', 'paiements', 'validator', 'rejector'])->findOrFail($id);
         
         // Vérification des permissions pour les commerciaux
         if (auth()->user()->isCommercial() && $facture->user_id !== auth()->id()) {
@@ -106,7 +106,7 @@ class FactureController extends Controller
         
         return response()->json([
             'success' => true,
-            'data' => $this->formatFactureForFrontend($facture),
+            'data' => new FactureResource($facture),
             'message' => 'Facture récupérée avec succès'
         ]);
     }
@@ -171,11 +171,11 @@ class FactureController extends Controller
         }
 
         // Charger la facture avec ses relations
-        $facture->load('client', 'items', 'user');
+        $facture->load('client', 'items', 'user', 'validator', 'rejector');
 
         return response()->json([
             'success' => true,
-            'data' => $this->formatFactureForFrontend($facture),
+            'data' => new FactureResource($facture),
             'message' => 'Facture créée avec succès'
         ], 201);
     }

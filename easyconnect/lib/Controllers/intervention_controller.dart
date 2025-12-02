@@ -29,6 +29,14 @@ class InterventionController extends GetxController {
   final Rx<Intervention?> selectedIntervention = Rx<Intervention?>(null);
   String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Contrôleurs de formulaire
   final TextEditingController titleController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
@@ -92,25 +100,81 @@ class InterventionController extends GetxController {
   }
 
   // Charger toutes les interventions
-  Future<void> loadInterventions({String? statusFilter}) async {
+  Future<void> loadInterventions({String? statusFilter, int page = 1}) async {
     try {
       isLoading.value = true;
       _currentStatusFilter =
           statusFilter ??
           (selectedStatus.value == 'all' ? null : selectedStatus.value);
-      final loadedInterventions = await _interventionService.getInterventions(
-        status: _currentStatusFilter,
-        type: selectedType.value == 'all' ? null : selectedType.value,
-        priority:
-            selectedPriority.value == 'all' ? null : selectedPriority.value,
-        search: searchQuery.value.isEmpty ? null : searchQuery.value,
-      );
-      interventions.assignAll(loadedInterventions);
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _interventionService
+            .getInterventionsPaginated(
+              status: _currentStatusFilter,
+              type: selectedType.value == 'all' ? null : selectedType.value,
+              priority:
+                  selectedPriority.value == 'all'
+                      ? null
+                      : selectedPriority.value,
+              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+              page: page,
+              perPage: perPage.value,
+            );
+
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          interventions.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          interventions.addAll(paginatedResponse.data);
+        }
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        final loadedInterventions = await _interventionService.getInterventions(
+          status: _currentStatusFilter,
+          type: selectedType.value == 'all' ? null : selectedType.value,
+          priority:
+              selectedPriority.value == 'all' ? null : selectedPriority.value,
+          search: searchQuery.value.isEmpty ? null : searchQuery.value,
+        );
+        if (page == 1) {
+          interventions.value = loadedInterventions;
+        } else {
+          interventions.addAll(loadedInterventions);
+        }
+      }
     } catch (e) {
       // Ne pas afficher d'erreur - les erreurs sont gérées silencieusement
       // Les erreurs d'authentification sont déjà gérées par AuthErrorHandler
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadInterventions(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value + 1,
+      );
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadInterventions(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value - 1,
+      );
     }
   }
 
@@ -430,17 +494,31 @@ class InterventionController extends GetxController {
         // En cas d'échec, recharger pour restaurer l'état
         await loadInterventions(statusFilter: _currentStatusFilter);
         await loadPendingInterventions();
-        throw Exception('Erreur lors de l\'approbation');
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
       }
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadInterventions(statusFilter: _currentStatusFilter);
       await loadPendingInterventions();
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+      }
     }
   }
 

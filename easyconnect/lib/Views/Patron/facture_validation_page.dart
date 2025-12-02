@@ -5,6 +5,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class FactureValidationPage extends StatefulWidget {
   const FactureValidationPage({super.key});
@@ -134,7 +135,7 @@ class _FactureValidationPageState extends State<FactureValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildInvoiceList(),
             ),
           ),
@@ -330,7 +331,17 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                ...invoice.items.map((item) => _buildItemDetails(item)),
+                if (invoice.items.isEmpty)
+                  const Text('Aucun article')
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: invoice.items.length,
+                    itemBuilder: (context, index) {
+                      return _buildItemDetails(invoice.items[index]);
+                    },
+                  ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),

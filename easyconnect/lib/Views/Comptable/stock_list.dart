@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/Views/Comptable/stock_form.dart';
 import 'package:easyconnect/Views/Comptable/stock_detail.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class StockList extends StatefulWidget {
   const StockList({super.key});
@@ -99,7 +100,7 @@ class _StockListState extends State<StockList>
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonSearchResults(itemCount: 6);
               }
 
               // Filtrer directement ici pour que Obx détecte les changements

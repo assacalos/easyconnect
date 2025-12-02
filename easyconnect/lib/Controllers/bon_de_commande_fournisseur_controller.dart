@@ -11,6 +11,7 @@ import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/reference_generator.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class BonDeCommandeFournisseurController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -151,9 +152,11 @@ class BonDeCommandeFournisseurController extends GetxController
     }).toList();
   }
 
-  Future<void> loadBonDeCommandes({String? status}) async {
+  Future<void> loadBonDeCommandes({
+    String? status,
+    bool forceRefresh = false,
+  }) async {
     try {
-      isLoading.value = true;
       _currentStatus = status; // Mémoriser le statut actuel
 
       // Mettre à jour le statut sélectionné
@@ -163,9 +166,30 @@ class BonDeCommandeFournisseurController extends GetxController
         selectedStatus.value = 'all';
       }
 
+      // Afficher immédiatement les données du cache si disponibles
+      final cacheKey = 'bon_de_commandes_fournisseur_${status ?? 'all'}';
+      final cachedBonDeCommandes = CacheHelper.get<List<BonDeCommande>>(
+        cacheKey,
+      );
+      if (cachedBonDeCommandes != null &&
+          cachedBonDeCommandes.isNotEmpty &&
+          !forceRefresh) {
+        bonDeCommandes.value = cachedBonDeCommandes;
+        isLoading.value = false; // Permettre l'affichage immédiat
+        AppLogger.debug(
+          'Données chargées depuis le cache: ${cachedBonDeCommandes.length} bons de commande',
+          tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+        );
+      } else {
+        isLoading.value = true;
+      }
+
       // Charger tous les bons de commande (le filtrage se fera côté client)
       final loadedBonDeCommandes = await _service.getBonDeCommandes();
       bonDeCommandes.value = loadedBonDeCommandes;
+
+      // Sauvegarder dans le cache
+      CacheHelper.set(cacheKey, loadedBonDeCommandes);
     } catch (e) {
       bonDeCommandes.value = [];
       // Ne pas afficher d'erreur si c'est une erreur d'authentification
@@ -246,8 +270,6 @@ class BonDeCommandeFournisseurController extends GetxController
         }
       }
 
-      isLoading.value = true;
-
       // Utiliser le numéro généré si disponible, sinon celui fourni
       final numeroCommande =
           generatedNumeroCommande.value.isNotEmpty
@@ -267,25 +289,45 @@ class BonDeCommandeFournisseurController extends GetxController
         items: items.toList(),
       );
 
+      // Afficher le loader seulement pendant la création
+      isLoading.value = true;
+
+      AppLogger.info(
+        'Création du bon de commande fournisseur: $numeroCommande',
+        tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+      );
+
       final createdBonDeCommande = await _service.createBonDeCommande(
         newBonDeCommande,
+      );
+
+      AppLogger.info(
+        'Bon de commande créé avec succès: ID ${createdBonDeCommande.id}',
+        tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
       );
 
       // Invalider le cache
       CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
 
       // Ajouter le bon de commande à la liste localement (mise à jour optimiste)
+      // Le nouveau bon de commande a toujours le statut 'en_attente'
       if (createdBonDeCommande.id != null) {
-        bonDeCommandes.add(createdBonDeCommande);
+        bonDeCommandes.insert(0, createdBonDeCommande);
+        AppLogger.info(
+          'Bon de commande ajouté à la liste: ${createdBonDeCommande.numeroCommande} (ID: ${createdBonDeCommande.id})',
+          tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+        );
       }
 
-      // Rafraîchir les compteurs du dashboard patron
-      DashboardRefreshHelper.refreshPatronCounter(
-        'bon_de_commande_fournisseur',
-      );
+      // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
+      isLoading.value = false;
 
-      // Réinitialiser le formulaire
-      clearForm();
+      // Rafraîchir les compteurs du dashboard patron en arrière-plan
+      Future.microtask(() {
+        DashboardRefreshHelper.refreshPatronCounter(
+          'bon_de_commande_fournisseur',
+        );
+      });
 
       // Afficher le message de succès
       Get.snackbar(
@@ -297,14 +339,51 @@ class BonDeCommandeFournisseurController extends GetxController
         duration: const Duration(seconds: 3),
       );
 
-      // Recharger la liste des bons de commande en arrière-plan (sans bloquer)
-      loadBonDeCommandes().catchError((e) {
-        // Ignorer les erreurs de rechargement, le bon de commande est déjà créé
-        print('⚠️ Erreur lors du rechargement de la liste: $e');
+      // Réinitialiser le formulaire
+      clearForm();
+
+      // Recharger la liste en arrière-plan après un court délai pour synchroniser avec le serveur
+      // Le bon de commande est déjà dans la liste, donc il restera visible même si le rechargement échoue
+      Future.microtask(() async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          // Recharger avec le statut actuel pour synchroniser avec le serveur
+          await loadBonDeCommandes(status: _currentStatus, forceRefresh: true);
+
+          // Vérifier que le bon de commande créé est toujours dans la liste après rechargement
+          if (createdBonDeCommande.id != null) {
+            final bonDeCommandeExists = bonDeCommandes.any(
+              (bc) => bc.id == createdBonDeCommande.id,
+            );
+            if (!bonDeCommandeExists) {
+              // Si le bon de commande n'est pas dans la liste après rechargement, le rajouter
+              AppLogger.warning(
+                'Bon de commande créé non trouvé après rechargement, réajout à la liste',
+                tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+              );
+              bonDeCommandes.insert(0, createdBonDeCommande);
+            }
+          }
+
+          AppLogger.info(
+            'Liste rechargée après création du bon de commande',
+            tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+          );
+        } catch (e) {
+          // Si le rechargement échoue, le bon de commande reste dans la liste grâce à la mise à jour optimiste
+          AppLogger.warning(
+            'Erreur lors du rechargement après création: $e',
+            tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
+          );
+          // Ne pas afficher d'erreur car le bon de commande a été créé avec succès et est déjà dans la liste
+        }
       });
 
       return true;
     } catch (e) {
+      // S'assurer que le loader est arrêté en cas d'erreur
+      isLoading.value = false;
+
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
@@ -319,8 +398,6 @@ class BonDeCommandeFournisseurController extends GetxController
         duration: const Duration(seconds: 5),
       );
       return false;
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -404,17 +481,6 @@ class BonDeCommandeFournisseurController extends GetxController
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
 
-      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
-      final bonDeCommandeIndex = bonDeCommandes.indexWhere(
-        (b) => b.id == bonDeCommandeId,
-      );
-      if (bonDeCommandeIndex != -1) {
-        final originalBonDeCommande = bonDeCommandes[bonDeCommandeIndex];
-        // Note: Le modèle BonDeCommande n'a peut-être pas tous les champs nécessaires
-        // On met juste à jour le statut si possible
-        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
-      }
-
       final success = await _service.validateBonDeCommande(bonDeCommandeId);
 
       if (success) {
@@ -441,18 +507,31 @@ class BonDeCommandeFournisseurController extends GetxController
       } else {
         // En cas d'échec, recharger pour restaurer l'état
         await loadBonDeCommandes(status: _currentStatus);
-        throw Exception('Erreur lors de l\'approbation');
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
       }
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadBonDeCommandes(status: _currentStatus);
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver le bon de commande: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible d\'approuver le bon de commande: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -467,17 +546,6 @@ class BonDeCommandeFournisseurController extends GetxController
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
-
-      // Mise à jour optimiste de l'UI - mettre à jour immédiatement
-      final bonDeCommandeIndex = bonDeCommandes.indexWhere(
-        (b) => b.id == bonDeCommandeId,
-      );
-      if (bonDeCommandeIndex != -1) {
-        final originalBonDeCommande = bonDeCommandes[bonDeCommandeIndex];
-        // Note: Le modèle BonDeCommande n'a peut-être pas tous les champs nécessaires
-        // On met juste à jour le statut si possible
-        // Pour une mise à jour complète, il faudrait recharger depuis le serveur
-      }
 
       final success = await _service.rejectBonDeCommande(
         bonDeCommandeId,

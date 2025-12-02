@@ -9,6 +9,7 @@ use App\Models\Paiement;
 use App\Models\Facture;
 use App\Models\Client;
 use App\Models\PaymentSchedule;
+use App\Http\Resources\PaiementResource;
 
 class PaiementController extends Controller
 {
@@ -19,78 +20,76 @@ class PaiementController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Paiement::with(['client', 'comptable', 'facture', 'schedule']);
-        
-        // Filtrage par statut si fourni
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-        
-        // Filtrage par type
-        if ($request->has('type')) {
-            $query->where('type', $request->type);
-        }
-        
-        // Filtrage par client_id
-        if ($request->has('client_id')) {
-            $query->where('client_id', $request->client_id);
-        }
-        
-        // Filtrage par comptable_id
-        if ($request->has('comptable_id')) {
-            $query->where('comptable_id', $request->comptable_id);
-        }
-        
-        // Filtrage par date (support start_date/end_date du frontend et date_debut/date_fin)
-        if ($request->has('start_date') || $request->has('date_debut')) {
-            $date = $request->start_date ?? $request->date_debut;
-            $query->where('date_paiement', '>=', $date);
-        }
-        
-        if ($request->has('end_date') || $request->has('date_fin')) {
-            $date = $request->end_date ?? $request->date_fin;
-            $query->where('date_paiement', '<=', $date);
-        }
-        
-        // Si comptable → filtre ses propres paiements
-        if (auth()->user()->isComptable()) {
-            $query->where('comptable_id', auth()->id());
-        }
-        
-        // Pagination optionnelle
-        $perPage = $request->get('per_page');
-        $limit = $request->get('limit');
-        
-        // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
-        if (!$perPage && !$limit) {
-            $paiements = $query->orderBy('created_at', 'desc')->get();
+        try {
+            $user = $request->user();
             
-            // Formater pour le frontend
-            $formattedPaiements = $paiements->map(function ($paiement) {
-                return $this->formatPaymentForFrontend($paiement);
-            });
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $query = Paiement::with(['client', 'comptable', 'facture', 'schedule']);
+            
+            // Filtrage par statut si fourni
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+            
+            // Filtrage par type
+            if ($request->has('type')) {
+                $query->where('type', $request->type);
+            }
+            
+            // Filtrage par client_id
+            if ($request->has('client_id')) {
+                $query->where('client_id', $request->client_id);
+            }
+            
+            // Filtrage par comptable_id
+            if ($request->has('comptable_id')) {
+                $query->where('comptable_id', $request->comptable_id);
+            }
+            
+            // Filtrage par date (support start_date/end_date du frontend et date_debut/date_fin)
+            if ($request->has('start_date') || $request->has('date_debut')) {
+                $date = $request->start_date ?? $request->date_debut;
+                $query->where('date_paiement', '>=', $date);
+            }
+            
+            if ($request->has('end_date') || $request->has('date_fin')) {
+                $date = $request->end_date ?? $request->date_fin;
+                $query->where('date_paiement', '<=', $date);
+            }
+            
+            // Si comptable → filtre ses propres paiements
+            if ($user->isComptable()) {
+                $query->where('comptable_id', $user->id);
+            }
+            
+            // Pagination
+            $perPage = $request->get('per_page', 15);
+            $paiements = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => $formattedPaiements,
+                'data' => PaiementResource::collection($paiements->items()),
+                'pagination' => [
+                    'current_page' => $paiements->currentPage(),
+                    'last_page' => $paiements->lastPage(),
+                    'per_page' => $paiements->perPage(),
+                    'total' => $paiements->total(),
+                ],
                 'message' => 'Liste des paiements récupérée avec succès'
-            ]);
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des paiements: ' . $e->getMessage()
+            ], 500);
         }
-        
-        // Sinon, utiliser la pagination
-        $perPage = $perPage ?? $limit ?? 15;
-        $paiements = $query->orderBy('created_at', 'desc')->paginate($perPage);
-        
-        // Formater pour le frontend
-        $paiements->getCollection()->transform(function ($paiement) {
-            return $this->formatPaymentForFrontend($paiement);
-        });
-        
-        return response()->json([
-            'success' => true,
-            'data' => $paiements,
-            'message' => 'Liste des paiements récupérée avec succès'
-        ]);
     }
 
     /**
@@ -99,7 +98,7 @@ class PaiementController extends Controller
      */
     public function show($id)
     {
-        $paiement = Paiement::with(['client', 'comptable', 'facture', 'schedule'])->findOrFail($id);
+        $paiement = Paiement::with(['client', 'comptable', 'facture', 'schedule', 'user'])->findOrFail($id);
         
         // Vérification des permissions pour les comptables
         if (auth()->user()->isComptable() && $paiement->comptable_id !== auth()->id()) {
@@ -111,7 +110,7 @@ class PaiementController extends Controller
         
         return response()->json([
             'success' => true,
-            'data' => $this->formatPaymentForFrontend($paiement),
+            'data' => new PaiementResource($paiement),
             'message' => 'Paiement récupéré avec succès'
         ]);
     }
@@ -272,11 +271,11 @@ class PaiementController extends Controller
             }
 
             // Charger les relations
-            $paiement->load('client', 'comptable', 'schedule');
+            $paiement->load('client', 'comptable', 'schedule', 'facture', 'user');
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatPaymentForFrontend($paiement),
+                'data' => new PaiementResource($paiement),
                 'message' => 'Paiement créé avec succès'
             ], 201);
 

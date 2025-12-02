@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/Views/Comptable/salary_form.dart';
 import 'package:easyconnect/Views/Comptable/salary_detail.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class SalaryList extends StatefulWidget {
   const SalaryList({super.key});
@@ -155,7 +156,7 @@ class _SalaryListState extends State<SalaryList>
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonSearchResults(itemCount: 6);
               }
               return _filteredSalaries.isEmpty
                   ? const Center(child: Text('Aucun salaire trouvé'))

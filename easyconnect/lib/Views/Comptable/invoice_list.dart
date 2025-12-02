@@ -7,6 +7,7 @@ import 'package:easyconnect/Views/Comptable/invoice_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class InvoiceList extends StatelessWidget {
   final int? clientId;
@@ -33,7 +34,7 @@ class InvoiceList extends StatelessWidget {
         children: [
           Obx(() {
             if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
+              return const SkeletonSearchResults(itemCount: 6);
             }
 
             if (controller.invoices.isEmpty) {

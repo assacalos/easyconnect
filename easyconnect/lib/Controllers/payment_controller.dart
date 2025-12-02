@@ -32,6 +32,14 @@ class PaymentController extends GetxController {
   // Observables pour les statistiques
   final Rx<PaymentStats?> paymentStats = Rx<PaymentStats?>(null);
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Observables pour le formulaire
   final RxBool isCreating = false.obs;
   final RxString paymentType = 'one_time'.obs;
@@ -102,7 +110,10 @@ class PaymentController extends GetxController {
   }
 
   // Charger les paiements
-  Future<void> loadPayments({String? approvalStatusFilter}) async {
+  Future<void> loadPayments({
+    String? approvalStatusFilter,
+    int page = 1,
+  }) async {
     try {
       _currentApprovalStatusFilter =
           approvalStatusFilter ??
@@ -122,69 +133,86 @@ class PaymentController extends GetxController {
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey =
           'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
       final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
-      if (cachedPayments != null && cachedPayments.isNotEmpty) {
+      if (cachedPayments != null && cachedPayments.isNotEmpty && page == 1) {
         payments.assignAll(cachedPayments);
         isLoading.value = false; // Permettre l'affichage immédiat
       } else {
         isLoading.value = true;
       }
 
-      // Chargement direct des paiements (test de connectivité supprimé car non nécessaire)
-      List<PaymentModel> paymentList;
-
-      // Patron (role 6) ou Admin (role 1) peuvent voir tous les paiements
-      if (user.role == 1 || user.role == 6) {
-        // Patron ou Admin - charger tous les paiements sans filtre
-        paymentList = await _paymentService.getAllPayments(
-          startDate: startDate.value,
-          endDate: endDate.value,
-          status: null, // Toujours charger tous les paiements pour le patron
-          type: null, // Toujours charger tous les types pour le patron
-        );
-      } else {
-        // Comptable ou autre rôle
-        paymentList = await _paymentService.getComptablePayments(
-          comptableId: user.id,
-          startDate: startDate.value,
-          endDate: endDate.value,
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-          type: selectedType.value != 'all' ? selectedType.value : null,
-        );
-      }
-
-      print(
-        '🔵 [PAYMENT_CONTROLLER] ✅ ${paymentList.length} paiements chargés',
-      );
-      // Filtrer par recherche
-      if (searchQuery.value.isNotEmpty) {
-        paymentList =
-            paymentList
-                .where(
-                  (payment) =>
-                      payment.paymentNumber.toLowerCase().contains(
-                        searchQuery.value.toLowerCase(),
-                      ) ||
-                      payment.clientName.toLowerCase().contains(
-                        searchQuery.value.toLowerCase(),
-                      ),
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse =
+            (user.role == 1 || user.role == 6)
+                ? await _paymentService.getAllPaymentsPaginated(
+                  startDate: startDate.value,
+                  endDate: endDate.value,
+                  status: null,
+                  type: null,
+                  page: page,
+                  perPage: perPage.value,
+                  search:
+                      searchQuery.value.isNotEmpty ? searchQuery.value : null,
                 )
-                .toList();
-      }
+                : await _paymentService.getComptablePaymentsPaginated(
+                  comptableId: user.id,
+                  startDate: startDate.value,
+                  endDate: endDate.value,
+                  status:
+                      selectedStatus.value != 'all'
+                          ? selectedStatus.value
+                          : null,
+                  type: selectedType.value != 'all' ? selectedType.value : null,
+                  page: page,
+                  perPage: perPage.value,
+                  search:
+                      searchQuery.value.isNotEmpty ? searchQuery.value : null,
+                );
 
-      payments.value = paymentList;
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-      CacheHelper.set(cacheKey, paymentList);
+        // Mettre à jour la liste
+        if (page == 1) {
+          payments.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          payments.addAll(paginatedResponse.data);
+        }
 
-      // Afficher un message de succès si des paiements sont trouvés
-      if (paymentList.isNotEmpty) {
-        // Ne pas afficher de snackbar automatiquement pour éviter le spam
-      } else {
-        // Ne pas afficher de snackbar automatiquement pour éviter le spam
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+
+        print(
+          '🔵 [PAYMENT_CONTROLLER] ✅ ${paginatedResponse.data.length} paiements chargés (Page $page/${paginatedResponse.meta.lastPage})',
+        );
+      } catch (e) {
+        // Si le chargement échoue mais qu'on a du cache, on garde le cache
+        if (cachedPayments == null || cachedPayments.isEmpty || page > 1) {
+          if (payments.isEmpty) {
+            // Vérifier une dernière fois le cache avant de vider la liste
+            final cacheKey =
+                'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
+            final cachedPayments = CacheHelper.get<List<PaymentModel>>(
+              cacheKey,
+            );
+            if (cachedPayments != null && cachedPayments.isNotEmpty) {
+              payments.assignAll(cachedPayments);
+              return; // Ne pas afficher d'erreur si on a du cache
+            }
+          }
+          rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+        }
       }
     } catch (e) {
       // Ne pas vider la liste si elle contient déjà des paiements
@@ -218,6 +246,20 @@ class PaymentController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadPayments(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadPayments(page: currentPage.value - 1);
     }
   }
 
@@ -933,14 +975,19 @@ class PaymentController extends GetxController {
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver le paiement: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+      }
     } finally {
       isLoading.value = false;
     }

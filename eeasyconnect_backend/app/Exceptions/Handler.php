@@ -154,9 +154,21 @@ class Handler extends ExceptionHandler
         }
 
         // Production error response
-        return response()->json([
+        $response = [
             'success' => false,
             'message' => 'Une erreur est survenue. Veuillez réessayer plus tard.',
-        ], 500);
+        ];
+        
+        // En mode debug, ajouter plus de détails
+        if (config('app.debug')) {
+            $response['error'] = [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'class' => get_class($e),
+            ];
+        }
+        
+        return response()->json($response, 500);
     }
 }

@@ -4,6 +4,7 @@ import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/services/contract_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/Models/employee_model.dart';
+import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 
 class ContractController extends GetxController {
@@ -62,6 +63,14 @@ class ContractController extends GetxController {
   final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
   final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   // Variables pour le formulaire de création
   final RxInt selectedEmployeeId = 0.obs;
   final Rx<Employee?> selectedEmployee = Rx<Employee?>(null);
@@ -103,15 +112,72 @@ class ContractController extends GetxController {
 
   // Charger les employés
   Future<void> loadEmployees() async {
+    print('🚀 [CONTRACT_CONTROLLER] ===== loadEmployees APPELÉ =====');
+    print(
+      '🚀 [CONTRACT_CONTROLLER] Liste actuelle: ${employees.length} employés',
+    );
+
     try {
-      final emp = await _employeeService.getEmployees();
-      employees.value = emp;
-    } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les employés',
-        snackPosition: SnackPosition.BOTTOM,
+      print(
+        '📡 [CONTRACT_CONTROLLER] Appel de _employeeService.getEmployees()...',
       );
+      final emp = await _employeeService.getEmployees();
+      print(
+        '✅ [CONTRACT_CONTROLLER] getEmployees retourné: ${emp.length} employés',
+      );
+
+      if (emp.isNotEmpty) {
+        print(
+          '📝 [CONTRACT_CONTROLLER] Premier employé: id=${emp.first.id}, name=${emp.first.firstName} ${emp.first.lastName}',
+        );
+      }
+
+      employees.value = emp;
+      print(
+        '📝 [CONTRACT_CONTROLLER] Liste mise à jour: ${employees.length} employés',
+      );
+
+      if (emp.isEmpty) {
+        print(
+          '⚠️ [CONTRACT_CONTROLLER] La liste est vide (peut-etre qu\'il n\'y a pas d\'employes)',
+        );
+        // Si la liste est vide, ne pas afficher d'erreur (peut-être qu'il n'y a pas d'employés)
+        return;
+      }
+    } catch (e, stackTrace) {
+      print('❌ [CONTRACT_CONTROLLER] ERREUR dans loadEmployees: $e');
+      print('❌ [CONTRACT_CONTROLLER] Stack trace: $stackTrace');
+
+      // Ne pas afficher d'erreur si des employés sont déjà chargés
+      if (employees.isEmpty) {
+        print('🔄 [CONTRACT_CONTROLLER] Tentative avec le cache...');
+        // Vérifier le cache avant d'afficher l'erreur
+        final cached = CacheHelper.get<List<Employee>>(
+          'employees_all_all_all_1_50',
+        );
+        if (cached != null && cached.isNotEmpty) {
+          print(
+            '✅ [CONTRACT_CONTROLLER] Cache trouvé: ${cached.length} employés',
+          );
+          employees.value = cached;
+          return;
+        }
+        print('⚠️ [CONTRACT_CONTROLLER] Aucun cache trouvé');
+
+        // Afficher l'erreur seulement si vraiment nécessaire
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les employés. Veuillez réessayer.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 3),
+          );
+        });
+      } else {
+        print(
+          '✅ [CONTRACT_CONTROLLER] Des employés sont déjà chargés (${employees.length}), pas d\'erreur affichée',
+        );
+      }
     }
   }
 
@@ -150,22 +216,63 @@ class ContractController extends GetxController {
   }
 
   // Charger les contrats
-  Future<void> loadContracts() async {
+  Future<void> loadContracts({int page = 1}) async {
     try {
       isLoading.value = true;
 
-      final contractsList = await _contractService.getAllContracts(
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-        contractType:
-            selectedContractType.value != 'all'
-                ? selectedContractType.value
-                : null,
-        department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
-      );
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _contractService.getContractsPaginated(
+          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          contractType:
+              selectedContractType.value != 'all'
+                  ? selectedContractType.value
+                  : null,
+          department:
+              selectedDepartment.value != 'all'
+                  ? selectedDepartment.value
+                  : null,
+          search:
+              searchController.text.isNotEmpty ? searchController.text : null,
+          page: page,
+          perPage: perPage.value,
+        );
 
-      contracts.value = contractsList;
-      applyFilters();
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          contracts.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          contracts.addAll(paginatedResponse.data);
+        }
+        applyFilters();
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        final contractsList = await _contractService.getAllContracts(
+          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          contractType:
+              selectedContractType.value != 'all'
+                  ? selectedContractType.value
+                  : null,
+          department:
+              selectedDepartment.value != 'all'
+                  ? selectedDepartment.value
+                  : null,
+        );
+        if (page == 1) {
+          contracts.value = contractsList;
+        } else {
+          contracts.addAll(contractsList);
+        }
+        applyFilters();
+      }
     } catch (e) {
       // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
       // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
@@ -183,6 +290,20 @@ class ContractController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadContracts(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadContracts(page: currentPage.value - 1);
     }
   }
 

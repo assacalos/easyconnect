@@ -5,6 +5,7 @@ import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/responsive_widgets.dart';
 import 'package:easyconnect/utils/responsive_helper.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DevisListPage extends StatelessWidget {
   final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
@@ -19,7 +20,12 @@ class DevisListPage extends StatelessWidget {
     // Charger les données au démarrage de la page
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
-      controller.loadDevis();
+      // Forcer le chargement si la liste est vide
+      if (controller.devis.isEmpty) {
+        controller.loadDevis(forceRefresh: true);
+      } else {
+        controller.loadDevis();
+      }
     });
 
     return DefaultTabController(
@@ -27,6 +33,13 @@ class DevisListPage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Devis'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              onPressed: () => controller.debugDevis(),
+              tooltip: 'Debug',
+            ),
+          ],
           bottom: const TabBar(
             isScrollable: true,
             tabs: [
@@ -65,7 +78,7 @@ class DevisListPage extends StatelessWidget {
 
     return Obx(() {
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       var devisList =

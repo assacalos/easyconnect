@@ -282,9 +282,17 @@ class LeaveDetail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            ...request.attachments.map(
-              (attachment) => _buildAttachmentItem(attachment),
-            ),
+            if (request.attachments.isEmpty)
+              const Text('Aucun justificatif')
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: request.attachments.length,
+                itemBuilder: (context, index) {
+                  return _buildAttachmentItem(request.attachments[index]);
+                },
+              ),
           ],
         ),
       ),

@@ -109,10 +109,33 @@ class Supplier {
       ville: json['ville']?.toString() ?? json['city']?.toString() ?? '',
       pays: json['pays']?.toString() ?? json['country']?.toString() ?? '',
       description: json['description']?.toString(),
-      statut:
-          json['statut']?.toString() ??
-          json['status']?.toString() ??
-          'en_attente',
+      statut: () {
+        // Essayer d'abord statut, puis status, puis status_text
+        String? parsedStatut =
+            json['statut']?.toString() ?? json['status']?.toString();
+
+        // Si statut est null, essayer de déduire depuis status_text
+        if (parsedStatut == null || parsedStatut.isEmpty) {
+          final statusText =
+              json['status_text']?.toString().toLowerCase() ??
+              json['statusText']?.toString().toLowerCase();
+          if (statusText != null) {
+            if (statusText.contains('validé') ||
+                statusText.contains('validated') ||
+                statusText.contains('approved')) {
+              parsedStatut = 'valide';
+            } else if (statusText.contains('rejeté') ||
+                statusText.contains('rejected')) {
+              parsedStatut = 'rejete';
+            } else if (statusText.contains('attente') ||
+                statusText.contains('pending')) {
+              parsedStatut = 'en_attente';
+            }
+          }
+        }
+
+        return parsedStatut ?? 'en_attente';
+      }(),
       noteEvaluation:
           json['note_evaluation'] != null || json['noteEvaluation'] != null
               ? (json['note_evaluation'] ?? json['noteEvaluation']) is String

@@ -60,6 +60,14 @@ class InvoiceController extends GetxController {
   final Rx<DateTime?> endDate = Rx<DateTime?>(null);
   final RxString searchQuery = ''.obs;
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -111,95 +119,100 @@ class InvoiceController extends GetxController {
   }
 
   // Charger les factures
-  Future<void> loadInvoices() async {
+  Future<void> loadInvoices({int page = 1}) async {
     try {
       final user = _authController.userAuth.value;
       if (user == null) {
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'invoices_${user.role}_${selectedStatus.value}';
       final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
-      if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
+      if (cachedInvoices != null && cachedInvoices.isNotEmpty && page == 1) {
         invoices.assignAll(cachedInvoices);
         isLoading.value = false; // Permettre l'affichage immédiat
       } else {
         isLoading.value = true;
       }
 
-      List<InvoiceModel> invoiceList;
-
-      // Patron (role 6) ou Admin (role 1) peuvent voir toutes les factures
-      if (user.role == 1 || user.role == 6) {
-        // Patron ou Admin - charger toutes les factures sans filtre de statut
-        AppLogger.info(
-          'Chargement de toutes les factures pour le patron/admin (role: ${user.role})',
-          tag: 'INVOICE_CONTROLLER',
-        );
-        invoiceList = await _invoiceService.getAllInvoices(
-          startDate: startDate.value,
-          endDate: endDate.value,
-          status: null, // Toujours charger toutes les factures pour le patron
-        );
-        AppLogger.info(
-          '${invoiceList.length} factures chargées pour le patron/admin',
-          tag: 'INVOICE_CONTROLLER',
-        );
-      } else {
-        // Comptable ou autre rôle
-        invoiceList = await _invoiceService.getCommercialInvoices(
-          commercialId: user.id,
+      try {
+        // Utiliser la méthode paginée
+        final paginatedResponse = await _invoiceService.getInvoicesPaginated(
           startDate: startDate.value,
           endDate: endDate.value,
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          commercialId: (user.role == 1 || user.role == 6) ? null : user.id,
+          page: page,
+          perPage: perPage.value,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
         );
-      }
 
-      AppLogger.info(
-        '${invoiceList.length} factures chargées avec succès',
-        tag: 'INVOICE_CONTROLLER',
-      );
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Filtrer par recherche
-      if (searchQuery.value.isNotEmpty) {
-        invoiceList =
-            invoiceList
-                .where(
-                  (invoice) =>
-                      invoice.invoiceNumber.toLowerCase().contains(
-                        searchQuery.value.toLowerCase(),
-                      ) ||
-                      invoice.clientName.toLowerCase().contains(
-                        searchQuery.value.toLowerCase(),
-                      ),
-                )
-                .toList();
-      }
-
-      // Trier les factures par statut et date
-      invoiceList.sort((a, b) {
-        // D'abord par statut (en_attente en premier, puis valide, puis rejete)
-        final statusOrder = {'en_attente': 0, 'valide': 1, 'rejete': 2};
-
-        final statusA = statusOrder[a.status] ?? 999;
-        final statusB = statusOrder[b.status] ?? 999;
-
-        if (statusA != statusB) {
-          return statusA.compareTo(statusB);
+        // Mettre à jour la liste
+        if (page == 1) {
+          invoices.value = paginatedResponse.data;
+        } else {
+          // Pour les pages suivantes, ajouter les données
+          invoices.addAll(paginatedResponse.data);
         }
 
-        // Ensuite par date de création (plus récent en premier)
-        return b.createdAt.compareTo(a.createdAt);
-      });
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
 
-      invoices.value = invoiceList;
+        AppLogger.info(
+          '${paginatedResponse.data.length} factures chargées (Page $page/${paginatedResponse.meta.lastPage})',
+          tag: 'INVOICE_CONTROLLER',
+        );
 
-      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-      CacheHelper.set(cacheKey, invoiceList);
-
-      // Charger les statistiques (non-bloquant)
-      loadInvoiceStats().catchError((e) {});
+        // Charger les statistiques (non-bloquant)
+        loadInvoiceStats().catchError((e) {});
+      } catch (e) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        AppLogger.warning(
+          'Erreur avec pagination, fallback vers méthode classique: $e',
+          tag: 'INVOICE_CONTROLLER',
+        );
+        try {
+          final loadedInvoices = await _invoiceService.getAllInvoices(
+            startDate: startDate.value,
+            endDate: endDate.value,
+            status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+            commercialId: (user.role == 1 || user.role == 6) ? null : user.id,
+          );
+          if (page == 1) {
+            invoices.value = loadedInvoices;
+          } else {
+            invoices.addAll(loadedInvoices);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedInvoices);
+          }
+        } catch (fallbackError) {
+          // Si le fallback échoue aussi, vérifier le cache
+          if (cachedInvoices == null || cachedInvoices.isEmpty || page > 1) {
+            if (invoices.isEmpty) {
+              final cacheKey = 'invoices_all';
+              final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(
+                cacheKey,
+              );
+              if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
+                invoices.value = cachedInvoices;
+                return; // Ne pas afficher d'erreur si on a du cache
+              }
+            }
+            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+          }
+        }
+      }
     } catch (e) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
@@ -229,6 +242,20 @@ class InvoiceController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadInvoices(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadInvoices(page: currentPage.value - 1);
     }
   }
 
@@ -269,6 +296,7 @@ class InvoiceController extends GetxController {
 
   // Créer une facture
   Future<bool> createInvoice() async {
+    bool successReturned = false;
     try {
       isCreating.value = true;
 
@@ -345,7 +373,13 @@ class InvoiceController extends GetxController {
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('invoice');
 
-        // Afficher le message de succès d'abord
+        // Effacer le formulaire immédiatement
+        clearForm();
+
+        // Mettre isCreating à false immédiatement pour permettre la fermeture du formulaire
+        isCreating.value = false;
+
+        // Afficher le message de succès
         Get.snackbar(
           'Succès',
           result['message'] ?? 'Facture créée avec succès',
@@ -355,18 +389,18 @@ class InvoiceController extends GetxController {
           duration: const Duration(seconds: 2),
         );
 
-        // Effacer le formulaire
-        clearForm();
+        // Recharger la liste en arrière-plan (ne pas bloquer)
+        Future.microtask(() async {
+          await Future.delayed(const Duration(milliseconds: 500));
+          try {
+            await loadInvoices();
+          } catch (e) {
+            // Si le rechargement échoue, on ne fait rien car la facture a été créée avec succès
+            // L'utilisateur peut recharger manuellement si nécessaire
+          }
+        });
 
-        // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
-        try {
-          await Future.delayed(const Duration(milliseconds: 300));
-          await loadInvoices();
-        } catch (e) {
-          // Si le rechargement échoue, on ne fait rien car la facture a été créée avec succès
-          // L'utilisateur peut recharger manuellement si nécessaire
-        }
-
+        successReturned = true;
         return true;
       } else {
         Get.snackbar(
@@ -399,7 +433,11 @@ class InvoiceController extends GetxController {
       );
       return false;
     } finally {
-      isCreating.value = false;
+      // Ne pas mettre isCreating à false ici si on a déjà réussi
+      // (il a été mis à false dans le bloc de succès pour fermer le formulaire plus vite)
+      if (!successReturned) {
+        isCreating.value = false;
+      }
     }
   }
 
@@ -538,7 +576,13 @@ class InvoiceController extends GetxController {
         comments: comments,
       );
 
-      if (result['success'] == true) {
+      // Si result['success'] est true OU si le status code était 200/201, considérer comme succès
+      final isSuccess =
+          result['success'] == true ||
+          result['success'] == 1 ||
+          result['success'] == 'true';
+
+      if (isSuccess) {
         Get.snackbar(
           'Succès',
           result['message'] ?? 'Facture approuvée avec succès',
@@ -580,13 +624,12 @@ class InvoiceController extends GetxController {
         // En cas d'échec, recharger pour restaurer l'état
         await loadInvoices();
         await loadPendingInvoices();
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
         Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Impossible d\'approuver la facture',
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
           snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 2),
         );
       }
     } catch (e, stackTrace) {

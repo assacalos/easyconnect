@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Requests\LoginRequest;
 use Illuminate\Http\Request;
 use App\Http\Controllers\API\Controller;
+use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
@@ -31,14 +32,7 @@ class UserController extends Controller
 
             return $this->successResponse([
                 'token' => $token,
-                'user' => [
-                    'id' => $user->id,
-                    'nom' => $user->nom ?? '',
-                    'prenom' => $user->prenom ?? '',
-                    'email' => $user->email,
-                    'role' => $user->role,
-                    'role_name' => $roleName
-                ],
+                'user' => new UserResource($user),
             ], 'Connexion réussie');
         } catch (\Exception $e) {
             \Log::error('Login error', [
@@ -79,14 +73,7 @@ class UserController extends Controller
             // Vérifier si getRoleName existe, sinon utiliser une valeur par défaut
             $roleName = method_exists($user, 'getRoleName') ? $user->getRoleName() : 'Utilisateur';
             
-            return $this->successResponse([
-                'id' => $user->id,
-                'nom' => $user->nom ?? '',
-                'prenom' => $user->prenom ?? '',
-                'email' => $user->email,
-                'role' => $user->role,
-                'role_name' => $roleName
-            ]);
+            return $this->successResponse(new UserResource($user));
         } catch (\Exception $e) {
             \Log::error('Me endpoint error', [
                 'message' => $e->getMessage(),
@@ -107,6 +94,15 @@ class UserController extends Controller
     public function index(Request $request)
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $role = $request->query('role');
             $status = $request->query('status');
             $search = $request->query('search');
@@ -132,12 +128,18 @@ class UserController extends Controller
                 });
             }
 
-            $users = $query->orderBy('created_at', 'desc')->get();
+            $perPage = $request->get('per_page', 15);
+            $users = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => $users,
-                'count' => $users->count()
+                'data' => UserResource::collection($users->items()),
+                'pagination' => [
+                    'current_page' => $users->currentPage(),
+                    'last_page' => $users->lastPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total(),
+                ]
             ], 200);
 
         } catch (\Exception $e) {

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/expense_controller.dart';
 import 'package:easyconnect/Models/expense_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class DepenseValidationPage extends StatefulWidget {
   const DepenseValidationPage({super.key});
@@ -124,7 +125,7 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildExpenseList(),
             ),
           ),

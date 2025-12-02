@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ClientSelectionDialog extends StatefulWidget {
   final Function(Client) onClientSelected;
@@ -155,7 +156,7 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
             Expanded(
               child: Obx(() {
                 if (_isLoading.value) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonSearchResults(itemCount: 4);
                 }
 
                 if (_clients.isEmpty) {

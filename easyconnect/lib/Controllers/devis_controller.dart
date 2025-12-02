@@ -27,6 +27,15 @@ class DevisController extends GetxController {
   final items = <DevisItem>[].obs;
   int? _currentStatus; // Mémoriser le statut actuellement chargé
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+  final RxString searchQuery = ''.obs;
+
   // Statistiques
   final totalDevis = 0.obs;
   final devisEnvoyes = 0.obs;
@@ -52,15 +61,59 @@ class DevisController extends GetxController {
     // });
   }
 
-  Future<void> loadDevis({int? status, bool forceRefresh = false}) async {
+  /// Appeler l'endpoint de debug pour diagnostiquer les problèmes
+  Future<void> debugDevis() async {
     try {
+      AppLogger.info('Démarrage du debug des devis', tag: 'DEVIS_CONTROLLER');
+      final debugInfo = await _devisService.getDevisDebug();
+      AppLogger.info(
+        'Informations de debug reçues: ${debugInfo.toString()}',
+        tag: 'DEVIS_CONTROLLER',
+      );
+
+      // Afficher les informations de debug à l'utilisateur
+      if (debugInfo['success'] == true && debugInfo['debug'] != null) {
+        final debug = debugInfo['debug'];
+        final stats = debug['statistics'];
+        Get.snackbar(
+          'Debug Devis',
+          'Total: ${stats['total_devis']}, Par statut: ${stats['devis_by_status']}, Par user: ${stats['devis_by_user']}',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Erreur lors du debug: $e', tag: 'DEVIS_CONTROLLER');
+      Get.snackbar(
+        'Erreur Debug',
+        'Impossible de récupérer les informations de debug: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
+      );
+    }
+  }
+
+  Future<void> loadDevis({
+    int? status,
+    bool forceRefresh = false,
+    int page = 1,
+  }) async {
+    try {
+      AppLogger.info(
+        'Chargement des devis: status=$status, forceRefresh=$forceRefresh, page=$page',
+        tag: 'DEVIS_CONTROLLER',
+      );
       // Si on ne force pas le rafraîchissement et que les données sont déjà chargées avec le même statut, ne rien faire
       // MAIS seulement si on a vraiment des données (pas si la liste est vide)
       // ET seulement si le statut a déjà été défini (pas au premier chargement)
+      // ET seulement si c'est la même page
+      // IMPORTANT: Toujours charger si la liste est vide, même si le statut correspond
       if (!forceRefresh &&
           devis.isNotEmpty &&
           _currentStatus == status &&
-          _currentStatus != null) {
+          _currentStatus != null &&
+          currentPage.value == page &&
+          page == 1) {
         AppLogger.debug(
           'Données déjà chargées, pas de rechargement nécessaire',
           tag: 'DEVIS_CONTROLLER',
@@ -68,15 +121,24 @@ class DevisController extends GetxController {
         return;
       }
 
+      // Si la liste est vide, forcer le chargement même si le statut correspond
+      if (devis.isEmpty && !forceRefresh && _currentStatus == status) {
+        AppLogger.debug(
+          'Liste vide, forcer le chargement',
+          tag: 'DEVIS_CONTROLLER',
+        );
+        forceRefresh = true;
+      }
+
       _currentStatus = status; // Mémoriser le statut actuel
 
-      // Toujours mettre isLoading à true au début du chargement
-      isLoading.value = true;
-
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'devis_${status ?? 'all'}';
       final cachedDevis = CacheHelper.get<List<Devis>>(cacheKey);
-      if (cachedDevis != null && cachedDevis.isNotEmpty && !forceRefresh) {
+      if (cachedDevis != null &&
+          cachedDevis.isNotEmpty &&
+          !forceRefresh &&
+          page == 1) {
         devis.value = cachedDevis;
         isLoading.value = false; // Permettre l'affichage immédiat
         AppLogger.debug(
@@ -87,27 +149,98 @@ class DevisController extends GetxController {
         isLoading.value = true;
       }
 
-      AppLogger.info(
-        'Chargement des devis${status != null ? ' (status: $status)' : ''}',
-        tag: 'DEVIS_CONTROLLER',
-      );
+      // Charger les données avec pagination
+      try {
+        final paginatedResponse = await _devisService.getDevisPaginated(
+          status: status,
+          page: page,
+          perPage: perPage.value,
+          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        );
 
-      // Charger les données fraîches en arrière-plan
-      final loadedDevis = await _devisService.getDevis(status: status);
-      devis.value = loadedDevis;
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Le service met déjà en cache, donc pas besoin de le refaire ici
+        // Mettre à jour la liste
+        if (page == 1) {
+          devis.value = paginatedResponse.data;
+          AppLogger.info(
+            'Devis chargés avec succès: ${paginatedResponse.data.length} devis (statut: ${status ?? 'all'})',
+            tag: 'DEVIS_CONTROLLER',
+          );
 
-      AppLogger.info(
-        '${loadedDevis.length} devis chargés avec succès',
-        tag: 'DEVIS_CONTROLLER',
-      );
+          if (paginatedResponse.data.isEmpty) {
+            AppLogger.warning(
+              'Liste de devis vide après chargement. Total en base: ${paginatedResponse.meta.total}',
+              tag: 'DEVIS_CONTROLLER',
+            );
+          }
+        } else {
+          devis.addAll(paginatedResponse.data);
+        }
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+          AppLogger.debug(
+            'Devis mis en cache: ${paginatedResponse.data.length} devis',
+            tag: 'DEVIS_CONTROLLER',
+          );
+        }
+      } catch (e, stackTrace) {
+        // En cas d'erreur, essayer la méthode non-paginée en fallback
+        AppLogger.warning(
+          'Erreur avec pagination, tentative avec méthode non-paginée: $e',
+          tag: 'DEVIS_CONTROLLER',
+        );
+        try {
+          final loadedDevis = await _devisService.getDevis(
+            status: status,
+            forceRefresh: forceRefresh,
+          );
+          AppLogger.info(
+            'Devis chargés via méthode fallback: ${loadedDevis.length} devis (statut: ${status ?? 'all'})',
+            tag: 'DEVIS_CONTROLLER',
+          );
+          if (page == 1) {
+            devis.value = loadedDevis;
+          } else {
+            devis.addAll(loadedDevis);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedDevis);
+            AppLogger.debug(
+              'Devis mis en cache via fallback: ${loadedDevis.length} devis',
+              tag: 'DEVIS_CONTROLLER',
+            );
+          }
+        } catch (fallbackError) {
+          // Si le fallback échoue aussi, vérifier le cache
+          if (cachedDevis == null || cachedDevis.isEmpty || page > 1) {
+            if (devis.isEmpty) {
+              final cacheKey = 'devis_${status ?? 'all'}';
+              final cachedDevis = CacheHelper.get<List<Devis>>(cacheKey);
+              if (cachedDevis != null && cachedDevis.isNotEmpty) {
+                devis.value = cachedDevis;
+                return; // Ne pas afficher d'erreur si on a du cache
+              }
+            }
+            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+          }
+        }
+      }
     } catch (e, stackTrace) {
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
       final errorString = e.toString().toLowerCase();
+
       if (!errorString.contains('session expirée') &&
-          !errorString.contains('401')) {
+          !errorString.contains('401') &&
+          !errorString.contains('unauthorized')) {
         AppLogger.error(
           'Erreur lors du chargement des devis: $e',
           tag: 'DEVIS_CONTROLLER',
@@ -120,19 +253,55 @@ class DevisController extends GetxController {
           final cacheKey = 'devis_${status ?? 'all'}';
           final cachedDevis = CacheHelper.get<List<Devis>>(cacheKey);
           if (cachedDevis == null || cachedDevis.isEmpty) {
+            // Toujours afficher l'erreur si la liste est vide et qu'il n'y a pas de cache
             Get.snackbar(
               'Erreur',
-              'Impossible de charger les devis',
+              'Impossible de charger les devis: ${e.toString().replaceFirst('Exception: ', '')}',
               snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+              duration: const Duration(seconds: 5),
+            );
+            AppLogger.error(
+              'Aucun devis chargé et aucun cache disponible',
+              tag: 'DEVIS_CONTROLLER',
             );
           } else {
             // Charger les données du cache si disponibles
             devis.value = cachedDevis;
+            AppLogger.info(
+              'Données chargées depuis le cache après erreur: ${cachedDevis.length} devis',
+              tag: 'DEVIS_CONTROLLER',
+            );
           }
+        } else {
+          // Si on a des données mais qu'il y a eu une erreur, afficher un avertissement
+          Get.snackbar(
+            'Avertissement',
+            'Erreur lors de la mise à jour des devis. Données en cache affichées.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 3),
+          );
         }
       }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value) {
+      loadDevis(status: _currentStatus, page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value) {
+      loadDevis(status: _currentStatus, page: currentPage.value - 1);
     }
   }
 
@@ -152,15 +321,6 @@ class DevisController extends GetxController {
     try {
       isLoading.value = true;
 
-      print('📝 [DEVIS] Début de la création du devis');
-      print('📝 [DEVIS] Données reçues: $data');
-      print('📝 [DEVIS] Client ID: ${selectedClient.value?.id}');
-      print('📝 [DEVIS] User ID: $userId');
-      print('📝 [DEVIS] Nombre d\'items: ${items.length}');
-      print(
-        '📝 [DEVIS] Items: ${items.map((i) => {'designation': i.designation, 'quantite': i.quantite, 'prixUnitaire': i.prixUnitaire, 'total': i.total}).toList()}',
-      );
-
       final newDevis = Devis(
         clientId: selectedClient.value!.id!,
         reference: data['reference'],
@@ -175,31 +335,20 @@ class DevisController extends GetxController {
         commercialId: userId,
       );
 
-      print('📝 [DEVIS] Objet Devis créé:');
-      print('📝 [DEVIS] - clientId: ${newDevis.clientId}');
-      print('📝 [DEVIS] - reference: ${newDevis.reference}');
-      print('📝 [DEVIS] - dateCreation: ${newDevis.dateCreation}');
-      print('📝 [DEVIS] - dateValidite: ${newDevis.dateValidite}');
-      print('📝 [DEVIS] - notes: ${newDevis.notes}');
-      print('📝 [DEVIS] - status: ${newDevis.status}');
-      print('📝 [DEVIS] - remiseGlobale: ${newDevis.remiseGlobale}');
-      print('📝 [DEVIS] - tva: ${newDevis.tva}');
-      print('📝 [DEVIS] - conditions: ${newDevis.conditions}');
-      print('📝 [DEVIS] - commercialId: ${newDevis.commercialId}');
-      print('📝 [DEVIS] - items count: ${newDevis.items.length}');
-
-      print('📝 [DEVIS] JSON à envoyer: ${newDevis.toJson()}');
-
       final createdDevis = await _devisService.createDevis(newDevis);
-
-      print('✅ [DEVIS] Devis créé avec succès: ${createdDevis.id}');
 
       // Invalider le cache
       CacheHelper.clearByPrefix('devis_');
 
       // Ajouter le devis à la liste localement (mise à jour optimiste)
+      // Le nouveau devis a toujours le statut 1 (en attente)
       if (createdDevis.id != null) {
-        devis.add(createdDevis);
+        // Ajouter en début de liste pour qu'il apparaisse en premier
+        devis.insert(0, createdDevis);
+        AppLogger.info(
+          'Devis ajouté à la liste: ${createdDevis.reference} (ID: ${createdDevis.id})',
+          tag: 'DEVIS_CONTROLLER',
+        );
       }
 
       // Rafraîchir les compteurs du dashboard patron
@@ -226,23 +375,55 @@ class DevisController extends GetxController {
         'Succès',
         'Devis créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
       );
 
       // Effacer le formulaire
       clearForm();
 
-      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
-      try {
-        await loadDevis();
-      } catch (e) {
-        // Si le rechargement échoue, on ne fait rien car le devis a été créé avec succès
-        // L'utilisateur peut recharger manuellement si nécessaire
-      }
+      // Recharger la liste avec le statut actuel pour synchroniser avec le serveur
+      // IMPORTANT: Recharger en arrière-plan après un court délai pour laisser le temps au serveur
+      // de traiter la création, mais garder le devis dans la liste immédiatement
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        try {
+          // Recharger avec le statut 1 (en attente) car le nouveau devis a ce statut
+          // Cela garantit que le devis apparaîtra dans l'onglet "En attente"
+          await loadDevis(
+            status: 1, // Le nouveau devis est toujours en attente
+            forceRefresh: true,
+          );
+
+          // Vérifier que le devis créé est toujours dans la liste après rechargement
+          if (createdDevis.id != null) {
+            final devisExists = devis.any((d) => d.id == createdDevis.id);
+            if (!devisExists) {
+              // Si le devis n'est pas dans la liste après rechargement, le rajouter
+              AppLogger.warning(
+                'Devis créé non trouvé après rechargement, réajout à la liste',
+                tag: 'DEVIS_CONTROLLER',
+              );
+              devis.insert(0, createdDevis);
+            }
+          }
+
+          AppLogger.info(
+            'Liste rechargée après création du devis',
+            tag: 'DEVIS_CONTROLLER',
+          );
+        } catch (e) {
+          // Si le rechargement échoue, le devis reste dans la liste grâce à la mise à jour optimiste
+          AppLogger.warning(
+            'Erreur lors du rechargement après création: $e',
+            tag: 'DEVIS_CONTROLLER',
+          );
+          // Ne pas afficher d'erreur car le devis a été créé avec succès et est déjà dans la liste
+        }
+      });
 
       return true;
     } catch (e, stackTrace) {
-      print('❌ [DEVIS] Erreur lors de la création: $e');
-      print('❌ [DEVIS] Stack trace: $stackTrace');
       Get.snackbar(
         'Erreur',
         'Impossible de créer le devis: $e',
@@ -362,26 +543,32 @@ class DevisController extends GetxController {
       Devis? originalDevis;
       if (devisIndex != -1) {
         originalDevis = devis[devisIndex];
+        // Mettre à jour le statut à 2 (Validé) pour tous les cas
+        final updatedDevis = Devis(
+          id: originalDevis.id,
+          clientId: originalDevis.clientId,
+          reference: originalDevis.reference,
+          dateCreation: originalDevis.dateCreation,
+          dateValidite: originalDevis.dateValidite,
+          notes: originalDevis.notes,
+          status: 2, // Validé
+          items: originalDevis.items,
+          remiseGlobale: originalDevis.remiseGlobale,
+          tva: originalDevis.tva,
+          conditions: originalDevis.conditions,
+          commercialId: originalDevis.commercialId,
+          submittedBy: originalDevis.submittedBy,
+          rejectionComment: originalDevis.rejectionComment,
+          submittedAt: originalDevis.submittedAt,
+          validatedAt: DateTime.now(), // Date de validation
+        );
+
         // Si on est sur l'onglet "En attente" (status = 1), retirer le devis de la liste
-        // car un devis accepté a généralement un status différent (2 ou 3)
+        // car il n'est plus en attente
         if (_currentStatus == 1) {
           devis.removeAt(devisIndex);
         } else {
-          // Sinon, mettre à jour le statut (status = 2 pour accepté)
-          final updatedDevis = Devis(
-            id: originalDevis.id,
-            clientId: originalDevis.clientId,
-            reference: originalDevis.reference,
-            dateCreation: originalDevis.dateCreation,
-            dateValidite: originalDevis.dateValidite,
-            notes: originalDevis.notes,
-            status: 2, // Accepté
-            items: originalDevis.items,
-            remiseGlobale: originalDevis.remiseGlobale,
-            tva: originalDevis.tva,
-            conditions: originalDevis.conditions,
-            commercialId: originalDevis.commercialId,
-          );
+          // Sinon, mettre à jour le statut dans la liste
           devis[devisIndex] = updatedDevis;
         }
       }
@@ -427,12 +614,26 @@ class DevisController extends GetxController {
         // Recharger les données en arrière-plan après un court délai
         // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
         Future.delayed(const Duration(milliseconds: 500), () {
+          // Recharger l'onglet actuel
           loadDevis(status: _currentStatus).catchError((e) {
             AppLogger.error(
               'Erreur lors du rechargement après validation: $e',
               tag: 'DEVIS_CONTROLLER',
             );
           });
+
+          // Si on était sur l'onglet "En attente", recharger aussi l'onglet "Validés"
+          // pour que le devis validé apparaisse
+          if (_currentStatus == 1) {
+            Future.delayed(const Duration(milliseconds: 300), () {
+              loadDevis(status: 2).catchError((e) {
+                AppLogger.error(
+                  'Erreur lors du rechargement des devis validés: $e',
+                  tag: 'DEVIS_CONTROLLER',
+                );
+              });
+            });
+          }
         });
       } else {
         // En cas d'échec, restaurer l'état original
@@ -444,18 +645,29 @@ class DevisController extends GetxController {
           }
         }
 
-        throw Exception('Erreur lors de l\'acceptation du devis');
+        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
       }
     } catch (e) {
       // En cas d'erreur, restaurer l'état si nécessaire
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'accepter le devis: ${e.toString().replaceAll('Exception: ', '')}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-      );
+      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('401') &&
+          !errorStr.contains('403') &&
+          !errorStr.contains('unauthorized') &&
+          !errorStr.contains('forbidden')) {
+        Get.snackbar(
+          'Attention',
+          'La validation peut avoir réussi. Veuillez vérifier.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+      }
 
       // Recharger en arrière-plan pour restaurer l'état correct (non-bloquant)
       Future.microtask(() {

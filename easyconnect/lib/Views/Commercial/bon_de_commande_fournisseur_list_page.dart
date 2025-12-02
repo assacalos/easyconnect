@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.d
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonDeCommandeFournisseurListPage extends StatefulWidget {
   final int? supplierId;
@@ -20,17 +21,15 @@ class _BonDeCommandeFournisseurListPageState
   final BonDeCommandeFournisseurController controller = Get.put(
     BonDeCommandeFournisseurController(),
   );
-  bool _hasLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    if (!_hasLoaded) {
-      _hasLoaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.loadBonDeCommandes();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Toujours recharger les données quand la page est affichée
+      // pour s'assurer que les nouveaux bons de commande sont visibles
+      controller.loadBonDeCommandes();
+    });
   }
 
   @override
@@ -139,7 +138,7 @@ class _BonDeCommandeFournisseurListPageState
       final filteredBonDeCommandes = controller.getFilteredBonDeCommandes();
 
       if (controller.isLoading.value) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonSearchResults(itemCount: 6);
       }
 
       if (filteredBonDeCommandes.isEmpty) {

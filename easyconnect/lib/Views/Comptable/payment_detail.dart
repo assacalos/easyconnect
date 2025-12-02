@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/services/payment_service.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaymentDetail extends StatelessWidget {
   final int paymentId;
@@ -31,7 +32,7 @@ class PaymentDetail extends StatelessWidget {
         future: PaymentService.to.getPaymentById(paymentId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const SkeletonPage(listItemCount: 6);
           }
 
           if (snapshot.hasError) {

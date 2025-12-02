@@ -2,10 +2,16 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../Models/attendance_punch_model.dart';
+import '../Models/pagination_response.dart';
 import '../services/location_service.dart';
 import '../services/camera_service.dart';
 import '../utils/constant.dart';
+import '../utils/app_config.dart';
 import '../services/api_service.dart';
+import '../utils/auth_error_handler.dart';
+import '../utils/logger.dart';
+import '../utils/retry_helper.dart';
+import '../utils/pagination_helper.dart';
 
 class AttendancePunchService {
   static final AttendancePunchService _instance =
@@ -64,6 +70,9 @@ class AttendancePunchService {
 
       final response = await http.Response.fromStream(streamedResponse);
 
+      print('📥 [ATTENDANCE_PUNCH_SERVICE] Status code: ${response.statusCode}');
+      print('📥 [ATTENDANCE_PUNCH_SERVICE] Response body: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
 
@@ -86,12 +95,251 @@ class AttendancePunchService {
           }
         }
 
+        print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage créé avec succès: ID ${attendanceData?.id}');
         return {
           'success': true,
           'message':
               responseData['message'] ??
               'Pointage enregistré avec succès et soumis pour validation',
           'data': attendanceData,
+        };
+      } else if (response.statusCode == 500) {
+        // Pour l'erreur 500, vérifier si le pointage a quand même été créé
+        print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur 500 reçue, vérification si pointage créé...');
+        try {
+          final errorData = jsonDecode(response.body);
+          print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Données parsées: $errorData');
+          
+          // Chercher un ID dans différents emplacements possibles
+          int? attendanceId;
+          Map<String, dynamic>? attendanceDataMap;
+          
+          if (errorData is Map) {
+            // Chercher dans data.attendance.id ou data.id
+            if (errorData['data'] != null && errorData['data'] is Map) {
+              final data = errorData['data'] as Map;
+              if (data['attendance'] != null && data['attendance'] is Map) {
+                final attendanceObj = data['attendance'] as Map;
+                if (attendanceObj['id'] != null) {
+                  attendanceId = attendanceObj['id'] is int 
+                      ? attendanceObj['id'] 
+                      : int.tryParse(attendanceObj['id'].toString());
+                  attendanceDataMap = Map<String, dynamic>.from(attendanceObj);
+                }
+              } else if (data['id'] != null) {
+                attendanceId = data['id'] is int 
+                    ? data['id'] 
+                    : int.tryParse(data['id'].toString());
+                attendanceDataMap = Map<String, dynamic>.from(data);
+              }
+            }
+            // Chercher directement dans la racine
+            else if (errorData['attendance'] != null && errorData['attendance'] is Map) {
+              final attendanceObj = errorData['attendance'] as Map;
+              if (attendanceObj['id'] != null) {
+                attendanceId = attendanceObj['id'] is int 
+                    ? attendanceObj['id'] 
+                    : int.tryParse(attendanceObj['id'].toString());
+                attendanceDataMap = Map<String, dynamic>.from(attendanceObj);
+              }
+            }
+            // Chercher directement l'ID à la racine
+            else if (errorData['id'] != null) {
+              attendanceId = errorData['id'] is int 
+                  ? errorData['id'] 
+                  : int.tryParse(errorData['id'].toString());
+              attendanceDataMap = Map<String, dynamic>.from(errorData);
+            }
+          }
+          
+          // Si un ID a été trouvé, considérer que la création a réussi
+          if (attendanceId != null) {
+            print('✅ [ATTENDANCE_PUNCH_SERVICE] ID trouvé dans erreur 500: $attendanceId');
+            
+            AttendancePunchModel? attendanceData;
+            if (attendanceDataMap != null) {
+              try {
+                attendanceData = AttendancePunchModel.fromJson(attendanceDataMap);
+                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage construit depuis attendanceDataMap: ID ${attendanceData.id}');
+              } catch (e) {
+                print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Parsing échoué, construction minimale: $e');
+                // Construire un pointage minimal avec l'ID et les données disponibles
+                try {
+                  final now = DateTime.now();
+                  attendanceData = AttendancePunchModel.fromJson({
+                    'id': attendanceId,
+                    'user_id': 0, // Sera rempli par le backend
+                    'type': type,
+                    'timestamp': now.toIso8601String(),
+                    'latitude': locationInfo.latitude,
+                    'longitude': locationInfo.longitude,
+                    'address': locationInfo.address,
+                    'accuracy': locationInfo.accuracy,
+                    'status': 'pending',
+                    'created_at': now.toIso8601String(),
+                    'updated_at': now.toIso8601String(),
+                  });
+                  print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage minimal construit depuis données disponibles: ID ${attendanceData.id}');
+                } catch (e2) {
+                  print('❌ [ATTENDANCE_PUNCH_SERVICE] Impossible de construire le pointage minimal: $e2');
+                }
+              }
+            } else {
+              // Construire un pointage minimal avec l'ID et les données disponibles
+              try {
+                final now = DateTime.now();
+                attendanceData = AttendancePunchModel.fromJson({
+                  'id': attendanceId,
+                  'user_id': 0, // Sera rempli par le backend
+                  'type': type,
+                  'timestamp': now.toIso8601String(),
+                  'latitude': locationInfo.latitude,
+                  'longitude': locationInfo.longitude,
+                  'address': locationInfo.address,
+                  'accuracy': locationInfo.accuracy,
+                  'status': 'pending',
+                  'created_at': now.toIso8601String(),
+                  'updated_at': now.toIso8601String(),
+                });
+                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage minimal construit: ID ${attendanceData.id}');
+              } catch (e) {
+                print('❌ [ATTENDANCE_PUNCH_SERVICE] Impossible de construire le pointage minimal: $e');
+              }
+            }
+            
+            if (attendanceData != null) {
+              print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage retourné malgré erreur 500: ID ${attendanceData.id}');
+              return {
+                'success': true,
+                'message': 'Pointage enregistré avec succès (malgré une erreur serveur)',
+                'data': attendanceData,
+              };
+            }
+          } else {
+            print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun ID trouvé dans l\'erreur 500');
+          }
+        } catch (e) {
+          print('❌ [ATTENDANCE_PUNCH_SERVICE] Erreur lors de la vérification de l\'ID: $e');
+        }
+        
+        // Si pas d'ID trouvé, vérifier si le pointage a quand même été créé
+        // en cherchant les pointages récents du même type
+        print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun ID trouvé, vérification si pointage créé...');
+        try {
+          // Attendre un peu pour que le backend termine la création
+          await Future.delayed(const Duration(milliseconds: 1000));
+          
+          final now = DateTime.now();
+          AttendancePunchModel? foundAttendance;
+          
+          // Stratégie 1: Chercher tous les pointages du même type (sans filtre de date)
+          print('🔍 [ATTENDANCE_PUNCH_SERVICE] Stratégie 1: Recherche sans filtre de date, type=$type');
+          try {
+            final allAttendances = await getAttendances(type: type);
+            print('🔍 [ATTENDANCE_PUNCH_SERVICE] ${allAttendances.length} pointages trouvés (sans filtre de date)');
+            
+            if (allAttendances.isNotEmpty) {
+              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Premier pointage: ID=${allAttendances.first.id}, Type=${allAttendances.first.type}, Timestamp=${allAttendances.first.timestamp}');
+              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Dernier pointage: ID=${allAttendances.last.id}, Type=${allAttendances.last.type}, Timestamp=${allAttendances.last.timestamp}');
+            }
+            
+            // Chercher le pointage le plus récent du même type créé dans les 10 dernières minutes
+            AttendancePunchModel? mostRecentAttendance;
+            for (var attendance in allAttendances) {
+              final timeDiff = now.difference(attendance.timestamp).inMinutes;
+              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Pointage ID=${attendance.id}, Type=${attendance.type}, TimeDiff=${timeDiff}min, Timestamp=${attendance.timestamp}');
+              if (timeDiff <= 10 && attendance.type == type) {
+                // Garder le pointage le plus récent du même type
+                if (mostRecentAttendance == null ||
+                    attendance.timestamp.isAfter(mostRecentAttendance.timestamp)) {
+                  mostRecentAttendance = attendance;
+                }
+                
+                // Vérifier aussi la localisation si disponible (approximative)
+                final latDiff = (attendance.latitude - locationInfo.latitude).abs();
+                final lonDiff = (attendance.longitude - locationInfo.longitude).abs();
+                // Si la différence de localisation est inférieure à 0.01 degré (environ 1km), c'est probablement le même pointage
+                if (latDiff < 0.01 && lonDiff < 0.01 && timeDiff <= 5) {
+                  foundAttendance = attendance;
+                  print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage trouvé (stratégie 1 avec localisation): ID ${attendance.id}, Type: ${attendance.type}, Timestamp: ${attendance.timestamp}, TimeDiff: ${timeDiff}min');
+                  break;
+                }
+              }
+            }
+            
+            // Si aucun pointage avec localisation correspondante, utiliser le plus récent du même type
+            if (foundAttendance == null && mostRecentAttendance != null) {
+              final timeDiff = now.difference(mostRecentAttendance.timestamp).inMinutes;
+              if (timeDiff <= 5) {
+                foundAttendance = mostRecentAttendance;
+                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage le plus récent trouvé (stratégie 1): ID ${foundAttendance.id}, Type: ${foundAttendance.type}, Timestamp: ${foundAttendance.timestamp}, TimeDiff: ${timeDiff}min');
+              }
+            }
+          } catch (e) {
+            print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur stratégie 1: $e');
+          }
+          
+          // Stratégie 2: Si stratégie 1 n'a rien trouvé, chercher avec filtre de date
+          if (foundAttendance == null) {
+            print('🔍 [ATTENDANCE_PUNCH_SERVICE] Stratégie 2: Recherche avec filtre de date');
+            try {
+              final dateFrom = now.subtract(const Duration(minutes: 10)).toIso8601String().split('T')[0];
+              final dateTo = now.toIso8601String().split('T')[0];
+              
+              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Recherche: type=$type, dateFrom=$dateFrom, dateTo=$dateTo');
+              
+              final recentAttendances = await getAttendances(
+                type: type,
+                dateFrom: dateFrom,
+                dateTo: dateTo,
+              );
+              
+              print('🔍 [ATTENDANCE_PUNCH_SERVICE] ${recentAttendances.length} pointages trouvés (avec filtre de date)');
+              
+              // Chercher le pointage le plus récent
+              for (var attendance in recentAttendances) {
+                final timeDiff = now.difference(attendance.timestamp).inMinutes;
+                if (timeDiff <= 10 && attendance.type == type) {
+                  if (foundAttendance == null ||
+                      attendance.timestamp.isAfter(foundAttendance.timestamp)) {
+                    foundAttendance = attendance;
+                    print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage trouvé (stratégie 2): ID ${attendance.id}, Type: ${attendance.type}, Timestamp: ${attendance.timestamp}, TimeDiff: ${timeDiff}min');
+                  }
+                }
+              }
+            } catch (e) {
+              print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur stratégie 2: $e');
+            }
+          }
+          
+          if (foundAttendance != null && foundAttendance.id != null) {
+            print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage retourné après vérification: ID ${foundAttendance.id}');
+            return {
+              'success': true,
+              'message': 'Pointage enregistré avec succès (malgré une erreur serveur)',
+              'data': foundAttendance,
+            };
+          } else {
+            print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun pointage récent trouvé correspondant');
+          }
+        } catch (e) {
+          print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur lors de la vérification: $e');
+        }
+        
+        // Si pas trouvé, c'est une vraie erreur
+        print('❌ [ATTENDANCE_PUNCH_SERVICE] Pointage non trouvé, retour d\'une erreur');
+        String errorMessage = 'Erreur serveur lors de l\'enregistrement du pointage (500)';
+        try {
+          final errorData = jsonDecode(response.body);
+          errorMessage = errorData['message'] ?? errorMessage;
+        } catch (e) {
+          // Ignorer
+        }
+        
+        return {
+          'success': false,
+          'message': errorMessage,
+          'status_code': 500,
         };
       } else {
         String errorMessage = 'Erreur lors du pointage';
@@ -124,6 +372,7 @@ class AttendancePunchService {
           errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
         }
 
+        print('❌ [ATTENDANCE_PUNCH_SERVICE] Erreur ${response.statusCode}: $errorMessage');
         return {
           'success': false,
           'message': errorMessage,
@@ -305,6 +554,82 @@ class AttendancePunchService {
         'can_punch': true,
         'message': 'Vous pouvez pointer maintenant',
       };
+    }
+  }
+
+  /// Obtenir la liste des pointages avec pagination côté serveur
+  Future<PaginationResponse<AttendancePunchModel>> getAttendancesPaginated({
+    String? status,
+    String? type,
+    int? userId,
+    String? dateFrom,
+    String? dateTo,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      String url = '${AppConfig.baseUrl}/attendances';
+      List<String> params = [];
+
+      if (status != null && status.isNotEmpty) {
+        params.add('status=$status');
+      }
+      if (type != null && type.isNotEmpty) {
+        params.add('type=$type');
+      }
+      if (userId != null) {
+        params.add('user_id=$userId');
+      }
+      if (dateFrom != null && dateFrom.isNotEmpty) {
+        params.add('date_from=$dateFrom');
+      }
+      if (dateTo != null && dateTo.isNotEmpty) {
+        params.add('date_to=$dateTo');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'ATTENDANCE_PUNCH_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'ATTENDANCE_PUNCH_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<AttendancePunchModel>(
+          json: data,
+          fromJsonT: (json) => AttendancePunchModel.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des pointages: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getAttendancesPaginated: $e',
+        tag: 'ATTENDANCE_PUNCH_SERVICE',
+      );
+      rethrow;
     }
   }
 

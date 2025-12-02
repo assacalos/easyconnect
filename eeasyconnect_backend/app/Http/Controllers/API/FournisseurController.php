@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Fournisseur;
 use App\Models\BonDeCommande;
+use App\Http\Resources\SupplierResource;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -22,12 +23,21 @@ class FournisseurController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             Log::info('API: Récupération des fournisseurs', [
-                'user_id' => auth()->id(),
+                'user_id' => $user->id,
                 'filters' => $request->all()
             ]);
 
-            $query = Fournisseur::query();
+            $query = Fournisseur::with(['createdBy', 'updatedBy', 'validatedBy', 'rejectedBy']);
 
             // Filtrage par statut
             if ($request->has('statut') && $request->statut !== 'all') {
@@ -54,7 +64,7 @@ class FournisseurController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseurs récupérés avec succès',
-                'data' => $suppliers->items(),
+                'data' => SupplierResource::collection($suppliers->items()),
                 'pagination' => [
                     'current_page' => $suppliers->currentPage(),
                     'last_page' => $suppliers->lastPage(),
@@ -66,9 +76,10 @@ class FournisseurController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            $user = $request->user();
             Log::error('API: Erreur lors de la récupération des fournisseurs', [
                 'error' => $e->getMessage(),
-                'user_id' => auth()->id()
+                'user_id' => $user ? $user->id : null
             ]);
 
             return response()->json([
@@ -85,7 +96,7 @@ class FournisseurController extends Controller
     public function show($id): JsonResponse
     {
         try {
-            $fournisseur = Fournisseur::findOrFail($id);
+            $fournisseur = Fournisseur::with(['createdBy', 'updatedBy', 'validatedBy', 'rejectedBy'])->findOrFail($id);
             
             Log::info('API: Récupération du fournisseur', [
                 'fournisseur_id' => $fournisseur->id,
@@ -95,7 +106,7 @@ class FournisseurController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseur récupéré avec succès',
-                'data' => $fournisseur
+                'data' => new SupplierResource($fournisseur)
             ]);
 
         } catch (\Exception $e) {

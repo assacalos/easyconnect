@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/services/leave_service.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class LeaveForm extends StatelessWidget {
   final LeaveRequest? request;
@@ -392,7 +393,10 @@ class LeaveForm extends StatelessWidget {
         ),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SkeletonFormField(hasLabel: false, height: 40),
+            );
           }
 
           if (snapshot.hasError || !snapshot.hasData) {

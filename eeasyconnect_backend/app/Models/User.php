@@ -93,19 +93,21 @@ class User extends Authenticatable
     }
 
     /**
-     * Obtenir le nom du rôle
+     * Obtenir le nom du rôle (avec cache)
      */
     public function getRoleName()
     {
-        $roles = [
-            1 => 'Admin',
-            2 => 'Commercial',
-            3 => 'Comptable',
-            4 => 'RH',
-            5 => 'Technicien',
-            6 => 'Patron'
-        ];
+        return \Illuminate\Support\Facades\Cache::remember("role_name:{$this->role}", 86400, function () {
+            $roles = [
+                1 => 'Admin',
+                2 => 'Commercial',
+                3 => 'Comptable',
+                4 => 'RH',
+                5 => 'Technicien',
+                6 => 'Patron'
+            ];
 
-        return $roles[$this->role] ?? 'Inconnu';
+            return $roles[$this->role] ?? 'Inconnu';
+        });
     }
 }

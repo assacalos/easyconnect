@@ -6,6 +6,7 @@ use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\CommandeEntreprise;
+use App\Http\Resources\CommandeEntrepriseResource;
 
 class CommandeEntrepriseController extends Controller
 {
@@ -17,6 +18,14 @@ class CommandeEntrepriseController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             $query = CommandeEntreprise::with(['client', 'commercial']);
 
             // Filtrage par statut
@@ -45,7 +54,13 @@ class CommandeEntrepriseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $commandes,
+                'data' => CommandeEntrepriseResource::collection($commandes->items()),
+                'pagination' => [
+                    'current_page' => $commandes->currentPage(),
+                    'last_page' => $commandes->lastPage(),
+                    'per_page' => $commandes->perPage(),
+                    'total' => $commandes->total(),
+                ],
                 'message' => 'Liste des commandes récupérée avec succès'
             ]);
 
@@ -63,7 +78,7 @@ class CommandeEntrepriseController extends Controller
     public function show($id)
     {
         try {
-            $commande = CommandeEntreprise::with(['client', 'commercial'])
+            $commande = CommandeEntreprise::with(['client', 'commercial', 'items'])
                 ->findOrFail($id);
 
             // Vérification des permissions pour les commerciaux
@@ -77,17 +92,7 @@ class CommandeEntrepriseController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'id' => $commande->id,
-                    'client_id' => $commande->client_id,
-                    'user_id' => $commande->user_id,
-                    'status' => $commande->status,
-                    'fichiers_scannes' => $commande->fichiers_scannes,
-                    'client' => $commande->client,
-                    'commercial' => $commande->commercial,
-                    'created_at' => $commande->created_at->format('Y-m-d\TH:i:s\Z'),
-                    'updated_at' => $commande->updated_at->format('Y-m-d\TH:i:s\Z'),
-                ],
+                'data' => new CommandeEntrepriseResource($commande),
                 'message' => 'Commande récupérée avec succès'
             ]);
         } catch (\Exception $e) {

@@ -57,7 +57,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/factures-list', [FactureController::class, 'index']);
     Route::get('/bons-de-commande-list', [BonDeCommandeController::class, 'index']);
     Route::get('/commandes-entreprise-list', [CommandeEntrepriseController::class, 'index']);
+    Route::get('/devis', [DevisController::class, 'index']);
     Route::get('/devis-list', [DevisController::class, 'index']);
+    Route::get('/devis-debug', [DevisController::class, 'debug']);
     Route::get('/bordereaux-list', [BordereauController::class, 'index']);
     Route::get('/paiements-list', [PaiementController::class, 'index']);
     Route::get('/payments', [PaiementController::class, 'index']);

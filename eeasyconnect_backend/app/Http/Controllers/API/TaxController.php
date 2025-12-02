@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Tax;
 use App\Models\TaxCategory;
+use App\Http\Resources\TaxResource;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -20,8 +21,17 @@ class TaxController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
             Log::info('API: Récupération des taxes', [
-                'user_id' => auth()->id(),
+                'user_id' => $user->id,
                 'filters' => $request->all()
             ]);
 
@@ -62,7 +72,7 @@ class TaxController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Taxes récupérées avec succès',
-                'data' => $taxes->items(),
+                'data' => TaxResource::collection($taxes->items()),
                 'pagination' => [
                     'current_page' => $taxes->currentPage(),
                     'last_page' => $taxes->lastPage(),
@@ -77,13 +87,20 @@ class TaxController extends Controller
         } catch (\Exception $e) {
             Log::error('Erreur lors de la récupération des taxes', [
                 'error' => $e->getMessage(),
-                'user_id' => auth()->id()
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => $request->user()?->id,
             ]);
+
+            $errorMessage = 'Erreur lors de la récupération des taxes';
+            if (config('app.debug')) {
+                $errorMessage .= ': ' . $e->getMessage();
+            }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des taxes',
-                'error' => $e->getMessage()
+                'message' => $errorMessage
             ], 500);
         }
     }
@@ -270,7 +287,7 @@ public function validateTax(Request $request, $id): JsonResponse
 
             return response()->json([
                 'success' => true,
-                'data' => $tax,
+                'data' => new TaxResource($tax),
                 'message' => 'Taxe récupérée avec succès'
             ]);
 

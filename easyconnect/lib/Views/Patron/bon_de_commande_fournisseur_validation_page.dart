@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonDeCommandeFournisseurValidationPage extends StatefulWidget {
   const BonDeCommandeFournisseurValidationPage({super.key});
@@ -129,7 +130,7 @@ class _BonDeCommandeFournisseurValidationPageState
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonSearchResults(itemCount: 6);
               }
 
               // Filtrer selon l'onglet actif

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/leave_controller.dart';
 import 'package:easyconnect/Models/leave_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class LeaveValidationPage extends StatefulWidget {
   const LeaveValidationPage({super.key});
@@ -124,7 +125,7 @@ class _LeaveValidationPageState extends State<LeaveValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildLeaveList(),
             ),
           ),

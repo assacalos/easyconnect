@@ -2,14 +2,89 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class BonCommandeService {
   final storage = GetStorage();
+
+  /// Récupérer les bons de commande avec pagination côté serveur
+  Future<PaginationResponse<BonCommande>> getBonCommandesPaginated({
+    int? status,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/commandes-entreprise';
+      List<String> params = [];
+
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (userRole == 2 && userId != null) {
+        params.add('user_id=$userId');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'BON_COMMANDE_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BON_COMMANDE_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<BonCommande>(
+          json: data,
+          fromJsonT: (json) => BonCommande.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des bons de commande: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getBonCommandesPaginated: $e',
+        tag: 'BON_COMMANDE_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   Future<List<BonCommande>> getBonCommandes({int? status}) async {
     try {
@@ -325,7 +400,22 @@ class BonCommandeService {
         },
       );
 
-      return response.statusCode == 200;
+      // Si le status code est 200 ou 201, considérer comme succès
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+
+      // Vérifier le body même si le status code n'est pas 200/201
+      try {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          return true;
+        }
+      } catch (e) {
+        // Ignorer l'erreur de parsing
+      }
+
+      return false;
     } catch (e) {
       return false;
     }

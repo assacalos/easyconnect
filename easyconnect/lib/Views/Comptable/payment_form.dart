@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/payment_service.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaymentForm extends StatefulWidget {
   final int? paymentId;
@@ -95,7 +96,7 @@ class _PaymentFormState extends State<PaymentForm> {
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const SkeletonPage(listItemCount: 6),
       );
     }
 

@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/bordereau_controller.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/Views/Components/devis_selection_dialog.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BordereauFormPage extends StatefulWidget {
   final bool isEditing;
@@ -512,14 +513,20 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                 data,
               );
               if (success) {
-                await Future.delayed(const Duration(milliseconds: 500));
+                // Fermer immédiatement le formulaire après succès
                 Get.offNamed('/bordereaux');
               }
             } else {
+              print('📝 [BORDEREAU FORM] Appel de createBordereau');
               final success = await controller.createBordereau(data);
+              print('📝 [BORDEREAU FORM] Résultat de createBordereau: $success');
               if (success) {
-                await Future.delayed(const Duration(milliseconds: 500));
+                print('✅ [BORDEREAU FORM] Succès! Fermeture du formulaire...');
+                // Fermer immédiatement le formulaire après succès
                 Get.offNamed('/bordereaux');
+                print('✅ [BORDEREAU FORM] Get.offNamed appelé');
+              } else {
+                print('❌ [BORDEREAU FORM] Échec! Le formulaire reste ouvert');
               }
             }
           }
@@ -575,7 +582,7 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
               height: 400,
               child: Obx(() {
                 if (controller.isLoadingClients.value) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonSearchResults(itemCount: 4);
                 }
 
                 if (controller.availableClients.isEmpty) {

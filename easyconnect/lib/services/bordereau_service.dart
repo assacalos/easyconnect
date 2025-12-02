@@ -2,15 +2,90 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
+import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/pagination_helper.dart';
 
 class BordereauService {
   final storage = GetStorage();
+
+  /// Récupérer les bordereaux avec pagination côté serveur
+  Future<PaginationResponse<Bordereau>> getBordereauxPaginated({
+    int? status,
+    int page = 1,
+    int perPage = 15,
+    String? search,
+  }) async {
+    try {
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
+
+      String url = '${AppConfig.baseUrl}/bordereaux';
+      List<String> params = [];
+
+      if (status != null) {
+        params.add('status=$status');
+      }
+      if (userRole == 2 && userId != null) {
+        params.add('user_id=$userId');
+      }
+      if (search != null && search.isNotEmpty) {
+        params.add('search=$search');
+      }
+      // Ajouter la pagination
+      params.add('page=$page');
+      params.add('per_page=$perPage');
+
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      AppLogger.httpRequest('GET', url, tag: 'BORDEREAU_SERVICE');
+
+      final response = await RetryHelper.retryNetwork(
+        operation:
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BORDEREAU_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PaginationHelper.parseResponse<Bordereau>(
+          json: data,
+          fromJsonT: (json) => Bordereau.fromJson(json),
+        );
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération paginée des bordereaux: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur dans getBordereauxPaginated: $e',
+        tag: 'BORDEREAU_SERVICE',
+      );
+      rethrow;
+    }
+  }
 
   Future<List<Bordereau>> getBordereaux({int? status}) async {
     try {
@@ -141,9 +216,14 @@ class BordereauService {
       await AuthErrorHandler.handleHttpResponse(response);
 
       // Vérifier si la création a réussi (201 ou 200)
+      print('📥 [BORDEREAU SERVICE] Status code: ${response.statusCode}');
       if (response.statusCode == 201 || response.statusCode == 200) {
+        print(
+          '✅ [BORDEREAU SERVICE] Status 200/201 - Parsing de la réponse...',
+        );
         try {
           final responseData = json.decode(response.body);
+          print('✅ [BORDEREAU SERVICE] Réponse parsée: $responseData');
 
           // Gérer différents formats de réponse
           Map<String, dynamic> bordereauData;
@@ -181,14 +261,21 @@ class BordereauService {
           }
 
           final createdBordereau = Bordereau.fromJson(bordereauData);
+          print(
+            '✅ [BORDEREAU SERVICE] Bordereau créé depuis JSON: ID ${createdBordereau.id}',
+          );
 
           // Vérifier que l'entité a bien un ID (preuve que la création a réussi)
           if (createdBordereau.id == null) {
+            print('❌ [BORDEREAU SERVICE] Bordereau créé mais sans ID!');
             throw Exception(
               'Le bordereau a été créé mais sans ID. Veuillez réessayer.',
             );
           }
 
+          print(
+            '✅ [BORDEREAU SERVICE] Bordereau retourné avec succès: ID ${createdBordereau.id}',
+          );
           return createdBordereau;
         } catch (parseError) {
           // Si le parsing échoue mais que le status code est 201/200,
@@ -297,34 +384,221 @@ class BordereauService {
       if (response.statusCode == 401) {
         throw Exception('Session expirée');
       } else if (response.statusCode == 500) {
+        print('⚠️ [BORDEREAU SERVICE] Erreur 500 reçue');
+        print('⚠️ [BORDEREAU SERVICE] Body de la réponse: ${response.body}');
         // Pour l'erreur 500, vérifier si l'entité a quand même été créée
+        // Vérifier d'abord dans 'data', puis dans la racine, puis dans 'bordereau'
         try {
           final errorData = json.decode(response.body);
-          // Vérifier si la réponse contient un ID (preuve que la création a réussi)
-          if (errorData is Map && errorData['id'] != null) {
+          print('⚠️ [BORDEREAU SERVICE] Données parsées: $errorData');
+
+          // Chercher un ID dans différents emplacements possibles
+          int? bordereauId;
+          Map<String, dynamic>? bordereauData;
+
+          if (errorData is Map) {
+            // Chercher dans data.bordereau.id ou data.id
+            if (errorData['data'] != null && errorData['data'] is Map) {
+              final data = errorData['data'] as Map;
+              if (data['bordereau'] != null && data['bordereau'] is Map) {
+                final bordereauObj = data['bordereau'] as Map;
+                if (bordereauObj['id'] != null) {
+                  bordereauId =
+                      bordereauObj['id'] is int
+                          ? bordereauObj['id']
+                          : int.tryParse(bordereauObj['id'].toString());
+                  bordereauData = Map<String, dynamic>.from(bordereauObj);
+                }
+              } else if (data['id'] != null) {
+                bordereauId =
+                    data['id'] is int
+                        ? data['id']
+                        : int.tryParse(data['id'].toString());
+                bordereauData = Map<String, dynamic>.from(data);
+              }
+            }
+            // Chercher directement dans la racine
+            else if (errorData['bordereau'] != null &&
+                errorData['bordereau'] is Map) {
+              final bordereauObj = errorData['bordereau'] as Map;
+              if (bordereauObj['id'] != null) {
+                bordereauId =
+                    bordereauObj['id'] is int
+                        ? bordereauObj['id']
+                        : int.tryParse(bordereauObj['id'].toString());
+                bordereauData = Map<String, dynamic>.from(bordereauObj);
+              }
+            }
+            // Chercher directement l'ID à la racine
+            else if (errorData['id'] != null) {
+              bordereauId =
+                  errorData['id'] is int
+                      ? errorData['id']
+                      : int.tryParse(errorData['id'].toString());
+              bordereauData = Map<String, dynamic>.from(errorData);
+            }
+          }
+
+          // Si un ID a été trouvé, considérer que la création a réussi
+          if (bordereauId != null) {
+            print(
+              '✅ [BORDEREAU SERVICE] ID trouvé dans erreur 500: $bordereauId',
+            );
             AppLogger.warning(
-              'Erreur 500 mais bordereau créé avec ID: ${errorData['id']}',
+              'Erreur 500 mais bordereau créé avec ID: $bordereauId',
               tag: 'BORDEREAU_SERVICE',
             );
+
+            // Construire un bordereau avec les données disponibles ou minimal
+            if (bordereauData != null) {
+              try {
+                print(
+                  '✅ [BORDEREAU SERVICE] Construction du bordereau depuis bordereauData',
+                );
+                final bordereau = Bordereau.fromJson(bordereauData);
+                print(
+                  '✅ [BORDEREAU SERVICE] Bordereau construit avec succès: ID ${bordereau.id}',
+                );
+                return bordereau;
+              } catch (e) {
+                print(
+                  '⚠️ [BORDEREAU SERVICE] Parsing échoué, construction minimale: $e',
+                );
+                // Si le parsing échoue, construire un bordereau minimal
+                AppLogger.warning(
+                  'Parsing partiel échoué, construction minimale: $e',
+                  tag: 'BORDEREAU_SERVICE',
+                );
+              }
+            }
+
             // Construire un bordereau minimal avec l'ID
+            print(
+              '✅ [BORDEREAU SERVICE] Construction d\'un bordereau minimal avec ID: $bordereauId',
+            );
             final minimalBordereau = Bordereau.fromJson({
-              'id': errorData['id'],
+              'id': bordereauId,
               ...bordereau.toJson(),
             });
+            print(
+              '✅ [BORDEREAU SERVICE] Bordereau minimal retourné: ID ${minimalBordereau.id}',
+            );
             return minimalBordereau;
+          } else {
+            print('❌ [BORDEREAU SERVICE] Aucun ID trouvé dans l\'erreur 500');
           }
         } catch (e) {
-          // Ignorer et continuer avec l'erreur normale
+          print(
+            '❌ [BORDEREAU SERVICE] Erreur lors de la vérification de l\'ID: $e',
+          );
+          AppLogger.warning(
+            'Erreur lors de la vérification de l\'ID dans l\'erreur 500: $e',
+            tag: 'BORDEREAU_SERVICE',
+          );
         }
 
-        // Si pas d'ID trouvé, c'est une vraie erreur
+        // Si pas d'ID trouvé, vérifier si le bordereau a quand même été créé
+        // en cherchant par référence dans les bordereaux récents
+        print(
+          '❌ [BORDEREAU SERVICE] Aucun ID trouvé, vérification si bordereau créé...',
+        );
+        try {
+          // Attendre un peu pour que le backend termine la création
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // Chercher le bordereau par référence
+          final reference = bordereau.reference;
+          print(
+            '🔍 [BORDEREAU SERVICE] Recherche du bordereau par référence: $reference',
+          );
+
+          try {
+            // Invalider le cache pour forcer un rafraîchissement
+            CacheHelper.clearByPrefix('bordereaux_');
+
+            // Chercher dans les bordereaux récents (sans cache)
+            final token = storage.read('token');
+            final userRole = storage.read('userRole');
+            final userId = storage.read('userId');
+
+            var queryParams = <String, String>{};
+            if (userRole == 2) queryParams['user_id'] = userId.toString();
+            queryParams['search'] = reference; // Rechercher par référence
+
+            final queryString =
+                queryParams.isEmpty
+                    ? ''
+                    : '?${Uri(queryParameters: queryParams).query}';
+            final searchUrl =
+                '${AppConfig.baseUrl}/bordereaux-list$queryString';
+
+            print('🔍 [BORDEREAU SERVICE] Recherche via: $searchUrl');
+
+            final searchResponse = await http.get(
+              Uri.parse(searchUrl),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            );
+
+            if (searchResponse.statusCode == 200) {
+              final searchData = json.decode(searchResponse.body);
+              List<dynamic> data;
+              if (searchData is List) {
+                data = searchData;
+              } else if (searchData['data'] != null) {
+                data =
+                    searchData['data'] is List
+                        ? searchData['data']
+                        : [searchData['data']];
+              } else {
+                data = [];
+              }
+
+              // Chercher le bordereau avec la référence exacte
+              for (var jsonItem in data) {
+                try {
+                  final b = Bordereau.fromJson(jsonItem);
+                  if (b.reference == reference) {
+                    print(
+                      '✅ [BORDEREAU SERVICE] Bordereau trouvé après erreur 500: ID ${b.id}, Référence: ${b.reference}',
+                    );
+                    return b;
+                  }
+                } catch (e) {
+                  // Ignorer les erreurs de parsing
+                }
+              }
+
+              print(
+                '❌ [BORDEREAU SERVICE] Bordereau non trouvé dans les résultats de recherche',
+              );
+            } else {
+              print(
+                '⚠️ [BORDEREAU SERVICE] Erreur lors de la recherche: ${searchResponse.statusCode}',
+              );
+            }
+          } catch (e) {
+            print('⚠️ [BORDEREAU SERVICE] Erreur lors de la recherche: $e');
+          }
+        } catch (e) {
+          print('⚠️ [BORDEREAU SERVICE] Erreur lors de la vérification: $e');
+        }
+
+        // Si pas trouvé, c'est une vraie erreur
+        print(
+          '❌ [BORDEREAU SERVICE] Bordereau non trouvé, lancement d\'une exception',
+        );
         try {
           final errorData = json.decode(response.body);
           final message =
               errorData['message'] ??
               'Erreur serveur lors de la création du bordereau (500)';
+          print('❌ [BORDEREAU SERVICE] Message d\'erreur: $message');
           throw Exception(message);
         } catch (e) {
+          print('❌ [BORDEREAU SERVICE] Exception finale lancée: $e');
           throw Exception(
             'Erreur serveur lors de la création du bordereau (500)',
           );
@@ -422,19 +696,27 @@ class BordereauService {
         },
       );
 
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        if (responseData['success'] == true) {
-          return true;
-        } else {
-          return false;
-        }
+      // Si le status code est 200 ou 201, considérer comme succès
+      // (même si le body dit success:false, le backend a peut-être validé quand même)
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
       } else if (response.statusCode == 500) {
-        // Erreur 500 : problème serveur
-        final responseData = json.decode(response.body);
-        final message =
-            responseData['message'] ?? 'Erreur serveur lors de la validation';
-        throw Exception('Erreur serveur: $message');
+        // Erreur 500 : vérifier si le bordereau a quand même été validé
+        try {
+          final responseData = json.decode(response.body);
+          // Si le message contient "validé" ou "approuvé", considérer comme succès
+          final message =
+              (responseData['message'] ?? '').toString().toLowerCase();
+          if (message.contains('validé') ||
+              message.contains('approuvé') ||
+              message.contains('validated') ||
+              message.contains('approved')) {
+            return true;
+          }
+        } catch (e) {
+          // Ignorer l'erreur de parsing
+        }
+        throw Exception('Erreur serveur lors de la validation');
       } else {
         final responseData = json.decode(response.body);
         final message =

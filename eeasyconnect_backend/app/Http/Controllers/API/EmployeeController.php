@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Traits\CachesData;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\EmployeeLeave;
 use App\Models\EmployeePerformance;
+use App\Http\Resources\EmployeeResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class EmployeeController extends Controller
 {
+    use CachesData;
     /**
      * Afficher la liste des employés
      */
@@ -19,7 +23,27 @@ class EmployeeController extends Controller
     {
         try {
             $user = $request->user();
-            $query = Employee::with(['creator', 'updater', 'documents', 'leaves', 'performances']);
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            // Charger les relations avec gestion d'erreur
+            // Utiliser des closures pour s'assurer que les foreign keys sont toujours sélectionnées
+            $query = Employee::with([
+                'creator' => function($q) {
+                    $q->select('id', 'nom', 'prenom');
+                },
+                'updater' => function($q) {
+                    $q->select('id', 'nom', 'prenom');
+                },
+                'documents',
+                'leaves',
+                'performances'
+            ]);
 
             // Filtrage par statut
             if ($request->has('status')) {
@@ -97,144 +121,35 @@ class EmployeeController extends Controller
             $perPage = $request->get('limit', $request->get('per_page', 15));
             $employees = $query->orderBy('first_name')->paginate($perPage);
 
-            // Transformer les données
-            $employees->getCollection()->transform(function ($employee) {
-                return [
-                    'id' => $employee->id,
-                    'first_name' => $employee->first_name,
-                    'last_name' => $employee->last_name,
-                    'full_name' => $employee->full_name,
-                    'initials' => $employee->initials,
-                    'email' => $employee->email,
-                    'phone' => $employee->phone,
-                    'address' => $employee->address,
-                    'birth_date' => $employee->birth_date?->format('Y-m-d\TH:i:s\Z'),
-                    'age' => $employee->age,
-                    'gender' => $employee->gender,
-                    'gender_libelle' => $employee->gender_libelle,
-                    'marital_status' => $employee->marital_status,
-                    'marital_status_libelle' => $employee->marital_status_libelle,
-                    'nationality' => $employee->nationality,
-                    'id_number' => $employee->id_number,
-                    'social_security_number' => $employee->social_security_number,
-                    'position' => $employee->position,
-                    'department' => $employee->department,
-                    'manager' => $employee->manager,
-                    'hire_date' => $employee->hire_date?->format('Y-m-d\TH:i:s\Z'),
-                    'contract_start_date' => $employee->contract_start_date?->format('Y-m-d\TH:i:s\Z'),
-                    'contract_end_date' => $employee->contract_end_date?->format('Y-m-d\TH:i:s\Z'),
-                    'contract_type' => $employee->contract_type,
-                    'contract_type_libelle' => $employee->contract_type_libelle,
-                    'salary' => $employee->salary,
-                    'currency' => $employee->currency,
-                    'formatted_salary' => $employee->formatted_salary,
-                    'work_schedule' => $employee->work_schedule,
-                    'status' => $employee->status,
-                    'status_libelle' => $employee->status_libelle,
-                    'profile_picture' => $employee->profile_picture,
-                    'notes' => $employee->notes,
-                    'created_by' => $employee->created_by,
-                    'creator_name' => $employee->creator_name,
-                    'updated_by' => $employee->updated_by,
-                    'updater_name' => $employee->updater_name,
-                    'is_contract_expiring' => $employee->is_contract_expiring,
-                    'is_contract_expired' => $employee->is_contract_expired,
-                    'is_active' => $employee->is_active,
-                    'is_inactive' => $employee->is_inactive,
-                    'is_terminated' => $employee->is_terminated,
-                    'is_on_leave' => $employee->is_on_leave,
-                    'documents' => $employee->documents->map(function ($document) {
-                        return [
-                            'id' => $document->id,
-                            'name' => $document->name,
-                            'type' => $document->type,
-                            'type_libelle' => $document->type_libelle,
-                            'description' => $document->description,
-                            'file_path' => $document->file_path,
-                            'file_size' => $document->file_size,
-                            'formatted_file_size' => $document->formatted_file_size,
-                            'expiry_date' => $document->expiry_date?->format('Y-m-d\TH:i:s\Z'),
-                            'is_required' => $document->is_required,
-                            'is_expiring' => $document->is_expiring,
-                            'is_expired' => $document->is_expired,
-                            'creator_name' => $document->creator_name,
-                            'created_at' => $document->created_at->format('Y-m-d\TH:i:s\Z')
-                        ];
-                    }),
-                    'leaves' => $employee->leaves->map(function ($leave) {
-                        return [
-                            'id' => $leave->id,
-                            'employee_id' => $leave->employee_id,
-                            'type' => $leave->type,
-                            'type_libelle' => $leave->type_libelle,
-                            'start_date' => $leave->start_date?->format('Y-m-d\TH:i:s\Z'),
-                            'end_date' => $leave->end_date?->format('Y-m-d\TH:i:s\Z'),
-                            'total_days' => $leave->total_days,
-                            'duration' => $leave->duration,
-                            'reason' => $leave->reason,
-                            'status' => $leave->status,
-                            'status_libelle' => $leave->status_libelle,
-                            'approved_by' => $leave->approved_by ? (string)$leave->approved_by : null,
-                            'approver_name' => $leave->approver_name,
-                            'approved_at' => $leave->approved_at?->format('Y-m-d\TH:i:s\Z'),
-                            'rejection_reason' => $leave->rejection_reason,
-                            'comments' => $leave->comments,
-                            'is_pending' => $leave->is_pending,
-                            'is_approved' => $leave->is_approved,
-                            'is_rejected' => $leave->is_rejected,
-                            'is_current' => $leave->is_current,
-                            'is_upcoming' => $leave->is_upcoming,
-                            'is_past' => $leave->is_past,
-                            'creator_name' => $leave->creator_name,
-                            'created_by' => $leave->created_by ? (string)$leave->created_by : null,
-                            'created_at' => $leave->created_at->format('Y-m-d\TH:i:s\Z')
-                        ];
-                    }),
-                    'performances' => $employee->performances->map(function ($performance) {
-                        return [
-                            'id' => $performance->id,
-                            'period' => $performance->period,
-                            'rating' => $performance->rating,
-                            'formatted_rating' => $performance->formatted_rating,
-                            'rating_text' => $performance->rating_text,
-                            'rating_color' => $performance->rating_color,
-                            'comments' => $performance->comments,
-                            'goals' => $performance->goals,
-                            'achievements' => $performance->achievements,
-                            'areas_for_improvement' => $performance->areas_for_improvement,
-                            'status' => $performance->status,
-                            'status_libelle' => $performance->status_libelle,
-                            'reviewed_by' => $performance->reviewed_by,
-                            'reviewer_name' => $performance->reviewer_name,
-                            'reviewed_at' => $performance->reviewed_at?->format('Y-m-d\TH:i:s\Z'),
-                            'is_draft' => $performance->is_draft,
-                            'is_submitted' => $performance->is_submitted,
-                            'is_reviewed' => $performance->is_reviewed,
-                            'is_approved' => $performance->is_approved,
-                            'is_excellent' => $performance->is_excellent,
-                            'is_good' => $performance->is_good,
-                            'is_average' => $performance->is_average,
-                            'is_poor' => $performance->is_poor,
-                            'needs_improvement' => $performance->needs_improvement,
-                            'creator_name' => $performance->creator_name,
-                            'created_at' => $performance->created_at->format('Y-m-d\TH:i:s\Z')
-                        ];
-                    }),
-                    'created_at' => $employee->created_at->format('Y-m-d\TH:i:s\Z'),
-                    'updated_at' => $employee->updated_at->format('Y-m-d\TH:i:s\Z')
-                ];
-            });
-
             return response()->json([
                 'success' => true,
-                'data' => $employees,
+                'data' => EmployeeResource::collection($employees->items()),
+                'pagination' => [
+                    'current_page' => $employees->currentPage(),
+                    'last_page' => $employees->lastPage(),
+                    'per_page' => $employees->perPage(),
+                    'total' => $employees->total(),
+                ],
                 'message' => 'Liste des employés récupérée avec succès'
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('EmployeeController index error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => $request->user()?->id,
+            ]);
+            
+            $errorMessage = 'Erreur lors de la récupération des employés';
+            if (config('app.debug')) {
+                $errorMessage .= ': ' . $e->getMessage();
+            }
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des employés: ' . $e->getMessage()
+                'message' => $errorMessage
             ], 500);
         }
     }
@@ -256,7 +171,7 @@ class EmployeeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->formatEmployee($employee),
+                'data' => new EmployeeResource($employee),
                 'message' => 'Employé récupéré avec succès'
             ]);
 
@@ -648,7 +563,10 @@ class EmployeeController extends Controller
     public function statistics(Request $request)
     {
         try {
-            $stats = Employee::getEmployeeStats();
+            $dateKey = \Carbon\Carbon::now()->format('Y-m-d');
+            $stats = $this->rememberDailyStats('employee_stats', $dateKey, function () {
+                return Employee::getEmployeeStats();
+            });
 
             return response()->json([
                 'success' => true,

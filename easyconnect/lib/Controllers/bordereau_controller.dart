@@ -38,6 +38,15 @@ class BordereauxController extends GetxController {
   // Mémoriser le statut actuellement chargé
   int? _currentStatus;
 
+  // Métadonnées de pagination
+  final RxInt currentPage = 1.obs;
+  final RxInt totalPages = 1.obs;
+  final RxInt totalItems = 0.obs;
+  final RxBool hasNextPage = false.obs;
+  final RxBool hasPreviousPage = false.obs;
+  final RxInt perPage = 15.obs;
+  final RxString searchQuery = ''.obs;
+
   // Statistiques
   final totalBordereaux = 0.obs;
   final bordereauEnvoyes = 0.obs;
@@ -58,15 +67,22 @@ class BordereauxController extends GetxController {
     // });
   }
 
-  Future<void> loadBordereaux({int? status, bool forceRefresh = false}) async {
+  Future<void> loadBordereaux({
+    int? status,
+    bool forceRefresh = false,
+    int page = 1,
+  }) async {
     try {
       // Si on ne force pas le rafraîchissement et que les données sont déjà chargées avec le même statut, ne rien faire
       // MAIS seulement si on a vraiment des données (pas si la liste est vide)
       // ET seulement si le statut a déjà été défini (pas au premier chargement)
+      // ET seulement si c'est la même page
       if (!forceRefresh &&
           bordereaux.isNotEmpty &&
           _currentStatus == status &&
-          _currentStatus != null) {
+          _currentStatus != null &&
+          currentPage.value == page &&
+          page == 1) {
         AppLogger.debug(
           'Données déjà chargées, pas de rechargement nécessaire',
           tag: 'BORDEREAU_CONTROLLER',
@@ -76,28 +92,83 @@ class BordereauxController extends GetxController {
 
       _currentStatus = status; // Mémoriser le statut actuel
 
-      // Toujours mettre isLoading à true au début du chargement
-      isLoading.value = true;
-
-      // Afficher immédiatement les données du cache si disponibles
+      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'bordereaux_${status ?? 'all'}';
       final cachedBordereaux = CacheHelper.get<List<Bordereau>>(cacheKey);
       if (cachedBordereaux != null &&
           cachedBordereaux.isNotEmpty &&
-          !forceRefresh) {
+          !forceRefresh &&
+          page == 1) {
         bordereaux.value = cachedBordereaux;
-        // Garder isLoading à true pour montrer qu'on charge les données fraîches
+        isLoading.value = false; // Permettre l'affichage immédiat
         AppLogger.debug(
           'Données chargées depuis le cache: ${cachedBordereaux.length} bordereaux',
           tag: 'BORDEREAU_CONTROLLER',
         );
+      } else {
+        isLoading.value = true;
       }
 
-      // Charger les données fraîches en arrière-plan
-      final loadedBordereaux = await _bordereauService.getBordereaux(
-        status: status,
-      );
-      bordereaux.value = loadedBordereaux;
+      // Charger les données avec pagination
+      try {
+        final paginatedResponse = await _bordereauService
+            .getBordereauxPaginated(
+              status: status,
+              page: page,
+              perPage: perPage.value,
+              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+            );
+
+        // Mettre à jour les métadonnées de pagination
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = paginatedResponse.meta.currentPage;
+
+        // Mettre à jour la liste
+        if (page == 1) {
+          bordereaux.value = paginatedResponse.data;
+        } else {
+          bordereaux.addAll(paginatedResponse.data);
+        }
+
+        // Sauvegarder dans le cache (seulement pour la page 1)
+        if (page == 1) {
+          CacheHelper.set(cacheKey, paginatedResponse.data);
+        }
+      } catch (e) {
+        try {
+          final loadedBordereaux = await _bordereauService.getBordereaux(
+            status: status,
+          );
+          if (page == 1) {
+            bordereaux.value = loadedBordereaux;
+          } else {
+            bordereaux.addAll(loadedBordereaux);
+          }
+          if (page == 1) {
+            CacheHelper.set(cacheKey, loadedBordereaux);
+          }
+        } catch (fallbackError) {
+          // Si le fallback échoue aussi, vérifier le cache
+          if (cachedBordereaux == null ||
+              cachedBordereaux.isEmpty ||
+              page > 1) {
+            if (bordereaux.isEmpty) {
+              final cacheKey = 'bordereaux_${status ?? 'all'}';
+              final cachedBordereaux = CacheHelper.get<List<Bordereau>>(
+                cacheKey,
+              );
+              if (cachedBordereaux != null && cachedBordereaux.isNotEmpty) {
+                bordereaux.value = cachedBordereaux;
+                return; // Ne pas afficher d'erreur si on a du cache
+              }
+            }
+            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+          }
+        }
+      }
     } catch (e) {
       AppLogger.error(
         'Erreur lors du chargement des bordereaux: $e',
@@ -143,15 +214,19 @@ class BordereauxController extends GetxController {
   }
 
   Future<bool> createBordereau(Map<String, dynamic> data) async {
+    print('🔵 [BORDEREAU] Début de createBordereau');
     try {
       // Vérifications
       if (selectedClient.value == null) {
+        print('❌ [BORDEREAU] Erreur: Aucun client sélectionné');
         throw Exception('Aucun client sélectionné');
       }
       if (items.isEmpty) {
+        print('❌ [BORDEREAU] Erreur: Aucun article ajouté');
         throw Exception('Aucun article ajouté au bordereau');
       }
 
+      print('✅ [BORDEREAU] Validations OK, démarrage du chargement');
       isLoading.value = true;
 
       // Utiliser la référence générée si un devis est sélectionné, sinon utiliser celle fournie
@@ -171,37 +246,9 @@ class BordereauxController extends GetxController {
         commercialId: userId,
       );
 
-      // Logger les données avant l'envoi pour le débogage
-      AppLogger.debug(
-        '📦 [BORDEREAU] Création du bordereau:',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Client ID: ${newBordereau.clientId}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Devis ID: ${newBordereau.devisId}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Référence: ${newBordereau.reference}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Commercial ID: ${newBordereau.commercialId}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Nombre d\'items: ${newBordereau.items.length}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - Items: ${newBordereau.items.map((i) => {'designation': i.designation, 'quantite': i.quantite, 'unite': i.unite}).toList()}',
-        tag: 'BORDEREAU_CONTROLLER',
-      );
-      AppLogger.debug(
-        '  - JSON: ${newBordereau.toJson()}',
+      print('📤 [BORDEREAU] Appel du service pour créer: ${newBordereau.reference}');
+      AppLogger.info(
+        'Création du bordereau en cours: ${newBordereau.reference}',
         tag: 'BORDEREAU_CONTROLLER',
       );
 
@@ -209,23 +256,55 @@ class BordereauxController extends GetxController {
         newBordereau,
       );
 
+      print('📥 [BORDEREAU] Réponse du service reçue - ID: ${createdBordereau.id}, Référence: ${createdBordereau.reference}');
+
       // Vérifier que la création a vraiment réussi (l'entité a un ID)
       if (createdBordereau.id == null) {
+        print('❌ [BORDEREAU] ERREUR: Bordereau créé mais sans ID');
+        AppLogger.error(
+          'Bordereau créé mais sans ID',
+          tag: 'BORDEREAU_CONTROLLER',
+        );
         throw Exception(
           'Le bordereau a été créé mais sans ID. Veuillez réessayer.',
         );
       }
 
+      print('✅ [BORDEREAU] Bordereau créé avec succès: ID ${createdBordereau.id}');
+      AppLogger.info(
+        'Bordereau créé avec succès: ID ${createdBordereau.id}, Référence: ${createdBordereau.reference}',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+
       // Invalider le cache
       CacheHelper.clearByPrefix('bordereaux_');
 
       // Ajouter le bordereau à la liste localement (mise à jour optimiste)
-      bordereaux.add(createdBordereau);
+      // Le nouveau bordereau a toujours le statut 1 (En attente)
+      print('📋 [BORDEREAU] Ajout du bordereau à la liste (avant: ${bordereaux.length} éléments)');
+      bordereaux.insert(0, createdBordereau);
+      print('📋 [BORDEREAU] Bordereau ajouté à la liste (après: ${bordereaux.length} éléments)');
+      
+      AppLogger.info(
+        'Bordereau ajouté à la liste: ${createdBordereau.reference} (ID: ${createdBordereau.id})',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
 
-      // Rafraîchir les compteurs du dashboard patron
-      DashboardRefreshHelper.refreshPatronCounter('bordereau');
+      // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
+      print('⏸️ [BORDEREAU] Arrêt du loader');
+      isLoading.value = false;
 
-      // Si la création réussit, afficher le message de succès
+      // Rafraîchir les compteurs du dashboard patron en arrière-plan
+      Future.microtask(() {
+        DashboardRefreshHelper.refreshPatronCounter('bordereau');
+      });
+
+      // Effacer le formulaire avant d'afficher le message de succès
+      print('🧹 [BORDEREAU] Effacement du formulaire');
+      clearForm();
+
+      // Afficher le message de succès (après avoir effacé le formulaire pour éviter les conflits)
+      print('✅ [BORDEREAU] Affichage du message de succès');
       Get.snackbar(
         'Succès',
         'Bordereau créé avec succès',
@@ -235,29 +314,67 @@ class BordereauxController extends GetxController {
         duration: const Duration(seconds: 3),
       );
 
-      // Effacer le formulaire
-      clearForm();
-
-      // Recharger la liste en arrière-plan (sans bloquer et sans afficher d'erreur)
-      Future.microtask(() {
-        loadBordereaux().catchError((e) {
-          // Ignorer silencieusement les erreurs de rechargement
-          // Le bordereau a été créé avec succès, c'est l'essentiel
-          AppLogger.debug(
-            'Erreur lors du rechargement après création (ignorée): $e',
+      // Recharger la liste en arrière-plan après un court délai pour synchroniser avec le serveur
+      // Le bordereau est déjà dans la liste, donc il restera visible même si le rechargement échoue
+      Future.microtask(() async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          // Recharger avec le statut actuel pour synchroniser avec le serveur
+          await loadBordereaux(
+            status: _currentStatus,
+            forceRefresh: true,
+          );
+          
+          // Vérifier que le bordereau créé est toujours dans la liste après rechargement
+          print('🔄 [BORDEREAU] Vérification après rechargement - Liste contient ${bordereaux.length} éléments');
+          if (createdBordereau.id != null) {
+            final bordereauExists = bordereaux.any((b) => b.id == createdBordereau.id);
+            print('🔍 [BORDEREAU] Bordereau ID ${createdBordereau.id} existe dans la liste: $bordereauExists');
+            if (!bordereauExists) {
+              // Si le bordereau n'est pas dans la liste après rechargement, le rajouter
+              print('⚠️ [BORDEREAU] Bordereau non trouvé après rechargement, réajout...');
+              AppLogger.warning(
+                'Bordereau créé non trouvé après rechargement, réajout à la liste',
+                tag: 'BORDEREAU_CONTROLLER',
+              );
+              bordereaux.insert(0, createdBordereau);
+              print('✅ [BORDEREAU] Bordereau réajouté - Liste contient maintenant ${bordereaux.length} éléments');
+            }
+          }
+          
+          print('✅ [BORDEREAU] Liste rechargée avec succès');
+          AppLogger.info(
+            'Liste rechargée après création du bordereau',
             tag: 'BORDEREAU_CONTROLLER',
           );
-        });
+        } catch (e) {
+          // Si le rechargement échoue, le bordereau reste dans la liste grâce à la mise à jour optimiste
+          print('⚠️ [BORDEREAU] Erreur lors du rechargement (ignorée): $e');
+          print('⚠️ [BORDEREAU] Liste actuelle contient ${bordereaux.length} éléments');
+          AppLogger.warning(
+            'Erreur lors du rechargement après création: $e',
+            tag: 'BORDEREAU_CONTROLLER',
+          );
+          // Ne pas afficher d'erreur car le bordereau a été créé avec succès et est déjà dans la liste
+        }
       });
 
+      print('✅ [BORDEREAU] Retour de createBordereau: true (SUCCÈS)');
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [BORDEREAU] ERREUR CAPTURÉE dans createBordereau: $e');
+      print('❌ [BORDEREAU] Stack trace: $stackTrace');
+      
+      // S'assurer que le loader est arrêté en cas d'erreur
+      isLoading.value = false;
+      
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
       }
 
+      print('❌ [BORDEREAU] Affichage du message d\'erreur: $errorMessage');
       AppLogger.error(
         'Erreur lors de la création du bordereau: $e',
         tag: 'BORDEREAU_CONTROLLER',
@@ -275,9 +392,8 @@ class BordereauxController extends GetxController {
         isDismissible: true,
         shouldIconPulse: true,
       );
+      print('❌ [BORDEREAU] Retour de createBordereau: false (ÉCHEC)');
       return false;
-    } finally {
-      isLoading.value = false;
     }
   }
 

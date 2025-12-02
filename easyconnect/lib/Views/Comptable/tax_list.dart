@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class TaxList extends StatefulWidget {
   const TaxList({super.key});
@@ -192,7 +193,7 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
+                return const SkeletonSearchResults(itemCount: 6);
               }
               return _filteredTaxes.isEmpty
                   ? const Center(child: Text('Aucune taxe trouvée'))

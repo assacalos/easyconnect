@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class TaxeValidationPage extends StatefulWidget {
   const TaxeValidationPage({super.key});
@@ -128,7 +129,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
             child: Obx(
               () =>
                   controller.isLoading.value
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const SkeletonSearchResults(itemCount: 6)
                       : _buildTaxList(),
             ),
           ),

@@ -4,17 +4,21 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\SendsNotifications;
+use App\Traits\CachesData;
 use Illuminate\Http\Request;
 use App\Models\Devis;
 use App\Models\DevisItem;
 use App\Models\Client;
 use App\Models\User;
+use App\Http\Resources\DevisResource;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class DevisController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, CachesData;
     /**
      * Liste des devis avec filtres par rôle et statut
      */
@@ -22,21 +26,76 @@ class DevisController extends Controller
     {
         try {
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            // Générer une clé de cache unique basée sur les paramètres
+            $cacheKey = 'devis_list_' . md5(json_encode([
+                'user_id' => $user->id,
+                'role' => $user->role,
+                'status' => $request->query('status'),
+                'client_id' => $request->query('client_id'),
+                'user_id_param' => $request->query('user_id'),
+                'date_from' => $request->query('date_from'),
+                'date_to' => $request->query('date_to'),
+                'search' => $request->query('search'),
+                'page' => $request->get('page', 1),
+                'per_page' => $request->get('per_page', 15),
+            ]));
+
+            // Essayer de récupérer depuis le cache (cache de 5 minutes)
+            // Si le cache échoue, continuer sans cache
+            try {
+                $cached = Cache::get($cacheKey);
+                if ($cached !== null) {
+                    return response()->json($cached, 200);
+                }
+            } catch (\Exception $e) {
+                // En cas d'erreur de cache, continuer sans cache
+                Log::warning('DevisController::index - Erreur de cache', [
+                    'message' => $e->getMessage()
+                ]);
+            }
+            
             $status = $request->query('status');
             $client_id = $request->query('client_id');
+            $user_id = $request->query('user_id');
             $date_from = $request->query('date_from');
             $date_to = $request->query('date_to');
+            $search = $request->query('search');
 
-            $query = Devis::with(['client', 'commercial', 'items']);
+            // Optimiser la requête : charger les relations nécessaires
+            // Note: Pour les relations belongsTo, on doit inclure la clé étrangère
+            $query = Devis::with([
+                'client' => function($q) {
+                    $q->select('id', 'nom', 'prenom', 'email', 'nom_entreprise');
+                },
+                'commercial' => function($q) {
+                    $q->select('id', 'nom', 'prenom', 'email');
+                },
+                'items' => function($q) {
+                    $q->select('id', 'devis_id', 'designation', 'quantite', 'prix_unitaire');
+                }
+            ]);
 
             // Filtre par statut
-            if ($status !== null) {
+            if ($status !== null && $status !== '') {
                 $query->where('status', $status);
             }
 
             // Filtre par client
             if ($client_id) {
                 $query->where('client_id', $client_id);
+            }
+
+            // Filtre par user_id (commercial)
+            if ($user_id) {
+                $query->where('user_id', $user_id);
             }
 
             // Filtre par date
@@ -47,23 +106,59 @@ class DevisController extends Controller
                 $query->where('date_creation', '<=', $date_to);
             }
 
+            // Recherche par référence
+            if ($search) {
+                $query->where('reference', 'like', '%' . $search . '%');
+            }
+
             // Filtre par rôle : commercial ne voit que ses devis
             if ($user->role == 2) { // Commercial
                 $query->where('user_id', $user->id);
             }
 
-            $devis = $query->orderBy('created_at', 'desc')->get();
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            $devis = $query->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
 
-            return response()->json([
+            $response = [
                 'success' => true,
-                'data' => $devis,
-                'count' => $devis->count()
-            ], 200);
+                'data' => DevisResource::collection($devis->items()),
+                'meta' => [
+                    'current_page' => $devis->currentPage(),
+                    'last_page' => $devis->lastPage(),
+                    'per_page' => $devis->perPage(),
+                    'total' => $devis->total(),
+                    'has_next_page' => $devis->hasMorePages(),
+                    'has_previous_page' => $devis->currentPage() > 1,
+                ]
+            ];
+
+            // Mettre en cache pendant 5 minutes (si possible)
+            try {
+                Cache::put($cacheKey, $response, 300);
+            } catch (\Exception $e) {
+                // En cas d'erreur de cache, continuer sans mettre en cache
+                Log::warning('DevisController::index - Erreur lors de la mise en cache', [
+                    'message' => $e->getMessage()
+                ]);
+            }
+
+            return response()->json($response, 200);
 
         } catch (\Exception $e) {
+            Log::error('DevisController::index - Erreur', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des devis: ' . $e->getMessage()
+                'message' => 'Erreur lors de la récupération des devis: ' . $e->getMessage(),
+                'debug' => config('app.debug') ? [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ] : null,
             ], 500);
         }
     }
@@ -99,7 +194,7 @@ class DevisController extends Controller
                 'date_creation' => now()->toDateString(),
                 'date_validite' => $validated['date_validite'],
                 'notes' => $validated['notes'],
-                'status' => 1, // Brouillon
+                'status' => 0, // Brouillon
                 'remise_globale' => $validated['remise_globale'] ?? 0,
                 'tva' => $validated['tva'] ?? 0,
                 'conditions' => $validated['conditions'],
@@ -119,12 +214,21 @@ class DevisController extends Controller
 
             DB::commit();
 
+            $devis->load(['client', 'commercial', 'items']);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis créé avec succès',
-                'data' => $devis->load(['client', 'commercial', 'items'])
+                'data' => new DevisResource($devis)
             ], 201);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollback();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             DB::rollback();
             return response()->json([
@@ -144,7 +248,7 @@ class DevisController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => $devis
+                'data' => new DevisResource($devis)
             ], 200);
 
         } catch (\Exception $e) {
@@ -210,10 +314,12 @@ class DevisController extends Controller
 
             DB::commit();
 
+            $devis->load(['client', 'commercial', 'items']);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis modifié avec succès',
-                'data' => $devis->load(['client', 'commercial', 'items'])
+                'data' => new DevisResource($devis)
             ], 200);
 
         } catch (\Exception $e) {
@@ -272,6 +378,7 @@ class DevisController extends Controller
             }
 
             $devis->update(['status' => 1]); // Envoyé
+            $devis->load(['client', 'commercial', 'items']);
 
             // Notifier le patron
             $patron = User::where('role', 6)->first();
@@ -290,7 +397,7 @@ class DevisController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Devis envoyé avec succès',
-                'data' => $devis
+                'data' => new DevisResource($devis)
             ], 200);
 
         } catch (\Exception $e) {
@@ -318,11 +425,12 @@ class DevisController extends Controller
 
             $devis->status = 2; // Accepté/Validé
             $devis->save();
+            $devis->load(['client', 'commercial', 'items']);
             
             // Notifier l'auteur du devis
-            if ($devis->commercial_id) {
+            if ($devis->user_id) {
                 $this->createNotification([
-                    'user_id' => $devis->commercial_id,
+                    'user_id' => $devis->user_id,
                     'title' => 'Validation Devis',
                     'message' => "Devis #{$devis->reference} a été validé",
                     'type' => 'success',
@@ -335,7 +443,7 @@ class DevisController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Devis accepté avec succès',
-                'data' => $devis->load(['client', 'commercial', 'items'])
+                'data' => new DevisResource($devis)
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -375,11 +483,12 @@ class DevisController extends Controller
                 'status' => 3, // Refusé
                 'commentaire' => $validated['commentaire']
             ]);
+            $devis->load(['client', 'commercial', 'items']);
 
             // Notifier l'auteur du devis
-            if ($devis->commercial_id) {
+            if ($devis->user_id) {
                 $this->createNotification([
-                    'user_id' => $devis->commercial_id,
+                    'user_id' => $devis->user_id,
                     'title' => 'Rejet Devis',
                     'message' => "Devis #{$devis->reference} a été rejeté. Raison: {$validated['commentaire']}",
                     'type' => 'error',
@@ -393,7 +502,7 @@ class DevisController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Devis refusé avec succès',
-                'data' => $devis
+                'data' => new DevisResource($devis)
             ], 200);
 
         } catch (\Exception $e) {
@@ -482,10 +591,12 @@ class DevisController extends Controller
 
             DB::commit();
 
+            $newDevis->load(['client', 'commercial', 'items']);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Devis dupliqué avec succès',
-                'data' => $newDevis->load(['client', 'commercial', 'items'])
+                'data' => new DevisResource($newDevis)
             ], 201);
 
         } catch (\Exception $e) {
@@ -558,13 +669,92 @@ class DevisController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $devis
+                'data' => DevisResource::collection($devis)
             ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Endpoint de debug pour vérifier les données
+     */
+    public function debug(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+
+            $totalDevis = Devis::count();
+            $devisByStatus = Devis::selectRaw('status, count(*) as count')
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status');
+
+            $devisByUser = Devis::selectRaw('user_id, count(*) as count')
+                ->groupBy('user_id')
+                ->get()
+                ->pluck('count', 'user_id');
+
+            // Si commercial, compter ses devis
+            $userDevisCount = 0;
+            if ($user->role == 2) {
+                $userDevisCount = Devis::where('user_id', $user->id)->count();
+            }
+
+            // Derniers devis (sans filtres)
+            $lastDevis = Devis::with(['client', 'commercial'])
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'debug' => [
+                    'user' => [
+                        'id' => $user->id,
+                        'role' => $user->role,
+                        'nom' => $user->nom,
+                        'prenom' => $user->prenom,
+                    ],
+                    'statistics' => [
+                        'total_devis' => $totalDevis,
+                        'devis_by_status' => $devisByStatus,
+                        'devis_by_user' => $devisByUser,
+                        'user_devis_count' => $userDevisCount,
+                    ],
+                    'last_devis' => $lastDevis->map(function ($devis) {
+                        return [
+                            'id' => $devis->id,
+                            'reference' => $devis->reference,
+                            'status' => $devis->status,
+                            'user_id' => $devis->user_id,
+                            'client_id' => $devis->client_id,
+                            'created_at' => $devis->created_at,
+                        ];
+                    }),
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('DevisController::debug - Erreur', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du debug: ' . $e->getMessage()
             ], 500);
         }
     }

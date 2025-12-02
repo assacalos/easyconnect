@@ -7,15 +7,39 @@ import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class ReportingList extends StatelessWidget {
+class ReportingList extends StatefulWidget {
   const ReportingList({super.key});
 
   @override
+  State<ReportingList> createState() => _ReportingListState();
+}
+
+class _ReportingListState extends State<ReportingList> {
+  @override
+  void initState() {
+    super.initState();
+    print('🚀 [REPORTING_LIST] ===== initState APPELÉ =====');
+    // Charger les reportings au démarrage de la page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final reportingController = Get.find<ReportingController>();
+      print('🚀 [REPORTING_LIST] Appel de loadReports depuis initState...');
+      reportingController.loadReports();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    print('🚀 [REPORTING_LIST] ===== build APPELÉ =====');
     final reportingController = Get.find<ReportingController>();
     final authController = Get.find<AuthController>();
     final userRole = authController.userAuth.value?.role;
+    final userId = authController.userAuth.value?.id;
+    
+    print('🔍 [REPORTING_LIST] userRole: $userRole, userId: $userId');
+    print('🔍 [REPORTING_LIST] isLoading: ${reportingController.isLoading.value}');
+    print('🔍 [REPORTING_LIST] Nombre de reportings dans controller: ${reportingController.reports.length}');
 
     return Scaffold(
       appBar: AppBar(
@@ -33,11 +57,25 @@ class ReportingList extends StatelessWidget {
       body: Stack(
         children: [
           Obx(() {
+            print('🔄 [REPORTING_LIST] ===== Obx REBUILD =====');
+            print('🔄 [REPORTING_LIST] isLoading: ${reportingController.isLoading.value}');
+            print('🔄 [REPORTING_LIST] Nombre de reportings: ${reportingController.reports.length}');
+            
+            if (reportingController.reports.isNotEmpty) {
+              print('🔍 [REPORTING_LIST] Détails des reportings:');
+              for (var i = 0; i < reportingController.reports.length; i++) {
+                final report = reportingController.reports[i];
+                print('🔍 [REPORTING_LIST] Reporting $i: id=${report.id}, userId=${report.userId}, userRole=${report.userRole}, status=${report.status}');
+              }
+            }
+            
             if (reportingController.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
+              print('⏳ [REPORTING_LIST] Affichage du skeleton loader');
+              return const SkeletonSearchResults(itemCount: 6);
             }
 
             if (reportingController.reports.isEmpty) {
+              print('⚠️ [REPORTING_LIST] La liste de reportings est vide');
               return const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -58,11 +96,62 @@ class ReportingList extends StatelessWidget {
               );
             }
 
+            // Filtrer une dernière fois côté client pour garantir la sécurité
+            // (sauf pour ADMIN et PATRON qui peuvent voir tous les reportings)
+            print('🔍 [REPORTING_LIST] AVANT filtrage: ${reportingController.reports.length} reportings');
+            print('🔍 [REPORTING_LIST] userRole=$userRole, userId=$userId');
+            print('🔍 [REPORTING_LIST] Roles.ADMIN=${Roles.ADMIN}, Roles.PATRON=${Roles.PATRON}');
+            print('🔍 [REPORTING_LIST] Est ADMIN ou PATRON: ${userRole == Roles.ADMIN || userRole == Roles.PATRON}');
+            
+            final filteredReports = (userRole == Roles.ADMIN || userRole == Roles.PATRON)
+                ? reportingController.reports
+                : reportingController.reports
+                    .where((report) {
+                      final matches = report.userId == userId;
+                      print('🔍 [REPORTING_LIST] Filtrage - report.userId=${report.userId}, userId=$userId, matches=$matches, userRole=${report.userRole}');
+                      return matches;
+                    })
+                    .toList();
+
+            print('🔍 [REPORTING_LIST] APRÈS filtrage: ${filteredReports.length} reportings');
+            
+            if (filteredReports.isNotEmpty) {
+              print('✅ [REPORTING_LIST] Reportings qui passent le filtre:');
+              for (var i = 0; i < filteredReports.length; i++) {
+                final report = filteredReports[i];
+                print('✅ [REPORTING_LIST] Reporting $i: id=${report.id}, userId=${report.userId}, userRole=${report.userRole}');
+              }
+            }
+
+            if (filteredReports.isEmpty) {
+              print('⚠️ [REPORTING_LIST] Aucun reporting ne passe le filtre');
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.assessment, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Aucun rapport trouvé',
+                      style: TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Créez votre premier rapport',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            print('✅ [REPORTING_LIST] Affichage de ${filteredReports.length} reportings dans ListView');
             return ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: reportingController.reports.length,
+              itemCount: filteredReports.length,
               itemBuilder: (context, index) {
-                final report = reportingController.reports[index];
+                final report = filteredReports[index];
+                print('📝 [REPORTING_LIST] Construction de la carte pour le reporting $index: id=${report.id}, userRole=${report.userRole}');
                 return _buildReportCard(
                   context,
                   report,
