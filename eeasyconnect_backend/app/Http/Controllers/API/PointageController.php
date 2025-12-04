@@ -77,14 +77,6 @@ class PointageController extends Controller
                 'message' => 'Erreur lors de la récupération des pointages: ' . $e->getMessage()
             ], 500);
         }
-            'pagination' => [
-                'current_page' => $pointages->currentPage(),
-                'last_page' => $pointages->lastPage(),
-                'per_page' => $pointages->perPage(),
-                'total' => $pointages->total(),
-            ],
-            'message' => 'Liste des pointages récupérée avec succès'
-        ]);
     }
 
     /**

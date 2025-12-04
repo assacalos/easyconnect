@@ -65,6 +65,13 @@ class PaymentScheduleController extends Controller
             ],
             'message' => 'Liste des plannings récupérée avec succès'
         ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des plannings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

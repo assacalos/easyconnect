@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
@@ -7,7 +8,13 @@ class ApiService {
   // -------------------- HEADERS --------------------
   static Map<String, String> headers({bool jsonContent = true}) {
     final token = GetStorage().read<String?>('token');
-    final map = <String, String>{'Accept': 'application/json'};
+    final map = <String, String>{
+      'Accept': 'application/json',
+      // ⚠️ User-Agent minimal pour contourner Tiger Protect
+      // On garde seulement l'essentiel comme curl
+      'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
     if (token != null) map['Authorization'] = 'Bearer $token';
     if (jsonContent) map['Content-Type'] = 'application/json';
     return map;
@@ -20,18 +27,13 @@ class ApiService {
   ) async {
     try {
       final url = "$baseUrl/login";
-      print('🔐 TENTATIVE DE CONNEXION:');
-      print('URL: $url');
-      print('Email: $email');
+      final requestHeaders = headers();
+      final requestBody = jsonEncode({"email": email, "password": password});
 
       final response = await http
-          .post(
-            Uri.parse(url),
-            headers: headers(),
-            body: jsonEncode({"email": email, "password": password}),
-          )
+          .post(Uri.parse(url), headers: requestHeaders, body: requestBody)
           .timeout(
-            const Duration(seconds: 30), // Timeout plus long
+            const Duration(seconds: 30),
             onTimeout: () {
               throw Exception(
                 'Timeout: Le serveur ne répond pas dans les 30 secondes',
@@ -39,20 +41,50 @@ class ApiService {
             },
           );
 
-      print('📡 RÉPONSE SERVEUR:');
-      print('Status Code: ${response.statusCode}');
-      print('Headers: ${response.headers}');
-      print('Body: ${response.body}');
+      return parseResponse(response);
+    } on SocketException {
+      return {
+        "success": false,
+        "message":
+            "Impossible de se connecter au serveur. Vérifiez votre connexion internet.",
+        "errorType": "network",
+        "statusCode": null,
+      };
+    } on HttpException catch (e) {
+      return {
+        "success": false,
+        "message": "Erreur HTTP: ${e.message}",
+        "errorType": "http",
+        "statusCode": null,
+      };
+    } on FormatException {
+      return {
+        "success": false,
+        "message": "Erreur de format de réponse du serveur",
+        "errorType": "format",
+        "statusCode": null,
+      };
+    } catch (e) {
+      final errorString = e.toString().toLowerCase();
+      if (errorString.contains('certificate') ||
+          errorString.contains('ssl') ||
+          errorString.contains('tls') ||
+          errorString.contains('handshake')) {
+        return {
+          "success": false,
+          "message":
+              "Erreur de certificat SSL. Le serveur peut avoir un problème de certificat.",
+          "errorType": "ssl",
+          "statusCode": null,
+        };
+      }
 
-      final result = parseResponse(response);
-      print('✅ RÉSULTAT PARSÉ: $result');
-      return result;
-    } catch (e, stackTrace) {
-      print('❌ ERREUR API LOGIN:');
-      print('Type: ${e.runtimeType}');
-      print('Message: $e');
-      print('Stack trace: $stackTrace');
-      return {"success": false, "message": e.toString()};
+      return {
+        "success": false,
+        "message": e.toString(),
+        "errorType": "unknown",
+        "statusCode": null,
+      };
     }
   }
 
@@ -320,11 +352,11 @@ class ApiService {
       case 429:
         return "Trop de requêtes. Veuillez réessayer plus tard.";
       case 500:
-        return "Erreur interne du serveur. Veuillez réessayer plus tard.";
+        return "Erreur interne du serveur Laravel. Vérifiez les logs du serveur (storage/logs/laravel.log) pour plus de détails.";
       case 502:
         return "Erreur de passerelle. Le serveur est temporairement indisponible.";
       case 503:
-        return "Service indisponible. Le serveur est en maintenance.";
+        return "Service indisponible. Le serveur est en maintenance ou temporairement inaccessible.";
       case 504:
         return "Timeout de la passerelle. Le serveur ne répond pas.";
       default:

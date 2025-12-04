@@ -5,7 +5,6 @@ import 'package:get_storage/get_storage.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../utils/roles.dart';
-import '../utils/app_config.dart';
 
 class AuthController extends GetxController {
   /// --- Observables
@@ -30,16 +29,10 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
 
-      print('🔐 DÉBUT DE LA CONNEXION');
-      print('Email: ${emailController.text.trim()}');
-      print('URL API: ${AppConfig.baseUrl}');
-
       final response = await ApiService.login(
         emailController.text.trim(),
         passwordController.text.trim(),
       );
-
-      print('📥 RÉPONSE REÇUE: $response');
 
       isLoading.value = false;
       if (response['success'] == true) {
@@ -95,11 +88,6 @@ class AuthController extends GetxController {
           return;
         }
 
-        // S'assurer que userAuth est bien défini avant la redirection
-        print(
-          '🔐 [AUTH] Token sauvegardé, userAuth.value: ${userAuth.value?.id}, rôle: ${userAuth.value?.role}',
-        );
-
         // Stocker le nom de l'utilisateur pour le message de bienvenue
         final userName = userAuth.value?.nom ?? '';
 
@@ -150,17 +138,10 @@ class AuthController extends GetxController {
           colorText: Colors.white,
         );
       } else {
-        print('❌ ÉCHEC DE CONNEXION');
-        print('Réponse complète: $response');
-
         final errorMessage =
             response['message'] ?? "Email ou mot de passe incorrect";
         final errors = response['errors'];
         final statusCode = response['statusCode'];
-
-        print('Message d\'erreur: $errorMessage');
-        print('Erreurs: $errors');
-        print('Status code: $statusCode');
 
         // Gérer le rate limiting (429)
         if (statusCode == 429) {
@@ -169,6 +150,18 @@ class AuthController extends GetxController {
             "Trop de requêtes. Veuillez patienter quelques instants avant de réessayer.",
             snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 5),
+          );
+          return;
+        }
+
+        // Gérer les erreurs serveur (500, 502, 503, 504)
+        if (statusCode != null && statusCode >= 500) {
+          Get.snackbar(
+            "Erreur serveur [$statusCode]",
+            "Le serveur rencontre un problème. Vérifiez les logs Laravel sur le serveur.\n\nMessage: $errorMessage",
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 8),
+            maxWidth: 400,
           );
           return;
         }
@@ -203,14 +196,8 @@ class AuthController extends GetxController {
           );
         }
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       isLoading.value = false;
-
-      // Logger l'erreur complète pour le débogage
-      print('❌ ERREUR DE CONNEXION:');
-      print('Type: ${e.runtimeType}');
-      print('Message: $e');
-      print('Stack trace: $stackTrace');
 
       String errorMessage = "Une erreur est survenue lors de la connexion";
 
@@ -253,16 +240,11 @@ class AuthController extends GetxController {
         await ApiService.logout().timeout(
           const Duration(seconds: 2),
           onTimeout: () {
-            // Ignorer le timeout, on continue quand même la déconnexion
-            print(
-              '⚠️ [AUTH] Timeout lors de la déconnexion serveur, continuation...',
-            );
             return {"success": false, "message": "Timeout"};
           },
         );
       } catch (e) {
         // Ignorer les erreurs de déconnexion serveur
-        print('⚠️ [AUTH] Erreur lors de la déconnexion serveur: $e');
       }
 
       // Nettoyer le stockage local
@@ -276,7 +258,6 @@ class AuthController extends GetxController {
       Get.offAllNamed("/login");
     } catch (e) {
       // En cas d'erreur, forcer quand même la déconnexion
-      print('❌ [AUTH] Erreur lors de la déconnexion: $e');
       storage.erase();
       userAuth.value = null;
       Get.offAllNamed("/login");
@@ -290,11 +271,8 @@ class AuthController extends GetxController {
     try {
       // Annuler tous les timers et listeners actifs
       // Les contrôleurs individuels devraient gérer leur propre nettoyage dans onClose
-
-      // Forcer le nettoyage du cache si nécessaire
-      // CacheHelper.clear(); // Décommenter si nécessaire
     } catch (e) {
-      print('⚠️ [AUTH] Erreur lors du nettoyage des contrôleurs: $e');
+      // Ignorer les erreurs de nettoyage
     }
   }
 
