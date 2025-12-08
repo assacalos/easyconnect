@@ -10,6 +10,7 @@ import 'package:easyconnect/Views/Commercial/bon_commande_form_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_list_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_form_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_de_commande_fournisseur_detail_page.dart';
+import 'package:easyconnect/Views/Components/notifications_page.dart';
 import 'package:easyconnect/Views/Patron/client_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bordereau_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bon_commande_validation_page.dart';
@@ -100,6 +101,7 @@ import 'package:easyconnect/Views/Rh/contract_form.dart';
 import 'package:easyconnect/Views/Rh/contract_detail.dart';
 import 'package:easyconnect/Views/Patron/finances_page.dart';
 import 'package:easyconnect/Views/Patron/patron_reports_page.dart';
+import 'package:easyconnect/Views/Components/media_page.dart';
 
 class AppRoutes {
   static final routes = [
@@ -720,6 +722,17 @@ class AppRoutes {
     GetPage(
       name: '/profile',
       page: () => const ProfilePage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/notifications',
+      page: () => const NotificationsPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    // Page des médias
+    GetPage(
+      name: '/media',
+      page: () => const MediaPage(),
       middlewares: [AuthMiddleware()],
     ),
   ];

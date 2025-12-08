@@ -65,7 +65,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/reporting');
+        Get.toNamed('/media');
         break;
     }
   }
@@ -85,7 +85,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/reporting');
+        Get.toNamed('/media');
         break;
     }
   }
@@ -105,7 +105,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/reporting');
+        Get.toNamed('/media');
         break;
     }
   }
@@ -125,7 +125,7 @@ class DashboardWrapper extends StatelessWidget {
         Get.toNamed('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/reporting');
+        Get.toNamed('/media');
         break;
     }
   }

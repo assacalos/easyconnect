@@ -21,6 +21,7 @@ import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/services/notification_service.dart';
 import 'package:easyconnect/services/favorites_service.dart';
 import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:easyconnect/services/media_service.dart';
 
 class AppBindings extends Bindings {
   @override
@@ -51,6 +52,7 @@ class AppBindings extends Bindings {
     Get.put(NotificationService(), permanent: true);
     Get.put(FavoritesService(), permanent: true);
     Get.put(NotificationController(), permanent: true);
+    Get.put(MediaService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
     Get.put(AttendancePunchService(), permanent: true);
     Get.put(InvoiceService(), permanent: true);
