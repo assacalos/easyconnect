@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:easyconnect/utils/constant.dart';
 import 'package:http/http.dart' as http;
-import 'package:get_storage/get_storage.dart';
+import 'package:easyconnect/services/session_service.dart';
 
 class ApiService {
   // -------------------- HEADERS --------------------
+  /// Génère les headers HTTP standardisés pour toutes les requêtes API
+  /// Utilise SessionService pour récupérer le token de manière centralisée
   static Map<String, String> headers({bool jsonContent = true}) {
-    final token = GetStorage().read<String?>('token');
+    final token = SessionService.getToken();
     final map = <String, String>{
       'Accept': 'application/json',
       // ⚠️ User-Agent minimal pour contourner Tiger Protect
@@ -15,7 +17,9 @@ class ApiService {
       'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
-    if (token != null) map['Authorization'] = 'Bearer $token';
+    if (token != null && token.isNotEmpty) {
+      map['Authorization'] = 'Bearer $token';
+    }
     if (jsonContent) map['Content-Type'] = 'application/json';
     return map;
   }

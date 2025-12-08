@@ -21,7 +21,8 @@ class CreateTestData extends Command
                 'prenom' => 'User',
                 'email' => 'test@example.com',
                 'password' => bcrypt('password'),
-                'role' => 2
+                'role' => 2,
+                'is_active' => true,
             ]);
             $this->info('Utilisateur créé');
         }

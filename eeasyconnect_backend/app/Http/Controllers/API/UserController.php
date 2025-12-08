@@ -16,7 +16,7 @@ class UserController extends Controller
             $credentials = $request->only('email', 'password');
 
             if (!Auth::attempt($credentials)) {
-                return $this->errorResponse('Identifiants incorrects', 401);
+                return $this->errorResponse('Email ou mot de passe incorrect', 401);
             }
 
             $user = Auth::user();
@@ -25,40 +25,50 @@ class UserController extends Controller
                 return $this->errorResponse('Utilisateur non trouvé', 404);
             }
 
-            $token = $user->createToken('API Token')->plainTextToken;
+            // Vérifier si l'utilisateur est actif
+            if (!$user->is_active) {
+                return $this->errorResponse('Votre compte a été désactivé. Contactez l\'administrateur.', 403);
+            }
 
-            // Vérifier si getRoleName existe, sinon utiliser une valeur par défaut
-            $roleName = method_exists($user, 'getRoleName') ? $user->getRoleName() : 'Utilisateur';
+            $token = $user->createToken('mobile-app')->plainTextToken;
 
             return $this->successResponse([
                 'token' => $token,
                 'user' => new UserResource($user),
             ], 'Connexion réussie');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->handleValidationException($e);
         } catch (\Exception $e) {
-            \Log::error('Login error', [
-                'message' => $e->getMessage(),
+            \Log::error('Erreur API - Login', [
+                'endpoint' => $request->path(),
+                'method' => $request->method(),
+                'email' => $request->input('email'),
+                'error' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            // En mode debug, retourner l'erreur détaillée
-            if (config('app.debug')) {
-                return $this->errorResponse(
-                    'Erreur lors de la connexion: ' . $e->getMessage(),
-                    500
-                );
-            }
-
-            return $this->errorResponse('Erreur lors de la connexion', 500);
+            return $this->errorResponse('Une erreur est survenue. Veuillez réessayer plus tard.', 500);
         }
     }
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
-        
-        return $this->successResponse(null, 'Déconnexion réussie');
+        try {
+            $request->user()->currentAccessToken()->delete();
+            
+            return $this->successResponse(null, 'Déconnexion réussie');
+        } catch (\Exception $e) {
+            \Log::error('Erreur API - Logout', [
+                'endpoint' => $request->path(),
+                'method' => $request->method(),
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse('Une erreur est survenue lors de la déconnexion', 500);
+        }
     }
 
     public function me(Request $request)
@@ -176,13 +186,13 @@ class UserController extends Controller
                 'email' => $validated['email'],
                 'password' => bcrypt($validated['password']),
                 'role' => $validated['role'],
+                'is_active' => true,
                /*  'telephone' => $validated['telephone'],
                 'adresse' => $validated['adresse'],
                 'date_embauche' => $validated['date_embauche'],
                 'salaire' => $validated['salaire'],
                 'departement' => $validated['departement'],
                 'poste' => $validated['poste'], */
-                'is_active' => true
             ]);
 
             return response()->json([

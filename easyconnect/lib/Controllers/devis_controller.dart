@@ -568,7 +568,8 @@ class DevisController extends GetxController {
         if (_currentStatus == 1) {
           devis.removeAt(devisIndex);
         } else {
-          // Sinon, mettre à jour le statut dans la liste
+          // Sinon (onglet "Tous" ou autres), mettre à jour le statut dans la liste
+          // pour que le changement soit visible immédiatement
           devis[devisIndex] = updatedDevis;
         }
       }
@@ -614,19 +615,32 @@ class DevisController extends GetxController {
         // Recharger les données en arrière-plan après un court délai
         // pour synchroniser avec le serveur (mais garder la mise à jour optimiste)
         Future.delayed(const Duration(milliseconds: 500), () {
-          // Recharger l'onglet actuel
-          loadDevis(status: _currentStatus).catchError((e) {
+          // Recharger l'onglet actuel avec forceRefresh pour s'assurer que les données sont à jour
+          loadDevis(status: _currentStatus, forceRefresh: true).catchError((e) {
             AppLogger.error(
               'Erreur lors du rechargement après validation: $e',
               tag: 'DEVIS_CONTROLLER',
             );
           });
 
+          // Si on était sur l'onglet "Tous" (status = null), recharger aussi les autres onglets
+          // pour s'assurer que le devis validé apparaît partout avec le bon statut
+          if (_currentStatus == null) {
+            // Recharger aussi l'onglet "Validés" pour que le devis validé apparaisse
+            Future.delayed(const Duration(milliseconds: 300), () {
+              loadDevis(status: 2, forceRefresh: true).catchError((e) {
+                AppLogger.error(
+                  'Erreur lors du rechargement des devis validés: $e',
+                  tag: 'DEVIS_CONTROLLER',
+                );
+              });
+            });
+          }
           // Si on était sur l'onglet "En attente", recharger aussi l'onglet "Validés"
           // pour que le devis validé apparaisse
-          if (_currentStatus == 1) {
+          else if (_currentStatus == 1) {
             Future.delayed(const Duration(milliseconds: 300), () {
-              loadDevis(status: 2).catchError((e) {
+              loadDevis(status: 2, forceRefresh: true).catchError((e) {
                 AppLogger.error(
                   'Erreur lors du rechargement des devis validés: $e',
                   tag: 'DEVIS_CONTROLLER',
@@ -900,11 +914,11 @@ class DevisController extends GetxController {
           selectedDevis.items
               .map(
                 (item) => {
-                  'designation': item.designation,
+                  'designation': (item.designation.isNotEmpty ? item.designation : 'Article sans désignation'),
                   'unite': 'unité',
                   'quantite': item.quantite,
                   'prix_unitaire': item.prixUnitaire,
-                  'montant_total': item.total,
+                  'montant_total': (item.total.isFinite ? item.total : 0.0),
                 },
               )
               .toList();
@@ -912,20 +926,20 @@ class DevisController extends GetxController {
       // Générer le PDF
       await PdfService().generateDevisPdf(
         devis: {
-          'reference': selectedDevis.reference,
+          'reference': (selectedDevis.reference.isNotEmpty ? selectedDevis.reference : 'N/A'),
           'date_creation': selectedDevis.dateCreation,
-          'montant_ht': selectedDevis.totalHT,
-          'tva': selectedDevis.tva,
-          'total_ttc': selectedDevis.totalTTC,
+          'montant_ht': (selectedDevis.totalHT.isFinite ? selectedDevis.totalHT : 0.0),
+          'tva': selectedDevis.tva ?? 0.0, // tva peut être null
+          'total_ttc': (selectedDevis.totalTTC.isFinite ? selectedDevis.totalTTC : 0.0),
         },
         items: items,
         client: {
-          'nom': client?.nom ?? '',
-          'prenom': client?.prenom ?? '',
-          'nom_entreprise': client?.nomEntreprise,
-          'email': client?.email,
-          'contact': client?.contact,
-          'adresse': client?.adresse,
+          'nom': client.nom ?? '',
+          'prenom': client.prenom ?? '',
+          'nom_entreprise': client.nomEntreprise ?? '',
+          'email': client.email ?? '',
+          'contact': client.contact ?? '',
+          'adresse': client.adresse ?? '',
         },
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );

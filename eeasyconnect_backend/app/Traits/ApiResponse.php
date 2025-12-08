@@ -39,6 +39,7 @@ trait ApiResponse
         $response = [
             'success' => false,
             'message' => $message,
+            'statusCode' => $code,
         ];
 
         if (!empty($errors)) {
@@ -58,6 +59,17 @@ trait ApiResponse
     protected function validationErrorResponse(array $errors, string $message = 'Erreur de validation')
     {
         return $this->errorResponse($message, 422, $errors);
+    }
+
+    /**
+     * Handle validation exception and return formatted error response.
+     *
+     * @param  \Illuminate\Validation\ValidationException  $e
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function handleValidationException(\Illuminate\Validation\ValidationException $e)
+    {
+        return $this->errorResponse('Erreur de validation', 422, $e->errors());
     }
 
     /**

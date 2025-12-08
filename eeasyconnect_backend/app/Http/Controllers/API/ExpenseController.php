@@ -38,6 +38,14 @@ class ExpenseController extends Controller
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
+            
+            // Filtres de date
+            if ($request->has('start_date')) {
+                $query->whereDate('expense_date', '>=', $request->start_date);
+            }
+            if ($request->has('end_date')) {
+                $query->whereDate('expense_date', '<=', $request->end_date);
+            }
 
             // Si employé → filtre ses propres dépenses
             if ($user->role == 4) { // Employé
@@ -45,7 +53,7 @@ class ExpenseController extends Controller
             }
 
             // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $expenses = $query->orderBy('expense_date', 'desc')->paginate($perPage);
 
             return response()->json([
@@ -612,6 +620,140 @@ class ExpenseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des catégories: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Compteur de dépenses avec filtres
+     */
+    public function count(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'employee_id' => 'nullable|integer|exists:employees,id',
+            ]);
+            
+            $query = Expense::query();
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('expense_date', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('expense_date', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par employee_id
+            if (isset($validated['employee_id'])) {
+                $query->where('employee_id', $validated['employee_id']);
+            }
+            
+            // Si employé → filtre ses propres dépenses
+            if ($user->role == 4) { // Employé
+                $query->where('employee_id', $user->id);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => $query->count(),
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('ExpenseController::count - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du comptage: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Statistiques agrégées des dépenses (remplace statistics existant avec format standardisé)
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'employee_id' => 'nullable|integer|exists:employees,id',
+            ]);
+            
+            $query = Expense::query();
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('expense_date', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('expense_date', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtre par employee_id
+            if (isset($validated['employee_id'])) {
+                $query->where('employee_id', $validated['employee_id']);
+            }
+            
+            // Si employé → filtre ses propres dépenses
+            if ($user->role == 4) { // Employé
+                $query->where('employee_id', $user->id);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $query->count(),
+                    'total_amount' => $query->sum('amount'),
+                    'average_amount' => $query->avg('amount'),
+                    'min_amount' => $query->min('amount'),
+                    'max_amount' => $query->max('amount'),
+                ],
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('ExpenseController::stats - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
             ], 500);
         }
     }

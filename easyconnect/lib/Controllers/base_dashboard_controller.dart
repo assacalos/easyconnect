@@ -1,17 +1,15 @@
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/services/notification_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:easyconnect/utils/logger.dart';
-import 'package:easyconnect/utils/cache_helper.dart';
 
 abstract class BaseDashboardController extends GetxController {
   final AuthController l = Get.find<AuthController>();
   final NotificationService notificationService =
       Get.find<NotificationService>();
-  final _storage = GetStorage();
 
   final isLoading = false.obs;
   final activeFilters = <Filter>[].obs;
@@ -24,15 +22,20 @@ abstract class BaseDashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    // Attendre que le token soit disponible avant de charger les données
-    _waitForTokenAndLoad();
+    // Attendre un délai initial pour éviter la surcharge au démarrage
+    // Les autres contrôleurs auront le temps de s'initialiser
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (Get.isRegistered<AuthController>()) {
+        _waitForTokenAndLoad();
+      }
+    });
   }
 
   Future<void> _waitForTokenAndLoad() async {
     // Attendre jusqu'à 3 secondes que le token soit disponible
     for (int i = 0; i < 30; i++) {
-      // Vérifier si l'utilisateur est toujours connecté
-      final token = _storage.read<String?>('token');
+      // Vérifier si l'utilisateur est toujours connecté via SessionService
+      final token = SessionService.getToken();
       final user = l.userAuth.value;
 
       // Si l'utilisateur s'est déconnecté, arrêter le chargement
@@ -62,7 +65,7 @@ abstract class BaseDashboardController extends GetxController {
     }
 
     // Vérifier une dernière fois si l'utilisateur est toujours connecté
-    final token = _storage.read<String?>('token');
+    final token = SessionService.getToken();
     final user = l.userAuth.value;
 
     if (token == null || user == null) {
@@ -83,7 +86,7 @@ abstract class BaseDashboardController extends GetxController {
 
   void loadInitialData() {
     // Vérifier que l'utilisateur est toujours connecté avant de charger
-    final token = _storage.read<String?>('token');
+    final token = SessionService.getToken();
     final user = l.userAuth.value;
 
     if (token == null || user == null) {
@@ -112,7 +115,7 @@ abstract class BaseDashboardController extends GetxController {
     while (retryCount < maxRetries) {
       try {
         // Vérifier que le token est toujours disponible
-        final token = _storage.read<String?>('token');
+        final token = SessionService.getToken();
         final user = l.userAuth.value;
 
         if (token == null || user == null) {

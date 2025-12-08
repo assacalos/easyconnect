@@ -402,12 +402,11 @@ class CommercialDashboardController extends BaseDashboardController {
 
       // Bons de commande fournisseur (statut 'en_attente' ou 'pending')
       final bonCommandesFournisseur = results[4] as List;
-      final pendingBonCommandesFournisseurCount = bonCommandesFournisseur
-          .where((bc) {
+      final pendingBonCommandesFournisseurCount =
+          bonCommandesFournisseur.where((bc) {
             final statut = bc.statut?.toString().toLowerCase().trim() ?? '';
             return statut == 'en_attente' || statut == 'pending';
-          })
-          .length;
+          }).length;
       pendingBonCommandesFournisseur.value =
           pendingBonCommandesFournisseurCount;
       CacheHelper.set(

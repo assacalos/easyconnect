@@ -91,13 +91,15 @@ class Handler extends ExceptionHandler
                 'success' => false,
                 'message' => 'Erreur de validation',
                 'errors' => $e->errors(),
+                'statusCode' => 422,
             ], 422);
         }
 
         if ($e instanceof AuthenticationException) {
             return response()->json([
                 'success' => false,
-                'message' => 'Non authentifié',
+                'message' => 'Token invalide ou expiré',
+                'statusCode' => 401,
             ], 401);
         }
 
@@ -105,6 +107,7 @@ class Handler extends ExceptionHandler
             return response()->json([
                 'success' => false,
                 'message' => 'Ressource non trouvée',
+                'statusCode' => 404,
             ], 404);
         }
 
@@ -112,6 +115,7 @@ class Handler extends ExceptionHandler
             return response()->json([
                 'success' => false,
                 'message' => 'Route non trouvée',
+                'statusCode' => 404,
             ], 404);
         }
 
@@ -119,6 +123,7 @@ class Handler extends ExceptionHandler
             return response()->json([
                 'success' => false,
                 'message' => 'Méthode HTTP non autorisée',
+                'statusCode' => 405,
             ], 405);
         }
 
@@ -126,18 +131,21 @@ class Handler extends ExceptionHandler
             return response()->json([
                 'success' => false,
                 'message' => 'Trop de requêtes. Veuillez réessayer plus tard.',
+                'statusCode' => 429,
             ], 429);
         }
 
         // Log l'exception pour le débogage
-        \Log::error('API Exception', [
-            'message' => $e->getMessage(),
+        \Log::error('Erreur API', [
+            'endpoint' => $request->path(),
+            'method' => $request->method(),
+            'user_id' => $request->user()?->id,
+            'error' => $e->getMessage(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
             'trace' => $e->getTraceAsString(),
             'request' => [
                 'url' => $request->fullUrl(),
-                'method' => $request->method(),
                 'ip' => $request->ip(),
             ],
         ]);
@@ -147,28 +155,18 @@ class Handler extends ExceptionHandler
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
+                'statusCode' => 500,
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
-                'trace' => config('app.debug') ? $e->getTrace() : null,
+                'trace' => $e->getTrace(),
             ], 500);
         }
 
         // Production error response
-        $response = [
+        return response()->json([
             'success' => false,
             'message' => 'Une erreur est survenue. Veuillez réessayer plus tard.',
-        ];
-        
-        // En mode debug, ajouter plus de détails
-        if (config('app.debug')) {
-            $response['error'] = [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'class' => get_class($e),
-            ];
-        }
-        
-        return response()->json($response, 500);
+            'statusCode' => 500,
+        ], 500);
     }
 }

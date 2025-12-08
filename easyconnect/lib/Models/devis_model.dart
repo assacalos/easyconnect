@@ -14,7 +14,8 @@ class DevisItem {
   });
 
   double get total {
-    return quantite * prixUnitaire;
+    final result = quantite * prixUnitaire;
+    return result.isFinite ? result : 0.0;
   }
 
   Map<String, dynamic> toJson() {
@@ -29,19 +30,26 @@ class DevisItem {
   factory DevisItem.fromJson(Map<String, dynamic> json) {
     return DevisItem(
       id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
-      designation: json['designation'],
+      designation: json['designation']?.toString() ?? '',
       quantite:
           json['quantite'] is String
               ? int.tryParse(json['quantite']) ?? 0
-              : json['quantite'],
+              : (json['quantite'] ?? 0),
       prixUnitaire: _parseDouble(json['prix_unitaire']),
     );
   }
 
   static double _parseDouble(dynamic value) {
-    if (value is double) return value;
+    if (value == null) return 0.0;
+    if (value is double) {
+      if (value.isFinite) return value;
+      return 0.0;
+    }
     if (value is int) return value.toDouble();
-    if (value is String) return double.parse(value);
+    if (value is String) {
+      if (value.isEmpty) return 0.0;
+      return double.tryParse(value) ?? 0.0;
+    }
     return 0.0;
   }
 }
@@ -86,29 +94,41 @@ class Devis {
   });
 
   double get sousTotal {
-    return items.fold(0, (sum, item) => sum + item.total);
+    if (items.isEmpty) return 0.0;
+    final total = items.fold(0.0, (sum, item) {
+      final itemTotal = item.total;
+      if (itemTotal.isFinite) {
+        return sum + itemTotal;
+      }
+      return sum;
+    });
+    return total.isFinite ? total : 0.0;
   }
 
   double get remise {
     if (remiseGlobale != null && remiseGlobale! > 0) {
-      return sousTotal * (remiseGlobale! / 100);
+      final remiseValue = sousTotal * (remiseGlobale! / 100);
+      return remiseValue.isFinite ? remiseValue : 0.0;
     }
-    return 0;
+    return 0.0;
   }
 
   double get totalHT {
-    return sousTotal - remise;
+    final total = sousTotal - remise;
+    return total.isFinite ? total : 0.0;
   }
 
   double get montantTVA {
     if (tva != null && tva! > 0) {
-      return totalHT * (tva! / 100);
+      final tvaValue = totalHT * (tva! / 100);
+      return tvaValue.isFinite ? tvaValue : 0.0;
     }
-    return 0;
+    return 0.0;
   }
 
   double get totalTTC {
-    return totalHT + montantTVA;
+    final total = totalHT + montantTVA;
+    return total.isFinite ? total : 0.0;
   }
 
   String get statusText {

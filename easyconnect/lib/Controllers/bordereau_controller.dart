@@ -518,6 +518,7 @@ class BordereauxController extends GetxController {
   }
 
   Future<void> approveBordereau(int bordereauId) async {
+    bool validationSucceeded = false;
     try {
       isLoading.value = true;
 
@@ -554,6 +555,8 @@ class BordereauxController extends GetxController {
         final success = await _bordereauService.approveBordereau(bordereauId);
 
         if (success) {
+          validationSucceeded = true; // Marquer que la validation a réussi
+          
           // Rafraîchir les compteurs du dashboard patron
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
 
@@ -603,18 +606,24 @@ class BordereauxController extends GetxController {
         if (originalBordereau != null) {
           await loadBordereaux(status: _currentStatus);
         }
-        // Si le service a lancé une exception, la propager
-        rethrow;
+        // Si le service a lancé une exception, la propager seulement si la validation n'a pas réussi
+        if (!validationSucceeded) {
+          rethrow;
+        }
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver le bordereau: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Ne pas afficher le message d'erreur si la validation a réussi
+      // (les erreurs peuvent venir des opérations asynchrones comme les notifications)
+      if (!validationSucceeded) {
+        Get.snackbar(
+          'Erreur',
+          'Impossible d\'approuver le bordereau: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
+      }
     } finally {
       isLoading.value = false;
     }
@@ -876,10 +885,10 @@ class BordereauxController extends GetxController {
         client: {
           'nom': client.nom ?? '',
           'prenom': client.prenom ?? '',
-          'nom_entreprise': client.nomEntreprise,
-          'email': client.email,
-          'contact': client.contact,
-          'adresse': client.adresse,
+          'nom_entreprise': client.nomEntreprise ?? '',
+          'email': client.email ?? '',
+          'contact': client.contact ?? '',
+          'adresse': client.adresse ?? '',
         },
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );

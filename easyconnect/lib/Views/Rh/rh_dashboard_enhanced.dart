@@ -324,9 +324,10 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
+                  color: Colors.grey.shade900,
+                  letterSpacing: 0.3,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,

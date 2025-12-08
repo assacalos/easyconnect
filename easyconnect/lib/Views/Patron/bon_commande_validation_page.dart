@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
-import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class BonCommandeValidationPage extends StatefulWidget {
@@ -360,41 +359,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: () async {
-                // Utiliser le service PDF directement
-                try {
-                  final pdfService = PdfService();
-                  await pdfService.generateBonCommandePdf(
-                    bonCommande: {
-                      'reference': 'BC-${bonCommande.id}',
-                      'date_creation': DateTime.now(),
-                      'montant_ht': 0.0,
-                      'tva': 0.0,
-                      'total_ttc': 0.0,
-                    },
-                    items: [],
-                    fournisseur: {
-                      'nom': 'N/A',
-                      'email': '',
-                      'contact': '',
-                      'adresse': '',
-                    },
-                  );
-                  Get.snackbar(
-                    'Succès',
-                    'PDF généré avec succès',
-                    backgroundColor: Colors.green,
-                    colorText: Colors.white,
-                  );
-                } catch (e) {
-                  Get.snackbar(
-                    'Erreur',
-                    'Erreur lors de la génération du PDF: $e',
-                    backgroundColor: Colors.red,
-                    colorText: Colors.white,
-                  );
-                }
-              },
+              onPressed: () => controller.generatePDF(bonCommande.id!),
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('Générer PDF'),
               style: ElevatedButton.styleFrom(

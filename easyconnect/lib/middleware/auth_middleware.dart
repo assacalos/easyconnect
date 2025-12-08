@@ -1,68 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/services/session_service.dart';
 
 class AuthMiddleware extends GetMiddleware {
-  final storage = GetStorage();
-
   @override
   RouteSettings? redirect(String? route) {
     try {
-      // Essayer de récupérer l'AuthController s'il est enregistré
-      AuthController? authController;
-      if (Get.isRegistered<AuthController>()) {
-        authController = Get.find<AuthController>();
+      // Si on est sur la page de login ou splash, laisser passer
+      if (route == '/login' || route == '/splash') {
+        return null;
       }
 
-      // Vérifier l'authentification via le contrôleur ou directement via le stockage
-      bool isAuthenticated = false;
+      // Utiliser SessionService pour vérifier l'authentification de manière centralisée
+      // isValidSession prend en compte les connexions en cours pour éviter les conflits
+      final isValid = SessionService.isValidSession(allowLoginInProgress: true);
+
+      if (!isValid) {
+        // Si la session n'est pas valide et qu'aucune connexion n'est en cours, rediriger
+        if (!SessionService.isLoginInProgress()) {
+          return const RouteSettings(name: '/login');
+        }
+        // Si une connexion est en cours, laisser passer pour éviter d'interrompre le processus
+        return null;
+      }
+
+      // Récupérer le rôle utilisateur
+      final authController = SessionService.getAuthController();
       int? userRole;
 
       if (authController != null && authController.userAuth.value != null) {
-        // Utiliser le contrôleur si disponible
-        isAuthenticated = true;
+        // Utiliser le contrôleur si disponible (priorité)
         userRole = authController.userAuth.value?.role;
-        print(
-          '🔒 [AUTH_MIDDLEWARE] Authentification via contrôleur - Rôle: $userRole',
-        );
       } else {
-        // Vérifier directement dans le stockage si le contrôleur n'est pas encore initialisé
-        final token = storage.read('token');
-        final savedUser = storage.read('user');
-        final savedRole = storage.read('userRole');
-
-        print(
-          '🔒 [AUTH_MIDDLEWARE] Vérification storage - Token: ${token != null ? "présent" : "absent"}, User: ${savedUser != null ? "présent" : "absent"}',
-        );
-
-        if (token != null && savedUser != null) {
-          isAuthenticated = true;
-          userRole =
-              savedRole is int
-                  ? savedRole
-                  : (savedRole is String ? int.tryParse(savedRole) : null);
-          print(
-            '🔒 [AUTH_MIDDLEWARE] Authentification via storage - Rôle: $userRole',
-          );
-        }
+        // Vérifier via SessionService si le contrôleur n'est pas encore initialisé
+        userRole = SessionService.getUserRole();
       }
 
-      // Si l'utilisateur n'est pas connecté, rediriger vers la page de connexion
-      // Mais seulement si on n'est pas déjà sur la page de login ou splash
-      if ((!isAuthenticated || userRole == null) &&
-          route != '/login' &&
-          route != '/splash') {
-        print(
-          '🔒 [AUTH_MIDDLEWARE] Utilisateur non authentifié, redirection vers /login',
-        );
+      // Si le rôle n'est pas disponible, rediriger vers login
+      if (userRole == null) {
         return const RouteSettings(name: '/login');
       }
-
-      print(
-        '🔒 [AUTH_MIDDLEWARE] Utilisateur authentifié avec le rôle: $userRole',
-      );
 
       // L'ADMIN peut accéder à toutes les pages
       if (userRole == Roles.ADMIN) {
@@ -109,8 +87,7 @@ class AuthMiddleware extends GetMiddleware {
       // Si tout est OK, laisser passer
       return null;
     } catch (e) {
-      // Si l'AuthController n'est pas trouvé, rediriger vers login
-      print('AuthController non trouvé dans le middleware: $e');
+      // Si une erreur survient, rediriger vers login pour sécurité
       return const RouteSettings(name: '/login');
     }
   }

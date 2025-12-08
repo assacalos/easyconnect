@@ -348,9 +348,10 @@ class TechnicienDashboardEnhanced
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
+                  color: Colors.grey.shade900,
+                  letterSpacing: 0.3,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,
@@ -424,9 +425,10 @@ class TechnicienDashboardEnhanced
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
+                  color: Colors.grey.shade900,
+                  letterSpacing: 0.3,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,

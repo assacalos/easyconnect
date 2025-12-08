@@ -69,7 +69,7 @@ class PaiementController extends Controller
             }
             
             // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $paiements = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
@@ -808,5 +808,145 @@ class PaiementController extends Controller
             'paiement' => $paiement,
             'message' => 'Paiement créé avec succès'
         ], 201);
+    }
+    
+    /**
+     * Compteur de paiements avec filtres
+     */
+    public function count(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'client_id' => 'nullable|integer|exists:clients,id',
+                'comptable_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Paiement::query();
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_paiement', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_paiement', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par client_id
+            if (isset($validated['client_id'])) {
+                $query->where('client_id', $validated['client_id']);
+            }
+            
+            // Filtre par comptable_id
+            if (isset($validated['comptable_id'])) {
+                $query->where('comptable_id', $validated['comptable_id']);
+            }
+            
+            // Si comptable → filtre ses propres paiements
+            if ($user->isComptable()) {
+                $query->where('comptable_id', $user->id);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => $query->count(),
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('PaiementController::count - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du comptage: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Statistiques agrégées des paiements
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'comptable_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Paiement::query();
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_paiement', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_paiement', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtre par comptable_id
+            if (isset($validated['comptable_id'])) {
+                $query->where('comptable_id', $validated['comptable_id']);
+            }
+            
+            // Si comptable → filtre ses propres paiements
+            if ($user->isComptable()) {
+                $query->where('comptable_id', $user->id);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $query->count(),
+                    'total_amount' => $query->sum('montant'),
+                    'average_amount' => $query->avg('montant'),
+                    'min_amount' => $query->min('montant'),
+                    'max_amount' => $query->max('montant'),
+                ],
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('PaiementController::stats - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

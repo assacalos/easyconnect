@@ -18,41 +18,31 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeApp() async {
-    print('=== DÉMARRAGE DU SPLASH SCREEN ===');
-
     // Attendre un délai minimum pour l'affichage du splash
     await Future.delayed(const Duration(seconds: 2));
-    print('Délai d\'attente terminé');
 
     try {
       // Récupérer le contrôleur d'authentification
       final authController = Get.find<AuthController>();
-      print('AuthController récupéré avec succès');
 
       // Attendre un peu pour s'assurer que l'initialisation est terminée
       await Future.delayed(const Duration(milliseconds: 500));
 
       // Vérifier si l'utilisateur est déjà connecté (persistance de session)
       final userRole = authController.userAuth.value?.role;
-      final userName = authController.userAuth.value?.nom;
-      print('Rôle utilisateur: $userRole, Nom: $userName');
 
       if (userRole != null) {
         // Utilisateur connecté, rediriger vers son dashboard
         final initialRoute = AppRoutes.getInitialRoute(userRole);
-        print('Utilisateur déjà connecté, redirection vers: $initialRoute');
-
         // Attendre un peu avant la redirection
         await Future.delayed(const Duration(milliseconds: 500));
         Get.offAllNamed(initialRoute);
       } else {
         // Aucun utilisateur connecté, aller au login
-        print('Aucun utilisateur connecté, redirection vers login');
         Get.offAllNamed('/login');
       }
     } catch (e) {
       // En cas d'erreur, rediriger vers la page de connexion
-      print('Erreur lors de l\'initialisation: $e');
       Get.offAllNamed('/login');
     }
   }

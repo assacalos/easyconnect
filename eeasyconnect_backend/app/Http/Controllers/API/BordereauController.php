@@ -35,8 +35,16 @@ class BordereauController extends Controller
             if ($status !== null) {
                 $query->where('status', $status);
             }
+            
+            // Filtres de date
+            if ($request->has('start_date')) {
+                $query->whereDate('date_creation', '>=', $request->start_date);
+            }
+            if ($request->has('end_date')) {
+                $query->whereDate('date_creation', '<=', $request->end_date);
+            }
 
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $bordereaux = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
@@ -348,6 +356,144 @@ class BordereauController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors du rejet: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Compteur de bordereaux avec filtres
+     */
+    public function count(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|integer',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'user_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Bordereau::query();
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_creation', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_creation', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par user_id
+            if (isset($validated['user_id'])) {
+                $query->where('user_id', $validated['user_id']);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => $query->count(),
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('BordereauController::count - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du comptage: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Statistiques agrégées des bordereaux
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|integer',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'user_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Bordereau::query();
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_creation', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_creation', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtre par user_id
+            if (isset($validated['user_id'])) {
+                $query->where('user_id', $validated['user_id']);
+            }
+            
+            $count = $query->count();
+            
+            // Statistiques par statut
+            $byStatus = Bordereau::selectRaw('status, count(*) as count')
+                ->when(isset($validated['start_date']), function($q) use ($validated) {
+                    $q->whereDate('date_creation', '>=', $validated['start_date']);
+                })
+                ->when(isset($validated['end_date']), function($q) use ($validated) {
+                    $q->whereDate('date_creation', '<=', $validated['end_date']);
+                })
+                ->when(isset($validated['user_id']), function($q) use ($validated) {
+                    $q->where('user_id', $validated['user_id']);
+                })
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status');
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $count,
+                    'by_status' => $byStatus,
+                ],
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('BordereauController::stats - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
             ], 500);
         }
     }

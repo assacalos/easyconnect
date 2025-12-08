@@ -98,12 +98,15 @@ class DevisController extends Controller
                 $query->where('user_id', $user_id);
             }
 
-            // Filtre par date
-            if ($date_from) {
-                $query->where('date_creation', '>=', $date_from);
+            // Filtre par date (support date_from/date_to et start_date/end_date pour compatibilité)
+            $start_date = $request->query('start_date') ?? $date_from;
+            $end_date = $request->query('end_date') ?? $date_to;
+            
+            if ($start_date) {
+                $query->whereDate('date_creation', '>=', $start_date);
             }
-            if ($date_to) {
-                $query->where('date_creation', '<=', $date_to);
+            if ($end_date) {
+                $query->whereDate('date_creation', '<=', $end_date);
             }
 
             // Recherche par référence
@@ -116,7 +119,7 @@ class DevisController extends Controller
                 $query->where('user_id', $user->id);
             }
 
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $page = $request->get('page', 1);
             $devis = $query->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
 
@@ -415,14 +418,22 @@ class DevisController extends Controller
         try {
             $devis = Devis::findOrFail($id);
             
-            // Vérifier que le devis est envoyé (status = 1)
-            if ($devis->status != 1) {
+            // Vérifier que le devis n'est pas déjà accepté ou rejeté
+            if ($devis->status == 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seuls les devis envoyés peuvent être acceptés'
+                    'message' => 'Ce devis est déjà accepté'
+                ], 403);
+            }
+            
+            if ($devis->status == 3) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce devis a été rejeté et ne peut pas être accepté'
                 ], 403);
             }
 
+            // Accepter le devis (peut être brouillon 0 ou envoyé 1)
             $devis->status = 2; // Accepté/Validé
             $devis->save();
             $devis->load(['client', 'commercial', 'items']);
@@ -676,6 +687,168 @@ class DevisController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Compteur de devis avec filtres
+     */
+    public function count(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|integer',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'client_id' => 'nullable|integer|exists:clients,id',
+                'user_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Devis::query();
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_creation', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_creation', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par client
+            if (isset($validated['client_id'])) {
+                $query->where('client_id', $validated['client_id']);
+            }
+            
+            // Filtre par user_id (commercial)
+            if (isset($validated['user_id'])) {
+                $query->where('user_id', $validated['user_id']);
+            }
+            
+            // Filtre par rôle : commercial ne voit que ses devis
+            if ($user->role == 2) { // Commercial
+                $query->where('user_id', $user->id);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => $query->count(),
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('DevisController::count - Erreur', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du comptage: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Statistiques agrégées des devis
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|integer',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'user_id' => 'nullable|integer|exists:users,id',
+            ]);
+            
+            $query = Devis::query();
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('date_creation', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('date_creation', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtre par user_id (commercial)
+            if (isset($validated['user_id'])) {
+                $query->where('user_id', $validated['user_id']);
+            }
+            
+            // Filtre par rôle : commercial ne voit que ses devis
+            if ($user->role == 2) { // Commercial
+                $query->where('user_id', $user->id);
+            }
+            
+            // Calculer les totaux (si le modèle a des colonnes de montant)
+            $count = $query->count();
+            
+            // Statistiques par statut
+            $byStatus = Devis::selectRaw('status, count(*) as count')
+                ->when(isset($validated['start_date']), function($q) use ($validated) {
+                    $q->whereDate('date_creation', '>=', $validated['start_date']);
+                })
+                ->when(isset($validated['end_date']), function($q) use ($validated) {
+                    $q->whereDate('date_creation', '<=', $validated['end_date']);
+                })
+                ->when(isset($validated['user_id']), function($q) use ($validated) {
+                    $q->where('user_id', $validated['user_id']);
+                })
+                ->when($user->role == 2, function($q) use ($user) {
+                    $q->where('user_id', $user->id);
+                })
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status');
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $count,
+                    'by_status' => $byStatus,
+                ],
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('DevisController::stats - Erreur', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
             ], 500);
         }
     }

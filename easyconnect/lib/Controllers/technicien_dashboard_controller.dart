@@ -332,20 +332,22 @@ class TechnicienDashboardController extends BaseDashboardController {
   Future<void> _loadValidatedEntities() async {
     try {
       final interventions = await _interventionService.getInterventions();
-      
+
       // Les interventions validées peuvent être 'approved' ou 'completed'
       completedInterventions.value =
-          interventions
-              .where((i) {
-                final status = i.status.toLowerCase();
-                return status == 'completed' || 
-                       status == 'approved' ||
-                       status == 'validated';
-              })
-              .length;
-      
-      print('🔍 [TECHNICIEN_DASHBOARD] Interventions validées: ${completedInterventions.value}');
-      print('🔍 [TECHNICIEN_DASHBOARD] Tous les statuts d\'interventions: ${interventions.map((i) => i.status).toSet()}');
+          interventions.where((i) {
+            final status = i.status.toLowerCase();
+            return status == 'completed' ||
+                status == 'approved' ||
+                status == 'validated';
+          }).length;
+
+      print(
+        '🔍 [TECHNICIEN_DASHBOARD] Interventions validées: ${completedInterventions.value}',
+      );
+      print(
+        '🔍 [TECHNICIEN_DASHBOARD] Tous les statuts d\'interventions: ${interventions.map((i) => i.status).toSet()}',
+      );
 
       completedMaintenance.value = 0;
 

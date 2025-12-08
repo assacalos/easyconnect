@@ -19,6 +19,7 @@ class AdminSeeder extends Seeder
             'email' => 'admin@easyconnect.com',
             'password' => Hash::make('admin123'), // Changez ce mot de passe selon vos besoins
             'role' => 1, // 1 = Admin
+            'is_active' => true,
         ]);
 
         $this->command->info('Administrateur créé avec succès!');

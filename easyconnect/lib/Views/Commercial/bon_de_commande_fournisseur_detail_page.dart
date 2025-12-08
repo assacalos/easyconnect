@@ -108,6 +108,22 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
               const SizedBox(height: 16),
               _rejection('Motif du rejet', bon.commentaire!),
             ],
+            if (bon.statut == 'valide') ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => controller.generatePDF(bon.id!),
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('Générer PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

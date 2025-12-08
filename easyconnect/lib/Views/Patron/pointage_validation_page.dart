@@ -274,14 +274,7 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                             Text(pointage.address ?? 'Inconnu'),
                           ],
                         ),
-                        if (pointage.photoPath != null)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Photo:'),
-                              Text(pointage.photoPath!),
-                            ],
-                          ),
+                        // Photo affichée dans une section séparée ci-dessous
                         if (pointage.notes != null &&
                             pointage.notes!.isNotEmpty)
                           Column(
@@ -298,6 +291,56 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                       ],
                     ),
                   ),
+                  // Photo du pointage
+                  if (pointage.photoPath != null && pointage.photoPath!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Photo du pointage',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 200,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          pointage.photoUrl,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.broken_image, color: Colors.red, size: 48),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Impossible de charger la photo',
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

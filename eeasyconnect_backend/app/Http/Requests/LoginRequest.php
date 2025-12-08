@@ -60,6 +60,7 @@ class LoginRequest extends FormRequest
                 'success' => false,
                 'message' => 'Erreur de validation',
                 'errors' => $validator->errors(),
+                'statusCode' => 422,
             ], 422)
         );
     }

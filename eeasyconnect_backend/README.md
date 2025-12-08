@@ -138,3 +138,4 @@ php artisan db:seed --class=AdminSeeder
 
 Propriétaire
 
+

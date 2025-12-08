@@ -51,13 +51,16 @@ class SalaryController extends Controller
                 $query->where('period', $request->period);
             }
 
-            // Filtrage par date
-            if ($request->has('date_debut')) {
-                $query->where('salary_date', '>=', $request->date_debut);
+            // Filtrage par date (support date_debut/date_fin et start_date/end_date)
+            $start_date = $request->get('start_date') ?? $request->get('date_debut');
+            $end_date = $request->get('end_date') ?? $request->get('date_fin');
+            
+            if ($start_date) {
+                $query->whereDate('salary_date', '>=', $start_date);
             }
 
-            if ($request->has('date_fin')) {
-                $query->where('salary_date', '<=', $request->date_fin);
+            if ($end_date) {
+                $query->whereDate('salary_date', '<=', $end_date);
             }
 
             // Si employé → filtre ses propres salaires (recherche dans la table employees)
@@ -69,7 +72,7 @@ class SalaryController extends Controller
             }
 
             // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $salaries = $query->orderBy('salary_date', 'desc')->paginate($perPage);
 
             return response()->json([
@@ -825,7 +828,7 @@ class SalaryController extends Controller
             }
 
             // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
             $salaries = $query->orderBy('salary_date', 'desc')->paginate($perPage);
 
             // Transformer les données avec compatibilité Flutter (même logique que index)
@@ -873,6 +876,147 @@ class SalaryController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des salaires en attente: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Compteur de salaires avec filtres
+     */
+    public function count(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'employee_id' => 'nullable|integer|exists:employees,id',
+            ]);
+            
+            $query = Salary::query();
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('salary_date', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('salary_date', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par employee_id
+            if (isset($validated['employee_id'])) {
+                $query->where('employee_id', $validated['employee_id']);
+            }
+            
+            // Si employé → filtre ses propres salaires
+            if ($user->role == 4) { // Employé
+                $employee = Employee::where('email', $user->email)->first();
+                if ($employee) {
+                    $query->where('employee_id', $employee->id);
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => $query->count(),
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('SalaryController::count - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du comptage: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Statistiques agrégées des salaires (format standardisé)
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Utilisateur non authentifié'
+                ], 401);
+            }
+            
+            $validated = $request->validate([
+                'status' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'employee_id' => 'nullable|integer|exists:employees,id',
+            ]);
+            
+            $query = Salary::query();
+            
+            // Filtres de date
+            if (isset($validated['start_date'])) {
+                $query->whereDate('salary_date', '>=', $validated['start_date']);
+            }
+            if (isset($validated['end_date'])) {
+                $query->whereDate('salary_date', '<=', $validated['end_date']);
+            }
+            
+            // Filtre par statut
+            if (isset($validated['status'])) {
+                $query->where('status', $validated['status']);
+            }
+            
+            // Filtre par employee_id
+            if (isset($validated['employee_id'])) {
+                $query->where('employee_id', $validated['employee_id']);
+            }
+            
+            // Si employé → filtre ses propres salaires
+            if ($user->role == 4) { // Employé
+                $employee = Employee::where('email', $user->email)->first();
+                if ($employee) {
+                    $query->where('employee_id', $employee->id);
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $query->count(),
+                    'total_net_salary' => $query->sum('net_salary'),
+                    'average_net_salary' => $query->avg('net_salary'),
+                    'min_net_salary' => $query->min('net_salary'),
+                    'max_net_salary' => $query->max('net_salary'),
+                    'total_gross_salary' => $query->sum('gross_salary'),
+                ],
+            ], 200);
+            
+        } catch (\Exception $e) {
+            \Log::error('SalaryController::stats - Erreur', [
+                'message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
             ], 500);
         }
     }

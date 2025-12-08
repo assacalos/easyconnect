@@ -138,95 +138,126 @@ class DevisListPage extends StatelessWidget {
   }
 
   Widget _buildDevisCard(BuildContext context, devis, int status) {
-    return InkWell(
-      onTap: () => Get.toNamed('/devis/${devis.id}'),
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            isThreeLine:
-                status == 3 &&
-                (devis.rejectionComment != null &&
-                    devis.rejectionComment!.isNotEmpty),
-            title: Row(
-              children: [
-                Expanded(
-                  child: ResponsiveText(
-                    devis.reference,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
+    return Card(
+      margin: EdgeInsets.symmetric(
+        vertical: ResponsiveHelper.getSpacing(
+          context,
+          mobile: 4.0,
+          tablet: 6.0,
+          desktop: 8.0,
+        ),
+      ),
+      elevation: 2.0,
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: devis.statusColor.withOpacity(0.1),
+          child: Icon(
+            devis.statusIcon,
+            color: devis.statusColor,
+            size: ResponsiveHelper.getIconSize(
+              context,
+              mobile: 20.0,
+              tablet: 24.0,
+              desktop: 28.0,
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: ResponsiveText(
+                devis.reference,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ResponsiveSpacing(width: 8),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: ResponsiveHelper.getSpacing(
+                  context,
+                  mobile: 6.0,
+                  tablet: 8.0,
+                  desktop: 10.0,
                 ),
-                ResponsiveSpacing(width: 8),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: ResponsiveHelper.getSpacing(
-                      context,
-                      mobile: 6.0,
-                      tablet: 8.0,
-                      desktop: 10.0,
-                    ),
-                    vertical: ResponsiveHelper.getSpacing(
-                      context,
-                      mobile: 3.0,
-                      tablet: 4.0,
-                      desktop: 5.0,
-                    ),
+                vertical: ResponsiveHelper.getSpacing(
+                  context,
+                  mobile: 3.0,
+                  tablet: 4.0,
+                  desktop: 5.0,
+                ),
+              ),
+              decoration: BoxDecoration(
+                color: devis.statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: devis.statusColor.withOpacity(0.5)),
+              ),
+              child: ResponsiveText(
+                devis.statusText,
+                style: TextStyle(
+                  fontSize: ResponsiveHelper.getFontSize(
+                    context,
+                    mobile: 11.0,
+                    tablet: 12.0,
+                    desktop: 13.0,
                   ),
-                  decoration: BoxDecoration(
-                    color: devis.statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: devis.statusColor.withOpacity(0.5),
-                    ),
-                  ),
-                  child: Row(
+                  color: devis.statusColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: EdgeInsets.only(
+            top: ResponsiveHelper.getSpacing(
+              context,
+              mobile: 4.0,
+              tablet: 6.0,
+              desktop: 8.0,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Informations principales
+              Wrap(
+                spacing: ResponsiveHelper.getSpacing(context),
+                runSpacing: 4,
+                children: [
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        devis.statusIcon,
+                        Icons.calendar_today,
                         size: ResponsiveHelper.getIconSize(
                           context,
-                          mobile: 14.0,
-                          tablet: 16.0,
-                          desktop: 18.0,
+                          mobile: 12.0,
+                          tablet: 14.0,
+                          desktop: 16.0,
                         ),
-                        color: devis.statusColor,
+                        color: Colors.grey.shade600,
                       ),
                       ResponsiveSpacing(width: 4),
-                      Flexible(
-                        child: ResponsiveText(
-                          devis.statusText,
-                          style: TextStyle(
-                            fontSize: ResponsiveHelper.getFontSize(
-                              context,
-                              mobile: 11.0,
-                              tablet: 12.0,
-                              desktop: 13.0,
-                            ),
-                            color: devis.statusColor,
-                            fontWeight: FontWeight.w500,
+                      ResponsiveText(
+                        'Créé le ${formatDate.format(devis.dateCreation)}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: ResponsiveHelper.getFontSize(
+                            context,
+                            mobile: 11.0,
+                            tablet: 12.0,
+                            desktop: 13.0,
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ResponsiveSpacing(height: 8),
-                Wrap(
-                  spacing: ResponsiveHelper.getSpacing(context),
-                  runSpacing: 4,
-                  children: [
+                  if (devis.dateValidite != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.calendar_today,
+                          Icons.event,
                           size: ResponsiveHelper.getIconSize(
                             context,
                             mobile: 12.0,
@@ -236,76 +267,122 @@ class DevisListPage extends StatelessWidget {
                           color: Colors.grey.shade600,
                         ),
                         ResponsiveSpacing(width: 4),
-                        ResponsiveText(
-                          'Créé le ${formatDate.format(devis.dateCreation)}',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: ResponsiveHelper.getFontSize(
-                              context,
-                              mobile: 11.0,
-                              tablet: 12.0,
-                              desktop: 13.0,
+                        Flexible(
+                          child: ResponsiveText(
+                            'Valide jusqu\'au ${formatDate.format(devis.dateValidite!)}',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: ResponsiveHelper.getFontSize(
+                                context,
+                                mobile: 11.0,
+                                tablet: 12.0,
+                                desktop: 13.0,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    if (devis.dateValidite != null)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.event,
-                            size: ResponsiveHelper.getIconSize(
-                              context,
-                              mobile: 12.0,
-                              tablet: 14.0,
-                              desktop: 16.0,
-                            ),
-                            color: Colors.grey.shade600,
-                          ),
-                          ResponsiveSpacing(width: 4),
-                          Flexible(
-                            child: ResponsiveText(
-                              'Valide jusqu\'au ${formatDate.format(devis.dateValidite!)}',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: ResponsiveHelper.getFontSize(
-                                  context,
-                                  mobile: 11.0,
-                                  tablet: 12.0,
-                                  desktop: 13.0,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-                if (status == 3 &&
-                    (devis.rejectionComment != null &&
-                        devis.rejectionComment!.isNotEmpty)) ...[
-                  ResponsiveSpacing(height: 8),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.report,
+                        Icons.shopping_cart,
                         size: ResponsiveHelper.getIconSize(
                           context,
                           mobile: 12.0,
                           tablet: 14.0,
                           desktop: 16.0,
                         ),
-                        color: Colors.red,
+                        color: Colors.grey.shade600,
                       ),
                       ResponsiveSpacing(width: 4),
+                      ResponsiveText(
+                        '${devis.items.length} article${devis.items.length > 1 ? 's' : ''}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: ResponsiveHelper.getFontSize(
+                            context,
+                            mobile: 11.0,
+                            tablet: 12.0,
+                            desktop: 13.0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              ResponsiveSpacing(height: 8),
+              // Montant total
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ResponsiveText(
+                    'Total TTC:',
+                    style: TextStyle(
+                      fontSize: ResponsiveHelper.getFontSize(
+                        context,
+                        mobile: 12.0,
+                        tablet: 14.0,
+                        desktop: 16.0,
+                      ),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  ResponsiveText(
+                    formatCurrency.format(devis.totalTTC),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: ResponsiveHelper.getFontSize(
+                        context,
+                        mobile: 14.0,
+                        tablet: 16.0,
+                        desktop: 18.0,
+                      ),
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+              // Commentaire de rejet si présent
+              if (status == 3 &&
+                  devis.rejectionComment != null &&
+                  devis.rejectionComment!.isNotEmpty) ...[
+                ResponsiveSpacing(height: 8),
+                Container(
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.getSpacing(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
+                    ),
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.report,
+                        color: Colors.red,
+                        size: ResponsiveHelper.getIconSize(
+                          context,
+                          mobile: 16.0,
+                          tablet: 18.0,
+                          desktop: 20.0,
+                        ),
+                      ),
+                      ResponsiveSpacing(width: 8),
                       Expanded(
                         child: ResponsiveText(
                           'Raison du rejet: ${devis.rejectionComment}',
                           style: TextStyle(
-                            color: Colors.red,
+                            color: Colors.red.shade700,
                             fontSize: ResponsiveHelper.getFontSize(
                               context,
                               mobile: 12.0,
@@ -313,57 +390,324 @@ class DevisListPage extends StatelessWidget {
                               desktop: 14.0,
                             ),
                           ),
-                          maxLines: 2,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ],
-            ),
-            trailing: Flexible(
-              child: ResponsiveText(
-                formatCurrency.format(devis.totalTTC),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: ResponsiveHelper.getFontSize(
-                    context,
-                    mobile: 14.0,
-                    tablet: 16.0,
-                    desktop: 18.0,
-                  ),
-                ),
-                textAlign: TextAlign.end,
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          ButtonBar(
-            alignment: MainAxisAlignment.end,
-            children: [
-              // Bouton Modifier pour les devis validés ou rejetés
-              if (status == 2 || status == 3) ...[
-                IconButton(
-                  icon: Icon(
-                    Icons.edit,
-                    size: ResponsiveHelper.getIconSize(context),
-                  ),
-                  onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
-                  tooltip: 'Modifier',
-                ),
-              ],
-              // Bouton PDF seulement pour les devis validés
-              if (status == 2) ...[
-                IconButton(
-                  icon: Icon(
-                    Icons.picture_as_pdf,
-                    size: ResponsiveHelper.getIconSize(context),
-                  ),
-                  onPressed: () => controller.generatePDF(devis.id!),
-                  tooltip: 'Générer PDF',
                 ),
               ],
             ],
+          ),
+        ),
+        trailing: IconButton(
+          icon: Icon(
+            Icons.visibility,
+            size: ResponsiveHelper.getIconSize(context),
+          ),
+          onPressed: () => Get.toNamed('/devis/${devis.id}'),
+          tooltip: 'Voir les détails',
+        ),
+        children: [
+          Padding(
+            padding: EdgeInsets.all(
+              ResponsiveHelper.getSpacing(
+                context,
+                mobile: 12.0,
+                tablet: 16.0,
+                desktop: 20.0,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Détails des montants
+                Container(
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.getSpacing(
+                      context,
+                      mobile: 12.0,
+                      tablet: 14.0,
+                      desktop: 16.0,
+                    ),
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildAmountRow(
+                        'Sous-total HT:',
+                        formatCurrency.format(devis.sousTotal),
+                        context,
+                      ),
+                      if (devis.remiseGlobale != null &&
+                          devis.remiseGlobale! > 0)
+                        _buildAmountRow(
+                          'Remise (${devis.remiseGlobale}%):',
+                          '-${formatCurrency.format(devis.remise)}',
+                          context,
+                        ),
+                      _buildAmountRow(
+                        'Total HT:',
+                        formatCurrency.format(devis.totalHT),
+                        context,
+                      ),
+                      if (devis.tva != null && devis.tva! > 0)
+                        _buildAmountRow(
+                          'TVA (${devis.tva}%):',
+                          formatCurrency.format(devis.montantTVA),
+                          context,
+                        ),
+                      const Divider(),
+                      _buildAmountRow(
+                        'Total TTC:',
+                        formatCurrency.format(devis.totalTTC),
+                        context,
+                        isBold: true,
+                      ),
+                    ],
+                  ),
+                ),
+                ResponsiveSpacing(height: 16),
+                // Liste des articles
+                if (devis.items.isNotEmpty) ...[
+                  ResponsiveText(
+                    'Articles (${devis.items.length}):',
+                    style: TextStyle(
+                      fontSize: ResponsiveHelper.getFontSize(
+                        context,
+                        mobile: 14.0,
+                        tablet: 16.0,
+                        desktop: 18.0,
+                      ),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ResponsiveSpacing(height: 8),
+                  ...devis.items
+                      .take(5)
+                      .map(
+                        (item) => Padding(
+                          padding: EdgeInsets.symmetric(
+                            vertical: ResponsiveHelper.getSpacing(
+                              context,
+                              mobile: 4.0,
+                              tablet: 6.0,
+                              desktop: 8.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: ResponsiveText(
+                                  item.designation,
+                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              Expanded(
+                                child: ResponsiveText(
+                                  'Qté: ${item.quantite}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey.shade600),
+                                ),
+                              ),
+                              Expanded(
+                                child: ResponsiveText(
+                                  formatCurrency.format(item.prixUnitaire),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey.shade600),
+                                ),
+                              ),
+                              Expanded(
+                                child: ResponsiveText(
+                                  formatCurrency.format(item.total),
+                                  textAlign: TextAlign.end,
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  if (devis.items.length > 5)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: ResponsiveHelper.getSpacing(
+                          context,
+                          mobile: 8.0,
+                          tablet: 10.0,
+                          desktop: 12.0,
+                        ),
+                      ),
+                      child: ResponsiveText(
+                        '... et ${devis.items.length - 5} autre${devis.items.length - 5 > 1 ? 's' : ''} article${devis.items.length - 5 > 1 ? 's' : ''}',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ResponsiveSpacing(height: 16),
+                ],
+                // Notes si présentes
+                if (devis.notes != null && devis.notes!.isNotEmpty) ...[
+                  Container(
+                    padding: EdgeInsets.all(
+                      ResponsiveHelper.getSpacing(
+                        context,
+                        mobile: 12.0,
+                        tablet: 14.0,
+                        desktop: 16.0,
+                      ),
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.note,
+                              size: ResponsiveHelper.getIconSize(
+                                context,
+                                mobile: 16.0,
+                                tablet: 18.0,
+                                desktop: 20.0,
+                              ),
+                              color: Colors.grey.shade600,
+                            ),
+                            ResponsiveSpacing(width: 8),
+                            ResponsiveText(
+                              'Notes:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: ResponsiveHelper.getFontSize(
+                                  context,
+                                  mobile: 13.0,
+                                  tablet: 14.0,
+                                  desktop: 15.0,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        ResponsiveSpacing(height: 4),
+                        ResponsiveText(
+                          devis.notes!,
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ResponsiveSpacing(height: 16),
+                ],
+                // Boutons d'action
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Expanded(
+                          child: TextButton.icon(
+                            onPressed: () => Get.toNamed('/devis/${devis.id}'),
+                            icon: Icon(
+                              Icons.visibility,
+                              size: ResponsiveHelper.getIconSize(context),
+                            ),
+                            label: const Text('Détails'),
+                          ),
+                        ),
+                        if (status == 2 || status == 3) ...[
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
+                              icon: Icon(
+                                Icons.edit,
+                                size: ResponsiveHelper.getIconSize(context),
+                              ),
+                              label: const Text('Modifier'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (status == 2) ...[
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => controller.generatePDF(devis.id!),
+                        icon: Icon(
+                          Icons.picture_as_pdf,
+                          size: ResponsiveHelper.getIconSize(context),
+                        ),
+                        label: const Text('Générer PDF'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAmountRow(
+    String label,
+    String amount,
+    BuildContext context, {
+    bool isBold = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        vertical: ResponsiveHelper.getSpacing(
+          context,
+          mobile: 4.0,
+          tablet: 6.0,
+          desktop: 8.0,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          ResponsiveText(
+            label,
+            style: TextStyle(
+              fontSize: ResponsiveHelper.getFontSize(
+                context,
+                mobile: 12.0,
+                tablet: 13.0,
+                desktop: 14.0,
+              ),
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          ResponsiveText(
+            amount,
+            style: TextStyle(
+              fontSize: ResponsiveHelper.getFontSize(
+                context,
+                mobile: 12.0,
+                tablet: 13.0,
+                desktop: 14.0,
+              ),
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: isBold ? Colors.blue.shade700 : Colors.grey.shade700,
+            ),
           ),
         ],
       ),

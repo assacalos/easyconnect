@@ -48,7 +48,7 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     }
   }
 
-  Future<void> _loadDevis() async {
+  Future<void> _loadDevis({bool forceRefresh = false}) async {
     int? status;
     switch (_tabController.index) {
       case 0: // Tous
@@ -65,7 +65,7 @@ class _DevisValidationPageState extends State<DevisValidationPage>
         break;
     }
 
-    await controller.loadDevis(status: status);
+    await controller.loadDevis(status: status, forceRefresh: forceRefresh);
   }
 
   @override
@@ -436,13 +436,23 @@ class _DevisValidationPageState extends State<DevisValidationPage>
               ),
             ),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(devis.id!),
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('Générer PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => controller.generatePDF(devis.id!),
+                icon: const Icon(Icons.picture_as_pdf, size: 24),
+                label: const Text(
+                  'Générer PDF',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
             ),
           ],
@@ -564,8 +574,9 @@ class _DevisValidationPageState extends State<DevisValidationPage>
         Get.back();
         await controller.acceptDevis(devis.id!);
         // Recharger la liste après validation pour voir le changement de statut
+        // Forcer le rafraîchissement pour s'assurer que les données sont à jour
         await Future.delayed(const Duration(milliseconds: 800));
-        _loadDevis();
+        await _loadDevis(forceRefresh: true);
       },
     );
   }
@@ -602,7 +613,10 @@ class _DevisValidationPageState extends State<DevisValidationPage>
         }
         Get.back();
         controller.rejectDevis(devis.id!, commentController.text);
-        _loadDevis();
+        // Attendre un peu avant de recharger pour laisser le temps au serveur
+        Future.delayed(const Duration(milliseconds: 800), () {
+          _loadDevis(forceRefresh: true);
+        });
       },
     );
   }

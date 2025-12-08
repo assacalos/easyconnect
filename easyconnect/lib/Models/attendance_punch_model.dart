@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:easyconnect/utils/app_config.dart';
 
 class AttendancePunchModel {
   final int? id;
@@ -243,8 +244,32 @@ class AttendancePunchModel {
   }
 
   String get photoUrl {
-    if (photoPath != null) {
-      return 'http://10.0.2.2:8000/storage/$photoPath';
+    if (photoPath != null && photoPath!.isNotEmpty) {
+      // Si le photoPath est déjà une URL complète, le retourner tel quel
+      if (photoPath!.startsWith('http://') || photoPath!.startsWith('https://')) {
+        return photoPath!;
+      }
+      
+      // Construire l'URL complète avec la base URL
+      // Enlever /api de la fin de baseUrl car storage est à la racine du serveur
+      String baseUrlWithoutApi = AppConfig.baseUrl;
+      if (baseUrlWithoutApi.endsWith('/api')) {
+        baseUrlWithoutApi = baseUrlWithoutApi.substring(0, baseUrlWithoutApi.length - 4);
+      }
+      
+      // Nettoyer le photoPath
+      String cleanPath = photoPath!;
+      if (cleanPath.startsWith('/')) {
+        cleanPath = cleanPath.substring(1);
+      }
+      
+      // Si le photoPath contient déjà storage/, l'utiliser tel quel
+      if (cleanPath.contains('storage/')) {
+        return '$baseUrlWithoutApi/$cleanPath';
+      }
+      
+      // Sinon, ajouter storage/ devant
+      return '$baseUrlWithoutApi/storage/$cleanPath';
     }
     return '';
   }

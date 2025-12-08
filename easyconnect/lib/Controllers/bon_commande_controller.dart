@@ -11,6 +11,7 @@ import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 
 class BonCommandeController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -886,5 +887,62 @@ class BonCommandeController extends GetxController
   void clearForm() {
     selectedClient.value = null;
     selectedFiles.clear();
+  }
+
+  /// Générer un PDF pour un bon de commande
+  Future<void> generatePDF(int bonCommandeId) async {
+    try {
+      isLoading.value = true;
+
+      // Trouver le bon de commande
+      final bonCommande = bonCommandes.firstWhere(
+        (b) => b.id == bonCommandeId,
+        orElse: () => throw Exception('Bon de commande introuvable'),
+      );
+
+      // Charger les données nécessaires
+      final clients = await _clientService.getClients();
+      final client = clients.firstWhere(
+        (c) => c.id == bonCommande.clientId,
+        orElse: () => throw Exception('Client introuvable pour ce bon de commande'),
+      );
+
+      // Générer le PDF avec les informations disponibles
+      await PdfService().generateBonCommandePdf(
+        bonCommande: {
+          'reference': bonCommande.id != null ? 'BC-${bonCommande.id}' : 'N/A',
+          'date_creation': DateTime.now(),
+          'montant_ht': 0.0,
+          'tva': 0.0,
+          'total_ttc': 0.0,
+        },
+        items: [], // Pas d'items pour les bons de commande entreprise
+        fournisseur: {}, // Vide car on utilise client pour les bons de commande entreprise
+        client: {
+          'nom': client.nom ?? '',
+          'prenom': client.prenom ?? '',
+          'nom_entreprise': client.nomEntreprise ?? '',
+          'email': client.email ?? '',
+          'contact': client.contact ?? '',
+          'adresse': client.adresse ?? '',
+        },
+      );
+
+      Get.snackbar(
+        'Succès',
+        'PDF généré avec succès',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors de la génération du PDF: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

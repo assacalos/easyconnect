@@ -88,7 +88,8 @@ class HRController extends Controller
             'prenom' => $request->prenom,
             'email' => $request->email,
             'password' => bcrypt($request->password),
-            'role' => $request->role
+            'role' => $request->role,
+            'is_active' => true,
         ]);
 
         return response()->json([

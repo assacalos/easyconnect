@@ -118,7 +118,7 @@ class PdfService {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader('DEVIS', devis['reference']),
+                _buildHeader('DEVIS', (devis['reference'] ?? 'N/A').toString()),
                 pw.SizedBox(height: 20),
                 _buildClientInfo(client),
                 pw.SizedBox(height: 20),
@@ -133,7 +133,8 @@ class PdfService {
         ),
       );
 
-      await _saveAndOpenPdf(pdf, 'devis_${devis['reference']}.pdf');
+      final reference = devis['reference']?.toString() ?? 'N/A';
+      await _saveAndOpenPdf(pdf, 'devis_${reference}.pdf');
     } catch (e) {
       throw Exception('Erreur lors de la génération du PDF devis: $e');
     } finally {
@@ -161,7 +162,7 @@ class PdfService {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader('BORDEREAU', bordereau['reference']),
+                _buildHeader('BORDEREAU', (bordereau['reference'] ?? 'N/A').toString()),
                 pw.SizedBox(height: 20),
                 _buildClientInfo(client),
                 pw.SizedBox(height: 20),
@@ -176,7 +177,7 @@ class PdfService {
         ),
       );
 
-      await _saveAndOpenPdf(pdf, 'bordereau_${bordereau['reference']}.pdf');
+      await _saveAndOpenPdf(pdf, 'bordereau_${bordereau['reference'] ?? 'N/A'}.pdf');
     } catch (e) {
       throw Exception('Erreur lors de la génération du PDF bordereau: $e');
     } finally {
@@ -190,6 +191,7 @@ class PdfService {
     required Map<String, dynamic> bonCommande,
     required List<Map<String, dynamic>> items,
     required Map<String, dynamic> fournisseur,
+    Map<String, dynamic>? client, // Optionnel pour les bons de commande entreprise
   }) async {
     pw.Document? pdf;
     try {
@@ -203,9 +205,12 @@ class PdfService {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader('BON DE COMMANDE', bonCommande['reference']),
+                _buildHeader('BON DE COMMANDE', bonCommande['reference'] ?? 'N/A'),
                 pw.SizedBox(height: 20),
-                _buildSupplierInfo(fournisseur),
+                // Utiliser _buildClientInfo si c'est un client, sinon _buildSupplierInfo
+                client != null
+                    ? _buildClientInfo(client)
+                    : _buildSupplierInfo(fournisseur),
                 pw.SizedBox(height: 20),
                 _buildItemsTable(items),
                 pw.SizedBox(height: 20),
@@ -218,9 +223,10 @@ class PdfService {
         ),
       );
 
+      final reference = bonCommande['reference']?.toString() ?? 'N/A';
       await _saveAndOpenPdf(
         pdf,
-        'bon_commande_${bonCommande['reference']}.pdf',
+        'bon_commande_${reference}.pdf',
       );
     } catch (e) {
       throw Exception(
@@ -353,7 +359,7 @@ class PdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
               pw.Text(
-                'Référence: $reference',
+                'Référence: ${reference.isNotEmpty ? reference : 'N/A'}',
                 style: pw.TextStyle(
                   fontSize: 14,
                   fontWeight: pw.FontWeight.bold,
@@ -391,13 +397,14 @@ class PdfService {
             ),
           ),
           pw.SizedBox(height: 10),
-          pw.Text('Nom: ${client['nom']} ${client['prenom']}'),
-          if (client['nom_entreprise'] != null)
+          pw.Text('Nom: ${(client['nom'] ?? '')} ${(client['prenom'] ?? '')}'.trim()),
+          if (client['nom_entreprise'] != null && client['nom_entreprise'].toString().isNotEmpty)
             pw.Text('Entreprise: ${client['nom_entreprise']}'),
-          if (client['email'] != null) pw.Text('Email: ${client['email']}'),
-          if (client['contact'] != null)
+          if (client['email'] != null && client['email'].toString().isNotEmpty)
+            pw.Text('Email: ${client['email']}'),
+          if (client['contact'] != null && client['contact'].toString().isNotEmpty)
             pw.Text('Contact: ${client['contact']}'),
-          if (client['adresse'] != null)
+          if (client['adresse'] != null && client['adresse'].toString().isNotEmpty)
             pw.Text('Adresse: ${client['adresse']}'),
         ],
       ),
@@ -424,12 +431,12 @@ class PdfService {
             ),
           ),
           pw.SizedBox(height: 10),
-          pw.Text('Nom: ${fournisseur['nom']}'),
-          if (fournisseur['email'] != null)
+          pw.Text('Nom: ${fournisseur['nom'] ?? 'Non spécifié'}'),
+          if (fournisseur['email'] != null && fournisseur['email'].toString().isNotEmpty)
             pw.Text('Email: ${fournisseur['email']}'),
-          if (fournisseur['contact'] != null)
+          if (fournisseur['contact'] != null && fournisseur['contact'].toString().isNotEmpty)
             pw.Text('Contact: ${fournisseur['contact']}'),
-          if (fournisseur['adresse'] != null)
+          if (fournisseur['adresse'] != null && fournisseur['adresse'].toString().isNotEmpty)
             pw.Text('Adresse: ${fournisseur['adresse']}'),
         ],
       ),
@@ -523,9 +530,21 @@ class PdfService {
 
   // Construire les totaux
   pw.Widget _buildTotals(Map<String, dynamic> document) {
-    final montantHT = document['montant_ht'] ?? 0.0;
-    final tva = document['tva'] ?? 20.0;
-    final montantTVA = montantHT * (tva / 100);
+    // Convertir en double de manière sécurisée
+    double parseDouble(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        return double.tryParse(value) ?? 0.0;
+      }
+      return 0.0;
+    }
+    
+    final montantHT = parseDouble(document['montant_ht']);
+    final tva = parseDouble(document['tva']);
+    final tvaPercent = tva > 0 ? tva : 20.0; // Par défaut 20% si null ou 0
+    final montantTVA = montantHT * (tvaPercent / 100);
     final montantTTC = montantHT + montantTVA;
 
     return pw.Container(
@@ -550,7 +569,7 @@ class PdfService {
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('TVA ($tva%):'),
+              pw.Text('TVA (${tvaPercent.toStringAsFixed(0)}%):'),
               pw.Text(
                 '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantTVA)} FCFA',
               ),
@@ -634,20 +653,39 @@ class PdfService {
             children: [
               pw.Text('Date de paiement:'),
               pw.Text(
-                DateFormat(
-                  'dd/MM/yyyy',
-                ).format(DateTime.parse(paiement['date_paiement'])),
+                _formatPaymentDate(paiement['date_paiement']),
               ),
             ],
           ),
           pw.SizedBox(height: 10),
           pw.Text(
-            'Facture associée: ${facture['reference']}',
+            'Facture associée: ${facture['reference'] ?? 'N/A'}',
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
         ],
       ),
     );
+  }
+
+  // Helper pour formater la date de paiement
+  String _formatPaymentDate(dynamic dateValue) {
+    if (dateValue == null) {
+      return 'Non spécifiée';
+    }
+    
+    try {
+      DateTime date;
+      if (dateValue is DateTime) {
+        date = dateValue;
+      } else if (dateValue is String) {
+        date = DateTime.parse(dateValue);
+      } else {
+        return 'Format invalide';
+      }
+      return DateFormat('dd/MM/yyyy').format(date);
+    } catch (e) {
+      return 'Date invalide';
+    }
   }
 
   // Construire le pied de page

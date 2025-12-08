@@ -231,139 +231,144 @@ class _InvoiceListPageState extends State<InvoiceListPage>
   Widget _buildInvoiceCard(InvoiceModel invoice) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStatusColor(invoice.status),
-          child: Icon(_getStatusIcon(invoice.status), color: Colors.white),
-        ),
-        title: Text(
-          invoice.invoiceNumber,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        isThreeLine: true,
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                'Client: ${invoice.clientName}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Flexible(
-              child: Text(
-                'Montant: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Flexible(
-              child: Text(
-                'Date: ${_formatDate(invoice.invoiceDate)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (invoice.status == 'rejete' &&
-                (invoice.notes != null && invoice.notes!.isNotEmpty)) ...[
-              const SizedBox(height: 4),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => _showInvoiceDetail(invoice),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // En-tête avec numéro et statut
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.report, size: 14, color: Colors.red),
-                  const SizedBox(width: 4),
-                  Flexible(
+                  Expanded(
                     child: Text(
-                      'Raison: ${invoice.notes}',
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      invoice.invoiceNumber,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ],
-        ),
-        trailing: Flexible(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Bouton Détail
-              IconButton(
-                icon: const Icon(
-                  Icons.info_outline,
-                  color: Colors.blue,
-                  size: 20,
-                ),
-                onPressed: () => _showInvoiceDetail(invoice),
-                tooltip: 'Voir détails',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-              const SizedBox(width: 4),
-              // Bouton Modifier (seulement si en_attente)
-              if (invoice.status == 'en_attente')
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.orange, size: 20),
-                  onPressed: () => _editInvoice(invoice),
-                  tooltip: 'Modifier',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              if (invoice.status == 'en_attente') const SizedBox(width: 4),
-              // Bouton PDF
-              IconButton(
-                icon: const Icon(
-                  Icons.picture_as_pdf,
-                  color: Colors.red,
-                  size: 20,
-                ),
-                onPressed: () => _generatePDF(invoice),
-                tooltip: 'Générer PDF',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-              const SizedBox(width: 8),
-              // Statut et montant dans une colonne compacte
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                      horizontal: 8,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
                       color: _getStatusColor(invoice.status).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _getStatusColor(invoice.status).withOpacity(0.5),
+                      ),
                     ),
                     child: Text(
                       _getStatusLabel(invoice.status),
                       style: TextStyle(
                         color: _getStatusColor(invoice.status),
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        fontSize: 10,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Client
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      invoice.clientName,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+
+              // Date
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDate(invoice.invoiceDate),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Montant
+              Row(
+                children: [
+                  Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
                   Text(
                     '${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
-                    style: const TextStyle(
+                    style: TextStyle(
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: Colors.green[700],
                     ),
+                  ),
+                ],
+              ),
+
+              // Raison du rejet si rejeté
+              if (invoice.status == 'rejete' &&
+                  (invoice.notes != null && invoice.notes!.isNotEmpty)) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.report, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Raison: ${invoice.notes}',
+                        style: TextStyle(color: Colors.red[700], fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Actions
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (invoice.status == 'en_attente')
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Modifier'),
+                      onPressed: () => _editInvoice(invoice),
+                    ),
+                  if (invoice.status == 'en_attente') const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.info_outline, size: 16),
+                    label: const Text('Détails'),
+                    onPressed: () => _showInvoiceDetail(invoice),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    label: const Text('PDF'),
+                    onPressed: () => _generatePDF(invoice),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        onTap: () => _showInvoiceDetail(invoice),
       ),
     );
   }
@@ -378,19 +383,6 @@ class _InvoiceListPageState extends State<InvoiceListPage>
         return Colors.red;
       default:
         return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'en_attente':
-        return Icons.pending;
-      case 'valide':
-        return Icons.check_circle;
-      case 'rejete':
-        return Icons.cancel;
-      default:
-        return Icons.help;
     }
   }
 
@@ -419,139 +411,6 @@ class _InvoiceListPageState extends State<InvoiceListPage>
     final controller = Get.find<InvoiceController>();
     controller.loadInvoiceForEdit(invoice.id);
     Get.toNamed('/invoices/edit', arguments: invoice.id);
-  }
-
-  void _showInvoiceDetails(InvoiceModel invoice) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Facture ${invoice.invoiceNumber}'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Client: ${invoice.clientName}'),
-                  Text('Email: ${invoice.clientEmail}'),
-                  Text('Adresse: ${invoice.clientAddress}'),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Montant HT: ${invoice.subtotal.toStringAsFixed(0)} ${invoice.currency}',
-                  ),
-                  Text(
-                    'TVA (${invoice.taxRate}%): ${invoice.taxAmount.toStringAsFixed(0)} ${invoice.currency}',
-                  ),
-                  Text(
-                    'Total TTC: ${invoice.totalAmount.toStringAsFixed(0)} ${invoice.currency}',
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Date facture: ${_formatDate(invoice.invoiceDate)}'),
-                  Text('Date échéance: ${_formatDate(invoice.dueDate)}'),
-                  if (invoice.notes != null) ...[
-                    const SizedBox(height: 8),
-                    Text('Notes: ${invoice.notes}'),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-              if (invoice.status == 'en_attente') ...[
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _approveInvoice(invoice);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Valider'),
-                ),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _rejectInvoice(invoice);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                  ),
-                  child: const Text('Rejeter'),
-                ),
-              ],
-            ],
-          ),
-    );
-  }
-
-  void _approveInvoice(InvoiceModel invoice) async {
-    try {
-      await _invoiceService.approveInvoice(
-        invoiceId: invoice.id,
-        comments: 'Facture approuvée',
-      );
-      Get.snackbar('Succès', 'Facture approuvée');
-      _loadInvoices();
-    } catch (e) {
-      Get.snackbar('Erreur', 'Impossible d\'approuver la facture');
-    }
-  }
-
-  void _rejectInvoice(InvoiceModel invoice) async {
-    final TextEditingController reasonController = TextEditingController();
-
-    final result = await Get.dialog<bool>(
-      AlertDialog(
-        title: const Text('Rejeter la facture'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Facture ${invoice.invoiceNumber}'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(result: false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Get.back(result: true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true && reasonController.text.trim().isNotEmpty) {
-      try {
-        await _invoiceService.rejectInvoice(
-          invoiceId: invoice.id,
-          reason: reasonController.text.trim(),
-        );
-        Get.snackbar('Succès', 'Facture rejetée');
-        _loadInvoices();
-      } catch (e) {
-        Get.snackbar('Erreur', 'Impossible de rejeter la facture');
-      }
-    }
   }
 
   void _generatePDF(InvoiceModel invoice) async {

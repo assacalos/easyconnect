@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/session_service.dart';
 import '../utils/roles.dart';
 
 class AuthController extends GetxController {
@@ -26,6 +27,9 @@ class AuthController extends GetxController {
       return;
     }
 
+    // Marquer qu'une connexion est en cours pour éviter les conflits
+    SessionService.setLoginInProgress(true);
+
     try {
       isLoading.value = true;
 
@@ -40,6 +44,7 @@ class AuthController extends GetxController {
 
         // Vérifier que les données nécessaires sont présentes
         if (data == null) {
+          SessionService.setLoginInProgress(false);
           Get.snackbar(
             "Erreur",
             "Réponse invalide du serveur: données manquantes",
@@ -48,6 +53,7 @@ class AuthController extends GetxController {
         }
 
         if (data['user'] == null) {
+          SessionService.setLoginInProgress(false);
           Get.snackbar(
             "Erreur",
             "Réponse invalide du serveur: informations utilisateur manquantes",
@@ -56,6 +62,7 @@ class AuthController extends GetxController {
         }
 
         if (data['token'] == null || data['token'].toString().isEmpty) {
+          SessionService.setLoginInProgress(false);
           Get.snackbar("Erreur", "Réponse invalide du serveur: token manquant");
           return;
         }
@@ -64,6 +71,7 @@ class AuthController extends GetxController {
         try {
           userAuth.value = UserModel.fromJson(data['user']);
         } catch (e) {
+          SessionService.setLoginInProgress(false);
           Get.snackbar(
             "Erreur",
             "Erreur lors du traitement des données utilisateur: $e",
@@ -71,18 +79,19 @@ class AuthController extends GetxController {
           return;
         }
 
-        /// Sauvegarde en local
-        storage.write("token", data['token']);
-        storage.write("userId", userAuth.value?.id);
-        storage.write("userRole", userAuth.value?.role);
-        storage.write("user", data['user']); // garde les infos utilisateur
+        /// Sauvegarde en local via SessionService avec expiration (24h par défaut)
+        // Extraire expires_in depuis la réponse si disponible, sinon utiliser 24h
+        final expiresIn = data['expires_in'] as int? ?? 86400;
+        await SessionService.saveToken(data['token'], expiresIn: expiresIn);
+        await SessionService.saveUser(data['user']);
 
         // Attendre un peu pour s'assurer que le storage est bien écrit
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 300));
 
         // Vérifier que le token est bien sauvegardé
-        final savedToken = storage.read("token");
-        if (savedToken == null || savedToken.toString().isEmpty) {
+        final savedToken = SessionService.getToken();
+        if (savedToken == null || savedToken.isEmpty) {
+          SessionService.setLoginInProgress(false);
           Get.snackbar("Erreur", "Erreur lors de la sauvegarde du token");
           isLoading.value = false;
           return;
@@ -113,6 +122,7 @@ class AuthController extends GetxController {
             route = '/technicien';
             break;
           default:
+            SessionService.setLoginInProgress(false);
             Get.snackbar(
               "Erreur",
               "Rôle utilisateur non reconnu: ${userAuth.value?.role}",
@@ -121,6 +131,9 @@ class AuthController extends GetxController {
             isLoading.value = false;
             return;
         }
+
+        // Retirer le flag de connexion en cours juste avant la redirection
+        SessionService.setLoginInProgress(false);
 
         // Rediriger vers le dashboard
         await Get.offAllNamed(route);
@@ -138,6 +151,7 @@ class AuthController extends GetxController {
           colorText: Colors.white,
         );
       } else {
+        SessionService.setLoginInProgress(false);
         final errorMessage =
             response['message'] ?? "Email ou mot de passe incorrect";
         final errors = response['errors'];
@@ -197,6 +211,7 @@ class AuthController extends GetxController {
         }
       }
     } catch (e) {
+      SessionService.setLoginInProgress(false);
       isLoading.value = false;
 
       String errorMessage = "Une erreur est survenue lors de la connexion";
@@ -247,8 +262,8 @@ class AuthController extends GetxController {
         // Ignorer les erreurs de déconnexion serveur
       }
 
-      // Nettoyer le stockage local
-      storage.erase();
+      // Nettoyer le stockage local via SessionService (nettoie aussi le flag de connexion)
+      await SessionService.clearSession();
       userAuth.value = null;
 
       // Nettoyer tous les contrôleurs enregistrés pour éviter les requêtes en cours
@@ -279,16 +294,12 @@ class AuthController extends GetxController {
   /// --- Charger utilisateur depuis le stockage local (auto-login)
   void loadUserFromStorage() {
     try {
-      final savedUser = storage.read("user");
-      final savedToken = storage.read("token");
+      final savedUser = SessionService.getUser();
+      final savedToken = SessionService.getToken();
       if (savedUser != null && savedToken != null) {
         userAuth.value = UserModel.fromJson(
           Map<String, dynamic>.from(savedUser),
         );
-
-        // Vérifier et stocker l'ID et le rôle
-        storage.write("userId", userAuth.value?.id);
-        storage.write("userRole", userAuth.value?.role);
       } else {
         userAuth.value = null;
       }
@@ -300,12 +311,7 @@ class AuthController extends GetxController {
   /// --- Vérifier la validité du token (optionnel)
   Future<bool> validateToken() async {
     try {
-      final token = storage.read("token");
-      if (token == null) return false;
-
-      // Ici vous pouvez ajouter une vérification côté serveur
-      // Pour l'instant, on considère que le token est valide s'il existe
-      return true;
+      return SessionService.isAuthenticated();
     } catch (e) {
       return false;
     }
