@@ -67,8 +67,8 @@ class BottomNavigation extends StatelessWidget {
         label: 'Pointage',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.assessment),
-        label: 'Réportings',
+        icon: Icon(Icons.photo_library),
+        label: 'Médias',
       ),
     ];
   }
@@ -92,8 +92,8 @@ class BottomNavigation extends StatelessWidget {
         label: 'Pointage',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.assessment),
-        label: 'Réportings',
+        icon: Icon(Icons.photo_library),
+        label: 'Médias',
       ),
     ];
   }
@@ -117,8 +117,8 @@ class BottomNavigation extends StatelessWidget {
         label: 'Pointage',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.assessment),
-        label: 'Réportings',
+        icon: Icon(Icons.photo_library),
+        label: 'Médias',
       ),
     ];
   }
@@ -139,8 +139,8 @@ class BottomNavigation extends StatelessWidget {
         label: 'Présences',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.assessment),
-        label: 'Réportings',
+        icon: Icon(Icons.photo_library),
+        label: 'Médias',
       ),
     ];
   }
@@ -220,7 +220,7 @@ class BottomNavigationController extends GetxController {
           '/clients',
           '/devis',
           '/attendance-punch',
-          '/reporting',
+          '/media',
         ];
         break;
       case Roles.COMPTABLE:
@@ -229,7 +229,7 @@ class BottomNavigationController extends GetxController {
           '/invoices',
           '/payments',
           '/attendance-punch',
-          '/reporting',
+          '/media',
         ];
         break;
       case Roles.TECHNICIEN:
@@ -238,7 +238,7 @@ class BottomNavigationController extends GetxController {
           '/equipments',
           '/interventions',
           '/attendance-punch',
-          '/reporting',
+          '/media',
         ];
         break;
       case Roles.RH:
@@ -247,7 +247,7 @@ class BottomNavigationController extends GetxController {
           '/employees',
           '/leaves',
           '/attendance-punch',
-          '/reporting',
+          '/media',
         ];
         break;
       case Roles.PATRON:
