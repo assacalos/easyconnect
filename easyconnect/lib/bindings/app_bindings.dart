@@ -8,7 +8,6 @@ import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
@@ -21,6 +20,7 @@ import 'package:easyconnect/Controllers/rh_dashboard_controller.dart';
 import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/services/notification_service.dart';
 import 'package:easyconnect/services/favorites_service.dart';
+import 'package:easyconnect/Controllers/notification_controller.dart';
 
 class AppBindings extends Bindings {
   @override
@@ -50,6 +50,7 @@ class AppBindings extends Bindings {
     Get.put(StockService(), permanent: true);
     Get.put(NotificationService(), permanent: true);
     Get.put(FavoritesService(), permanent: true);
+    Get.put(NotificationController(), permanent: true);
     Get.put(PaymentService(), permanent: true);
     Get.put(AttendancePunchService(), permanent: true);
     Get.put(InvoiceService(), permanent: true);

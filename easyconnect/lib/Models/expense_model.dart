@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
 class Expense {
   final int? id;
@@ -209,6 +210,51 @@ class Expense {
       default:
         return Icons.help;
     }
+  }
+
+  /// Construire l'URL complète du reçu
+  String get receiptUrl {
+    if (receiptPath != null && receiptPath!.isNotEmpty) {
+      // Si le receiptPath est déjà une URL complète, le retourner tel quel
+      if (receiptPath!.startsWith('http://') ||
+          receiptPath!.startsWith('https://')) {
+        return receiptPath!;
+      }
+
+      // Construire l'URL complète avec la base URL
+      // Enlever /api de la fin de baseUrl car storage est à la racine du serveur
+      String baseUrlWithoutApi = AppConfig.baseUrl;
+      if (baseUrlWithoutApi.endsWith('/api')) {
+        baseUrlWithoutApi = baseUrlWithoutApi.substring(
+          0,
+          baseUrlWithoutApi.length - 4,
+        );
+      }
+
+      // Nettoyer le receiptPath
+      String cleanPath = receiptPath!;
+      if (cleanPath.startsWith('/')) {
+        cleanPath = cleanPath.substring(1);
+      }
+
+      // Si le receiptPath contient déjà storage/, l'utiliser tel quel
+      if (cleanPath.contains('storage/')) {
+        return '$baseUrlWithoutApi/$cleanPath';
+      }
+
+      // Sinon, ajouter storage/ devant
+      return '$baseUrlWithoutApi/storage/$cleanPath';
+    }
+    return '';
+  }
+
+  /// URL pour télécharger le reçu
+  String get receiptDownloadUrl {
+    final url = receiptUrl;
+    if (url.isNotEmpty) {
+      return '$url?download=1';
+    }
+    return '';
   }
 }
 

@@ -189,10 +189,10 @@ class InvoiceController extends GetxController {
             status: selectedStatus.value != 'all' ? selectedStatus.value : null,
             commercialId: (user.role == 1 || user.role == 6) ? null : user.id,
           );
-          
+
           // Limiter à 1000 factures pour éviter la saturation mémoire
           final limitedInvoices = loadedInvoices.take(1000).toList();
-          
+
           if (page == 1) {
             invoices.value = limitedInvoices;
           } else {
@@ -201,7 +201,7 @@ class InvoiceController extends GetxController {
           if (page == 1) {
             CacheHelper.set(cacheKey, limitedInvoices);
           }
-          
+
           // Avertir si on a limité les résultats
           if (loadedInvoices.length > 1000) {
             AppLogger.warning(
@@ -1008,30 +1008,34 @@ class InvoiceController extends GetxController {
         },
         items: items,
         client: {
-          'nom': invoice.clientName.isNotEmpty
-              ? (invoice.clientName.split(' ').isNotEmpty
-                  ? invoice.clientName.split(' ').first
-                  : '')
-              : '',
-          'prenom': invoice.clientName.isNotEmpty &&
-                  invoice.clientName.split(' ').length > 1
-              ? invoice.clientName.split(' ').sublist(1).join(' ')
-              : '',
+          'nom':
+              invoice.clientName.isNotEmpty
+                  ? (invoice.clientName.split(' ').isNotEmpty
+                      ? invoice.clientName.split(' ').first
+                      : '')
+                  : '',
+          'prenom':
+              invoice.clientName.isNotEmpty &&
+                      invoice.clientName.split(' ').length > 1
+                  ? invoice.clientName.split(' ').sublist(1).join(' ')
+                  : '',
           'nom_entreprise': invoice.clientName,
           'email': invoice.clientEmail,
           'contact': '',
           'adresse': invoice.clientAddress,
         },
         commercial: {
-          'nom': invoice.commercialName.isNotEmpty
-              ? (invoice.commercialName.split(' ').isNotEmpty
-                  ? invoice.commercialName.split(' ').first
-                  : 'Commercial')
-              : 'Commercial',
-          'prenom': invoice.commercialName.isNotEmpty &&
-                  invoice.commercialName.split(' ').length > 1
-              ? invoice.commercialName.split(' ').sublist(1).join(' ')
-              : '',
+          'nom':
+              invoice.commercialName.isNotEmpty
+                  ? (invoice.commercialName.split(' ').isNotEmpty
+                      ? invoice.commercialName.split(' ').first
+                      : 'Commercial')
+                  : 'Commercial',
+          'prenom':
+              invoice.commercialName.isNotEmpty &&
+                      invoice.commercialName.split(' ').length > 1
+                  ? invoice.commercialName.split(' ').sublist(1).join(' ')
+                  : '',
           'email': '',
         },
       );

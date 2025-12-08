@@ -122,20 +122,8 @@ class BordereauController extends Controller
             }
 
             // Notifier le patron lors de la création (status=1 = soumis)
-            // Gérer l'erreur si la notification échoue
             try {
-                $patron = User::where('role', 6)->first();
-                if ($patron) {
-                    $this->createNotification([
-                        'user_id' => $patron->id,
-                        'title' => 'Soumission Bordereau',
-                        'message' => "Bordereau #{$bordereau->reference} a été soumis pour validation",
-                        'type' => 'info',
-                        'entity_type' => 'bordereau',
-                        'entity_id' => $bordereau->id,
-                        'action_route' => "/bordereaux/{$bordereau->id}",
-                    ]);
-                }
+                $this->notifyApproverOnSubmission($bordereau, 'bordereau', 'Bordereau', 6, $bordereau->reference);
             } catch (\Exception $e) {
                 Log::warning('Failed to create notification for bordereau', [
                     'bordereau_id' => $bordereau->id,
@@ -267,17 +255,7 @@ class BordereauController extends Controller
             ]);
 
             // Notifier l'auteur du bordereau
-            if ($bordereau->user_id) {
-                $this->createNotification([
-                    'user_id' => $bordereau->user_id,
-                    'title' => 'Validation Bordereau',
-                    'message' => "Bordereau #{$bordereau->reference} a été validé",
-                    'type' => 'success',
-                    'entity_type' => 'bordereau',
-                    'entity_id' => $bordereau->id,
-                    'action_route' => "/bordereaux/{$bordereau->id}",
-                ]);
-            }
+            $this->notifySubmitterOnApproval($bordereau, 'bordereau', 'Bordereau', 'user_id', $bordereau->reference);
 
             // Recharger le bordereau avec ses relations
             $bordereau->refresh();
@@ -333,18 +311,7 @@ class BordereauController extends Controller
             ]);
 
             // Notifier l'auteur du bordereau
-            if ($bordereau->user_id) {
-                $this->createNotification([
-                    'user_id' => $bordereau->user_id,
-                    'title' => 'Rejet Bordereau',
-                    'message' => "Bordereau #{$bordereau->reference} a été rejeté. Raison: {$request->commentaire}",
-                    'type' => 'error',
-                    'entity_type' => 'bordereau',
-                    'entity_id' => $bordereau->id,
-                    'action_route' => "/bordereaux/{$bordereau->id}",
-                    'metadata' => ['reason' => $request->commentaire],
-                ]);
-            }
+            $this->notifySubmitterOnRejection($bordereau, 'bordereau', 'Bordereau', $request->commentaire, 'user_id', $bordereau->reference);
 
             return response()->json([
                 'success' => true,

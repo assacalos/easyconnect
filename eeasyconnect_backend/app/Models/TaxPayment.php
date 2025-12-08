@@ -174,12 +174,15 @@ class TaxPayment extends Model
 
     public function hasReceipt()
     {
-        return !empty($this->receipt_path) && file_exists(storage_path('app/' . $this->receipt_path));
+        if (empty($this->receipt_path)) {
+            return false;
+        }
+        return \Storage::disk('private')->exists($this->receipt_path);
     }
 
     public function uploadReceipt($file)
     {
-        if ($file) {
+        if ($file && $file->isValid()) {
             $path = $file->store('tax_receipts', 'private');
             $this->update(['receipt_path' => $path]);
             return $path;
@@ -190,11 +193,25 @@ class TaxPayment extends Model
     public function deleteReceipt()
     {
         if ($this->hasReceipt()) {
-            \Storage::delete($this->receipt_path);
+            \Storage::disk('private')->delete($this->receipt_path);
             $this->update(['receipt_path' => null]);
             return true;
         }
         return false;
+    }
+
+    /**
+     * Supprimer le fichier receipt lors de la suppression du modèle
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function ($taxPayment) {
+            if ($taxPayment->hasReceipt()) {
+                \Storage::disk('private')->delete($taxPayment->receipt_path);
+            }
+        });
     }
 
     // Méthodes statiques

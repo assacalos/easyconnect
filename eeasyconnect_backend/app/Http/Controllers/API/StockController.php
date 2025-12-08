@@ -203,6 +203,9 @@ class StockController extends Controller
 
             DB::commit();
 
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($stock, 'stock', 'Stock', 6, $stock->name);
+
             return response()->json([
                 'success' => true,
                 'data' => $stock->load(['creator']),
@@ -728,18 +731,8 @@ class StockController extends Controller
             // Recharger le stock
             $stock = Stock::find($id);
 
-            // Notifier l'auteur du stock (si user_id existe)
-            if ($stock && property_exists($stock, 'user_id') && $stock->user_id) {
-                $this->createNotification([
-                    'user_id' => $stock->user_id,
-                    'title' => 'Validation Stock',
-                    'message' => "Stock {$stock->name} a été validé",
-                    'type' => 'success',
-                    'entity_type' => 'stock',
-                    'entity_id' => $stock->id,
-                    'action_route' => "/stocks/{$stock->id}",
-                ]);
-            }
+            // Notifier l'auteur du stock
+            $this->notifySubmitterOnApproval($stock, 'stock', 'Stock', 'created_by', $stock->name);
 
             return response()->json([
                 'success' => true,
@@ -790,19 +783,8 @@ class StockController extends Controller
             // Recharger le stock
             $stock = Stock::find($id);
 
-            // Notifier l'auteur du stock (si user_id existe)
-            if ($stock && property_exists($stock, 'user_id') && $stock->user_id) {
-                $this->createNotification([
-                    'user_id' => $stock->user_id,
-                    'title' => 'Rejet Stock',
-                    'message' => "Stock {$stock->name} a été rejeté. Raison: {$validated['commentaire']}",
-                    'type' => 'error',
-                    'entity_type' => 'stock',
-                    'entity_id' => $stock->id,
-                    'action_route' => "/stocks/{$stock->id}",
-                    'metadata' => ['reason' => $validated['commentaire']],
-                ]);
-            }
+            // Notifier l'auteur du stock
+            $this->notifySubmitterOnRejection($stock, 'stock', 'Stock', $validated['commentaire'], 'created_by', $stock->name);
 
             return response()->json([
                 'success' => true,

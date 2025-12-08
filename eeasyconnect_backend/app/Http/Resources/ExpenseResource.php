@@ -41,6 +41,8 @@ class ExpenseResource extends JsonResource
             'expenseDate' => $this->expense_date?->format('Y-m-d\TH:i:s.u\Z'),
             'receipt_path' => $this->receipt_path,
             'receiptPath' => $this->receipt_path,
+            'receipt_url' => $this->receipt_url,
+            'receiptUrl' => $this->receipt_url,
             'notes' => $this->justification,
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),

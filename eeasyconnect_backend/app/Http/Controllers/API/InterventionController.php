@@ -196,6 +196,9 @@ class InterventionController extends Controller
 
             DB::commit();
 
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($intervention, 'intervention', 'Intervention', 6, $intervention->id);
+
             return response()->json([
                 'success' => true,
                 'data' => $this->transformInterventionForFlutter($intervention->load(['creator', 'client'])),
@@ -337,17 +340,7 @@ class InterventionController extends Controller
 
             if ($intervention->approve($request->user()->id, $notes)) {
                 // Notifier le créateur de l'intervention
-                if ($intervention->created_by) {
-                    $this->createNotification([
-                        'user_id' => $intervention->created_by,
-                        'title' => 'Approbation Intervention',
-                        'message' => "Intervention #{$intervention->id} a été approuvée",
-                        'type' => 'success',
-                        'entity_type' => 'intervention',
-                        'entity_id' => $intervention->id,
-                        'action_route' => "/interventions/{$intervention->id}",
-                    ]);
-                }
+                $this->notifySubmitterOnApproval($intervention, 'intervention', 'Intervention', 'created_by', $intervention->id);
 
                 return response()->json([
                     'success' => true,
@@ -396,18 +389,7 @@ class InterventionController extends Controller
 
             if ($intervention->reject($rejectionReason)) {
                 // Notifier le créateur de l'intervention
-                if ($intervention->created_by) {
-                    $this->createNotification([
-                        'user_id' => $intervention->created_by,
-                        'title' => 'Rejet Intervention',
-                        'message' => "Intervention #{$intervention->id} a été rejetée. Raison: {$rejectionReason}",
-                        'type' => 'error',
-                        'entity_type' => 'intervention',
-                        'entity_id' => $intervention->id,
-                        'action_route' => "/interventions/{$intervention->id}",
-                        'metadata' => ['reason' => $rejectionReason],
-                    ]);
-                }
+                $this->notifySubmitterOnRejection($intervention, 'intervention', 'Intervention', $rejectionReason, 'created_by', $intervention->id);
 
                 return response()->json([
                     'success' => true,

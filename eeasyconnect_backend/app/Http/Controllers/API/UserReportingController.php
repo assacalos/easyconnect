@@ -264,18 +264,7 @@ class UserReportingController extends Controller
             // Si c'est un draft (ancien système), on peut encore le soumettre
             if ($reporting->submit()) {
                 // Notifier le patron
-                $patron = User::where('role', 6)->first();
-                if ($patron) {
-                    $this->createNotification([
-                        'user_id' => $patron->id,
-                        'title' => 'Soumission Reporting',
-                        'message' => "Reporting #{$reporting->id} a été soumis pour validation",
-                        'type' => 'info',
-                        'entity_type' => 'reporting',
-                        'entity_id' => $reporting->id,
-                        'action_route' => "/user-reportings/{$reporting->id}",
-                    ]);
-                }
+                $this->notifyApproverOnSubmission($reporting, 'reporting', 'Reporting', 6, $reporting->id);
 
                 return response()->json([
                     'success' => true,
@@ -320,17 +309,7 @@ class UserReportingController extends Controller
             
             if ($reporting->approve($user->id, $request->comments)) {
                 // Notifier l'auteur du reporting
-                if ($reporting->user_id) {
-                    $this->createNotification([
-                        'user_id' => $reporting->user_id,
-                        'title' => 'Approbation Reporting',
-                        'message' => "Reporting #{$reporting->id} a été approuvé",
-                        'type' => 'success',
-                        'entity_type' => 'reporting',
-                        'entity_id' => $reporting->id,
-                        'action_route' => "/user-reportings/{$reporting->id}",
-                    ]);
-                }
+                $this->notifySubmitterOnApproval($reporting, 'reporting', 'Reporting', 'user_id', $reporting->id);
 
                 return response()->json([
                     'success' => true,

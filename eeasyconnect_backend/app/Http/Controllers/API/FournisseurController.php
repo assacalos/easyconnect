@@ -214,6 +214,9 @@ class FournisseurController extends Controller
 
             DB::commit();
 
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($fournisseur, 'supplier', 'Fournisseur', 6, $fournisseur->nom);
+
             Log::info('API: Fournisseur créé avec succès', [
                 'fournisseur_id' => $fournisseur->id,
                 'user_id' => auth()->id()
@@ -407,17 +410,7 @@ class FournisseurController extends Controller
             DB::commit();
 
             // Notifier l'auteur du fournisseur
-            if ($fournisseur->created_by) {
-                $this->createNotification([
-                    'user_id' => $fournisseur->created_by,
-                    'title' => 'Validation Fournisseur',
-                    'message' => "Fournisseur {$fournisseur->nom} a été validé",
-                    'type' => 'success',
-                    'entity_type' => 'supplier',
-                    'entity_id' => $fournisseur->id,
-                    'action_route' => "/fournisseurs/{$fournisseur->id}",
-                ]);
-            }
+            $this->notifySubmitterOnApproval($fournisseur, 'supplier', 'Fournisseur', 'created_by', $fournisseur->nom);
 
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();
@@ -488,18 +481,7 @@ class FournisseurController extends Controller
             DB::commit();
 
             // Notifier l'auteur du fournisseur
-            if ($fournisseur->created_by) {
-                $this->createNotification([
-                    'user_id' => $fournisseur->created_by,
-                    'title' => 'Rejet Fournisseur',
-                    'message' => "Fournisseur {$fournisseur->nom} a été rejeté. Raison: {$request->reason}",
-                    'type' => 'error',
-                    'entity_type' => 'supplier',
-                    'entity_id' => $fournisseur->id,
-                    'action_route' => "/fournisseurs/{$fournisseur->id}",
-                    'metadata' => ['reason' => $request->reason],
-                ]);
-            }
+            $this->notifySubmitterOnRejection($fournisseur, 'supplier', 'Fournisseur', $request->reason, 'created_by', $fournisseur->nom);
 
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();

@@ -173,6 +173,9 @@ class FactureController extends Controller
         // Charger la facture avec ses relations
         $facture->load('client', 'items', 'user', 'validator', 'rejector');
 
+        // Notifier le patron lors de la création
+        $this->notifyApproverOnSubmission($facture, 'invoice', 'Facture', 6, $facture->numero_facture);
+
         return response()->json([
             'success' => true,
             'data' => new FactureResource($facture),
@@ -358,17 +361,7 @@ class FactureController extends Controller
         ]);
         
         // Créer la notification pour l'auteur de la facture
-        if ($facture->user_id) {
-            $this->createNotification([
-                'user_id' => $facture->user_id,
-                'title' => 'Validation Facture',
-                'message' => "Facture #{$facture->numero_facture} a été validée",
-                'type' => 'success',
-                'entity_type' => 'invoice',
-                'entity_id' => $facture->id,
-                'action_route' => "/invoices/{$facture->id}",
-            ]);
-        }
+        $this->notifySubmitterOnApproval($facture, 'invoice', 'Facture', 'user_id', $facture->numero_facture);
         
         // Log de l'action
         \Log::info("Facture {$facture->numero_facture} validée par " . auth()->user()->nom);
@@ -413,18 +406,7 @@ class FactureController extends Controller
         ]);
         
         // Créer la notification pour l'auteur de la facture
-        if ($facture->user_id) {
-            $this->createNotification([
-                'user_id' => $facture->user_id,
-                'title' => 'Rejet Facture',
-                'message' => "Facture #{$facture->numero_facture} a été rejetée. Raison: {$reason}",
-                'type' => 'error',
-                'entity_type' => 'invoice',
-                'entity_id' => $facture->id,
-                'action_route' => "/invoices/{$facture->id}",
-                'metadata' => ['reason' => $reason],
-            ]);
-        }
+        $this->notifySubmitterOnRejection($facture, 'invoice', 'Facture', $reason, 'user_id', $facture->numero_facture);
         
         // Log de l'action
         \Log::info("Facture {$facture->numero_facture} rejetée par " . auth()->user()->nom . " - Raison: " . $reason);

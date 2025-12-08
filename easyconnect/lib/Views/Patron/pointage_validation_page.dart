@@ -292,11 +292,15 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                     ),
                   ),
                   // Photo du pointage
-                  if (pointage.photoPath != null && pointage.photoPath!.isNotEmpty) ...[
+                  if (pointage.photoPath != null &&
+                      pointage.photoPath!.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Text(
                       'Photo du pointage',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -315,10 +319,12 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                             if (loadingProgress == null) return child;
                             return Center(
                               child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
                               ),
                             );
                           },
@@ -327,11 +333,18 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.broken_image, color: Colors.red, size: 48),
+                                  const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.red,
+                                    size: 48,
+                                  ),
                                   const SizedBox(height: 8),
                                   Text(
                                     'Impossible de charger la photo',
-                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ],
                               ),

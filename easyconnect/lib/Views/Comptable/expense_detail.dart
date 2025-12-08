@@ -67,11 +67,9 @@ class ExpenseDetail extends StatelessWidget {
             ]),
 
             // Justificatif si disponible
-            if (expense.receiptPath != null) ...[
+            if (expense.receiptPath != null && expense.receiptUrl.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _buildInfoCard('Justificatif', [
-                _buildInfoRow(Icons.receipt, 'Fichier', 'Justificatif joint'),
-              ]),
+              _buildReceiptCard(),
             ],
 
             // Notes si disponibles
@@ -245,6 +243,134 @@ class ExpenseDetail extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildReceiptCard() {
+    // Vérifier si c'est une image (jpg, jpeg, png, gif, webp)
+    final isImage = expense.receiptPath != null &&
+        ['jpg', 'jpeg', 'png', 'gif', 'webp'].any(
+          (ext) => expense.receiptPath!.toLowerCase().endsWith('.$ext'),
+        );
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.receipt,
+                  color: Colors.deepPurple,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Justificatif',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const Spacer(),
+                // Bouton de téléchargement
+                IconButton(
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Télécharger',
+                  onPressed: () => _downloadReceipt(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (isImage && expense.receiptUrl.isNotEmpty)
+              // Afficher l'image si c'est un fichier image
+              Container(
+                height: 200,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    expense.receiptUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Icon(Icons.broken_image, size: 64),
+                      );
+                    },
+                  ),
+                ),
+              )
+            else
+              // Afficher une icône de fichier pour les autres types
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.insert_drive_file, size: 48),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Fichier joint',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            expense.receiptPath?.split('/').last ?? 'Justificatif',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _downloadReceipt() {
+    if (expense.receiptUrl.isNotEmpty) {
+      // Utiliser url_launcher pour ouvrir le lien de téléchargement
+      // Note: Il faudra ajouter le package url_launcher si ce n'est pas déjà fait
+      Get.snackbar(
+        'Téléchargement',
+        'Ouverture du justificatif...',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      // TODO: Implémenter le téléchargement avec url_launcher ou un package de téléchargement
+    }
   }
 
   Widget _buildHistoryCard() {

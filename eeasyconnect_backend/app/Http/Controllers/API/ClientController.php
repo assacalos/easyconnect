@@ -130,6 +130,9 @@ class ClientController extends Controller
 
         $client->load(['user']);
 
+        // Notifier le patron lors de la création
+        $this->notifyApproverOnSubmission($client, 'client', 'Client', 6, $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom));
+
             return response()->json([
                 'success' => true,
                 'data' => new ClientResource($client),
@@ -195,18 +198,8 @@ class ClientController extends Controller
         $client->load(['user']);
 
         // Notifier l'auteur du client
-        if ($client->user_id) {
-            $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
-            $this->createNotification([
-                'user_id' => $client->user_id,
-                'title' => 'Validation Client',
-                'message' => "Client {$clientName} a été validé",
-                'type' => 'success',
-                'entity_type' => 'client',
-                'entity_id' => $client->id,
-                'action_route' => "/clients/{$client->id}",
-            ]);
-        }
+        $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
+        $this->notifySubmitterOnApproval($client, 'client', 'Client', 'user_id', $clientName);
 
         return response()->json([
             'success' => true,
@@ -225,20 +218,9 @@ class ClientController extends Controller
         $client->load(['user']);
 
         // Notifier l'auteur du client
-        if ($client->user_id) {
-            $reason = $request->commentaire ?? 'Rejeté';
-            $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
-            $this->createNotification([
-                'user_id' => $client->user_id,
-                'title' => 'Rejet Client',
-                'message' => "Client {$clientName} a été rejeté. Raison: {$reason}",
-                'type' => 'error',
-                'entity_type' => 'client',
-                'entity_id' => $client->id,
-                'action_route' => "/clients/{$client->id}",
-                'metadata' => ['reason' => $reason],
-            ]);
-        }
+        $reason = $request->commentaire ?? 'Rejeté';
+        $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
+        $this->notifySubmitterOnRejection($client, 'client', 'Client', $reason, 'user_id', $clientName);
 
         return response()->json([
             'success' => true,

@@ -46,12 +46,14 @@ import 'package:easyconnect/services/recruitment_service.dart';
 class PatronBinding extends Bindings {
   @override
   void dependencies() {
+    print('=== INITIALISATION PATRON BINDING ===');
+
     // S'assurer que l'AuthController est disponible
     if (!Get.isRegistered<AuthController>()) {
       Get.put(AuthController(), permanent: true);
     }
 
-    // Services d'abord (instanciation immédiate, pas de chargement de données)
+    // Services d'abord
     Get.put(PatronDashboardService(), permanent: true);
     Get.put(EmployeeService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
@@ -74,11 +76,10 @@ class PatronBinding extends Bindings {
     Get.put(RecruitmentService(), permanent: true);
     Get.put(LeaveService(), permanent: true);
 
-    // Contrôleur patron (chargera les données avec délai)
+    // Contrôleur patron
     Get.put(PatronDashboardController(), permanent: true);
 
-    // Contrôleurs nécessaires pour les validations (chargement différé)
-    // Ces contrôleurs ne chargent pas de données au démarrage, seulement quand nécessaire
+    // Contrôleurs nécessaires pour les validations
     Get.put(DevisController(), permanent: true);
     Get.put(BordereauxController(), permanent: true);
     Get.put(BonCommandeController(), permanent: true);

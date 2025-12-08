@@ -191,10 +191,13 @@ class NotificationServiceEnhanced {
       id: 'submitted_${entityType}_$entityId',
       title: 'Soumission $entityType',
       message: '$entityName a été soumis pour validation',
-      timestamp: DateTime.now(),
-      type: NotificationType.info,
-      actionRoute: route,
-      actionData: {'entityId': entityId, 'entityType': entityType},
+      type: 'info',
+      entityType: entityType,
+      entityId: entityId,
+      isRead: false,
+      createdAt: DateTime.now(),
+      actionRoute: route ?? '',
+      metadata: null,
     );
 
     await _showNotification(notification, soundType: 'submit');
@@ -212,10 +215,13 @@ class NotificationServiceEnhanced {
       id: 'validated_${entityType}_$entityId',
       title: 'Validation $entityType',
       message: '$entityName a été validé',
-      timestamp: DateTime.now(),
-      type: NotificationType.success,
-      actionRoute: route,
-      actionData: {'entityId': entityId, 'entityType': entityType},
+      type: 'success',
+      entityType: entityType,
+      entityId: entityId,
+      isRead: false,
+      createdAt: DateTime.now(),
+      actionRoute: route ?? '',
+      metadata: null,
     );
 
     await _showNotification(notification, soundType: 'success');
@@ -239,14 +245,13 @@ class NotificationServiceEnhanced {
       id: 'rejected_${entityType}_$entityId',
       title: 'Rejet $entityType',
       message: message,
-      timestamp: DateTime.now(),
-      type: NotificationType.error,
-      actionRoute: route,
-      actionData: {
-        'entityId': entityId,
-        'entityType': entityType,
-        'reason': reason,
-      },
+      type: 'error',
+      entityType: entityType,
+      entityId: entityId,
+      isRead: false,
+      createdAt: DateTime.now(),
+      actionRoute: route ?? '',
+      metadata: reason != null ? {'reason': reason} : null,
     );
 
     await _showNotification(notification, soundType: 'error');
@@ -303,7 +308,7 @@ class NotificationServiceEnhanced {
       importance: Importance.high,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
-      color: _getNotificationColor(notification.type),
+      color: _getNotificationColorFromString(notification.type),
       playSound: _soundsEnabled,
       enableVibration: true,
     );
@@ -320,8 +325,8 @@ class NotificationServiceEnhanced {
     );
 
     final payload =
-        notification.actionRoute != null
-            ? '${notification.actionRoute}:${notification.actionData?['entityId'] ?? ''}'
+        notification.actionRoute.isNotEmpty
+            ? '${notification.actionRoute}:${notification.entityId}'
             : null;
 
     await _localNotifications.show(
@@ -353,68 +358,74 @@ class NotificationServiceEnhanced {
       notification.title,
       notification.message,
       duration: const Duration(seconds: 4),
-      backgroundColor: _getSnackbarColor(notification.type),
+      backgroundColor: _getSnackbarColorFromString(notification.type),
       colorText: Colors.white,
-      icon: Icon(_getNotificationIcon(notification.type), color: Colors.white),
+      icon: Icon(
+        _getNotificationIconFromString(notification.type),
+        color: Colors.white,
+      ),
       snackPosition: SnackPosition.TOP,
       margin: const EdgeInsets.all(16),
       borderRadius: 8,
       isDismissible: true,
       onTap: (_) {
-        if (notification.actionRoute != null) {
+        if (notification.actionRoute.isNotEmpty) {
           Get.toNamed(
-            notification.actionRoute!,
-            arguments: notification.actionData,
+            notification.actionRoute,
+            arguments: {
+              'entityId': notification.entityId,
+              'entityType': notification.entityType,
+            },
           );
         }
       },
     );
   }
 
-  /// Obtenir la couleur selon le type de notification
-  Color _getNotificationColor(NotificationType type) {
+  /// Obtenir la couleur selon le type de notification (String)
+  Color _getNotificationColorFromString(String type) {
     switch (type) {
-      case NotificationType.success:
+      case 'success':
         return Colors.green;
-      case NotificationType.error:
+      case 'error':
         return Colors.red;
-      case NotificationType.warning:
+      case 'warning':
         return Colors.orange;
-      case NotificationType.task:
+      case 'task':
+        return Colors.purple;
+      default: // 'info'
         return Colors.blue;
-      default:
-        return Colors.grey;
     }
   }
 
-  /// Obtenir la couleur du snackbar
-  Color _getSnackbarColor(NotificationType type) {
+  /// Obtenir la couleur du snackbar (String)
+  Color _getSnackbarColorFromString(String type) {
     switch (type) {
-      case NotificationType.success:
+      case 'success':
         return Colors.green.shade700;
-      case NotificationType.error:
+      case 'error':
         return Colors.red.shade700;
-      case NotificationType.warning:
+      case 'warning':
         return Colors.orange.shade700;
-      case NotificationType.task:
+      case 'task':
+        return Colors.purple.shade700;
+      default: // 'info'
         return Colors.blue.shade700;
-      default:
-        return Colors.grey.shade700;
     }
   }
 
-  /// Obtenir l'icône selon le type
-  IconData _getNotificationIcon(NotificationType type) {
+  /// Obtenir l'icône selon le type (String)
+  IconData _getNotificationIconFromString(String type) {
     switch (type) {
-      case NotificationType.success:
+      case 'success':
         return Icons.check_circle;
-      case NotificationType.error:
+      case 'error':
         return Icons.error;
-      case NotificationType.warning:
+      case 'warning':
         return Icons.warning;
-      case NotificationType.task:
+      case 'task':
         return Icons.task;
-      default:
+      default: // 'info'
         return Icons.info;
     }
   }
@@ -423,17 +434,7 @@ class NotificationServiceEnhanced {
   void markAsRead(String notificationId) {
     final index = notifications.indexWhere((n) => n.id == notificationId);
     if (index != -1) {
-      final notification = notifications[index];
-      notifications[index] = AppNotification(
-        id: notification.id,
-        title: notification.title,
-        message: notification.message,
-        timestamp: notification.timestamp,
-        type: notification.type,
-        actionRoute: notification.actionRoute,
-        actionData: notification.actionData,
-        isRead: true,
-      );
+      notifications[index] = notifications[index].copyWith(isRead: true);
       _updateUnreadCount();
     }
   }
@@ -442,17 +443,7 @@ class NotificationServiceEnhanced {
   void markAllAsRead() {
     for (int i = 0; i < notifications.length; i++) {
       if (!notifications[i].isRead) {
-        final notification = notifications[i];
-        notifications[i] = AppNotification(
-          id: notification.id,
-          title: notification.title,
-          message: notification.message,
-          timestamp: notification.timestamp,
-          type: notification.type,
-          actionRoute: notification.actionRoute,
-          actionData: notification.actionData,
-          isRead: true,
-        );
+        notifications[i] = notifications[i].copyWith(isRead: true);
       }
     }
     _updateUnreadCount();

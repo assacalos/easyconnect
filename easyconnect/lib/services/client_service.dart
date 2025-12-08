@@ -1,10 +1,10 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
@@ -12,6 +12,8 @@ import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 
 class ClientService {
+  final storage = GetStorage();
+
   /// Récupérer les clients avec pagination côté serveur
   Future<PaginationResponse<Client>> getClientsPaginated({
     int? status,
@@ -21,8 +23,9 @@ class ClientService {
     String? search,
   }) async {
     try {
-      final userRole = SessionService.getUserRole();
-      final userId = SessionService.getUserId();
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
 
       String url = '${AppConfig.baseUrl}/clients';
       List<String> params = [];
@@ -51,7 +54,13 @@ class ClientService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => http.get(
+              Uri.parse(url),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -179,8 +188,9 @@ class ClientService {
     bool? isPending,
   ) async {
     try {
-      final userRole = SessionService.getUserRole();
-      final userId = SessionService.getUserId();
+      final token = storage.read('token');
+      final userRole = storage.read('userRole');
+      final userId = storage.read('userId');
 
       var queryParams = <String, String>{};
       queryParams['status'] = status.toString();
@@ -196,7 +206,7 @@ class ClientService {
       AppLogger.httpRequest('GET', url, tag: 'CLIENT_SERVICE');
 
       // Vérifier que le token existe
-      if (!SessionService.isAuthenticated()) {
+      if (token == null || token.toString().isEmpty) {
         AppLogger.warning(
           'Token d\'authentification manquant',
           tag: 'CLIENT_SERVICE',
@@ -301,7 +311,8 @@ class ClientService {
 
   Future<Client> createClient(Client client) async {
     try {
-      final userId = SessionService.getUserId();
+      final token = storage.read('token');
+      final userId = storage.read('userId');
       final url = '${AppConfig.baseUrl}/clients-create';
 
       AppLogger.httpRequest('POST', url, tag: 'CLIENT_SERVICE');
@@ -314,7 +325,11 @@ class ClientService {
         operation:
             () => http.post(
               Uri.parse(url),
-              headers: ApiService.headers(),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
               body: json.encode(clientData),
             ),
         maxRetries: AppConfig.defaultMaxRetries,
@@ -356,9 +371,14 @@ class ClientService {
 
   Future<Client> updateClient(Client client) async {
     try {
+      final token = storage.read('token');
       final response = await http.put(
         Uri.parse('${AppConfig.baseUrl}/clients-update/${client.id}'),
-        headers: ApiService.headers(),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: json.encode(client.toJson()),
       );
 
@@ -378,10 +398,15 @@ class ClientService {
 
   Future<bool> approveClient(int clientId) async {
     try {
+      final token = storage.read('token');
+
       final url = '${AppConfig.baseUrl}/clients-validate/$clientId';
       final response = await http.post(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
 
       // Si le status code est 200 ou 201, considérer comme succès même si le body dit false
@@ -413,11 +438,16 @@ class ClientService {
 
   Future<bool> rejectClient(int clientId, String comment) async {
     try {
+      final token = storage.read('token');
       final url = '${AppConfig.baseUrl}/clients-reject/$clientId';
       final body = json.encode({'commentaire': comment});
       final response = await http.post(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: body,
       );
 
@@ -438,9 +468,13 @@ class ClientService {
 
   Future<bool> deleteClient(int clientId) async {
     try {
+      final token = storage.read('token');
       final response = await http.delete(
         Uri.parse('${AppConfig.baseUrl}/clients-delete/$clientId'),
-        headers: ApiService.headers(),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
 
       final result = ApiService.parseResponse(response);
@@ -452,9 +486,13 @@ class ClientService {
 
   Future<Map<String, dynamic>> getClientStats() async {
     try {
+      final token = storage.read('token');
       final response = await http.get(
         Uri.parse('${AppConfig.baseUrl}/clients/stats'),
-        headers: ApiService.headers(),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
 
       final result = ApiService.parseResponse(response);

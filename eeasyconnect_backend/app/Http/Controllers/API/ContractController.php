@@ -446,18 +446,7 @@ class ContractController extends Controller
             $contract->submit();
 
             // Notifier le patron
-            $patron = User::where('role', 6)->first();
-            if ($patron) {
-                $this->createNotification([
-                    'user_id' => $patron->id,
-                    'title' => 'Soumission Contrat',
-                    'message' => "Contrat #{$contract->id} a été soumis pour validation",
-                    'type' => 'info',
-                    'entity_type' => 'contract',
-                    'entity_id' => $contract->id,
-                    'action_route' => "/contracts/{$contract->id}",
-                ]);
-            }
+            $this->notifyApproverOnSubmission($contract, 'contract', 'Contrat', 6, $contract->contract_number ?? $contract->id);
 
             return response()->json([
                 'success' => true,
@@ -501,20 +490,7 @@ class ContractController extends Controller
             $contract->approve(request()->user()->id);
 
             // Notifier l'employé concerné
-            if ($contract->employee_id) {
-                $employee = \App\Models\Employee::find($contract->employee_id);
-                if ($employee && $employee->user_id) {
-                    $this->createNotification([
-                        'user_id' => $employee->user_id,
-                        'title' => 'Approbation Contrat',
-                        'message' => "Votre contrat a été approuvé",
-                        'type' => 'success',
-                        'entity_type' => 'contract',
-                        'entity_id' => $contract->id,
-                        'action_route' => "/contracts/{$contract->id}",
-                    ]);
-                }
-            }
+            $this->notifySubmitterOnApproval($contract, 'contract', 'Contrat', 'employee_id', $contract->contract_number ?? $contract->id);
 
             return response()->json([
                 'success' => true,
@@ -569,21 +545,7 @@ class ContractController extends Controller
             $contract->reject(request()->user()->id, $rejectionReason);
 
             // Notifier l'employé concerné
-            if ($contract->employee_id) {
-                $employee = \App\Models\Employee::find($contract->employee_id);
-                if ($employee && $employee->user_id) {
-                    $this->createNotification([
-                        'user_id' => $employee->user_id,
-                        'title' => 'Rejet Contrat',
-                        'message' => "Votre contrat a été rejeté. Raison: {$rejectionReason}",
-                        'type' => 'error',
-                        'entity_type' => 'contract',
-                        'entity_id' => $contract->id,
-                        'action_route' => "/contracts/{$contract->id}",
-                        'metadata' => ['reason' => $rejectionReason],
-                    ]);
-                }
-            }
+            $this->notifySubmitterOnRejection($contract, 'contract', 'Contrat', $rejectionReason, 'employee_id', $contract->contract_number ?? $contract->id);
 
             return response()->json([
                 'success' => true,

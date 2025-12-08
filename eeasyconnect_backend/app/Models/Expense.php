@@ -189,7 +189,18 @@ class Expense extends Model
 
     public function getHasReceiptAttribute()
     {
-        return !empty($this->receipt_path) && file_exists(storage_path('app/' . $this->receipt_path));
+        if (empty($this->receipt_path)) {
+            return false;
+        }
+        return \Storage::disk('private')->exists($this->receipt_path);
+    }
+
+    public function getReceiptUrlAttribute()
+    {
+        if ($this->has_receipt) {
+            return route('api.expenses.receipt.show', ['id' => $this->id]);
+        }
+        return null;
     }
 
     // Méthodes utilitaires
@@ -351,11 +362,25 @@ class Expense extends Model
     public function deleteReceipt()
     {
         if ($this->has_receipt) {
-            \Storage::delete($this->receipt_path);
+            \Storage::disk('private')->delete($this->receipt_path);
             $this->update(['receipt_path' => null]);
             return true;
         }
         return false;
+    }
+
+    /**
+     * Supprimer le fichier receipt lors de la suppression du modèle
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function ($expense) {
+            if ($expense->has_receipt) {
+                \Storage::disk('private')->delete($expense->receipt_path);
+            }
+        });
     }
 
     // Méthodes statiques

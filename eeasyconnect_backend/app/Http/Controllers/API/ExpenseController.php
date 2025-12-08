@@ -171,10 +171,15 @@ class ExpenseController extends Controller
 
             $userId = $request->user()->id;
             
+            // employee_id = l'utilisateur qui crée la dépense (ou l'employé concerné si spécifié)
+            // Pour l'instant, on utilise toujours l'utilisateur connecté
+            // TODO: Si besoin futur, permettre à un admin de créer une dépense pour un autre employé
+            $employeeId = $validated['employee_id'] ?? $userId;
+            
             // Préparer les données pour la création
             $expenseData = [
                 'expense_category_id' => $expenseCategoryId,
-                'employee_id' => $userId,
+                'employee_id' => $employeeId, // Employé concerné par la dépense
                 'expense_number' => Expense::generateExpenseNumber(),
                 'expense_date' => $expenseDate,
                 'submission_date' => now()->toDateString(),
@@ -188,8 +193,9 @@ class ExpenseController extends Controller
             ];
             
             // Ajouter user_id si la colonne existe (compatibilité avec l'ancienne structure)
+            // user_id = l'utilisateur qui a créé/soumis (peut être différent de employee_id)
             if (Schema::hasColumn('expenses', 'user_id')) {
-                $expenseData['user_id'] = $userId;
+                $expenseData['user_id'] = $userId; // Créateur/soumetteur
             }
             
             $expense = Expense::create($expenseData);
@@ -329,10 +335,21 @@ class ExpenseController extends Controller
                 'expense_date' => 'sometimes|date',
                 'amount' => 'sometimes|numeric|min:0',
                 'description' => 'sometimes|string|max:1000',
-                'justification' => 'nullable|string|max:1000'
+                'justification' => 'nullable|string|max:1000',
+                'receipt' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240'
             ]);
 
             $expense->update($validated);
+
+            // Gérer la mise à jour du justificatif si fourni
+            if ($request->hasFile('receipt')) {
+                // Supprimer l'ancien fichier s'il existe
+                if ($expense->has_receipt) {
+                    $expense->deleteReceipt();
+                }
+                // Uploader le nouveau fichier
+                $expense->uploadReceipt($request->file('receipt'));
+            }
 
             return response()->json([
                 'success' => true,
@@ -370,6 +387,11 @@ class ExpenseController extends Controller
                 ], 400);
             }
 
+            // Supprimer le fichier receipt s'il existe
+            if ($expense->has_receipt) {
+                $expense->deleteReceipt();
+            }
+
             $expense->delete();
 
             return response()->json([
@@ -402,18 +424,7 @@ class ExpenseController extends Controller
 
             if ($expense->submit()) {
                 // Notifier le patron
-                $patron = User::where('role', 6)->first();
-                if ($patron) {
-                    $this->createNotification([
-                        'user_id' => $patron->id,
-                        'title' => 'Soumission Dépense',
-                        'message' => "Dépense #{$expense->id} a été soumise pour validation",
-                        'type' => 'info',
-                        'entity_type' => 'expense',
-                        'entity_id' => $expense->id,
-                        'action_route' => "/expenses/{$expense->id}",
-                    ]);
-                }
+                $this->notifyApproverOnSubmission($expense, 'expense', 'Dépense', 6, $expense->expense_number ?? $expense->id);
 
                 return response()->json([
                     'success' => true,
@@ -465,20 +476,7 @@ class ExpenseController extends Controller
 
             if ($expense->approve($request->user()->id, $comments)) {
                 // Notifier l'auteur de la dépense
-                if ($expense->employee_id) {
-                    $employee = \App\Models\Employee::find($expense->employee_id);
-                    if ($employee && $employee->user_id) {
-                        $this->createNotification([
-                            'user_id' => $employee->user_id,
-                            'title' => 'Approbation Dépense',
-                            'message' => "Dépense #{$expense->id} a été approuvée",
-                            'type' => 'success',
-                            'entity_type' => 'expense',
-                            'entity_id' => $expense->id,
-                            'action_route' => "/expenses/{$expense->id}",
-                        ]);
-                    }
-                }
+                $this->notifySubmitterOnApproval($expense, 'expense', 'Dépense', 'employee_id', $expense->expense_number ?? $expense->id);
 
                 // Recharger la dépense avec ses relations
                 $expense->refresh();
@@ -537,21 +535,7 @@ class ExpenseController extends Controller
 
             if ($expense->reject($request->user()->id, $validated['reason'])) {
                 // Notifier l'auteur de la dépense
-                if ($expense->employee_id) {
-                    $employee = \App\Models\Employee::find($expense->employee_id);
-                    if ($employee && $employee->user_id) {
-                        $this->createNotification([
-                            'user_id' => $employee->user_id,
-                            'title' => 'Rejet Dépense',
-                            'message' => "Dépense #{$expense->id} a été rejetée. Raison: {$validated['reason']}",
-                            'type' => 'error',
-                            'entity_type' => 'expense',
-                            'entity_id' => $expense->id,
-                            'action_route' => "/expenses/{$expense->id}",
-                            'metadata' => ['reason' => $validated['reason']],
-                        ]);
-                    }
-                }
+                $this->notifySubmitterOnRejection($expense, 'expense', 'Dépense', $validated['reason'], 'employee_id', $expense->expense_number ?? $expense->id);
 
                 // Recharger la dépense avec ses relations
                 $expense->refresh();
@@ -754,6 +738,125 @@ class ExpenseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des statistiques: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Afficher le reçu d'une dépense (pour affichage dans le navigateur)
+     */
+    public function showReceipt($id)
+    {
+        try {
+            $expense = Expense::find($id);
+
+            if (!$expense) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dépense non trouvée'
+                ], 404);
+            }
+
+            if (!$expense->has_receipt) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aucun reçu disponible pour cette dépense'
+                ], 404);
+            }
+
+            $filePath = $expense->receipt_path;
+            
+            if (!\Storage::disk('private')->exists($filePath)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Fichier non trouvé'
+                ], 404);
+            }
+
+            // Vérifier si c'est une image
+            $mimeType = \Storage::disk('private')->mimeType($filePath);
+            $isImage = strpos($mimeType, 'image/') === 0;
+
+            if ($isImage) {
+                // Pour les images, retourner directement le contenu avec les headers appropriés
+                $fileContent = \Storage::disk('private')->get($filePath);
+                return response($fileContent, 200)
+                    ->header('Content-Type', $mimeType)
+                    ->header('Content-Disposition', 'inline; filename="' . basename($filePath) . '"')
+                    ->header('Cache-Control', 'public, max-age=3600');
+            } else {
+                // Pour les PDFs et autres fichiers, utiliser streamDownload
+                return \Storage::disk('private')->response($filePath, basename($filePath), [
+                    'Content-Type' => $mimeType ?? 'application/octet-stream',
+                    'Content-Disposition' => 'inline; filename="' . basename($filePath) . '"',
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Expense receipt show error', [
+                'expense_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'affichage: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Télécharger le reçu d'une dépense
+     */
+    public function downloadReceipt($id)
+    {
+        try {
+            $expense = Expense::find($id);
+
+            if (!$expense) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Dépense non trouvée'
+                ], 404);
+            }
+
+            if (!$expense->has_receipt) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aucun reçu disponible pour cette dépense'
+                ], 404);
+            }
+
+            $filePath = $expense->receipt_path;
+            
+            if (!\Storage::disk('private')->exists($filePath)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Fichier non trouvé'
+                ], 404);
+            }
+
+            // Extraire le nom du fichier original ou générer un nom basé sur l'ID de la dépense
+            $fileName = basename($filePath);
+            $originalName = $expense->expense_number . '_receipt.' . pathinfo($fileName, PATHINFO_EXTENSION);
+
+            // Utiliser streamDownload pour éviter les problèmes de mémoire
+            return \Storage::disk('private')->download($filePath, $originalName, [
+                'Content-Type' => \Storage::disk('private')->mimeType($filePath) ?? 'application/octet-stream',
+                'Content-Disposition' => 'attachment; filename="' . $originalName . '"',
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Expense receipt download error', [
+                'expense_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()
             ], 500);
         }
     }

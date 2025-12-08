@@ -352,6 +352,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/expenses-create', [ExpenseController::class, 'store']);
         Route::put('/expenses-update/{id}', [ExpenseController::class, 'update']);
         Route::delete('/expenses-destroy/{id}', [ExpenseController::class, 'destroy']);
+        Route::get('/expenses/{id}/receipt', [ExpenseController::class, 'showReceipt'])->name('api.expenses.receipt.show');
+        Route::get('/expenses/{id}/receipt/download', [ExpenseController::class, 'downloadReceipt']);
        
         
         // Routes pour le stock

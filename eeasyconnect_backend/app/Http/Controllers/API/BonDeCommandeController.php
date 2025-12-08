@@ -192,18 +192,7 @@ class BonDeCommandeController extends Controller
 
             // Notifier le patron si le bon est en attente
             if ($bon->statut === 'en_attente') {
-                $patron = User::where('role', 6)->first();
-                if ($patron) {
-                    $this->createNotification([
-                        'user_id' => $patron->id,
-                        'title' => 'Soumission Bon de Commande',
-                        'message' => "Bon de commande #{$bon->numero_commande} a été soumis pour validation",
-                        'type' => 'info',
-                        'entity_type' => 'bon_commande',
-                        'entity_id' => $bon->id,
-                        'action_route' => "/bons-de-commande/{$bon->id}",
-                    ]);
-                }
+                $this->notifyApproverOnSubmission($bon, 'bon_commande', 'Bon de Commande', 6, $bon->numero_commande);
             }
 
             $bon->load(['fournisseur', 'createur', 'items']);
@@ -337,17 +326,7 @@ class BonDeCommandeController extends Controller
         ]);
 
         // Notifier l'auteur du bon de commande
-        if ($bon->user_id) {
-            $this->createNotification([
-                'user_id' => $bon->user_id,
-                'title' => 'Validation Bon de Commande',
-                'message' => "Bon de commande #{$bon->numero_commande} a été validé",
-                'type' => 'success',
-                'entity_type' => 'bon_commande',
-                'entity_id' => $bon->id,
-                'action_route' => "/bons-de-commande/{$bon->id}",
-            ]);
-        }
+        $this->notifySubmitterOnApproval($bon, 'bon_commande', 'Bon de Commande', 'user_id', $bon->numero_commande);
 
         return response()->json([
             'success' => true,
@@ -383,10 +362,7 @@ class BonDeCommandeController extends Controller
         ]);
 
         // Notifier l'auteur du bon de commande
-        if ($bon->user_id) {
-            $this->createNotification([
-                'user_id' => $bon->user_id,
-                'title' => 'Rejet Bon de Commande',
+        $this->notifySubmitterOnRejection($bon, 'bon_commande', 'Bon de Commande', $request->commentaire, 'user_id', $bon->numero_commande);
                 'message' => "Bon de commande #{$bon->numero_commande} a été rejeté. Raison: {$request->commentaire}",
                 'type' => 'error',
                 'entity_type' => 'bon_commande',

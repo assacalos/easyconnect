@@ -420,18 +420,8 @@ class AttendanceController extends Controller
             ]);
             
             // Notifier l'utilisateur concerné
-            if ($attendance->user_id) {
-                $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
-                $this->createNotification([
-                    'user_id' => $attendance->user_id,
-                    'title' => 'Approbation Pointage',
-                    'message' => "Votre pointage du {$dateFormatted} a été approuvé",
-                    'type' => 'success',
-                    'entity_type' => 'attendance',
-                    'entity_id' => $attendance->id,
-                    'action_route' => "/attendances/{$attendance->id}",
-                ]);
-            }
+            $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
+            $this->notifySubmitterOnApproval($attendance, 'attendance', "Pointage du {$dateFormatted}", 'user_id');
 
             return response()->json([
                 'success' => true,
@@ -520,19 +510,8 @@ class AttendanceController extends Controller
             $attendance->load(['user', 'rejector']);
             
             // Notifier l'utilisateur concerné
-            if ($attendance->user_id) {
-                $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
-                $this->createNotification([
-                    'user_id' => $attendance->user_id,
-                    'title' => 'Rejet Pointage',
-                    'message' => "Votre pointage du {$dateFormatted} a été rejeté. Raison: {$request->reason}",
-                    'type' => 'error',
-                    'entity_type' => 'attendance',
-                    'entity_id' => $attendance->id,
-                    'action_route' => "/attendances/{$attendance->id}",
-                    'metadata' => ['reason' => $request->reason],
-                ]);
-            }
+            $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
+            $this->notifySubmitterOnRejection($attendance, 'attendance', "Pointage du {$dateFormatted}", $request->reason, 'user_id');
 
             return response()->json([
                 'success' => true,

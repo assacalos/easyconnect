@@ -199,18 +199,7 @@ public function validateTax(Request $request, $id): JsonResponse
             ]);
 
             // Notifier l'auteur de la taxe
-            if ($tax->comptable_id) {
-                $this->createNotification([
-                    'user_id' => $tax->comptable_id,
-                    'title' => 'Rejet Taxe',
-                    'message' => "Taxe #{$tax->id} a été rejetée. Raison: {$request->rejection_reason}",
-                    'type' => 'error',
-                    'entity_type' => 'tax',
-                    'entity_id' => $tax->id,
-                    'action_route' => "/taxes/{$tax->id}",
-                    'metadata' => ['reason' => $request->rejection_reason],
-                ]);
-            }
+            $this->notifySubmitterOnRejection($tax, 'tax', 'Taxe', $request->rejection_reason, 'comptable_id', $tax->reference ?? $tax->id);
 
             Log::info('Taxe rejetée', [
                 'tax_id' => $tax->id,
@@ -408,6 +397,9 @@ public function validateTax(Request $request, $id): JsonResponse
             $validated['status'] = 'en_attente';
             
             $tax = Tax::create($validated);
+            
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($tax, 'tax', 'Taxe', 6, $tax->reference ?? $tax->id);
 
             DB::commit();
 

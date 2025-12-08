@@ -225,6 +225,9 @@ class LeaveRequestController extends Controller
 
             $leave->load(['employee', 'creator']);
 
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($leave, 'leave_request', 'Demande de Congé');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Demande de congé créée avec succès',
@@ -401,20 +404,7 @@ class LeaveRequestController extends Controller
             // TODO: Mettre à jour le solde de congés
 
             // Notifier l'employé concerné
-            if ($leave->employee_id) {
-                $employee = Employee::find($leave->employee_id);
-                if ($employee && $employee->user_id) {
-                    $this->createNotification([
-                        'user_id' => $employee->user_id,
-                        'title' => 'Approbation Demande de Congé',
-                        'message' => "Votre demande de congé a été approuvée",
-                        'type' => 'success',
-                        'entity_type' => 'leave_request',
-                        'entity_id' => $leave->id,
-                        'action_route' => "/leave-requests/{$leave->id}",
-                    ]);
-                }
-            }
+            $this->notifySubmitterOnApproval($leave, 'leave_request', 'Demande de Congé', 'employee_id');
 
             DB::commit();
 
@@ -462,21 +452,7 @@ class LeaveRequestController extends Controller
             $leave->reject($request->user()->id, $validated['rejection_reason']);
 
             // Notifier l'employé concerné
-            if ($leave->employee_id) {
-                $employee = Employee::find($leave->employee_id);
-                if ($employee && $employee->user_id) {
-                    $this->createNotification([
-                        'user_id' => $employee->user_id,
-                        'title' => 'Rejet Demande de Congé',
-                        'message' => "Votre demande de congé a été rejetée. Raison: {$validated['rejection_reason']}",
-                        'type' => 'error',
-                        'entity_type' => 'leave_request',
-                        'entity_id' => $leave->id,
-                        'action_route' => "/leave-requests/{$leave->id}",
-                        'metadata' => ['reason' => $validated['rejection_reason']],
-                    ]);
-                }
-            }
+            $this->notifySubmitterOnRejection($leave, 'leave_request', 'Demande de Congé', $validated['rejection_reason'], 'employee_id');
 
             return response()->json([
                 'success' => true,

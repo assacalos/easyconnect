@@ -1126,7 +1126,8 @@ class PaymentController extends GetxController {
           'reference': payment.reference ?? payment.paymentNumber,
           'montant': payment.amount,
           'mode_paiement': payment.paymentMethod,
-          'date_paiement': payment.paymentDate, // Passer directement le DateTime
+          'date_paiement':
+              payment.paymentDate, // Passer directement le DateTime
         },
         facture: {'reference': payment.paymentNumber},
         client: {

@@ -483,6 +483,10 @@ class PaiementController extends Controller
         // Utiliser la méthode du modèle si disponible
         if (method_exists($paiement, 'reject')) {
             if ($paiement->reject(auth()->id(), $reason, $comment)) {
+                // Notifier le comptable
+                $reference = $paiement->reference ?? $paiement->id;
+                $this->notifySubmitterOnRejection($paiement, 'payment', 'Paiement', $reason, 'comptable_id', $reference);
+                
                 $paiement->load('client', 'comptable', 'schedule');
                 return response()->json([
                     'success' => true,
@@ -600,19 +604,8 @@ class PaiementController extends Controller
 
         if ($paiement->submit()) {
             // Notifier le patron
-            $patron = \App\Models\User::where('role', 6)->first();
-            if ($patron) {
-                $reference = $paiement->reference ?? $paiement->id;
-                $this->createNotification([
-                    'user_id' => $patron->id,
-                    'title' => 'Soumission Paiement',
-                    'message' => "Paiement #{$reference} a été soumis pour validation",
-                    'type' => 'info',
-                    'entity_type' => 'payment',
-                    'entity_id' => $paiement->id,
-                    'action_route' => "/payments/{$paiement->id}",
-                ]);
-            }
+            $reference = $paiement->reference ?? $paiement->id;
+            $this->notifyApproverOnSubmission($paiement, 'payment', 'Paiement', 6, $reference);
 
             return response()->json([
                 'success' => true,
@@ -643,19 +636,9 @@ class PaiementController extends Controller
         $comment = $request->comment ?? $request->comments;
 
         if ($paiement->approve(auth()->id(), $comment)) {
-            // Notifier l'auteur du paiement
-            if ($paiement->comptable_id) {
-                $reference = $paiement->reference ?? $paiement->id;
-                $this->createNotification([
-                    'user_id' => $paiement->comptable_id,
-                    'title' => 'Approbation Paiement',
-                    'message' => "Paiement #{$reference} a été approuvé",
-                    'type' => 'success',
-                    'entity_type' => 'payment',
-                    'entity_id' => $paiement->id,
-                    'action_route' => "/payments/{$paiement->id}",
-                ]);
-            }
+            // Notifier l'auteur du paiement (comptable)
+            $reference = $paiement->reference ?? $paiement->id;
+            $this->notifySubmitterOnApproval($paiement, 'payment', 'Paiement', 'comptable_id', $reference);
 
             return response()->json([
                 'success' => true,

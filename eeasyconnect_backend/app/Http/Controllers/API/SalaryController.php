@@ -359,6 +359,9 @@ class SalaryController extends Controller
                 'salary_date' => $salary->salary_date?->format('Y-m-d'),
             ];
 
+            // Notifier le patron lors de la création
+            $this->notifyApproverOnSubmission($salary, 'salary', 'Salaire', 6, $salary->id);
+
             return response()->json([
                 'success' => true,
                 'data' => $responseData,
@@ -535,20 +538,7 @@ class SalaryController extends Controller
 
             if ($salary->approve($request->user()->id, $notes)) {
                 // Notifier l'employé concerné
-                if ($salary->employee_id) {
-                    $employee = Employee::find($salary->employee_id);
-                    if ($employee && $employee->user_id) {
-                        $this->createNotification([
-                            'user_id' => $employee->user_id,
-                            'title' => 'Approbation Salaire',
-                            'message' => "Salaire pour {$employee->prenom} {$employee->nom} a été approuvé",
-                            'type' => 'success',
-                            'entity_type' => 'salary',
-                            'entity_id' => $salary->id,
-                            'action_route' => "/salaries/{$salary->id}",
-                        ]);
-                    }
-                }
+                $this->notifySubmitterOnApproval($salary, 'salary', 'Salaire', 'employee_id', $salary->id);
 
                 // Recharger le salaire avec ses relations
                 $salary->refresh();
@@ -763,22 +753,8 @@ class SalaryController extends Controller
 
             if ($salary->cancel($validated['reason'] ?? null)) {
                 // Notifier l'employé concerné
-                if ($salary->employee_id) {
-                    $employee = Employee::find($salary->employee_id);
-                    if ($employee && $employee->user_id) {
-                        $reason = $validated['reason'] ?? 'Rejeté';
-                        $this->createNotification([
-                            'user_id' => $employee->user_id,
-                            'title' => 'Rejet Salaire',
-                            'message' => "Salaire pour {$employee->prenom} {$employee->nom} a été rejeté. Raison: {$reason}",
-                            'type' => 'error',
-                            'entity_type' => 'salary',
-                            'entity_id' => $salary->id,
-                            'action_route' => "/salaries/{$salary->id}",
-                            'metadata' => ['reason' => $reason],
-                        ]);
-                    }
-                }
+                $reason = $validated['reason'] ?? 'Rejeté';
+                $this->notifySubmitterOnRejection($salary, 'salary', 'Salaire', $reason, 'employee_id', $salary->id);
 
                 return response()->json([
                     'success' => true,

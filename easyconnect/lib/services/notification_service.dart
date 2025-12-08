@@ -21,17 +21,7 @@ class NotificationService extends GetxService {
   void markAsRead(String notificationId) {
     final index = notifications.indexWhere((n) => n.id == notificationId);
     if (index != -1) {
-      final notification = notifications[index];
-      notifications[index] = AppNotification(
-        id: notification.id,
-        title: notification.title,
-        message: notification.message,
-        timestamp: notification.timestamp,
-        type: notification.type,
-        actionRoute: notification.actionRoute,
-        actionData: notification.actionData,
-        isRead: true,
-      );
+      notifications[index] = notifications[index].copyWith(isRead: true);
       _updateUnreadCount();
     }
   }

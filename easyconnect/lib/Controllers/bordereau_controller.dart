@@ -246,7 +246,9 @@ class BordereauxController extends GetxController {
         commercialId: userId,
       );
 
-      print('📤 [BORDEREAU] Appel du service pour créer: ${newBordereau.reference}');
+      print(
+        '📤 [BORDEREAU] Appel du service pour créer: ${newBordereau.reference}',
+      );
       AppLogger.info(
         'Création du bordereau en cours: ${newBordereau.reference}',
         tag: 'BORDEREAU_CONTROLLER',
@@ -256,7 +258,9 @@ class BordereauxController extends GetxController {
         newBordereau,
       );
 
-      print('📥 [BORDEREAU] Réponse du service reçue - ID: ${createdBordereau.id}, Référence: ${createdBordereau.reference}');
+      print(
+        '📥 [BORDEREAU] Réponse du service reçue - ID: ${createdBordereau.id}, Référence: ${createdBordereau.reference}',
+      );
 
       // Vérifier que la création a vraiment réussi (l'entité a un ID)
       if (createdBordereau.id == null) {
@@ -270,7 +274,9 @@ class BordereauxController extends GetxController {
         );
       }
 
-      print('✅ [BORDEREAU] Bordereau créé avec succès: ID ${createdBordereau.id}');
+      print(
+        '✅ [BORDEREAU] Bordereau créé avec succès: ID ${createdBordereau.id}',
+      );
       AppLogger.info(
         'Bordereau créé avec succès: ID ${createdBordereau.id}, Référence: ${createdBordereau.reference}',
         tag: 'BORDEREAU_CONTROLLER',
@@ -281,10 +287,14 @@ class BordereauxController extends GetxController {
 
       // Ajouter le bordereau à la liste localement (mise à jour optimiste)
       // Le nouveau bordereau a toujours le statut 1 (En attente)
-      print('📋 [BORDEREAU] Ajout du bordereau à la liste (avant: ${bordereaux.length} éléments)');
+      print(
+        '📋 [BORDEREAU] Ajout du bordereau à la liste (avant: ${bordereaux.length} éléments)',
+      );
       bordereaux.insert(0, createdBordereau);
-      print('📋 [BORDEREAU] Bordereau ajouté à la liste (après: ${bordereaux.length} éléments)');
-      
+      print(
+        '📋 [BORDEREAU] Bordereau ajouté à la liste (après: ${bordereaux.length} éléments)',
+      );
+
       AppLogger.info(
         'Bordereau ajouté à la liste: ${createdBordereau.reference} (ID: ${createdBordereau.id})',
         tag: 'BORDEREAU_CONTROLLER',
@@ -320,28 +330,35 @@ class BordereauxController extends GetxController {
         await Future.delayed(const Duration(milliseconds: 300));
         try {
           // Recharger avec le statut actuel pour synchroniser avec le serveur
-          await loadBordereaux(
-            status: _currentStatus,
-            forceRefresh: true,
-          );
-          
+          await loadBordereaux(status: _currentStatus, forceRefresh: true);
+
           // Vérifier que le bordereau créé est toujours dans la liste après rechargement
-          print('🔄 [BORDEREAU] Vérification après rechargement - Liste contient ${bordereaux.length} éléments');
+          print(
+            '🔄 [BORDEREAU] Vérification après rechargement - Liste contient ${bordereaux.length} éléments',
+          );
           if (createdBordereau.id != null) {
-            final bordereauExists = bordereaux.any((b) => b.id == createdBordereau.id);
-            print('🔍 [BORDEREAU] Bordereau ID ${createdBordereau.id} existe dans la liste: $bordereauExists');
+            final bordereauExists = bordereaux.any(
+              (b) => b.id == createdBordereau.id,
+            );
+            print(
+              '🔍 [BORDEREAU] Bordereau ID ${createdBordereau.id} existe dans la liste: $bordereauExists',
+            );
             if (!bordereauExists) {
               // Si le bordereau n'est pas dans la liste après rechargement, le rajouter
-              print('⚠️ [BORDEREAU] Bordereau non trouvé après rechargement, réajout...');
+              print(
+                '⚠️ [BORDEREAU] Bordereau non trouvé après rechargement, réajout...',
+              );
               AppLogger.warning(
                 'Bordereau créé non trouvé après rechargement, réajout à la liste',
                 tag: 'BORDEREAU_CONTROLLER',
               );
               bordereaux.insert(0, createdBordereau);
-              print('✅ [BORDEREAU] Bordereau réajouté - Liste contient maintenant ${bordereaux.length} éléments');
+              print(
+                '✅ [BORDEREAU] Bordereau réajouté - Liste contient maintenant ${bordereaux.length} éléments',
+              );
             }
           }
-          
+
           print('✅ [BORDEREAU] Liste rechargée avec succès');
           AppLogger.info(
             'Liste rechargée après création du bordereau',
@@ -350,7 +367,9 @@ class BordereauxController extends GetxController {
         } catch (e) {
           // Si le rechargement échoue, le bordereau reste dans la liste grâce à la mise à jour optimiste
           print('⚠️ [BORDEREAU] Erreur lors du rechargement (ignorée): $e');
-          print('⚠️ [BORDEREAU] Liste actuelle contient ${bordereaux.length} éléments');
+          print(
+            '⚠️ [BORDEREAU] Liste actuelle contient ${bordereaux.length} éléments',
+          );
           AppLogger.warning(
             'Erreur lors du rechargement après création: $e',
             tag: 'BORDEREAU_CONTROLLER',
@@ -364,10 +383,10 @@ class BordereauxController extends GetxController {
     } catch (e, stackTrace) {
       print('❌ [BORDEREAU] ERREUR CAPTURÉE dans createBordereau: $e');
       print('❌ [BORDEREAU] Stack trace: $stackTrace');
-      
+
       // S'assurer que le loader est arrêté en cas d'erreur
       isLoading.value = false;
-      
+
       // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
@@ -556,7 +575,7 @@ class BordereauxController extends GetxController {
 
         if (success) {
           validationSucceeded = true; // Marquer que la validation a réussi
-          
+
           // Rafraîchir les compteurs du dashboard patron
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
 

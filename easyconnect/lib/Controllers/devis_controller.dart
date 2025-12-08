@@ -914,7 +914,10 @@ class DevisController extends GetxController {
           selectedDevis.items
               .map(
                 (item) => {
-                  'designation': (item.designation.isNotEmpty ? item.designation : 'Article sans désignation'),
+                  'designation':
+                      (item.designation.isNotEmpty
+                          ? item.designation
+                          : 'Article sans désignation'),
                   'unite': 'unité',
                   'quantite': item.quantite,
                   'prix_unitaire': item.prixUnitaire,
@@ -926,11 +929,16 @@ class DevisController extends GetxController {
       // Générer le PDF
       await PdfService().generateDevisPdf(
         devis: {
-          'reference': (selectedDevis.reference.isNotEmpty ? selectedDevis.reference : 'N/A'),
+          'reference':
+              (selectedDevis.reference.isNotEmpty
+                  ? selectedDevis.reference
+                  : 'N/A'),
           'date_creation': selectedDevis.dateCreation,
-          'montant_ht': (selectedDevis.totalHT.isFinite ? selectedDevis.totalHT : 0.0),
+          'montant_ht':
+              (selectedDevis.totalHT.isFinite ? selectedDevis.totalHT : 0.0),
           'tva': selectedDevis.tva ?? 0.0, // tva peut être null
-          'total_ttc': (selectedDevis.totalTTC.isFinite ? selectedDevis.totalTTC : 0.0),
+          'total_ttc':
+              (selectedDevis.totalTTC.isFinite ? selectedDevis.totalTTC : 0.0),
         },
         items: items,
         client: {

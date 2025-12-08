@@ -384,18 +384,7 @@ class DevisController extends Controller
             $devis->load(['client', 'commercial', 'items']);
 
             // Notifier le patron
-            $patron = User::where('role', 6)->first();
-            if ($patron) {
-                $this->createNotification([
-                    'user_id' => $patron->id,
-                    'title' => 'Soumission Devis',
-                    'message' => "Devis #{$devis->reference} a été soumis pour validation",
-                    'type' => 'info',
-                    'entity_type' => 'devis',
-                    'entity_id' => $devis->id,
-                    'action_route' => "/devis/{$devis->id}",
-                ]);
-            }
+            $this->notifyApproverOnSubmission($devis, 'devis', 'Devis', 6, $devis->reference);
 
             return response()->json([
                 'success' => true,
@@ -439,17 +428,7 @@ class DevisController extends Controller
             $devis->load(['client', 'commercial', 'items']);
             
             // Notifier l'auteur du devis
-            if ($devis->user_id) {
-                $this->createNotification([
-                    'user_id' => $devis->user_id,
-                    'title' => 'Validation Devis',
-                    'message' => "Devis #{$devis->reference} a été validé",
-                    'type' => 'success',
-                    'entity_type' => 'devis',
-                    'entity_id' => $devis->id,
-                    'action_route' => "/devis/{$devis->id}",
-                ]);
-            }
+            $this->notifySubmitterOnApproval($devis, 'devis', 'Devis', 'user_id', $devis->reference);
             
             return response()->json([
                 'success' => true,
@@ -497,18 +476,7 @@ class DevisController extends Controller
             $devis->load(['client', 'commercial', 'items']);
 
             // Notifier l'auteur du devis
-            if ($devis->user_id) {
-                $this->createNotification([
-                    'user_id' => $devis->user_id,
-                    'title' => 'Rejet Devis',
-                    'message' => "Devis #{$devis->reference} a été rejeté. Raison: {$validated['commentaire']}",
-                    'type' => 'error',
-                    'entity_type' => 'devis',
-                    'entity_id' => $devis->id,
-                    'action_route' => "/devis/{$devis->id}",
-                    'metadata' => ['reason' => $validated['commentaire']],
-                ]);
-            }
+            $this->notifySubmitterOnRejection($devis, 'devis', 'Devis', $validated['commentaire'], 'user_id', $devis->reference);
 
             return response()->json([
                 'success' => true,
