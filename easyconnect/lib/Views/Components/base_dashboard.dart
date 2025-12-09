@@ -111,6 +111,10 @@ abstract class BaseDashboard<T extends BaseDashboardController>
         ),
         // BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.photo_library),
+          label: 'Médias',
+        ),
       ],
       onTap: (index) {
         // Navigation basée sur l'index
@@ -124,6 +128,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
             break;
           case 2:
             // Notifications
+            Get.toNamed('/notifications');
             break;
           // case 3:
           //   // Chat
@@ -131,6 +136,10 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           case 3:
             // Profil
             Get.toNamed('/profile');
+            break;
+          case 4:
+            // Médias
+            Get.toNamed('/media');
             break;
         }
       },

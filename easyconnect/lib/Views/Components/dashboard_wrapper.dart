@@ -7,11 +7,15 @@ import 'package:easyconnect/utils/roles.dart';
 class DashboardWrapper extends StatelessWidget {
   final Widget child;
   final int currentIndex;
+  final PreferredSizeWidget? appBar;
+  final Widget? floatingActionButton;
 
   const DashboardWrapper({
     super.key,
     required this.child,
     required this.currentIndex,
+    this.appBar,
+    this.floatingActionButton,
   });
 
   @override
@@ -20,9 +24,11 @@ class DashboardWrapper extends StatelessWidget {
     final userRole = authController.userAuth.value?.role;
 
     return Scaffold(
+      appBar: appBar,
       body: child,
+      floatingActionButton: floatingActionButton,
       bottomNavigationBar:
-          userRole != null && userRole != Roles.PATRON
+          userRole != null
               ? BottomNavigation(
                 currentIndex: currentIndex,
                 onTap: (index) => _handleNavigation(index, userRole),
@@ -44,6 +50,9 @@ class DashboardWrapper extends StatelessWidget {
         break;
       case Roles.RH:
         _handleRHNavigation(index);
+        break;
+      case Roles.PATRON:
+        _handlePatronNavigation(index);
         break;
       default:
         break;
@@ -123,6 +132,26 @@ class DashboardWrapper extends StatelessWidget {
         break;
       case 3:
         Get.toNamed('/attendance-punch');
+        break;
+      case 4:
+        Get.toNamed('/media');
+        break;
+    }
+  }
+
+  void _handlePatronNavigation(int index) {
+    switch (index) {
+      case 0:
+        Get.toNamed('/patron');
+        break;
+      case 1:
+        Get.toNamed('/company');
+        break;
+      case 2:
+        Get.toNamed('/approvals');
+        break;
+      case 3:
+        Get.toNamed('/analytics');
         break;
       case 4:
         Get.toNamed('/media');

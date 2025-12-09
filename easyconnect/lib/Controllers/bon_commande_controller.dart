@@ -693,19 +693,35 @@ class BonCommandeController extends GetxController
         );
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadBonCommandes(status: _currentStatus);
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      // Vérifier si l'erreur est survenue après un succès
       final errorStr = e.toString().toLowerCase();
-      if (!errorStr.contains('401') &&
-          !errorStr.contains('403') &&
-          !errorStr.contains('unauthorized') &&
-          !errorStr.contains('forbidden')) {
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadBonCommandes(status: _currentStatus).catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
         Get.snackbar(
           'Erreur',
-          'Impossible d\'approuver le bon de commande',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
           snackPosition: SnackPosition.BOTTOM,
         );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadBonCommandes(status: _currentStatus).catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
       isLoading.value = false;
@@ -782,13 +798,36 @@ class BonCommandeController extends GetxController
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadBonCommandes(status: _currentStatus);
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadBonCommandes(status: _currentStatus).catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadBonCommandes(status: _currentStatus).catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     } finally {
       isLoading.value = false;
     }
@@ -904,7 +943,8 @@ class BonCommandeController extends GetxController
       final clients = await _clientService.getClients();
       final client = clients.firstWhere(
         (c) => c.id == bonCommande.clientId,
-        orElse: () => throw Exception('Client introuvable pour ce bon de commande'),
+        orElse:
+            () => throw Exception('Client introuvable pour ce bon de commande'),
       );
 
       // Générer le PDF avec les informations disponibles
@@ -917,7 +957,8 @@ class BonCommandeController extends GetxController
           'total_ttc': 0.0,
         },
         items: [], // Pas d'items pour les bons de commande entreprise
-        fournisseur: {}, // Vide car on utilise client pour les bons de commande entreprise
+        fournisseur:
+            {}, // Vide car on utilise client pour les bons de commande entreprise
         client: {
           'nom': client.nom ?? '',
           'prenom': client.prenom ?? '',

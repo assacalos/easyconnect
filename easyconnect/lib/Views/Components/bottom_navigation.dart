@@ -164,8 +164,8 @@ class BottomNavigation extends StatelessWidget {
         label: 'Analytics',
       ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.settings),
-        label: 'Paramètres',
+        icon: Icon(Icons.photo_library),
+        label: 'Médias',
       ),
     ];
   }
@@ -256,7 +256,7 @@ class BottomNavigationController extends GetxController {
           '/company',
           '/approvals',
           '/analytics',
-          '/reporting',
+          '/media',
         ];
         break;
       default:

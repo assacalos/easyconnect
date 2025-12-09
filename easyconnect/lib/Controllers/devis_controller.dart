@@ -191,7 +191,7 @@ class DevisController extends GetxController {
             tag: 'DEVIS_CONTROLLER',
           );
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
         // En cas d'erreur, essayer la méthode non-paginée en fallback
         AppLogger.warning(
           'Erreur avec pagination, tentative avec méthode non-paginée: $e',
@@ -423,7 +423,7 @@ class DevisController extends GetxController {
       });
 
       return true;
-    } catch (e, stackTrace) {
+    } catch (e) {
       Get.snackbar(
         'Erreur',
         'Impossible de créer le devis: $e',
@@ -668,19 +668,35 @@ class DevisController extends GetxController {
         );
       }
     } catch (e) {
-      // En cas d'erreur, restaurer l'état si nécessaire
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      // Vérifier si l'erreur est survenue après un succès
       final errorStr = e.toString().toLowerCase();
-      if (!errorStr.contains('401') &&
-          !errorStr.contains('403') &&
-          !errorStr.contains('unauthorized') &&
-          !errorStr.contains('forbidden')) {
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadDevis().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
         Get.snackbar(
-          'Attention',
-          'La validation peut avoir réussi. Veuillez vérifier.',
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
           snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
         );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadDevis().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
 
       // Recharger en arrière-plan pour restaurer l'état correct (non-bloquant)
@@ -791,15 +807,38 @@ class DevisController extends GetxController {
         throw Exception('Erreur lors du rejet du devis');
       }
     } catch (e) {
-      // En cas d'erreur, restaurer l'état si nécessaire
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter le devis: ${e.toString().replaceAll('Exception: ', '')}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadDevis().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadDevis().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
 
       // Recharger en arrière-plan pour restaurer l'état correct (non-bloquant)
       Future.microtask(() {

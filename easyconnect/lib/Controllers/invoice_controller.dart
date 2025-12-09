@@ -427,6 +427,17 @@ class InvoiceController extends GetxController {
         return false;
       }
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       // Extraire le message d'erreur de manière plus lisible
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {

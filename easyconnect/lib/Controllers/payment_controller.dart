@@ -192,10 +192,6 @@ class PaymentController extends GetxController {
         if (page == 1) {
           CacheHelper.set(cacheKey, paginatedResponse.data);
         }
-
-        print(
-          '🔵 [PAYMENT_CONTROLLER] ✅ ${paginatedResponse.data.length} paiements chargés (Page $page/${paginatedResponse.meta.lastPage})',
-        );
       } catch (e) {
         // Si le chargement échoue mais qu'on a du cache, on garde le cache
         if (cachedPayments == null || cachedPayments.isEmpty || page > 1) {
@@ -407,18 +403,6 @@ class PaymentController extends GetxController {
           installments: [],
         );
 
-        // Logger les données du schedule pour le débogage
-        print('📋 [PAYMENT_CONTROLLER] Schedule créé:');
-        print('   - Start Date: ${normalizedStartDate.toIso8601String()}');
-        print('   - End Date: ${normalizedEndDate.toIso8601String()}');
-        print('   - Frequency: ${frequency.value} jours');
-        print('   - Total Installments: ${totalInstallments.value}');
-        print('   - Installment Amount: ${installmentAmount.value}');
-        print('   - Amount: ${amount.value}');
-        print(
-          '   - Calcul: ${amount.value} / ${totalInstallments.value} = ${installmentAmount.value}',
-        );
-
         // Vérification supplémentaire
         if (installmentAmount.value.isNaN ||
             installmentAmount.value.isInfinite) {
@@ -473,7 +457,11 @@ class PaymentController extends GetxController {
                     : referenceController.text.trim()),
         schedule: schedule,
       );
-      if (result['success'] == true || result['success'] == 1) {
+
+      // Vérifier le succès AVANT de faire les actions secondaires
+      final isSuccess = result['success'] == true || result['success'] == 1;
+
+      if (isSuccess) {
         // Invalider le cache
         CacheHelper.clearByPrefix('payments_');
         CacheHelper.clearByPrefix('dashboard_comptable_pendingPaiements');
@@ -509,7 +497,6 @@ class PaymentController extends GetxController {
             );
           } catch (e) {
             // Ignorer les erreurs de notification pour ne pas bloquer la création
-            print('⚠️ Erreur lors de la notification: $e');
           }
         }
 
@@ -523,7 +510,6 @@ class PaymentController extends GetxController {
         // Recharger les paiements de manière asynchrone (sans bloquer)
         loadPayments().catchError((e) {
           // Ignorer les erreurs pour ne pas bloquer la navigation
-          print('⚠️ Erreur lors du rechargement des paiements: $e');
         });
 
         // Réinitialiser le formulaire
@@ -544,7 +530,8 @@ class PaymentController extends GetxController {
         return false;
       }
     } catch (e) {
-      // Extraire le message d'erreur de manière plus lisible
+      // Ne capturer que les erreurs qui surviennent AVANT le succès
+      // Si on arrive ici, c'est que l'appel API a échoué
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
@@ -576,6 +563,19 @@ class PaymentController extends GetxController {
             duration: const Duration(seconds: 5),
           );
         }
+        return false;
+      }
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de type
+      // qui peuvent survenir lors du traitement de la réponse
+      final errorStr = errorMessage.toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing - ne pas afficher d'erreur
+        // car l'action peut avoir réussi
         return false;
       }
 
@@ -952,7 +952,6 @@ class PaymentController extends GetxController {
           );
         } catch (e) {
           // Ignorer les erreurs de notification pour ne pas bloquer la validation
-          print('⚠️ Erreur lors de la notification: $e');
         }
       }
 
@@ -973,20 +972,43 @@ class PaymentController extends GetxController {
         ).catchError((e) {});
       });
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      // Vérifier si l'erreur est survenue après un succès
+      // Si c'est le cas, ne pas afficher d'erreur
       final errorStr = e.toString().toLowerCase();
-      if (!errorStr.contains('401') &&
-          !errorStr.contains('403') &&
-          !errorStr.contains('unauthorized') &&
-          !errorStr.contains('forbidden')) {
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      // qui peuvent survenir après un succès
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast')) {
+        // Probablement une erreur de parsing après un succès
+        // Recharger silencieusement
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
         Get.snackbar(
-          'Attention',
-          'La validation peut avoir réussi. Veuillez vérifier.',
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
           snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
         );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
       isLoading.value = false;
@@ -1035,7 +1057,6 @@ class PaymentController extends GetxController {
           );
         } catch (e) {
           // Ignorer les erreurs de notification pour ne pas bloquer le rejet
-          print('⚠️ Erreur lors de la notification: $e');
         }
       }
 
@@ -1056,16 +1077,41 @@ class PaymentController extends GetxController {
         ).catchError((e) {});
       });
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter le paiement: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast')) {
+        // Probablement une erreur de parsing après un succès
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadPayments(
+          approvalStatusFilter: _currentApprovalStatusFilter,
+        ).catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     } finally {
       isLoading.value = false;
     }

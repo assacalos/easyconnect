@@ -1029,8 +1029,6 @@ class PaymentService extends GetxService {
         }
       }
 
-      // Log des données avant envoi (print pour être sûr de voir dans la console)
-      print('📤 [PAYMENT_SERVICE] Données du paiement à envoyer: $requestData');
       AppLogger.debug(
         'Données du paiement à envoyer: $requestData',
         tag: 'PAYMENT_SERVICE',
@@ -1046,8 +1044,6 @@ class PaymentService extends GetxService {
 
       final jsonBody = jsonEncode(requestData);
 
-      // Log du JSON final pour le débogage (print pour être sûr de voir dans la console)
-      print('📤 [PAYMENT_SERVICE] JSON final à envoyer: $jsonBody');
       AppLogger.debug(
         'JSON final à envoyer: $jsonBody',
         tag: 'PAYMENT_SERVICE',
@@ -1113,7 +1109,6 @@ class PaymentService extends GetxService {
             }
           }
 
-          print('❌ [PAYMENT_SERVICE] Erreur 422 - Validation: $errorMessage');
           AppLogger.error(
             'Erreur 422 - Validation: $errorMessage',
             tag: 'PAYMENT_SERVICE',
@@ -1147,10 +1142,6 @@ class PaymentService extends GetxService {
             errorMessage = 'Erreur: ${errorData['exception']}';
           }
 
-          // Logger les détails pour le débogage
-          print('❌ [PAYMENT_SERVICE] Erreur 500 - Serveur: $errorMessage');
-          print('❌ [PAYMENT_SERVICE] Réponse complète: ${response.body}');
-          print('❌ [PAYMENT_SERVICE] Données envoyées: $requestData');
           AppLogger.error(
             'Erreur 500 - Serveur: $errorMessage',
             tag: 'PAYMENT_SERVICE',

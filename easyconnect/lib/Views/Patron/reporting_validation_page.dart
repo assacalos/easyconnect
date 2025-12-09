@@ -52,7 +52,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Validation des Rapports'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -65,6 +65,9 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
         ],
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(text: 'Tous', icon: Icon(Icons.list)),
             Tab(text: 'En attente', icon: Icon(Icons.pending)),
@@ -213,7 +216,15 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: ExpansionTile(
+      child: InkWell(
+        onTap: () {
+          // Naviguer vers la page de détail
+          Get.toNamed(
+            '/user-reportings/${report.id}',
+            arguments: report,
+          );
+        },
+        child: ExpansionTile(
         leading: CircleAvatar(
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor),
@@ -411,6 +422,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
             ),
           ),
         ],
+        ),
       ),
     );
   }

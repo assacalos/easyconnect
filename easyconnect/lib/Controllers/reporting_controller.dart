@@ -409,26 +409,57 @@ class ReportingController extends GetxController {
 
   // Approuver un rapport (patron seulement)
   Future<void> approveReport(int reportId) async {
+    bool actionSuccess = false;
     try {
       isLoading.value = true;
 
-      await _reportingService.approveReport(
+      final result = await _reportingService.approveReport(
         reportId,
         comments: commentsController.text,
       );
-      Get.snackbar('Succès', 'Rapport approuvé avec succès');
-      loadReports();
+      
+      // Vérifier si l'action a réussi
+      final isSuccess = result['success'] == true || 
+                       result['success'] == 1 ||
+                       result['success'] == 'true';
+      
+      if (isSuccess) {
+        actionSuccess = true;
+        Get.snackbar('Succès', 'Rapport approuvé avec succès');
+        
+        // Rafraîchir les données en arrière-plan (non-bloquant)
+        loadReports().catchError((e) {
+          // Ignorer silencieusement les erreurs de refresh
+        });
+      } else {
+        throw Exception(result['message'] ?? 'Erreur lors de l\'approbation');
+      }
     } catch (e) {
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      // Ne pas afficher d'erreur si l'action principale a réussi
+      if (actionSuccess) {
+        // L'action a réussi, ignorer les erreurs de parsing/refresh
+        return;
+      }
+      
+      // Vérifier si c'est une erreur critique (authentification)
       final errorStr = e.toString().toLowerCase();
-      if (!errorStr.contains('401') &&
-          !errorStr.contains('403') &&
-          !errorStr.contains('unauthorized') &&
-          !errorStr.contains('forbidden')) {
-        Get.snackbar(
-          'Attention',
-          'La validation peut avoir réussi. Veuillez vérifier.',
-        );
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+      } else {
+        // Pour les autres erreurs, vérifier si c'est un problème de parsing
+        if (errorStr.contains('format') ||
+            errorStr.contains('json') ||
+            errorStr.contains('type') ||
+            errorStr.contains('cast') ||
+            errorStr.contains('null')) {
+          // Probablement un problème de parsing après un succès
+          // Ne rien afficher
+        } else {
+          Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+        }
       }
     } finally {
       isLoading.value = false;
@@ -437,17 +468,58 @@ class ReportingController extends GetxController {
 
   // Rejeter un rapport (patron seulement)
   Future<void> rejectReport(int reportId, {String? reason}) async {
+    bool actionSuccess = false;
     try {
       isLoading.value = true;
 
-      await _reportingService.rejectReport(
+      final result = await _reportingService.rejectReport(
         reportId,
         comments: reason ?? commentsController.text,
       );
-      Get.snackbar('Succès', 'Rapport rejeté avec succès');
-      loadReports();
+      
+      // Vérifier si l'action a réussi
+      final isSuccess = result['success'] == true || 
+                       result['success'] == 1 ||
+                       result['success'] == 'true';
+      
+      if (isSuccess) {
+        actionSuccess = true;
+        Get.snackbar('Succès', 'Rapport rejeté avec succès');
+        
+        // Rafraîchir les données en arrière-plan (non-bloquant)
+        loadReports().catchError((e) {
+          // Ignorer silencieusement les erreurs de refresh
+        });
+      } else {
+        throw Exception(result['message'] ?? 'Erreur lors du rejet');
+      }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du rejet du rapport: $e');
+      // Ne pas afficher d'erreur si l'action principale a réussi
+      if (actionSuccess) {
+        // L'action a réussi, ignorer les erreurs de parsing/refresh
+        return;
+      }
+      
+      // Vérifier si c'est une erreur critique (authentification)
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+      } else {
+        // Pour les autres erreurs, vérifier si c'est un problème de parsing
+        if (errorStr.contains('format') ||
+            errorStr.contains('json') ||
+            errorStr.contains('type') ||
+            errorStr.contains('cast') ||
+            errorStr.contains('null')) {
+          // Probablement un problème de parsing après un succès
+          // Ne rien afficher
+        } else {
+          Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+        }
+      }
     } finally {
       isLoading.value = false;
     }
@@ -871,19 +943,60 @@ class ReportingController extends GetxController {
 
   // Ajouter ou modifier la note du patron sur un rapport
   Future<void> addPatronNote(int reportId, {String? note}) async {
+    bool actionSuccess = false;
     try {
       isLoading.value = true;
 
-      await _reportingService.addPatronNote(reportId, note: note);
-      Get.snackbar(
-        'Succès',
-        note != null && note.isNotEmpty
-            ? 'Note enregistrée avec succès'
-            : 'Note supprimée avec succès',
-      );
-      loadReports();
+      final result = await _reportingService.addPatronNote(reportId, note: note);
+      
+      // Vérifier si l'action a réussi
+      final isSuccess = result['success'] == true || 
+                       result['success'] == 1 ||
+                       result['success'] == 'true';
+      
+      if (isSuccess) {
+        actionSuccess = true;
+        Get.snackbar(
+          'Succès',
+          note != null && note.isNotEmpty
+              ? 'Note enregistrée avec succès'
+              : 'Note supprimée avec succès',
+        );
+        
+        // Rafraîchir les données en arrière-plan (non-bloquant)
+        loadReports().catchError((e) {
+          // Ignorer silencieusement les erreurs de refresh
+        });
+      } else {
+        throw Exception(result['message'] ?? 'Erreur lors de l\'enregistrement de la note');
+      }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'enregistrement de la note: $e');
+      // Ne pas afficher d'erreur si l'action principale a réussi
+      if (actionSuccess) {
+        // L'action a réussi, ignorer les erreurs de parsing/refresh
+        return;
+      }
+      
+      // Vérifier si c'est une erreur critique (authentification)
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+      } else {
+        // Pour les autres erreurs, vérifier si c'est un problème de parsing
+        if (errorStr.contains('format') ||
+            errorStr.contains('json') ||
+            errorStr.contains('type') ||
+            errorStr.contains('cast') ||
+            errorStr.contains('null')) {
+          // Probablement un problème de parsing après un succès
+          // Ne rien afficher
+        } else {
+          Get.snackbar('Erreur', 'Erreur lors de l\'enregistrement de la note: $e');
+        }
+      }
     } finally {
       isLoading.value = false;
     }

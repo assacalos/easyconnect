@@ -254,15 +254,22 @@ class CommandeEntrepriseController extends Controller
 
             // Notifier l'auteur de la commande
             if ($commande->user_id) {
-                $this->createNotification([
-                    'user_id' => $commande->user_id,
-                    'title' => 'Validation Commande',
-                    'message' => "Commande #{$commande->id} a été validée",
-                    'type' => 'success',
-                    'entity_type' => 'commande_entreprise',
-                    'entity_id' => $commande->id,
-                    'action_route' => "/commandes-entreprise/{$commande->id}",
-                ]);
+                try {
+                    $this->createNotificationSync([
+                        'user_id' => $commande->user_id,
+                        'title' => 'Validation Commande',
+                        'message' => "Commande #{$commande->id} a été validée",
+                        'type' => 'success',
+                        'entity_type' => 'commande_entreprise',
+                        'entity_id' => $commande->id,
+                        'action_route' => "/commandes-entreprise/{$commande->id}",
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error("Erreur lors de la création de la notification de validation de commande", [
+                        'error' => $e->getMessage(),
+                        'commande_id' => $commande->id
+                    ]);
+                }
             }
 
             $commande->load(['client', 'commercial']);
@@ -322,16 +329,23 @@ class CommandeEntrepriseController extends Controller
 
             // Notifier l'auteur de la commande
             if ($commande->user_id) {
-                $this->createNotification([
-                    'user_id' => $commande->user_id,
-                    'title' => 'Rejet Commande',
-                    'message' => "Commande #{$commande->id} a été rejetée. Raison: {$reason}",
-                    'type' => 'error',
-                    'entity_type' => 'commande_entreprise',
-                    'entity_id' => $commande->id,
-                    'action_route' => "/commandes-entreprise/{$commande->id}",
-                    'metadata' => ['reason' => $reason],
-                ]);
+                try {
+                    $this->createNotificationSync([
+                        'user_id' => $commande->user_id,
+                        'title' => 'Rejet Commande',
+                        'message' => "Commande #{$commande->id} a été rejetée. Raison: {$reason}",
+                        'type' => 'error',
+                        'entity_type' => 'commande_entreprise',
+                        'entity_id' => $commande->id,
+                        'action_route' => "/commandes-entreprise/{$commande->id}",
+                        'metadata' => ['reason' => $reason],
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error("Erreur lors de la création de la notification de rejet de commande", [
+                        'error' => $e->getMessage(),
+                        'commande_id' => $commande->id
+                    ]);
+                }
             }
 
             $commande->load(['client', 'commercial']);

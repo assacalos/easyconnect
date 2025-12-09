@@ -133,15 +133,22 @@ public function validateTax(Request $request, $id): JsonResponse
 
             // Notifier l'auteur de la taxe
             if ($tax->comptable_id) {
-                $this->createNotification([
-                    'user_id' => $tax->comptable_id,
-                    'title' => 'Validation Taxe',
-                    'message' => "Taxe #{$tax->id} a été validée",
-                    'type' => 'success',
-                    'entity_type' => 'tax',
-                    'entity_id' => $tax->id,
-                    'action_route' => "/taxes/{$tax->id}",
-                ]);
+                try {
+                    $this->createNotificationSync([
+                        'user_id' => $tax->comptable_id,
+                        'title' => 'Validation Taxe',
+                        'message' => "Taxe #{$tax->id} a été validée",
+                        'type' => 'success',
+                        'entity_type' => 'tax',
+                        'entity_id' => $tax->id,
+                        'action_route' => "/taxes/{$tax->id}",
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::error("Erreur lors de la création de la notification de validation de taxe", [
+                        'error' => $e->getMessage(),
+                        'tax_id' => $tax->id
+                    ]);
+                }
             }
 
             Log::info('Taxe validée', [

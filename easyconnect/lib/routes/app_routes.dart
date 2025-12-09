@@ -56,6 +56,8 @@ import 'package:easyconnect/bindings/admin_binding.dart';
 import 'package:easyconnect/bindings/user_management_binding.dart';
 import 'package:easyconnect/Views/Components/reporting_list.dart';
 import 'package:easyconnect/Views/Components/reporting_form.dart';
+import 'package:easyconnect/Views/Components/reporting_detail.dart';
+import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/Views/Components/attendance_punch_page.dart';
 import 'package:easyconnect/Views/Components/attendance_validation_page.dart';
 import 'package:easyconnect/Views/Comptable/invoice_list_page.dart';
@@ -420,6 +422,14 @@ class AppRoutes {
     GetPage(
       name: '/reporting/new',
       page: () => const ReportingForm(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/user-reportings/:id',
+      page: () => ReportingDetail(
+        reporting: Get.arguments as ReportingModel,
+      ),
+      binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(

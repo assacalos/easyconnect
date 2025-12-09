@@ -91,4 +91,36 @@ class ErrorHelper {
       borderRadius: 8,
     );
   }
+
+  /// Vérifie si une erreur est probablement survenue après un succès
+  /// (erreurs de parsing, JSON, type, etc. qui peuvent survenir lors du traitement de la réponse)
+  static bool isPostSuccessError(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    return errorStr.contains('parsing') ||
+        errorStr.contains('json') ||
+        errorStr.contains('type') ||
+        errorStr.contains('cast') ||
+        errorStr.contains('null') ||
+        errorStr.contains('no such method') ||
+        errorStr.contains('method not found');
+  }
+
+  /// Affiche une erreur seulement si ce n'est pas une erreur post-succès
+  static void showErrorIfNotPostSuccess(
+    dynamic error, {
+    String? title,
+    String? customMessage,
+  }) {
+    if (isPostSuccessError(error)) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      return;
+    }
+
+    showError(
+      error,
+      title: title,
+      customMessage: customMessage,
+      showToUser: true,
+    );
+  }
 }

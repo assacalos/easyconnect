@@ -591,9 +591,6 @@ class CommercialDashboardEnhanced
 
   @override
   Widget? buildFloatingActionButton() {
-    return FloatingActionButton(
-      onPressed: () => Get.toNamed('/clients/create'),
-      child: const Icon(Icons.add),
-    );
+    return null;
   }
 }

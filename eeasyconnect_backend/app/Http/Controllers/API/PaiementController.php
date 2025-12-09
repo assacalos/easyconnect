@@ -427,16 +427,23 @@ class PaiementController extends Controller
 
                 // Notifier l'auteur du paiement
                 if ($paiement->comptable_id) {
-                    $reference = $paiement->reference ?? $paiement->id;
-                    $this->createNotification([
-                        'user_id' => $paiement->comptable_id,
-                        'title' => 'Validation Paiement',
-                        'message' => "Paiement #{$reference} a été validé",
-                        'type' => 'success',
-                        'entity_type' => 'payment',
-                        'entity_id' => $paiement->id,
-                        'action_route' => "/payments/{$paiement->id}",
-                    ]);
+                    try {
+                        $reference = $paiement->reference ?? $paiement->id;
+                        $this->createNotificationSync([
+                            'user_id' => $paiement->comptable_id,
+                            'title' => 'Validation Paiement',
+                            'message' => "Paiement #{$reference} a été validé",
+                            'type' => 'success',
+                            'entity_type' => 'payment',
+                            'entity_id' => $paiement->id,
+                            'action_route' => "/payments/{$paiement->id}",
+                        ]);
+                    } catch (\Exception $e) {
+                        \Log::error("Erreur lors de la création de la notification de validation de paiement", [
+                            'error' => $e->getMessage(),
+                            'paiement_id' => $paiement->id
+                        ]);
+                    }
                 }
 
                 // Recharger le paiement avec ses relations
@@ -507,17 +514,24 @@ class PaiementController extends Controller
 
         // Notifier l'auteur du paiement
         if ($paiement->comptable_id) {
-            $reference = $paiement->reference ?? $paiement->id;
-            $this->createNotification([
-                'user_id' => $paiement->comptable_id,
-                'title' => 'Rejet Paiement',
-                'message' => "Paiement #{$reference} a été rejeté. Raison: {$reason}",
-                'type' => 'error',
-                'entity_type' => 'payment',
-                'entity_id' => $paiement->id,
-                'action_route' => "/payments/{$paiement->id}",
-                'metadata' => ['reason' => $reason],
-            ]);
+            try {
+                $reference = $paiement->reference ?? $paiement->id;
+                $this->createNotificationSync([
+                    'user_id' => $paiement->comptable_id,
+                    'title' => 'Rejet Paiement',
+                    'message' => "Paiement #{$reference} a été rejeté. Raison: {$reason}",
+                    'type' => 'error',
+                    'entity_type' => 'payment',
+                    'entity_id' => $paiement->id,
+                    'action_route' => "/payments/{$paiement->id}",
+                    'metadata' => ['reason' => $reason],
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Erreur lors de la création de la notification de rejet de paiement", [
+                    'error' => $e->getMessage(),
+                    'paiement_id' => $paiement->id
+                ]);
+            }
         }
 
         $paiement->load('client', 'comptable', 'schedule');

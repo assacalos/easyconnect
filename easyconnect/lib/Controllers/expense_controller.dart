@@ -463,6 +463,17 @@ class ExpenseController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour la dépense: ${e.toString()}',

@@ -562,9 +562,6 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
 
   @override
   Widget? buildFloatingActionButton() {
-    return FloatingActionButton(
-      onPressed: () => Get.toNamed('/employees/new'),
-      child: const Icon(Icons.add),
-    );
+    return null;
   }
 }

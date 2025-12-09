@@ -14,7 +14,7 @@ class FinancesPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Finances'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(

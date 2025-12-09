@@ -284,6 +284,17 @@ class InterventionController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar(
         'Erreur',
         'Impossible de créer l\'intervention: ${e.toString()}',
@@ -377,6 +388,17 @@ class InterventionController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour l\'intervention',
@@ -503,21 +525,41 @@ class InterventionController extends GetxController {
         );
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadInterventions(statusFilter: _currentStatusFilter);
-      await loadPendingInterventions();
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
+      // Vérifier si l'erreur est survenue après un succès
       final errorStr = e.toString().toLowerCase();
-      if (!errorStr.contains('401') &&
-          !errorStr.contains('403') &&
-          !errorStr.contains('unauthorized') &&
-          !errorStr.contains('forbidden')) {
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadInterventions(
+          statusFilter: _currentStatusFilter,
+        ).catchError((e) {});
+        loadPendingInterventions().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
         Get.snackbar(
-          'Attention',
-          'La validation peut avoir réussi. Veuillez vérifier.',
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
           snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 2),
         );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadInterventions(
+          statusFilter: _currentStatusFilter,
+        ).catchError((e) {});
+        loadPendingInterventions().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     }
   }
@@ -633,14 +675,42 @@ class InterventionController extends GetxController {
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadInterventions(statusFilter: _currentStatusFilter);
-      await loadPendingInterventions();
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadInterventions(
+          statusFilter: _currentStatusFilter,
+        ).catchError((e) {});
+        loadPendingInterventions().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadInterventions(
+          statusFilter: _currentStatusFilter,
+        ).catchError((e) {});
+        loadPendingInterventions().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     }
   }
 

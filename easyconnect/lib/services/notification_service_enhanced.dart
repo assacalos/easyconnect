@@ -53,8 +53,9 @@ class NotificationServiceEnhanced {
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
 
-      // Demander les permissions pour Android 13+
+      // Créer le canal de notification Android avec le son activé
       if (Platform.isAndroid) {
+        await _createNotificationChannel();
         await _requestAndroidPermissions();
       }
 
@@ -69,6 +70,43 @@ class NotificationServiceEnhanced {
         tag: 'NOTIFICATION',
         error: e,
       );
+    }
+  }
+
+  /// Créer le canal de notification Android avec le son activé
+  Future<void> _createNotificationChannel() async {
+    if (Platform.isAndroid) {
+      try {
+        const androidChannel = AndroidNotificationChannel(
+          'easyconnect_notifications',
+          'Notifications EasyConnect',
+          description: 'Notifications pour les validations et soumissions',
+          importance: Importance.high,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        );
+
+        final androidImplementation =
+            _localNotifications
+                .resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin
+                >();
+
+        if (androidImplementation != null) {
+          await androidImplementation.createNotificationChannel(androidChannel);
+          AppLogger.info(
+            'Canal de notification Android créé avec succès',
+            tag: 'NOTIFICATION',
+          );
+        }
+      } catch (e) {
+        AppLogger.error(
+          'Erreur lors de la création du canal de notification: $e',
+          tag: 'NOTIFICATION',
+          error: e,
+        );
+      }
     }
   }
 
@@ -200,7 +238,7 @@ class NotificationServiceEnhanced {
       metadata: null,
     );
 
-    await _showNotification(notification, soundType: 'submit');
+    await showNotification(notification, soundType: 'submit');
   }
 
   /// Notifier qu'une entité a été validée
@@ -224,7 +262,7 @@ class NotificationServiceEnhanced {
       metadata: null,
     );
 
-    await _showNotification(notification, soundType: 'success');
+    await showNotification(notification, soundType: 'success');
   }
 
   /// Notifier qu'une entité a été rejetée
@@ -254,21 +292,25 @@ class NotificationServiceEnhanced {
       metadata: reason != null ? {'reason': reason} : null,
     );
 
-    await _showNotification(notification, soundType: 'error');
+    await showNotification(notification, soundType: 'error');
   }
 
   /// Afficher une notification (locale + snackbar + son)
-  Future<void> _showNotification(
+  /// Méthode publique pour permettre l'affichage depuis d'autres contrôleurs
+  Future<void> showNotification(
     AppNotification notification, {
     required String soundType,
+    bool addToList = true, // Par défaut, ajouter à la liste
   }) async {
     if (!_isInitialized) {
       await initialize();
     }
 
-    // Ajouter à la liste des notifications (non-bloquant)
-    notifications.insert(0, notification);
-    _updateUnreadCount();
+    // Ajouter à la liste des notifications (si demandé)
+    if (addToList) {
+      notifications.insert(0, notification);
+      _updateUnreadCount();
+    }
 
     // Afficher la notification locale (non-bloquant)
     if (_notificationsEnabled) {
@@ -290,26 +332,29 @@ class NotificationServiceEnhanced {
       });
     }
 
-    // Afficher le snackbar (non-bloquant)
-    _showSnackbar(notification).catchError((e) {
-      AppLogger.error(
-        'Erreur lors de l\'affichage du snackbar: $e',
-        tag: 'NOTIFICATION',
-      );
-    });
+    // Afficher le snackbar seulement si l'app est au premier plan
+    // (pour éviter les doublons avec les notifications système)
+    if (addToList) {
+      _showSnackbar(notification).catchError((e) {
+        AppLogger.error(
+          'Erreur lors de l\'affichage du snackbar: $e',
+          tag: 'NOTIFICATION',
+        );
+      });
+    }
   }
 
   /// Afficher une notification locale
   Future<void> _showLocalNotification(AppNotification notification) async {
     final androidDetails = AndroidNotificationDetails(
-      'easyconnect_notifications',
+      'easyconnect_notifications', // Channel ID - doit correspondre au canal créé
       'Notifications EasyConnect',
       channelDescription: 'Notifications pour les validations et soumissions',
       importance: Importance.high,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
       color: _getNotificationColorFromString(notification.type),
-      playSound: _soundsEnabled,
+      playSound: _soundsEnabled, // Le son sera joué si activé
       enableVibration: true,
     );
 

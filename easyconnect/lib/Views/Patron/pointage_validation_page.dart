@@ -50,7 +50,7 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Validation des Pointages'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(

@@ -70,9 +70,6 @@ class AttendancePunchService {
 
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('📥 [ATTENDANCE_PUNCH_SERVICE] Status code: ${response.statusCode}');
-      print('📥 [ATTENDANCE_PUNCH_SERVICE] Response body: ${response.body}');
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
 
@@ -95,7 +92,6 @@ class AttendancePunchService {
           }
         }
 
-        print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage créé avec succès: ID ${attendanceData?.id}');
         return {
           'success': true,
           'message':
@@ -105,15 +101,13 @@ class AttendancePunchService {
         };
       } else if (response.statusCode == 500) {
         // Pour l'erreur 500, vérifier si le pointage a quand même été créé
-        print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur 500 reçue, vérification si pointage créé...');
         try {
           final errorData = jsonDecode(response.body);
-          print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Données parsées: $errorData');
-          
+
           // Chercher un ID dans différents emplacements possibles
           int? attendanceId;
           Map<String, dynamic>? attendanceDataMap;
-          
+
           if (errorData is Map) {
             // Chercher dans data.attendance.id ou data.id
             if (errorData['data'] != null && errorData['data'] is Map) {
@@ -121,48 +115,51 @@ class AttendancePunchService {
               if (data['attendance'] != null && data['attendance'] is Map) {
                 final attendanceObj = data['attendance'] as Map;
                 if (attendanceObj['id'] != null) {
-                  attendanceId = attendanceObj['id'] is int 
-                      ? attendanceObj['id'] 
-                      : int.tryParse(attendanceObj['id'].toString());
+                  attendanceId =
+                      attendanceObj['id'] is int
+                          ? attendanceObj['id']
+                          : int.tryParse(attendanceObj['id'].toString());
                   attendanceDataMap = Map<String, dynamic>.from(attendanceObj);
                 }
               } else if (data['id'] != null) {
-                attendanceId = data['id'] is int 
-                    ? data['id'] 
-                    : int.tryParse(data['id'].toString());
+                attendanceId =
+                    data['id'] is int
+                        ? data['id']
+                        : int.tryParse(data['id'].toString());
                 attendanceDataMap = Map<String, dynamic>.from(data);
               }
             }
             // Chercher directement dans la racine
-            else if (errorData['attendance'] != null && errorData['attendance'] is Map) {
+            else if (errorData['attendance'] != null &&
+                errorData['attendance'] is Map) {
               final attendanceObj = errorData['attendance'] as Map;
               if (attendanceObj['id'] != null) {
-                attendanceId = attendanceObj['id'] is int 
-                    ? attendanceObj['id'] 
-                    : int.tryParse(attendanceObj['id'].toString());
+                attendanceId =
+                    attendanceObj['id'] is int
+                        ? attendanceObj['id']
+                        : int.tryParse(attendanceObj['id'].toString());
                 attendanceDataMap = Map<String, dynamic>.from(attendanceObj);
               }
             }
             // Chercher directement l'ID à la racine
             else if (errorData['id'] != null) {
-              attendanceId = errorData['id'] is int 
-                  ? errorData['id'] 
-                  : int.tryParse(errorData['id'].toString());
+              attendanceId =
+                  errorData['id'] is int
+                      ? errorData['id']
+                      : int.tryParse(errorData['id'].toString());
               attendanceDataMap = Map<String, dynamic>.from(errorData);
             }
           }
-          
+
           // Si un ID a été trouvé, considérer que la création a réussi
           if (attendanceId != null) {
-            print('✅ [ATTENDANCE_PUNCH_SERVICE] ID trouvé dans erreur 500: $attendanceId');
-            
             AttendancePunchModel? attendanceData;
             if (attendanceDataMap != null) {
               try {
-                attendanceData = AttendancePunchModel.fromJson(attendanceDataMap);
-                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage construit depuis attendanceDataMap: ID ${attendanceData.id}');
+                attendanceData = AttendancePunchModel.fromJson(
+                  attendanceDataMap,
+                );
               } catch (e) {
-                print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Parsing échoué, construction minimale: $e');
                 // Construire un pointage minimal avec l'ID et les données disponibles
                 try {
                   final now = DateTime.now();
@@ -179,10 +176,7 @@ class AttendancePunchService {
                     'created_at': now.toIso8601String(),
                     'updated_at': now.toIso8601String(),
                   });
-                  print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage minimal construit depuis données disponibles: ID ${attendanceData.id}');
-                } catch (e2) {
-                  print('❌ [ATTENDANCE_PUNCH_SERVICE] Impossible de construire le pointage minimal: $e2');
-                }
+                } catch (e2) {}
               }
             } else {
               // Construire un pointage minimal avec l'ID et les données disponibles
@@ -201,101 +195,90 @@ class AttendancePunchService {
                   'created_at': now.toIso8601String(),
                   'updated_at': now.toIso8601String(),
                 });
-                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage minimal construit: ID ${attendanceData.id}');
-              } catch (e) {
-                print('❌ [ATTENDANCE_PUNCH_SERVICE] Impossible de construire le pointage minimal: $e');
-              }
+              } catch (e) {}
             }
-            
+
             if (attendanceData != null) {
-              print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage retourné malgré erreur 500: ID ${attendanceData.id}');
               return {
                 'success': true,
-                'message': 'Pointage enregistré avec succès (malgré une erreur serveur)',
+                'message':
+                    'Pointage enregistré avec succès (malgré une erreur serveur)',
                 'data': attendanceData,
               };
             }
-          } else {
-            print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun ID trouvé dans l\'erreur 500');
-          }
+          } else {}
         } catch (e) {
-          print('❌ [ATTENDANCE_PUNCH_SERVICE] Erreur lors de la vérification de l\'ID: $e');
+          // Ignorer l'erreur
         }
-        
+
         // Si pas d'ID trouvé, vérifier si le pointage a quand même été créé
         // en cherchant les pointages récents du même type
-        print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun ID trouvé, vérification si pointage créé...');
         try {
           // Attendre un peu pour que le backend termine la création
           await Future.delayed(const Duration(milliseconds: 1000));
-          
+
           final now = DateTime.now();
           AttendancePunchModel? foundAttendance;
-          
+
           // Stratégie 1: Chercher tous les pointages du même type (sans filtre de date)
-          print('🔍 [ATTENDANCE_PUNCH_SERVICE] Stratégie 1: Recherche sans filtre de date, type=$type');
           try {
             final allAttendances = await getAttendances(type: type);
-            print('🔍 [ATTENDANCE_PUNCH_SERVICE] ${allAttendances.length} pointages trouvés (sans filtre de date)');
-            
-            if (allAttendances.isNotEmpty) {
-              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Premier pointage: ID=${allAttendances.first.id}, Type=${allAttendances.first.type}, Timestamp=${allAttendances.first.timestamp}');
-              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Dernier pointage: ID=${allAttendances.last.id}, Type=${allAttendances.last.type}, Timestamp=${allAttendances.last.timestamp}');
-            }
-            
+
             // Chercher le pointage le plus récent du même type créé dans les 10 dernières minutes
             AttendancePunchModel? mostRecentAttendance;
             for (var attendance in allAttendances) {
               final timeDiff = now.difference(attendance.timestamp).inMinutes;
-              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Pointage ID=${attendance.id}, Type=${attendance.type}, TimeDiff=${timeDiff}min, Timestamp=${attendance.timestamp}');
               if (timeDiff <= 10 && attendance.type == type) {
                 // Garder le pointage le plus récent du même type
                 if (mostRecentAttendance == null ||
-                    attendance.timestamp.isAfter(mostRecentAttendance.timestamp)) {
+                    attendance.timestamp.isAfter(
+                      mostRecentAttendance.timestamp,
+                    )) {
                   mostRecentAttendance = attendance;
                 }
-                
+
                 // Vérifier aussi la localisation si disponible (approximative)
-                final latDiff = (attendance.latitude - locationInfo.latitude).abs();
-                final lonDiff = (attendance.longitude - locationInfo.longitude).abs();
+                final latDiff =
+                    (attendance.latitude - locationInfo.latitude).abs();
+                final lonDiff =
+                    (attendance.longitude - locationInfo.longitude).abs();
                 // Si la différence de localisation est inférieure à 0.01 degré (environ 1km), c'est probablement le même pointage
                 if (latDiff < 0.01 && lonDiff < 0.01 && timeDiff <= 5) {
                   foundAttendance = attendance;
-                  print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage trouvé (stratégie 1 avec localisation): ID ${attendance.id}, Type: ${attendance.type}, Timestamp: ${attendance.timestamp}, TimeDiff: ${timeDiff}min');
                   break;
                 }
               }
             }
-            
+
             // Si aucun pointage avec localisation correspondante, utiliser le plus récent du même type
             if (foundAttendance == null && mostRecentAttendance != null) {
-              final timeDiff = now.difference(mostRecentAttendance.timestamp).inMinutes;
+              final timeDiff =
+                  now.difference(mostRecentAttendance.timestamp).inMinutes;
               if (timeDiff <= 5) {
                 foundAttendance = mostRecentAttendance;
-                print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage le plus récent trouvé (stratégie 1): ID ${foundAttendance.id}, Type: ${foundAttendance.type}, Timestamp: ${foundAttendance.timestamp}, TimeDiff: ${timeDiff}min');
               }
             }
           } catch (e) {
-            print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur stratégie 1: $e');
+          } catch (e) {
+            // Ignorer l'erreur
           }
-          
+
           // Stratégie 2: Si stratégie 1 n'a rien trouvé, chercher avec filtre de date
           if (foundAttendance == null) {
-            print('🔍 [ATTENDANCE_PUNCH_SERVICE] Stratégie 2: Recherche avec filtre de date');
             try {
-              final dateFrom = now.subtract(const Duration(minutes: 10)).toIso8601String().split('T')[0];
+              final dateFrom =
+                  now
+                      .subtract(const Duration(minutes: 10))
+                      .toIso8601String()
+                      .split('T')[0];
               final dateTo = now.toIso8601String().split('T')[0];
-              
-              print('🔍 [ATTENDANCE_PUNCH_SERVICE] Recherche: type=$type, dateFrom=$dateFrom, dateTo=$dateTo');
-              
+
               final recentAttendances = await getAttendances(
                 type: type,
                 dateFrom: dateFrom,
                 dateTo: dateTo,
               );
-              
-              print('🔍 [ATTENDANCE_PUNCH_SERVICE] ${recentAttendances.length} pointages trouvés (avec filtre de date)');
-              
+
               // Chercher le pointage le plus récent
               for (var attendance in recentAttendances) {
                 final timeDiff = now.difference(attendance.timestamp).inMinutes;
@@ -303,44 +286,37 @@ class AttendancePunchService {
                   if (foundAttendance == null ||
                       attendance.timestamp.isAfter(foundAttendance.timestamp)) {
                     foundAttendance = attendance;
-                    print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage trouvé (stratégie 2): ID ${attendance.id}, Type: ${attendance.type}, Timestamp: ${attendance.timestamp}, TimeDiff: ${timeDiff}min');
                   }
                 }
               }
             } catch (e) {
-              print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur stratégie 2: $e');
+              // Ignorer l'erreur
             }
           }
-          
+
           if (foundAttendance != null && foundAttendance.id != null) {
-            print('✅ [ATTENDANCE_PUNCH_SERVICE] Pointage retourné après vérification: ID ${foundAttendance.id}');
             return {
               'success': true,
-              'message': 'Pointage enregistré avec succès (malgré une erreur serveur)',
+              'message':
+                  'Pointage enregistré avec succès (malgré une erreur serveur)',
               'data': foundAttendance,
             };
-          } else {
-            print('❌ [ATTENDANCE_PUNCH_SERVICE] Aucun pointage récent trouvé correspondant');
-          }
+          } else {}
         } catch (e) {
-          print('⚠️ [ATTENDANCE_PUNCH_SERVICE] Erreur lors de la vérification: $e');
+          // Ignorer l'erreur
         }
-        
+
         // Si pas trouvé, c'est une vraie erreur
-        print('❌ [ATTENDANCE_PUNCH_SERVICE] Pointage non trouvé, retour d\'une erreur');
-        String errorMessage = 'Erreur serveur lors de l\'enregistrement du pointage (500)';
+        String errorMessage =
+            'Erreur serveur lors de l\'enregistrement du pointage (500)';
         try {
           final errorData = jsonDecode(response.body);
           errorMessage = errorData['message'] ?? errorMessage;
         } catch (e) {
           // Ignorer
         }
-        
-        return {
-          'success': false,
-          'message': errorMessage,
-          'status_code': 500,
-        };
+
+        return {'success': false, 'message': errorMessage, 'status_code': 500};
       } else {
         String errorMessage = 'Erreur lors du pointage';
         try {
@@ -372,7 +348,6 @@ class AttendancePunchService {
           errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
         }
 
-        print('❌ [ATTENDANCE_PUNCH_SERVICE] Erreur ${response.statusCode}: $errorMessage');
         return {
           'success': false,
           'message': errorMessage,
@@ -389,10 +364,25 @@ class AttendancePunchService {
   }
 
   // Vérifier si l'utilisateur peut pointer (statut actuel)
+  // MODIFICATION: Plus de restrictions - toujours autoriser le pointage
   Future<Map<String, dynamic>> canPunch({String type = 'check_in'}) async {
+    // MODIFICATION: Toujours autoriser le pointage sans condition
+    final typeLabel = type == 'check_in' ? 'arrivée' : 'départ';
+
+    return {
+      'success': true,
+      'can_punch': true,
+      'message': 'Vous pouvez pointer votre $typeLabel',
+      'current_status': null,
+    };
+
+    /* CODE ANCIEN (désactivé) - Gardé pour référence si besoin de réactiver
     try {
       final url = '$baseUrl/attendances/current-status?type=$type';
 
+      print('🔵 [ATTENDANCE_PUNCH_SERVICE] ===== DÉBUT canPunch =====');
+      print('🔵 [ATTENDANCE_PUNCH_SERVICE] URL: $url');
+      print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type demandé: $type');
       http.Response response;
       try {
         response = await http.get(
@@ -400,6 +390,7 @@ class AttendancePunchService {
           headers: ApiService.headers(),
         );
       } catch (e) {
+        print('🔴 [ATTENDANCE_PUNCH_SERVICE] Erreur lors de l\'appel API: $e');
         // En cas d'erreur serveur, autoriser le pointage
         return {
           'success': true,
@@ -408,13 +399,18 @@ class AttendancePunchService {
         };
       }
 
+      print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status Code: ${response.statusCode}');
+      print('🔵 [ATTENDANCE_PUNCH_SERVICE] Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
+        print('🔵 [ATTENDANCE_PUNCH_SERVICE] Result: $result');
 
         bool canPunchValue = false;
         String message = '';
         String? currentStatus;
 
+        // Si le backend retourne directement can_punch, l'utiliser (le backend a la logique finale)
         if (result['can_punch'] != null) {
           canPunchValue = result['can_punch'] ?? false;
           message =
@@ -422,9 +418,13 @@ class AttendancePunchService {
               (canPunchValue
                   ? 'Vous pouvez pointer maintenant'
                   : 'Vous ne pouvez pas pointer maintenant');
+          print('🔵 [ATTENDANCE_PUNCH_SERVICE] can_punch direct du backend: $canPunchValue');
+          print('🔵 [ATTENDANCE_PUNCH_SERVICE] message du backend: $message');
         } else if (result['data'] != null) {
           final data = result['data'];
+          print('🔵 [ATTENDANCE_PUNCH_SERVICE] Data: $data');
 
+          // Si le backend retourne can_punch dans data, l'utiliser (le backend a la logique finale)
           if (data['can_punch'] != null) {
             canPunchValue = data['can_punch'] ?? false;
             message =
@@ -432,20 +432,232 @@ class AttendancePunchService {
                 (canPunchValue
                     ? 'Vous pouvez pointer maintenant'
                     : 'Vous ne pouvez pas pointer maintenant');
-          } else if (data is Map &&
-              data['user'] == null &&
-              data['approver'] == null &&
-              data['type'] == null &&
-              data['status'] == null) {
-            canPunchValue = type == 'check_in';
-            message =
-                canPunchValue
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] can_punch dans data du backend: $canPunchValue');
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] message dans data: $message');
+          } else if (data is Map) {
+            // Vérifier si c'est vraiment un pointage vide ou si c'est juste une structure vide du backend
+            // Le backend peut retourner une structure avec tous les champs null même s'il y a un pointage
+            final hasCheckInTime = data['check_in_time'] != null;
+            final hasCheckOutTime = data['check_out_time'] != null;
+            final hasId = data['id'] != null;
+            final hasStatus = data['status'] != null;
+            final hasType = data['type'] != null;
+            
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] Vérification pointage: hasId=$hasId, hasStatus=$hasStatus, hasType=$hasType, hasCheckInTime=$hasCheckInTime, hasCheckOutTime=$hasCheckOutTime');
+            
+            // Si aucun indicateur de pointage n'est présent, c'est qu'il n'y a vraiment pas de pointage
+            // OU le backend ne retourne pas les données correctement
+            if (!hasId && !hasStatus && !hasType && !hasCheckInTime && !hasCheckOutTime &&
+                data['user'] == null && data['approver'] == null) {
+              // Le backend retourne tous les champs null - cela peut signifier :
+              // 1. Il n'y a vraiment pas de pointage
+              // 2. Le backend ne retourne pas les données correctement
+              // On fait une requête supplémentaire pour récupérer le dernier pointage
+              print('🔵 [ATTENDANCE_PUNCH_SERVICE] Tous les champs sont null, récupération du dernier pointage...');
+              try {
+                final lastAttendances = await getAttendances();
+                if (lastAttendances.isNotEmpty) {
+                  final lastAttendance = lastAttendances.first;
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Dernier pointage trouvé: ID=${lastAttendance.id}, Type=${lastAttendance.type}, Status=${lastAttendance.status}');
+                  
+                  // Utiliser le dernier pointage pour déterminer si on peut pointer
+                  final lastType = lastAttendance.type.toLowerCase();
+                  final lastStatus = lastAttendance.status.toLowerCase();
+                  
+                  if (lastType == 'check_in' || lastType == 'arrivée' || lastType == 'arrivee') {
+                    // Il y a une arrivée, permettre le départ
+                    canPunchValue = type == 'check_out';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre départ'
+                        : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                    currentStatus = lastStatus;
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée trouvée via getAttendances, permettre départ');
+                  } else if (lastType == 'check_out' || lastType == 'départ' || lastType == 'depart') {
+                    // Il y a un départ, permettre l'arrivée
+                    canPunchValue = type == 'check_in';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre arrivée'
+                        : 'Vous avez déjà pointé votre départ. Vous pouvez pointer votre arrivée.';
+                    currentStatus = lastStatus;
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ trouvé via getAttendances, permettre arrivée');
+                  } else {
+                    // Type inconnu, autoriser check_in par défaut
+                    canPunchValue = type == 'check_in';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre arrivée'
+                        : 'Vous devez d\'abord pointer votre arrivée';
+                    currentStatus = 'no_attendance';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type inconnu dans dernier pointage, autoriser check_in');
+                  }
+                } else {
+                  // Vraiment aucun pointage trouvé
+                  canPunchValue = type == 'check_in';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous devez d\'abord pointer votre arrivée';
+                  currentStatus = 'no_attendance';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Aucun pointage trouvé via getAttendances, autoriser check_in uniquement');
+                }
+              } catch (e) {
+                print('🔴 [ATTENDANCE_PUNCH_SERVICE] Erreur lors de la récupération du dernier pointage: $e');
+                // En cas d'erreur, autoriser check_in par défaut
+                canPunchValue = type == 'check_in';
+                message = canPunchValue
                     ? 'Vous pouvez pointer votre arrivée'
                     : 'Vous devez d\'abord pointer votre arrivée';
-            currentStatus = 'no_attendance';
+                currentStatus = 'no_attendance';
+                print('🔵 [ATTENDANCE_PUNCH_SERVICE] Erreur, autoriser check_in par défaut');
+              }
+            } else {
+              // Il y a des indicateurs de pointage, traiter comme un pointage existant
+              final status = data['status'] ?? result['status'];
+              final lastType = data['type']?.toString().toLowerCase() ?? 
+                               (hasCheckInTime && !hasCheckOutTime ? 'check_in' : 
+                                hasCheckOutTime ? 'check_out' : '');
+              currentStatus = status?.toString();
+              
+              print('🔵 [ATTENDANCE_PUNCH_SERVICE] Pointage détecté via check_in_time/check_out_time');
+              print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status: $status, Last Type: $lastType');
+              print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type demandé: $type');
+              
+              // Continuer avec la logique normale de traitement du pointage
+              if (status == null) {
+                // Pas de statut mais il y a un pointage (peut-être en attente de traitement)
+                if (hasCheckInTime && !hasCheckOutTime) {
+                  // Il y a une arrivée mais pas de départ
+                  canPunchValue = type == 'check_out';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre départ'
+                      : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée détectée (via check_in_time), permettre départ');
+                } else if (hasCheckOutTime) {
+                  // Il y a un départ
+                  canPunchValue = type == 'check_in';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous avez déjà pointé votre départ. Vous pouvez pointer votre arrivée.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ détecté (via check_out_time), permettre arrivée');
+                } else {
+                  canPunchValue = type == 'check_in';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous devez d\'abord pointer votre arrivée';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Pointage détecté mais type inconnu, autoriser check_in par défaut');
+                }
+              } else {
+                // Il y a un statut, utiliser la logique normale
+                final statusStr = status.toString();
+                final normalizedStatus = statusStr.toLowerCase().trim();
+                
+                // CORRECTION: Le backend permet maintenant le départ même si l'arrivée est en pending
+                // Donc on permet le départ si l'arrivée est en pending
+                if (normalizedStatus == 'pending' ||
+                    normalizedStatus == 'en_attente' ||
+                    normalizedStatus == 'en attente') {
+                  // Vérifier le type du dernier pointage
+                  final lastTypeLower = lastType.toLowerCase();
+                  if (lastTypeLower == 'check_in' ||
+                      lastTypeLower == 'arrivée' ||
+                      lastTypeLower == 'arrivee' ||
+                      (hasCheckInTime && !hasCheckOutTime)) {
+                    // Si le dernier pointage est une arrivée (même en pending), permettre le départ
+                    // Le backend a été modifié pour permettre cela
+                    canPunchValue = type == 'check_out';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre départ'
+                        : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée en pending, permettre départ (backend modifié)');
+                  } else if (lastTypeLower == 'check_out' ||
+                      lastTypeLower == 'départ' ||
+                      lastTypeLower == 'depart' ||
+                      hasCheckOutTime) {
+                    // Si le dernier pointage est un départ en pending, permettre l'arrivée pour le jour suivant
+                    // ou bloquer selon la logique métier
+                    canPunchValue = type == 'check_in';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre arrivée'
+                        : 'Vous avez un pointage de départ en attente. Vous pouvez pointer votre arrivée pour un nouveau jour.';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ en pending, permettre arrivée si type=check_in');
+                  } else {
+                    // Type inconnu, permettre selon le type demandé
+                    canPunchValue = type == 'check_in';
+                    message = canPunchValue
+                        ? 'Vous pouvez pointer votre arrivée'
+                        : 'Vous pouvez pointer votre départ';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type inconnu en pending, permettre selon type demandé');
+                  }
+                } else if (normalizedStatus == 'rejected' ||
+                    normalizedStatus == 'rejeté' ||
+                    normalizedStatus == 'rejete') {
+                  canPunchValue = type == 'check_in';
+                  message =
+                      canPunchValue
+                          ? 'Votre dernier pointage a été rejeté. Vous pouvez pointer votre arrivée.'
+                          : 'Votre dernier pointage a été rejeté. Vous devez d\'abord pointer votre arrivée.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Pointage rejeté, autoriser check_in');
+                } else if (normalizedStatus == 'approved' ||
+                    normalizedStatus == 'approuvé' ||
+                    normalizedStatus == 'approuve' ||
+                    normalizedStatus == 'valide' ||
+                    normalizedStatus == 'validé') {
+                  if (lastType == 'check_in' ||
+                      lastType == 'arrivée' ||
+                      lastType == 'arrivee' ||
+                      (hasCheckInTime && !hasCheckOutTime)) {
+                    canPunchValue = type == 'check_out';
+                    message =
+                        canPunchValue
+                            ? 'Vous pouvez pointer votre départ'
+                            : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée approuvée, permettre départ si type=check_out');
+                  } else if (lastType == 'check_out' ||
+                      lastType == 'départ' ||
+                      lastType == 'depart' ||
+                      hasCheckOutTime) {
+                    canPunchValue = type == 'check_in';
+                    message =
+                        canPunchValue
+                            ? 'Vous pouvez pointer votre arrivée'
+                            : 'Vous avez déjà pointé votre départ. Vous pouvez pointer votre arrivée.';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ approuvé, permettre arrivée si type=check_in');
+                  } else {
+                    canPunchValue = type == 'check_in';
+                    message =
+                        canPunchValue
+                            ? 'Vous pouvez pointer votre arrivée'
+                            : 'Vous devez d\'abord pointer votre arrivée';
+                    print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type inconnu, autoriser check_in par défaut');
+                  }
+                } else if (normalizedStatus == 'checked_in' ||
+                    normalizedStatus == 'checked_out') {
+                  if (type == 'check_in') {
+                    canPunchValue = normalizedStatus != 'checked_in';
+                  } else if (type == 'check_out') {
+                    canPunchValue = normalizedStatus == 'checked_in';
+                  }
+                  message =
+                      canPunchValue
+                          ? 'Vous pouvez pointer maintenant'
+                          : 'Vous ne pouvez pas pointer maintenant';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status checked_in/checked_out, canPunch: $canPunchValue');
+                } else {
+                  canPunchValue = type == 'check_in';
+                  message =
+                      canPunchValue
+                          ? 'Vous pouvez pointer votre arrivée'
+                          : 'Vous devez d\'abord pointer votre arrivée';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status inconnu ($normalizedStatus), autoriser check_in par défaut');
+                }
+              }
+            }
           } else {
             final status = data['status'] ?? result['status'];
+            final lastType = data['type']?.toString().toLowerCase() ?? '';
             currentStatus = status?.toString();
+
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status: $status');
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] Last Type: $lastType');
+            print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type demandé: $type');
 
             if (status == null) {
               canPunchValue = type == 'check_in';
@@ -453,16 +665,46 @@ class AttendancePunchService {
                   canPunchValue
                       ? 'Vous pouvez pointer votre arrivée'
                       : 'Vous devez d\'abord pointer votre arrivée';
+              print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status null, autoriser check_in');
             } else {
               final statusStr = status.toString();
               final normalizedStatus = statusStr.toLowerCase().trim();
 
+              // CORRECTION: Le backend permet maintenant le départ même si l'arrivée est en pending
+              // Donc on permet le départ si l'arrivée est en pending
               if (normalizedStatus == 'pending' ||
                   normalizedStatus == 'en_attente' ||
                   normalizedStatus == 'en attente') {
-                canPunchValue = false;
-                message =
-                    'Vous avez un pointage en attente de validation. Veuillez attendre la validation avant de pointer à nouveau.';
+                // Vérifier le type du dernier pointage
+                final lastTypeLower = lastType.toLowerCase();
+                if (lastTypeLower == 'check_in' ||
+                    lastTypeLower == 'arrivée' ||
+                    lastTypeLower == 'arrivee') {
+                  // Si le dernier pointage est une arrivée (même en pending), permettre le départ
+                  // Le backend a été modifié pour permettre cela
+                  canPunchValue = type == 'check_out';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre départ'
+                      : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée en pending, permettre départ (backend modifié)');
+                } else if (lastTypeLower == 'check_out' ||
+                    lastTypeLower == 'départ' ||
+                    lastTypeLower == 'depart') {
+                  // Si le dernier pointage est un départ en pending, permettre l'arrivée pour le jour suivant
+                  // ou bloquer selon la logique métier
+                  canPunchValue = type == 'check_in';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous avez un pointage de départ en attente. Vous pouvez pointer votre arrivée pour un nouveau jour.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ en pending, permettre arrivée si type=check_in');
+                } else {
+                  // Type inconnu, permettre selon le type demandé
+                  canPunchValue = type == 'check_in';
+                  message = canPunchValue
+                      ? 'Vous pouvez pointer votre arrivée'
+                      : 'Vous pouvez pointer votre départ';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type inconnu en pending, permettre selon type demandé');
+                }
               } else if (normalizedStatus == 'rejected' ||
                   normalizedStatus == 'rejeté' ||
                   normalizedStatus == 'rejete') {
@@ -471,12 +713,12 @@ class AttendancePunchService {
                     canPunchValue
                         ? 'Votre dernier pointage a été rejeté. Vous pouvez pointer votre arrivée.'
                         : 'Votre dernier pointage a été rejeté. Vous devez d\'abord pointer votre arrivée.';
+                print('🔵 [ATTENDANCE_PUNCH_SERVICE] Pointage rejeté, autoriser check_in');
               } else if (normalizedStatus == 'approved' ||
                   normalizedStatus == 'approuvé' ||
                   normalizedStatus == 'approuve' ||
                   normalizedStatus == 'valide' ||
                   normalizedStatus == 'validé') {
-                final lastType = data['type']?.toString().toLowerCase() ?? '';
                 if (lastType == 'check_in' ||
                     lastType == 'arrivée' ||
                     lastType == 'arrivee') {
@@ -485,6 +727,7 @@ class AttendancePunchService {
                       canPunchValue
                           ? 'Vous pouvez pointer votre départ'
                           : 'Vous avez déjà pointé votre arrivée. Vous pouvez pointer votre départ.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Arrivée approuvée, permettre départ si type=check_out');
                 } else if (lastType == 'check_out' ||
                     lastType == 'départ' ||
                     lastType == 'depart') {
@@ -493,12 +736,14 @@ class AttendancePunchService {
                       canPunchValue
                           ? 'Vous pouvez pointer votre arrivée'
                           : 'Vous avez déjà pointé votre départ. Vous pouvez pointer votre arrivée.';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Départ approuvé, permettre arrivée si type=check_in');
                 } else {
                   canPunchValue = type == 'check_in';
                   message =
                       canPunchValue
                           ? 'Vous pouvez pointer votre arrivée'
                           : 'Vous devez d\'abord pointer votre arrivée';
+                  print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type inconnu, autoriser check_in par défaut');
                 }
               } else if (normalizedStatus == 'checked_in' ||
                   normalizedStatus == 'checked_out') {
@@ -511,19 +756,25 @@ class AttendancePunchService {
                     canPunchValue
                         ? 'Vous pouvez pointer maintenant'
                         : 'Vous ne pouvez pas pointer maintenant';
+                print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status checked_in/checked_out, canPunch: $canPunchValue');
               } else {
                 canPunchValue = type == 'check_in';
                 message =
                     canPunchValue
                         ? 'Vous pouvez pointer votre arrivée'
                         : 'Vous devez d\'abord pointer votre arrivée';
+                print('🔵 [ATTENDANCE_PUNCH_SERVICE] Status inconnu ($normalizedStatus), autoriser check_in par défaut');
               }
             }
           }
         } else {
           canPunchValue = type == 'check_in';
           message = 'Statut non disponible, pointage autorisé';
+          print('🔵 [ATTENDANCE_PUNCH_SERVICE] Pas de données, autoriser check_in par défaut');
         }
+
+        print('🔵 [ATTENDANCE_PUNCH_SERVICE] Résultat final: canPunch=$canPunchValue, message=$message');
+        print('🔵 [ATTENDANCE_PUNCH_SERVICE] ===== FIN canPunch =====');
 
         return {
           'success': true,
@@ -540,6 +791,7 @@ class AttendancePunchService {
           errorMessage = 'Erreur ${response.statusCode}: ${response.body}';
         }
 
+        print('🔴 [ATTENDANCE_PUNCH_SERVICE] Erreur HTTP ${response.statusCode}: $errorMessage');
         // En cas d'erreur serveur, autoriser le pointage pour éviter les blocages
         return {
           'success': true,
@@ -547,7 +799,9 @@ class AttendancePunchService {
           'message': 'Vous pouvez pointer maintenant',
         };
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('🔴 [ATTENDANCE_PUNCH_SERVICE] Exception: $e');
+      print('🔴 [ATTENDANCE_PUNCH_SERVICE] StackTrace: $stackTrace');
       // En cas d'erreur, autoriser le pointage pour éviter les blocages
       return {
         'success': true,
@@ -555,6 +809,7 @@ class AttendancePunchService {
         'message': 'Vous pouvez pointer maintenant',
       };
     }
+    */
   }
 
   /// Obtenir la liste des pointages avec pagination côté serveur

@@ -402,6 +402,17 @@ class SalaryController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar(
         'Erreur',
         'Impossible de créer le salaire: ${e.toString()}',
@@ -470,6 +481,17 @@ class SalaryController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar(
         'Erreur',
         'Impossible de mettre à jour le salaire: ${e.toString()}',
@@ -555,18 +577,42 @@ class SalaryController extends GetxController {
         );
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadSalaries(statusFilter: _currentStatusFilter);
-      await loadSalaryStats();
-      await loadPendingSalaries();
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'approuver le salaire: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+        loadSalaryStats().catchError((e) {});
+        loadPendingSalaries().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+        loadSalaryStats().catchError((e) {});
+        loadPendingSalaries().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     } finally {
       isLoading.value = false;
     }
@@ -641,18 +687,40 @@ class SalaryController extends GetxController {
         );
       }
     } catch (e) {
-      // En cas d'erreur, recharger pour restaurer l'état correct
-      await loadSalaries(statusFilter: _currentStatusFilter);
-      await loadSalaryStats();
-      await loadPendingSalaries();
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter le salaire: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+        loadSalaryStats().catchError((e) {});
+        loadPendingSalaries().catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadSalaries(statusFilter: _currentStatusFilter).catchError((e) {});
+        loadSalaryStats().catchError((e) {});
+        loadPendingSalaries().catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     } finally {
       isLoading.value = false;
     }

@@ -283,7 +283,9 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
             ],
 
             // Photo
-            if (attendance.photoPath != null) ...[
+            if (attendance.photoPath != null &&
+                attendance.photoPath!.isNotEmpty &&
+                attendance.photoUrl.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 height: 150,
@@ -297,9 +299,54 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
                   child: Image.network(
                     attendance.photoUrl,
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value:
+                              loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                        ),
+                      );
+                    },
                     errorBuilder: (context, error, stackTrace) {
-                      return const Center(
-                        child: Icon(Icons.error, color: Colors.red),
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.broken_image,
+                              color: Colors.red,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Impossible de charger la photo',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              child: Text(
+                                attendance.photoUrl,
+                                style: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 10,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),

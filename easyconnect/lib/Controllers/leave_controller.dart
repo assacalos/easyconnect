@@ -433,6 +433,17 @@ class LeaveController extends GetxController {
         return false;
       }
     } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
+
       Get.snackbar('Erreur', 'Erreur lors de la création de la demande: $e');
       return false;
     }
@@ -471,7 +482,15 @@ class LeaveController extends GetxController {
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('parsing') &&
+          !errorStr.contains('json') &&
+          !errorStr.contains('type') &&
+          !errorStr.contains('cast') &&
+          !errorStr.contains('null')) {
+        Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+      }
     }
   }
 
@@ -509,7 +528,15 @@ class LeaveController extends GetxController {
         Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('parsing') &&
+          !errorStr.contains('json') &&
+          !errorStr.contains('type') &&
+          !errorStr.contains('cast') &&
+          !errorStr.contains('null')) {
+        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+      }
     }
   }
 

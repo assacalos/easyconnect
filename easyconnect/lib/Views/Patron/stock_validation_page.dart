@@ -56,7 +56,7 @@ class _StockValidationPageState extends State<StockValidationPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Validation du Stock'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -69,6 +69,9 @@ class _StockValidationPageState extends State<StockValidationPage>
         ],
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(text: 'Tous', icon: Icon(Icons.list)),
             Tab(text: 'En attente', icon: Icon(Icons.pending)),

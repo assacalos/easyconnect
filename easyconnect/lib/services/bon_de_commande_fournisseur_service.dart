@@ -93,7 +93,18 @@ class BonDeCommandeFournisseurService {
                   .cast<BonDeCommande>()
                   .toList();
 
-          return bonDeCommandeList;
+          // Filtrer pour ne garder que les bons de commande fournisseur
+          // (ceux qui ont un fournisseur_id et pas de client_id)
+          final List<BonDeCommande> filteredList =
+              bonDeCommandeList
+                  .where(
+                    (bonDeCommande) =>
+                        bonDeCommande.fournisseurId != null &&
+                        bonDeCommande.clientId == null,
+                  )
+                  .toList();
+
+          return filteredList;
         } catch (e) {
           throw Exception('Erreur lors du parsing des bons de commande: $e');
         }
@@ -363,7 +374,7 @@ class BonDeCommandeFournisseurService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return true;
       }
-      
+
       // Vérifier le body même si le status code n'est pas 200/201
       try {
         final responseData = json.decode(response.body);
@@ -373,7 +384,7 @@ class BonDeCommandeFournisseurService {
       } catch (e) {
         // Ignorer l'erreur de parsing
       }
-      
+
       return false;
     } catch (e) {
       return false;

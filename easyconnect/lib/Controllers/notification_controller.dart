@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/notification_api_service.dart';
+import 'package:easyconnect/services/notification_service_enhanced.dart';
 import 'package:easyconnect/utils/logger.dart';
 
 /// Contrôleur pour gérer les notifications avec polling
 class NotificationController extends GetxController {
   final NotificationApiService _apiService = NotificationApiService();
+  final NotificationServiceEnhanced _notificationService =
+      NotificationServiceEnhanced();
 
   // Liste des notifications
   final RxList<AppNotification> notifications = <AppNotification>[].obs;
@@ -34,9 +37,22 @@ class NotificationController extends GetxController {
   Timer? _pollingTimer;
   bool _isPolling = false;
 
+  // Set pour stocker les IDs des notifications déjà vues (pour détecter les nouvelles)
+  final Set<String> _seenNotificationIds = <String>{};
+  
+  // Flag pour savoir si c'est le premier chargement
+  bool _isFirstLoad = true;
+
   @override
   void onInit() {
     super.onInit();
+    // Initialiser le service de notifications locales
+    _notificationService.initialize().catchError((e) {
+      AppLogger.error(
+        'Erreur lors de l\'initialisation du service de notifications: $e',
+        tag: 'NOTIFICATION_CONTROLLER',
+      );
+    });
     loadNotifications();
     startPolling();
   }
@@ -67,9 +83,21 @@ class NotificationController extends GetxController {
       );
 
       if (page == 1) {
+        // Détecter les nouvelles notifications (seulement si ce n'est pas le premier chargement)
+        if (!_isFirstLoad && forceRefresh && notifications.isNotEmpty) {
+          _detectAndShowNewNotifications(loadedNotifications);
+        }
+        
         notifications.value = loadedNotifications;
+        // Marquer toutes les notifications comme vues
+        _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
+        
+        // Marquer que le premier chargement est terminé
+        _isFirstLoad = false;
       } else {
         notifications.addAll(loadedNotifications);
+        // Marquer les nouvelles notifications comme vues
+        _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
       }
 
       // Mettre à jour le compteur de non lues
@@ -296,6 +324,58 @@ class NotificationController extends GetxController {
         'Erreur',
         'Impossible de naviguer vers l\'entité',
         snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  /// Détecter les nouvelles notifications et déclencher des notifications locales
+  void _detectAndShowNewNotifications(List<AppNotification> loadedNotifications) {
+    try {
+      // Trouver les notifications qui sont nouvelles (pas encore vues)
+      final newNotifications = loadedNotifications.where((notification) {
+        return !_seenNotificationIds.contains(notification.id) &&
+            !notification.isRead;
+      }).toList();
+
+      // Pour chaque nouvelle notification, déclencher une notification locale
+      for (final notification in newNotifications) {
+        // Déterminer le type de son selon le type de notification
+        String soundType = 'info';
+        if (notification.type == 'success') {
+          soundType = 'success';
+        } else if (notification.type == 'error') {
+          soundType = 'error';
+        } else if (notification.type == 'warning') {
+          soundType = 'error';
+        } else if (notification.type == 'task') {
+          soundType = 'submit';
+        }
+
+        // Afficher la notification locale avec son (sans ajouter à la liste car déjà gérée par le controller)
+        _notificationService
+            .showNotification(
+              notification,
+              soundType: soundType,
+              addToList: false, // Ne pas ajouter à la liste car le controller gère déjà sa propre liste
+            )
+            .catchError((e) {
+          AppLogger.error(
+            'Erreur lors de l\'affichage de la notification locale: $e',
+            tag: 'NOTIFICATION_CONTROLLER',
+          );
+        });
+      }
+
+      if (newNotifications.isNotEmpty) {
+        AppLogger.info(
+          '${newNotifications.length} nouvelle(s) notification(s) détectée(s) et affichée(s)',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur lors de la détection des nouvelles notifications: $e',
+        tag: 'NOTIFICATION_CONTROLLER',
       );
     }
   }

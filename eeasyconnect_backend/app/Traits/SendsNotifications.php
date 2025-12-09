@@ -122,20 +122,36 @@ trait SendsNotifications
     {
         $approver = \App\Models\User::where('role', $approverRoleId)->first();
         if (!$approver) {
+            \Log::warning("Aucun approbateur trouvé pour le rôle {$approverRoleId}");
             return;
         }
 
         $identifier = $entityIdentifier ?? $entity->id ?? $entity->reference ?? $entity->number ?? 'N/A';
         
-        $this->createNotification([
-            'user_id' => $approver->id,
-            'title' => "Soumission {$entityName}",
-            'message' => "{$entityName} #{$identifier} a été soumise pour validation",
-            'type' => 'info',
-            'entity_type' => $entityType,
-            'entity_id' => $entity->id ?? null,
-            'action_route' => "/{$entityType}s/{$entity->id}",
-        ]);
+        // Créer la notification de manière synchrone pour garantir sa création en base
+        try {
+            $this->createNotificationSync([
+                'user_id' => $approver->id,
+                'title' => "Soumission {$entityName}",
+                'message' => "{$entityName} #{$identifier} a été soumise pour validation",
+                'type' => 'info',
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null,
+                'action_route' => "/{$entityType}s/{$entity->id}",
+            ]);
+            \Log::info("Notification de soumission créée pour le patron", [
+                'approver_id' => $approver->id,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Erreur lors de la création de la notification de soumission", [
+                'error' => $e->getMessage(),
+                'approver_id' => $approver->id,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        }
     }
 
     /**
@@ -152,20 +168,40 @@ trait SendsNotifications
     {
         $userId = $this->getUserIdFromEntity($entity, $userIdField);
         if (!$userId) {
+            \Log::warning("Impossible de trouver l'ID utilisateur pour la notification d'approbation", [
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null,
+                'field' => $userIdField
+            ]);
             return;
         }
 
         $identifier = $entityIdentifier ?? $entity->id ?? $entity->reference ?? $entity->number ?? 'N/A';
         
-        $this->createNotification([
-            'user_id' => $userId,
-            'title' => "Approbation {$entityName}",
-            'message' => "Votre {$entityName} #{$identifier} a été approuvée",
-            'type' => 'success',
-            'entity_type' => $entityType,
-            'entity_id' => $entity->id ?? null,
-            'action_route' => "/{$entityType}s/{$entity->id}",
-        ]);
+        // Créer la notification de manière synchrone pour garantir sa création en base
+        try {
+            $this->createNotificationSync([
+                'user_id' => $userId,
+                'title' => "Approbation {$entityName}",
+                'message' => "Votre {$entityName} #{$identifier} a été approuvée",
+                'type' => 'success',
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null,
+                'action_route' => "/{$entityType}s/{$entity->id}",
+            ]);
+            \Log::info("Notification d'approbation créée pour l'utilisateur", [
+                'user_id' => $userId,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Erreur lors de la création de la notification d'approbation", [
+                'error' => $e->getMessage(),
+                'user_id' => $userId,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        }
     }
 
     /**
@@ -183,21 +219,41 @@ trait SendsNotifications
     {
         $userId = $this->getUserIdFromEntity($entity, $userIdField);
         if (!$userId) {
+            \Log::warning("Impossible de trouver l'ID utilisateur pour la notification de rejet", [
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null,
+                'field' => $userIdField
+            ]);
             return;
         }
 
         $identifier = $entityIdentifier ?? $entity->id ?? $entity->reference ?? $entity->number ?? 'N/A';
         
-        $this->createNotification([
-            'user_id' => $userId,
-            'title' => "Rejet {$entityName}",
-            'message' => "Votre {$entityName} #{$identifier} a été rejetée. Raison: {$reason}",
-            'type' => 'error',
-            'entity_type' => $entityType,
-            'entity_id' => $entity->id ?? null,
-            'action_route' => "/{$entityType}s/{$entity->id}",
-            'metadata' => ['reason' => $reason],
-        ]);
+        // Créer la notification de manière synchrone pour garantir sa création en base
+        try {
+            $this->createNotificationSync([
+                'user_id' => $userId,
+                'title' => "Rejet {$entityName}",
+                'message' => "Votre {$entityName} #{$identifier} a été rejetée. Raison: {$reason}",
+                'type' => 'error',
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null,
+                'action_route' => "/{$entityType}s/{$entity->id}",
+                'metadata' => ['reason' => $reason],
+            ]);
+            \Log::info("Notification de rejet créée pour l'utilisateur", [
+                'user_id' => $userId,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Erreur lors de la création de la notification de rejet", [
+                'error' => $e->getMessage(),
+                'user_id' => $userId,
+                'entity_type' => $entityType,
+                'entity_id' => $entity->id ?? null
+            ]);
+        }
     }
 }
 

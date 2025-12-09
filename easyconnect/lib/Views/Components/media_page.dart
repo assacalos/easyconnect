@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/media_controller.dart';
 import 'package:easyconnect/Models/media_model.dart';
+import 'package:easyconnect/Views/Components/dashboard_wrapper.dart';
 import 'package:intl/intl.dart';
 
 /// Page pour afficher tous les médias (images et fichiers) par catégorie
@@ -12,7 +13,8 @@ class MediaPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.put(MediaController());
 
-    return Scaffold(
+    return DashboardWrapper(
+      currentIndex: 4, // Index du bouton "Médias" dans la bottom navigation
       appBar: AppBar(
         title: const Text('Médias'),
         actions: [
@@ -24,7 +26,12 @@ class MediaPage extends StatelessWidget {
           ),
         ],
       ),
-      body: Column(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => controller.scanDocument(),
+        icon: const Icon(Icons.scanner),
+        label: const Text('Scanner'),
+      ),
+      child: Column(
         children: [
           // Filtres par catégorie
           _buildCategoryFilters(controller),
@@ -74,11 +81,6 @@ class MediaPage extends StatelessWidget {
             }),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => controller.scanDocument(),
-        icon: const Icon(Icons.scanner),
-        label: const Text('Scanner'),
       ),
     );
   }

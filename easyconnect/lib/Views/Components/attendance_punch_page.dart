@@ -36,30 +36,29 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
   }
 
   Future<void> _checkCanPunch() async {
+    if (!mounted) return;
+
     setState(() => _isLoading = true);
 
     try {
-      print(
-        '🔍 [ATTENDANCE_PUNCH_PAGE] Vérification canPunch, type: $_punchType',
-      );
       final result = await _punchService.canPunch(type: _punchType);
-      print('🔍 [ATTENDANCE_PUNCH_PAGE] Résultat reçu: $result');
 
-      setState(() {
-        _canPunch = result['can_punch'] ?? false;
-        _punchMessage =
-            result['message'] ??
-            (_canPunch
-                ? 'Vous pouvez pointer maintenant'
-                : 'Vous ne pouvez pas pointer maintenant');
-      });
-
-      print('🔍 [ATTENDANCE_PUNCH_PAGE] canPunch: $_canPunch');
-      print('🔍 [ATTENDANCE_PUNCH_PAGE] message: $_punchMessage');
+      if (mounted) {
+        setState(() {
+          _canPunch = result['can_punch'] ?? false;
+          _punchMessage =
+              result['message'] ??
+              (_canPunch
+                  ? 'Vous pouvez pointer maintenant'
+                  : 'Vous ne pouvez pas pointer maintenant');
+        });
+      }
     } catch (e) {
       // Erreur silencieuse - ne pas afficher de message
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -88,58 +87,52 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
   }
 
   Future<void> _submitPunch() async {
-    print('🚀 [ATTENDANCE_PUNCH_PAGE] Début de la soumission du pointage');
-    print('🚀 [ATTENDANCE_PUNCH_PAGE] Type: $_punchType');
-
     if (_selectedImage == null) {
       return;
     }
-    print(
-      '✅ [ATTENDANCE_PUNCH_PAGE] Photo disponible: ${_selectedImage!.path}',
-    );
 
     if (_locationInfo == null) {
       return;
     }
-    print(
-      '✅ [ATTENDANCE_PUNCH_PAGE] Localisation disponible: ${_locationInfo!.address}',
-    );
 
     setState(() => _isLoading = true);
 
     try {
-      print('✅ [ATTENDANCE_PUNCH_PAGE] Envoi du pointage au serveur...');
-      print(
-        '📤 [ATTENDANCE_PUNCH_PAGE] Données: type=$_punchType, photo=${_selectedImage!.path}, notes=${_notesController.text.trim()}',
-      );
-
       final result = await _punchService.punchAttendance(
         type: _punchType,
         photo: _selectedImage!,
         notes: _notesController.text.trim(),
       );
 
-      print('📥 [ATTENDANCE_PUNCH_PAGE] Résultat reçu: $result');
-
       if (result['success'] == true) {
-        print('✅ [ATTENDANCE_PUNCH_PAGE] Pointage enregistré avec succès');
-
-        // Réinitialiser le formulaire
-        setState(() {
-          _selectedImage = null;
-          _notesController.clear();
-        });
-
         // Vérifier que le pointage est bien en statut pending (soumis au patron)
         final attendanceData = result['data'] as AttendancePunchModel?;
         final status = attendanceData?.status ?? 'pending';
         final isPending = status == 'pending';
 
-        print('📊 [ATTENDANCE_PUNCH_PAGE] Statut du pointage: $status');
-        print('📊 [ATTENDANCE_PUNCH_PAGE] Est en attente: $isPending');
-
-        // Message de succès plus informatif
+        // Message de succès plus informatif (avant de changer le type)
         final typeLabel = _punchType == 'check_in' ? 'arrivée' : 'départ';
+
+        // Réinitialiser le formulaire (protégé par mounted)
+        if (mounted) {
+          setState(() {
+            _selectedImage = null;
+            _notesController.clear();
+          });
+        }
+
+        // Si c'était un check_in, changer le type vers check_out et re-vérifier
+        if (_punchType == 'check_in' && mounted) {
+          setState(() {
+            _punchType = 'check_out';
+            _canPunch = false;
+            _punchMessage = '';
+          });
+          // Re-vérifier si on peut pointer le départ (seulement si toujours monté)
+          if (mounted) {
+            await _checkCanPunch();
+          }
+        }
         final message =
             isPending
                 ? 'Votre pointage d\'$typeLabel a été enregistré et soumis au patron pour validation. Vous serez notifié de la décision.'
@@ -170,9 +163,6 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
             ),
           );
         } catch (e) {
-          print(
-            '❌ [ATTENDANCE_PUNCH_PAGE] Erreur lors de l\'affichage du snackbar: $e',
-          );
           // Afficher un message alternatif si le snackbar échoue
           if (mounted) {
             Get.dialog(
@@ -204,7 +194,6 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
 
         // Fermer la page automatiquement
         if (mounted) {
-          print('🚪 [ATTENDANCE_PUNCH_PAGE] Fermeture de la page');
           Get.back();
         }
       } else {
@@ -236,8 +225,6 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
         }
       }
     } catch (e) {
-      print('❌ [ATTENDANCE_PUNCH_PAGE] Erreur lors de la soumission: $e');
-
       // Arrêter le loading en cas d'erreur
       if (mounted) {
         setState(() => _isLoading = false);
@@ -262,6 +249,8 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
     setState(() {
       _punchType = _punchType == 'check_in' ? 'check_out' : 'check_in';
       _punchMessage = ''; // Réinitialiser le message
+      _canPunch =
+          false; // Réinitialiser canPunch pour forcer la re-vérification
     });
     _checkCanPunch();
   }

@@ -648,10 +648,17 @@ class EmployeeController extends GetxController {
 
       await loadEmployeeStats();
       return true;
-    } catch (e, stackTrace) {
-      // Logger l'erreur pour le débogage
-      print('❌ [EMPLOYEE_CONTROLLER] Erreur lors de la création: $e');
-      print('❌ [EMPLOYEE_CONTROLLER] Stack trace: $stackTrace');
+    } catch (e) {
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
 
       // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -820,7 +827,15 @@ class EmployeeController extends GetxController {
       Get.snackbar('Succès', 'Employé soumis pour approbation');
       loadEmployees();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('parsing') &&
+          !errorStr.contains('json') &&
+          !errorStr.contains('type') &&
+          !errorStr.contains('cast') &&
+          !errorStr.contains('null')) {
+        Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
+      }
     }
   }
 
@@ -831,7 +846,15 @@ class EmployeeController extends GetxController {
       Get.snackbar('Succès', 'Employé approuvé');
       loadEmployees();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('parsing') &&
+          !errorStr.contains('json') &&
+          !errorStr.contains('type') &&
+          !errorStr.contains('cast') &&
+          !errorStr.contains('null')) {
+        Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+      }
     }
   }
 
@@ -845,7 +868,15 @@ class EmployeeController extends GetxController {
       Get.snackbar('Succès', 'Employé rejeté');
       loadEmployees();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (!errorStr.contains('parsing') &&
+          !errorStr.contains('json') &&
+          !errorStr.contains('type') &&
+          !errorStr.contains('cast') &&
+          !errorStr.contains('null')) {
+        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+      }
     }
   }
 

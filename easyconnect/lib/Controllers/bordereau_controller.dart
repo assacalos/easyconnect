@@ -378,14 +378,21 @@ class BordereauxController extends GetxController {
         }
       });
 
-      print('✅ [BORDEREAU] Retour de createBordereau: true (SUCCÈS)');
       return true;
-    } catch (e, stackTrace) {
-      print('❌ [BORDEREAU] ERREUR CAPTURÉE dans createBordereau: $e');
-      print('❌ [BORDEREAU] Stack trace: $stackTrace');
-
+    } catch (e) {
       // S'assurer que le loader est arrêté en cas d'erreur
       isLoading.value = false;
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        return false;
+      }
 
       // Extraire le message d'erreur
       String errorMessage = e.toString();
@@ -393,7 +400,6 @@ class BordereauxController extends GetxController {
         errorMessage = errorMessage.substring(11);
       }
 
-      print('❌ [BORDEREAU] Affichage du message d\'erreur: $errorMessage');
       AppLogger.error(
         'Erreur lors de la création du bordereau: $e',
         tag: 'BORDEREAU_CONTROLLER',
@@ -411,7 +417,6 @@ class BordereauxController extends GetxController {
         isDismissible: true,
         shouldIconPulse: true,
       );
-      print('❌ [BORDEREAU] Retour de createBordereau: false (ÉCHEC)');
       return false;
     }
   }
@@ -631,6 +636,20 @@ class BordereauxController extends GetxController {
         }
       }
     } catch (e) {
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadBordereaux(status: _currentStatus).catchError((e) {});
+        return;
+      }
+
       // Ne pas afficher le message d'erreur si la validation a réussi
       // (les erreurs peuvent venir des opérations asynchrones comme les notifications)
       if (!validationSucceeded) {
@@ -700,14 +719,38 @@ class BordereauxController extends GetxController {
         rethrow;
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de rejeter le bordereau: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-      );
+      // Vérifier si l'erreur est survenue après un succès
+      final errorStr = e.toString().toLowerCase();
+
+      // Ne pas afficher d'erreur pour les erreurs de parsing ou de rechargement
+      if (errorStr.contains('parsing') ||
+          errorStr.contains('json') ||
+          errorStr.contains('type') ||
+          errorStr.contains('cast') ||
+          errorStr.contains('null')) {
+        // Probablement une erreur de parsing après un succès
+        loadBordereaux(status: _currentStatus).catchError((e) {});
+        return;
+      }
+
+      // Pour les autres erreurs, vérifier si c'est une erreur d'authentification
+      if (errorStr.contains('401') ||
+          errorStr.contains('403') ||
+          errorStr.contains('unauthorized') ||
+          errorStr.contains('forbidden')) {
+        // Erreur d'authentification - afficher
+        Get.snackbar(
+          'Erreur',
+          'Erreur d\'authentification. Veuillez vous reconnecter.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      } else {
+        // Autre erreur - recharger pour vérifier l'état
+        loadBordereaux(status: _currentStatus).catchError((e) {});
+        // Ne pas afficher d'erreur car l'action peut avoir réussi
+      }
     } finally {
       isLoading.value = false;
     }

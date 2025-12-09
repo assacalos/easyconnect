@@ -23,21 +23,11 @@ class PaginationHelper {
     required Map<String, dynamic> json,
     required T Function(Map<String, dynamic>) fromJsonT,
   }) {
-    print('🔍 [PAGINATION_HELPER] ===== parseResponse APPELÉ =====');
-    print('🔍 [PAGINATION_HELPER] Clés JSON: ${json.keys.toList()}');
-    print('🔍 [PAGINATION_HELPER] Type de data: ${json['data']?.runtimeType}');
-    if (json['data'] is List) {
-      print(
-        '🔍 [PAGINATION_HELPER] data est une List avec ${(json['data'] as List).length} éléments',
-      );
-    }
-
     // Format 1: {"success": true, "data": [...], "pagination": {...}}
     // C'est le nouveau format du backend
     if (json.containsKey('success') &&
         json.containsKey('data') &&
         json.containsKey('pagination')) {
-      print('🔍 [PAGINATION_HELPER] Format 1 détecté (avec pagination)');
       final dataList = json['data'] is List ? json['data'] as List : [];
       final paginationData = json['pagination'] as Map<String, dynamic>;
 
@@ -53,14 +43,11 @@ class PaginationHelper {
     // Format 2: Réponse paginée Laravel standard {"data": [...], "current_page": 1, ...}
     if (json.containsKey('data') &&
         (json.containsKey('current_page') || json.containsKey('currentPage'))) {
-      print('🔍 [PAGINATION_HELPER] Format 2 détecté (Laravel standard)');
       return PaginationResponse.fromJson(json, fromJsonT);
     }
 
     // Format 3: Réponse encapsulée dans un objet success avec data contenant la pagination
     if (json.containsKey('success') && json['data'] != null) {
-      print('🔍 [PAGINATION_HELPER] Format 3: success=true et data existe');
-      print('🔍 [PAGINATION_HELPER] Type de data: ${json['data'].runtimeType}');
       final data = json['data'];
       if (data is Map<String, dynamic> &&
           (data.containsKey('current_page') ||
@@ -70,9 +57,6 @@ class PaginationHelper {
 
       // Si data est une liste simple, créer une pagination factice
       if (data is List) {
-        print(
-          '🔍 [PAGINATION_HELPER] Format 3: data est une List avec ${data.length} éléments',
-        );
         final parsedData = <T>[];
         for (var i = 0; i < data.length; i++) {
           try {
@@ -80,24 +64,11 @@ class PaginationHelper {
             if (item is Map<String, dynamic>) {
               final parsed = fromJsonT(item);
               parsedData.add(parsed);
-              print('🔍 [PAGINATION_HELPER] Élément $i parsé avec succès');
-            } else {
-              print(
-                '⚠️ [PAGINATION_HELPER] Élément $i n\'est pas un Map: ${item.runtimeType}',
-              );
             }
-          } catch (e, stackTrace) {
-            final item = data[i];
-            print(
-              '❌ [PAGINATION_HELPER] Erreur lors du parsing de l\'élément $i: $e',
-            );
-            print('❌ [PAGINATION_HELPER] Stack trace: $stackTrace');
-            print('❌ [PAGINATION_HELPER] Élément: $item');
+          } catch (e) {
+            // Ignorer les erreurs de parsing
           }
         }
-        print(
-          '🔍 [PAGINATION_HELPER] Format 3: ${parsedData.length} éléments parsés sur ${data.length}',
-        );
         return PaginationResponse<T>(
           data: parsedData,
           meta: PaginationMeta(
@@ -114,9 +85,6 @@ class PaginationHelper {
     // Si c'est juste une liste, créer une pagination factice
     if (json.containsKey('data') && json['data'] is List) {
       final dataList = json['data'] as List;
-      print(
-        '🔍 [PAGINATION_HELPER] Format 4: data est une List avec ${dataList.length} éléments',
-      );
       final parsedData = <T>[];
       for (var i = 0; i < dataList.length; i++) {
         try {
@@ -124,24 +92,11 @@ class PaginationHelper {
           if (item is Map<String, dynamic>) {
             final parsed = fromJsonT(item);
             parsedData.add(parsed);
-            print(
-              '🔍 [PAGINATION_HELPER] Format 4: Élément $i parsé avec succès',
-            );
-          } else {
-            print(
-              '⚠️ [PAGINATION_HELPER] Format 4: Élément $i n\'est pas un Map: ${item.runtimeType}',
-            );
           }
-        } catch (e, stackTrace) {
-          print(
-            '❌ [PAGINATION_HELPER] Format 4: Erreur lors du parsing de l\'élément $i: $e',
-          );
-          print('❌ [PAGINATION_HELPER] Stack trace: $stackTrace');
+        } catch (e) {
+          // Ignorer les erreurs de parsing
         }
       }
-      print(
-        '🔍 [PAGINATION_HELPER] Format 4: ${parsedData.length} éléments parsés sur ${dataList.length}',
-      );
       return PaginationResponse<T>(
         data: parsedData,
         meta: PaginationMeta(

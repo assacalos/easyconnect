@@ -593,10 +593,7 @@ class TechnicienDashboardEnhanced
 
   @override
   Widget? buildFloatingActionButton() {
-    return FloatingActionButton(
-      onPressed: () => Get.toNamed('/interventions/create'),
-      child: const Icon(Icons.add),
-    );
+    return null;
   }
 }
 

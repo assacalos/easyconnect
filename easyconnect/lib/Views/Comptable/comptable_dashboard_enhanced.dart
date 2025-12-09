@@ -647,9 +647,6 @@ class ComptableDashboardEnhanced
 
   @override
   Widget? buildFloatingActionButton() {
-    return FloatingActionButton(
-      onPressed: () => Get.toNamed('/invoices/new'),
-      child: const Icon(Icons.add),
-    );
+    return null;
   }
 }

@@ -52,7 +52,7 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Validation des Fournisseurs'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -65,6 +65,9 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
         ],
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(text: 'Tous', icon: Icon(Icons.list)),
             Tab(text: 'En attente', icon: Icon(Icons.pending)),
@@ -147,17 +150,18 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
         default:
           filteredSuppliers = controller.allSuppliers;
       }
-      
+
       // Appliquer aussi le filtre de recherche
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
-        filteredSuppliers = filteredSuppliers.where((supplier) {
-          return supplier.nom.toLowerCase().contains(query) ||
-              supplier.email.toLowerCase().contains(query) ||
-              supplier.telephone.toLowerCase().contains(query) ||
-              supplier.ville.toLowerCase().contains(query) ||
-              supplier.pays.toLowerCase().contains(query);
-        }).toList();
+        filteredSuppliers =
+            filteredSuppliers.where((supplier) {
+              return supplier.nom.toLowerCase().contains(query) ||
+                  supplier.email.toLowerCase().contains(query) ||
+                  supplier.telephone.toLowerCase().contains(query) ||
+                  supplier.ville.toLowerCase().contains(query) ||
+                  supplier.pays.toLowerCase().contains(query);
+            }).toList();
       }
 
       if (filteredSuppliers.isEmpty) {

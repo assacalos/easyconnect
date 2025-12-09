@@ -14,7 +14,7 @@ class PatronReportsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rapports Financiers'),
-        backgroundColor: Colors.blueGrey.shade900,
+        backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -190,7 +190,7 @@ class PatronReportsPage extends StatelessWidget {
                 icon: const Icon(Icons.date_range),
                 label: const Text('Sélectionner une période'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey.shade900,
+                  backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -496,5 +496,3 @@ class PatronReportsPage extends StatelessWidget {
     );
   }
 }
-
-

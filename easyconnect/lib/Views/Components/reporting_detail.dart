@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
+import 'package:easyconnect/Controllers/reporting_controller.dart';
+import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:intl/intl.dart';
 
 class ReportingDetail extends StatelessWidget {
@@ -52,6 +55,12 @@ class ReportingDetail extends StatelessWidget {
             // Métriques selon le rôle
             const SizedBox(height: 16),
             _buildMetricsCard(formatCurrency),
+            
+            // Notes des métriques (si disponibles)
+            if (_hasNotes()) ...[
+              const SizedBox(height: 16),
+              _buildNotesCard(),
+            ],
 
             // Commentaires
             if (reporting.comments != null &&
@@ -89,9 +98,133 @@ class ReportingDetail extends StatelessWidget {
             // Historique
             const SizedBox(height: 16),
             _buildHistoryCard(formatDate),
+
+            // Boutons d'action pour le patron (si le rapport est soumis)
+            if (_isPatron() && reporting.status == 'submitted') ...[
+              const SizedBox(height: 16),
+              _buildActionButtons(),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  bool _isPatron() {
+    final userRole = SessionService.getUserRole();
+    return userRole == Roles.PATRON;
+  }
+
+  Widget _buildActionButtons() {
+    if (!Get.isRegistered<ReportingController>()) {
+      return const SizedBox.shrink();
+    }
+    final controller = Get.find<ReportingController>();
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Actions',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showApproveConfirmation(controller),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Valider'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showRejectDialog(controller),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Rejeter'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showApproveConfirmation(ReportingController controller) {
+    Get.defaultDialog(
+      title: 'Confirmation',
+      middleText: 'Voulez-vous valider ce rapport ?',
+      textConfirm: 'Valider',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        Get.back();
+        controller.approveReport(reporting.id);
+        Get.back(); // Retourner à la page précédente
+      },
+    );
+  }
+
+  void _showRejectDialog(ReportingController controller) {
+    final commentController = TextEditingController();
+
+    Get.defaultDialog(
+      title: 'Rejeter le rapport',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: commentController,
+            decoration: const InputDecoration(
+              labelText: 'Motif du rejet',
+              hintText: 'Entrez le motif du rejet',
+            ),
+            maxLines: 3,
+          ),
+        ],
+      ),
+      textConfirm: 'Rejeter',
+      textCancel: 'Annuler',
+      confirmTextColor: Colors.white,
+      onConfirm: () {
+        if (commentController.text.isEmpty) {
+          Get.snackbar(
+            'Erreur',
+            'Veuillez entrer un motif de rejet',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return;
+        }
+        Get.back();
+        controller.rejectReport(
+          reporting.id,
+          reason: commentController.text,
+        );
+        Get.back(); // Retourner à la page précédente
+      },
     );
   }
 
@@ -260,8 +393,36 @@ class ReportingDetail extends StatelessWidget {
 
   Widget _buildCommercialMetrics(NumberFormat formatCurrency) {
     final metrics = reporting.metrics;
+    final formatDate = DateFormat('dd/MM/yyyy');
+    
+    // Extraire les RDV
+    List<RdvInfo> rdvList = [];
+    try {
+      if (metrics['rdv_list'] != null) {
+        if (metrics['rdv_list'] is List) {
+          rdvList = (metrics['rdv_list'] as List)
+              .map((e) {
+                try {
+                  if (e is Map) {
+                    return RdvInfo.fromJson(Map<String, dynamic>.from(e));
+                  }
+                  return null;
+                } catch (e) {
+                  return null;
+                }
+              })
+              .whereType<RdvInfo>()
+              .toList();
+        }
+      }
+    } catch (e) {
+      // Ignorer les erreurs de parsing
+    }
+    
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Métriques de base
         _buildMetricRow(
           'Clients prospectés',
           metrics['clients_prospectes']?.toString() ?? '0',
@@ -294,7 +455,146 @@ class ReportingDetail extends StatelessWidget {
           'Visites réalisées',
           metrics['visites_realisees']?.toString() ?? '0',
         ),
+        
+        // Section RDV
+        if (rdvList.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Text(
+            'RDV obtenus',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.deepPurple,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...rdvList.map((rdv) => _buildRdvCard(rdv, formatDate)),
+        ],
       ],
+    );
+  }
+  
+  Widget _buildRdvCard(RdvInfo rdv, DateFormat formatDate) {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    
+    switch (rdv.status.toLowerCase()) {
+      case 'realise':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Réalisé';
+        break;
+      case 'annule':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        statusText = 'Annulé';
+        break;
+      default:
+        statusColor = Colors.orange;
+        statusIcon = Icons.event;
+        statusText = 'Planifié';
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.person, size: 16, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    rdv.clientName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: statusColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 12, color: statusColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: statusColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Text(
+                  formatDate.format(rdv.dateRdv),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+                const SizedBox(width: 16),
+                Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Text(
+                  rdv.heureRdv,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+                const SizedBox(width: 16),
+                Icon(Icons.video_call, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Text(
+                  rdv.typeRdv,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+              ],
+            ),
+            if (rdv.notes != null && rdv.notes!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.note, size: 14, color: Colors.grey[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        rdv.notes!,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[800]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -593,5 +893,140 @@ class ReportingDetail extends StatelessWidget {
       'Fonctionnalité de partage à implémenter',
       snackPosition: SnackPosition.BOTTOM,
     );
+  }
+  
+  bool _hasNotes() {
+    final metrics = reporting.metrics;
+    final role = reporting.userRole.toLowerCase();
+    
+    if (role.contains('commercial')) {
+      return metrics['note_clients_prospectes'] != null ||
+             metrics['note_rdv_obtenus'] != null ||
+             metrics['note_devis_crees'] != null ||
+             metrics['note_devis_acceptes'] != null ||
+             metrics['note_nouveaux_clients'] != null ||
+             metrics['note_appels_effectues'] != null ||
+             metrics['note_emails_envoyes'] != null ||
+             metrics['note_visites_realisees'] != null;
+    } else if (role.contains('comptable')) {
+      return metrics['note_factures_emises'] != null ||
+             metrics['note_factures_payees'] != null ||
+             metrics['note_montant_facture'] != null ||
+             metrics['note_montant_encaissement'] != null ||
+             metrics['note_bordereaux_traites'] != null ||
+             metrics['note_bons_commande_traites'] != null ||
+             metrics['note_chiffre_affaires'] != null ||
+             metrics['note_clients_factures'] != null ||
+             metrics['note_relances_effectuees'] != null ||
+             metrics['note_encaissements'] != null;
+    } else if (role.contains('technicien')) {
+      return metrics['note_interventions_planifiees'] != null ||
+             metrics['note_interventions_realisees'] != null ||
+             metrics['note_interventions_annulees'] != null ||
+             metrics['note_clients_visites'] != null ||
+             metrics['note_problemes_resolus'] != null ||
+             metrics['note_problemes_en_cours'] != null ||
+             metrics['note_temps_travail'] != null ||
+             metrics['note_deplacements'] != null;
+    } else if (role.contains('ressources humaines') || role.contains('rh')) {
+      return metrics['note_employes_recrutes'] != null ||
+             metrics['note_demandes_conge_traitees'] != null ||
+             metrics['note_contrats_crees'] != null ||
+             metrics['note_pointages_valides'] != null ||
+             metrics['note_entretiens_realises'] != null ||
+             metrics['note_formations_organisees'] != null ||
+             metrics['note_evaluations_effectuees'] != null;
+    }
+    
+    return false;
+  }
+  
+  Widget _buildNotesCard() {
+    final metrics = reporting.metrics;
+    final role = reporting.userRole.toLowerCase();
+    
+    List<Widget> noteWidgets = [];
+    
+    if (role.contains('commercial')) {
+      _addNoteIfExists(noteWidgets, 'Clients prospectés', metrics['note_clients_prospectes']);
+      _addNoteIfExists(noteWidgets, 'RDV obtenus', metrics['note_rdv_obtenus']);
+      _addNoteIfExists(noteWidgets, 'Devis créés', metrics['note_devis_crees']);
+      _addNoteIfExists(noteWidgets, 'Devis acceptés', metrics['note_devis_acceptes']);
+      _addNoteIfExists(noteWidgets, 'Nouveaux clients', metrics['note_nouveaux_clients']);
+      _addNoteIfExists(noteWidgets, 'Appels effectués', metrics['note_appels_effectues']);
+      _addNoteIfExists(noteWidgets, 'Emails envoyés', metrics['note_emails_envoyes']);
+      _addNoteIfExists(noteWidgets, 'Visites réalisées', metrics['note_visites_realisees']);
+    } else if (role.contains('comptable')) {
+      _addNoteIfExists(noteWidgets, 'Factures émises', metrics['note_factures_emises']);
+      _addNoteIfExists(noteWidgets, 'Factures payées', metrics['note_factures_payees']);
+      _addNoteIfExists(noteWidgets, 'Montant facturé', metrics['note_montant_facture']);
+      _addNoteIfExists(noteWidgets, 'Montant encaissé', metrics['note_montant_encaissement']);
+      _addNoteIfExists(noteWidgets, 'Bordereaux traités', metrics['note_bordereaux_traites']);
+      _addNoteIfExists(noteWidgets, 'Bons de commande traités', metrics['note_bons_commande_traites']);
+      _addNoteIfExists(noteWidgets, 'Chiffre d\'affaires', metrics['note_chiffre_affaires']);
+      _addNoteIfExists(noteWidgets, 'Clients facturés', metrics['note_clients_factures']);
+      _addNoteIfExists(noteWidgets, 'Relances effectuées', metrics['note_relances_effectuees']);
+      _addNoteIfExists(noteWidgets, 'Encaissements', metrics['note_encaissements']);
+    } else if (role.contains('technicien')) {
+      _addNoteIfExists(noteWidgets, 'Interventions planifiées', metrics['note_interventions_planifiees']);
+      _addNoteIfExists(noteWidgets, 'Interventions réalisées', metrics['note_interventions_realisees']);
+      _addNoteIfExists(noteWidgets, 'Interventions annulées', metrics['note_interventions_annulees']);
+      _addNoteIfExists(noteWidgets, 'Clients visités', metrics['note_clients_visites']);
+      _addNoteIfExists(noteWidgets, 'Problèmes résolus', metrics['note_problemes_resolus']);
+      _addNoteIfExists(noteWidgets, 'Problèmes en cours', metrics['note_problemes_en_cours']);
+      _addNoteIfExists(noteWidgets, 'Temps de travail', metrics['note_temps_travail']);
+      _addNoteIfExists(noteWidgets, 'Déplacements', metrics['note_deplacements']);
+    } else if (role.contains('ressources humaines') || role.contains('rh')) {
+      _addNoteIfExists(noteWidgets, 'Employés recrutés', metrics['note_employes_recrutes']);
+      _addNoteIfExists(noteWidgets, 'Demandes congé traitées', metrics['note_demandes_conge_traitees']);
+      _addNoteIfExists(noteWidgets, 'Contrats créés', metrics['note_contrats_crees']);
+      _addNoteIfExists(noteWidgets, 'Pointages validés', metrics['note_pointages_valides']);
+      _addNoteIfExists(noteWidgets, 'Entretiens réalisés', metrics['note_entretiens_realises']);
+      _addNoteIfExists(noteWidgets, 'Formations organisées', metrics['note_formations_organisees']);
+      _addNoteIfExists(noteWidgets, 'Évaluations effectuées', metrics['note_evaluations_effectuees']);
+    }
+    
+    if (noteWidgets.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return _buildInfoCard('Notes des métriques', noteWidgets);
+  }
+  
+  void _addNoteIfExists(List<Widget> widgets, String label, dynamic note) {
+    if (note != null && note.toString().trim().isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Text(
+                  note.toString(),
+                  style: TextStyle(fontSize: 13, color: Colors.blue.shade900),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 }

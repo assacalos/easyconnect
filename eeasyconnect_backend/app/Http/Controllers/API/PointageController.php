@@ -301,15 +301,22 @@ class PointageController extends Controller
 
         // Notifier l'utilisateur concerné
         if ($pointage->user_id) {
-            $this->createNotification([
-                'user_id' => $pointage->user_id,
-                'title' => 'Validation Pointage',
-                'message' => "Votre pointage du {$pointage->date_pointage} a été validé",
-                'type' => 'success',
-                'entity_type' => 'pointage',
-                'entity_id' => $pointage->id,
-                'action_route' => "/pointages/{$pointage->id}",
-            ]);
+            try {
+                $this->createNotificationSync([
+                    'user_id' => $pointage->user_id,
+                    'title' => 'Validation Pointage',
+                    'message' => "Votre pointage du {$pointage->date_pointage} a été validé",
+                    'type' => 'success',
+                    'entity_type' => 'pointage',
+                    'entity_id' => $pointage->id,
+                    'action_route' => "/pointages/{$pointage->id}",
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Erreur lors de la création de la notification de validation de pointage", [
+                    'error' => $e->getMessage(),
+                    'pointage_id' => $pointage->id
+                ]);
+            }
         }
 
         return response()->json([
@@ -338,16 +345,23 @@ class PointageController extends Controller
 
         // Notifier l'utilisateur concerné
         if ($pointage->user_id) {
-            $this->createNotification([
-                'user_id' => $pointage->user_id,
-                'title' => 'Rejet Pointage',
-                'message' => "Votre pointage du {$pointage->date_pointage} a été rejeté. Raison: {$request->commentaire}",
-                'type' => 'error',
-                'entity_type' => 'pointage',
-                'entity_id' => $pointage->id,
-                'action_route' => "/pointages/{$pointage->id}",
-                'metadata' => ['reason' => $request->commentaire],
-            ]);
+            try {
+                $this->createNotificationSync([
+                    'user_id' => $pointage->user_id,
+                    'title' => 'Rejet Pointage',
+                    'message' => "Votre pointage du {$pointage->date_pointage} a été rejeté. Raison: {$request->commentaire}",
+                    'type' => 'error',
+                    'entity_type' => 'pointage',
+                    'entity_id' => $pointage->id,
+                    'action_route' => "/pointages/{$pointage->id}",
+                    'metadata' => ['reason' => $request->commentaire],
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Erreur lors de la création de la notification de rejet de pointage", [
+                    'error' => $e->getMessage(),
+                    'pointage_id' => $pointage->id
+                ]);
+            }
         }
 
         return response()->json([

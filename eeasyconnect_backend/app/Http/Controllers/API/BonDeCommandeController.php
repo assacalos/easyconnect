@@ -96,9 +96,19 @@ class BonDeCommandeController extends Controller
             ]);
             
         } catch (\Exception $e) {
+            \Log::error('Erreur lors de la récupération des bons de commande', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id,
+                'request_params' => $request->all(),
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des bons de commande: ' . $e->getMessage()
+                'message' => config('app.debug') 
+                    ? 'Erreur lors de la récupération des bons de commande: ' . $e->getMessage()
+                    : 'Une erreur est survenue. Veuillez réessayer plus tard.',
+                'statusCode' => 500
             ], 500);
         }
     }
@@ -363,14 +373,6 @@ class BonDeCommandeController extends Controller
 
         // Notifier l'auteur du bon de commande
         $this->notifySubmitterOnRejection($bon, 'bon_commande', 'Bon de Commande', $request->commentaire, 'user_id', $bon->numero_commande);
-                'message' => "Bon de commande #{$bon->numero_commande} a été rejeté. Raison: {$request->commentaire}",
-                'type' => 'error',
-                'entity_type' => 'bon_commande',
-                'entity_id' => $bon->id,
-                'action_route' => "/bons-de-commande/{$bon->id}",
-                'metadata' => ['reason' => $request->commentaire],
-            ]);
-        }
 
         return response()->json([
             'success' => true,
