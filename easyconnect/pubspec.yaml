@@ -50,6 +50,11 @@ dependencies:
   share_plus: ^7.2.2
   file_picker: ^8.0.0+1
   flutter_local_notifications: ^17.2.3
+  url_launcher: ^6.2.5
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.9
+  device_info_plus: ^9.1.0
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:
@@ -108,9 +113,6 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  windows: true
-  macos: true
-  web: true
   image_path: "assets/images/logo_top_left.png"
   # Optionnel : adapter la couleur de fond pour Android
   adaptive_icon_background: "#FFFFFF"

@@ -5,6 +5,7 @@ import 'package:get_storage/get_storage.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
+import '../services/push_notification_service.dart';
 import '../utils/roles.dart';
 
 class AuthController extends GetxController {
@@ -135,6 +136,15 @@ class AuthController extends GetxController {
         // Retirer le flag de connexion en cours juste avant la redirection
         SessionService.setLoginInProgress(false);
 
+        // Enregistrer le token FCM après connexion réussie
+        try {
+          final pushService = PushNotificationService();
+          await pushService.registerTokenAfterLogin();
+        } catch (e) {
+          // Ignorer les erreurs d'enregistrement du token FCM
+          // L'enregistrement sera réessayé automatiquement
+        }
+
         // Rediriger vers le dashboard
         await Get.offAllNamed(route);
 
@@ -249,6 +259,14 @@ class AuthController extends GetxController {
       // Marquer que l'utilisateur est en train de se déconnecter
       // Cela empêchera les autres contrôleurs de charger des données
       isLoading.value = true;
+
+      // Supprimer le token FCM du backend
+      try {
+        final pushService = PushNotificationService();
+        await pushService.unregisterToken();
+      } catch (e) {
+        // Ignorer les erreurs de suppression du token FCM
+      }
 
       // Appeler l'API de déconnexion côté serveur (sans attendre si ça timeout)
       try {

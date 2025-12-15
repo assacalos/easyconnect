@@ -427,23 +427,8 @@ class PaiementController extends Controller
 
                 // Notifier l'auteur du paiement
                 if ($paiement->comptable_id) {
-                    try {
-                        $reference = $paiement->reference ?? $paiement->id;
-                        $this->createNotificationSync([
-                            'user_id' => $paiement->comptable_id,
-                            'title' => 'Validation Paiement',
-                            'message' => "Paiement #{$reference} a été validé",
-                            'type' => 'success',
-                            'entity_type' => 'payment',
-                            'entity_id' => $paiement->id,
-                            'action_route' => "/payments/{$paiement->id}",
-                        ]);
-                    } catch (\Exception $e) {
-                        \Log::error("Erreur lors de la création de la notification de validation de paiement", [
-                            'error' => $e->getMessage(),
-                            'paiement_id' => $paiement->id
-                        ]);
-                    }
+                    $reference = $paiement->reference ?? $paiement->id;
+                    $this->notifySubmitterOnApproval($paiement, 'payment', 'Paiement', 'comptable_id', $reference);
                 }
 
                 // Recharger le paiement avec ses relations
@@ -514,24 +499,8 @@ class PaiementController extends Controller
 
         // Notifier l'auteur du paiement
         if ($paiement->comptable_id) {
-            try {
-                $reference = $paiement->reference ?? $paiement->id;
-                $this->createNotificationSync([
-                    'user_id' => $paiement->comptable_id,
-                    'title' => 'Rejet Paiement',
-                    'message' => "Paiement #{$reference} a été rejeté. Raison: {$reason}",
-                    'type' => 'error',
-                    'entity_type' => 'payment',
-                    'entity_id' => $paiement->id,
-                    'action_route' => "/payments/{$paiement->id}",
-                    'metadata' => ['reason' => $reason],
-                ]);
-            } catch (\Exception $e) {
-                \Log::error("Erreur lors de la création de la notification de rejet de paiement", [
-                    'error' => $e->getMessage(),
-                    'paiement_id' => $paiement->id
-                ]);
-            }
+            $reference = $paiement->reference ?? $paiement->id;
+            $this->notifySubmitterOnRejection($paiement, 'payment', 'Paiement', $reason, 'comptable_id', $reference);
         }
 
         $paiement->load('client', 'comptable', 'schedule');

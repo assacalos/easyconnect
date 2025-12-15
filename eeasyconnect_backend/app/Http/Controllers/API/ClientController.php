@@ -130,8 +130,20 @@ class ClientController extends Controller
 
         $client->load(['user']);
 
-        // Notifier le patron lors de la création
-        $this->notifyApproverOnSubmission($client, 'client', 'Client', 6, $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom));
+        // Notifier le patron lors de la création (seulement si le statut est "en attente")
+        if ($client->status == 0) {
+            \Log::info("Tentative de notification du patron pour nouveau client", [
+                'client_id' => $client->id,
+                'user_id' => $client->user_id,
+                'status' => $client->status
+            ]);
+            $this->notifyApproverOnSubmission($client, 'client', 'Client', 6, $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom));
+        } else {
+            \Log::info("Pas de notification : client créé avec statut différent de 'en attente'", [
+                'client_id' => $client->id,
+                'status' => $client->status
+            ]);
+        }
 
             return response()->json([
                 'success' => true,
@@ -197,9 +209,28 @@ class ClientController extends Controller
         $client->save();
         $client->load(['user']);
 
-        // Notifier l'auteur du client
+        // Notifier l'auteur du client (seulement si ce n'est pas le patron qui a créé le client)
         $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
-        $this->notifySubmitterOnApproval($client, 'client', 'Client', 'user_id', $clientName);
+        
+        // Vérifier que le client a un user_id et que ce n'est pas le patron
+        if ($client->user_id) {
+            $submitter = \App\Models\User::find($client->user_id);
+            $approver = \App\Models\User::where('role', 6)->first(); // Patron
+            
+            // Ne notifier que si le soumetteur est différent du patron
+            if ($submitter && $approver && $submitter->id !== $approver->id) {
+                $this->notifySubmitterOnApproval($client, 'client', 'Client', 'user_id', $clientName);
+            } else {
+                \Log::info("Pas de notification d'approbation : le patron a créé le client lui-même", [
+                    'client_id' => $client->id,
+                    'user_id' => $client->user_id
+                ]);
+            }
+        } else {
+            \Log::warning("Client sans user_id, impossible de notifier l'auteur", [
+                'client_id' => $client->id
+            ]);
+        }
 
         return response()->json([
             'success' => true,

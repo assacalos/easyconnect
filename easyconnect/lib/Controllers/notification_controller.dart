@@ -39,7 +39,7 @@ class NotificationController extends GetxController {
 
   // Set pour stocker les IDs des notifications déjà vues (pour détecter les nouvelles)
   final Set<String> _seenNotificationIds = <String>{};
-  
+
   // Flag pour savoir si c'est le premier chargement
   bool _isFirstLoad = true;
 
@@ -69,7 +69,18 @@ class NotificationController extends GetxController {
     int page = 1,
   }) async {
     try {
-      if (!forceRefresh && isLoading.value) return;
+      if (!forceRefresh && isLoading.value) {
+        AppLogger.debug(
+          'Chargement déjà en cours, ignoré',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
+        return;
+      }
+
+      AppLogger.info(
+        'Début du chargement des notifications (forceRefresh=$forceRefresh, page=$page)',
+        tag: 'NOTIFICATION_CONTROLLER',
+      );
 
       isLoading.value = true;
       currentPage.value = page;
@@ -82,18 +93,56 @@ class NotificationController extends GetxController {
         perPage: perPage.value,
       );
 
+      // Log pour déboguer
+      AppLogger.info(
+        'Notifications chargées depuis l\'API: ${loadedNotifications.length}',
+        tag: 'NOTIFICATION_CONTROLLER',
+      );
+
+      if (loadedNotifications.isNotEmpty) {
+        AppLogger.info(
+          'Première notification: ID=${loadedNotifications[0].id}, Title=${loadedNotifications[0].title}, EntityType=${loadedNotifications[0].entityType}, IsRead=${loadedNotifications[0].isRead}',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
+      } else {
+        AppLogger.warning(
+          'Aucune notification chargée depuis l\'API',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
+      }
+
       if (page == 1) {
-        // Détecter les nouvelles notifications (seulement si ce n'est pas le premier chargement)
-        if (!_isFirstLoad && forceRefresh && notifications.isNotEmpty) {
+        // Détecter les nouvelles notifications AVANT de mettre à jour la liste
+        // Cela permet de détecter les nouvelles notifications même au premier chargement
+        // si elles sont non lues (par exemple, si l'utilisateur ouvre l'app alors qu'il y a déjà des notifications)
+        if (!_isFirstLoad && forceRefresh) {
           _detectAndShowNewNotifications(loadedNotifications);
+        } else if (_isFirstLoad) {
+          // Au premier chargement, détecter les notifications non lues comme nouvelles
+          // pour afficher les notifications système
+          final unreadNotifications =
+              loadedNotifications.where((n) => !n.isRead).toList();
+          if (unreadNotifications.isNotEmpty) {
+            AppLogger.info(
+              'Premier chargement: ${unreadNotifications.length} notification(s) non lue(s) détectée(s)',
+              tag: 'NOTIFICATION_CONTROLLER',
+            );
+            // Afficher les notifications non lues comme nouvelles
+            _detectAndShowNewNotifications(unreadNotifications);
+          }
         }
-        
+
         notifications.value = loadedNotifications;
-        // Marquer toutes les notifications comme vues
+        // Marquer toutes les notifications comme vues dans le set (pour éviter les doublons)
         _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
-        
+
         // Marquer que le premier chargement est terminé
         _isFirstLoad = false;
+
+        AppLogger.info(
+          'Notifications mises à jour dans la liste: ${notifications.length}',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
       } else {
         notifications.addAll(loadedNotifications);
         // Marquer les nouvelles notifications comme vues
@@ -329,13 +378,28 @@ class NotificationController extends GetxController {
   }
 
   /// Détecter les nouvelles notifications et déclencher des notifications locales
-  void _detectAndShowNewNotifications(List<AppNotification> loadedNotifications) {
+  void _detectAndShowNewNotifications(
+    List<AppNotification> loadedNotifications,
+  ) {
     try {
       // Trouver les notifications qui sont nouvelles (pas encore vues)
-      final newNotifications = loadedNotifications.where((notification) {
-        return !_seenNotificationIds.contains(notification.id) &&
-            !notification.isRead;
-      }).toList();
+      final newNotifications =
+          loadedNotifications.where((notification) {
+            final isNew = !_seenNotificationIds.contains(notification.id);
+            final isUnread = !notification.isRead;
+
+            AppLogger.debug(
+              'Vérification notification ID=${notification.id}: isNew=$isNew, isUnread=$isUnread',
+              tag: 'NOTIFICATION_CONTROLLER',
+            );
+
+            return isNew && isUnread;
+          }).toList();
+
+      AppLogger.info(
+        'Nouvelles notifications détectées: ${newNotifications.length}',
+        tag: 'NOTIFICATION_CONTROLLER',
+      );
 
       // Pour chaque nouvelle notification, déclencher une notification locale
       for (final notification in newNotifications) {
@@ -351,19 +415,31 @@ class NotificationController extends GetxController {
           soundType = 'submit';
         }
 
+        AppLogger.info(
+          'Affichage notification locale: ID=${notification.id}, Title=${notification.title}, SoundType=$soundType',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
+
         // Afficher la notification locale avec son (sans ajouter à la liste car déjà gérée par le controller)
         _notificationService
             .showNotification(
               notification,
               soundType: soundType,
-              addToList: false, // Ne pas ajouter à la liste car le controller gère déjà sa propre liste
+              addToList:
+                  false, // Ne pas ajouter à la liste car le controller gère déjà sa propre liste
             )
-            .catchError((e) {
-          AppLogger.error(
-            'Erreur lors de l\'affichage de la notification locale: $e',
-            tag: 'NOTIFICATION_CONTROLLER',
-          );
-        });
+            .then((_) {
+              AppLogger.info(
+                'Notification locale affichée avec succès: ID=${notification.id}',
+                tag: 'NOTIFICATION_CONTROLLER',
+              );
+            })
+            .catchError((e, stackTrace) {
+              AppLogger.error(
+                'Erreur lors de l\'affichage de la notification locale: $e\nStack: $stackTrace',
+                tag: 'NOTIFICATION_CONTROLLER',
+              );
+            });
       }
 
       if (newNotifications.isNotEmpty) {
@@ -371,10 +447,15 @@ class NotificationController extends GetxController {
           '${newNotifications.length} nouvelle(s) notification(s) détectée(s) et affichée(s)',
           tag: 'NOTIFICATION_CONTROLLER',
         );
+      } else {
+        AppLogger.debug(
+          'Aucune nouvelle notification à afficher',
+          tag: 'NOTIFICATION_CONTROLLER',
+        );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.error(
-        'Erreur lors de la détection des nouvelles notifications: $e',
+        'Erreur lors de la détection des nouvelles notifications: $e\nStack: $stackTrace',
         tag: 'NOTIFICATION_CONTROLLER',
       );
     }

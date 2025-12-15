@@ -7,6 +7,7 @@ import 'package:easyconnect/Controllers/expense_controller.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
 import 'package:easyconnect/Controllers/leave_controller.dart';
+import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Controllers/recruitment_controller.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
@@ -78,6 +79,16 @@ class PatronBinding extends Bindings {
 
     // Contrôleur patron
     Get.put(PatronDashboardController(), permanent: true);
+
+    // NotificationController - S'assurer qu'il est initialisé pour le patron
+    // IMPORTANT: Utiliser permanent: true pour que le controller ne soit pas supprimé
+    // lors de la navigation, ce qui permet au polling de continuer
+    if (!Get.isRegistered<NotificationController>()) {
+      Get.put(NotificationController(), permanent: true);
+      print('NotificationController initialisé dans PatronBinding');
+    } else {
+      print('NotificationController déjà enregistré, réutilisation de l\'instance existante');
+    }
 
     // Contrôleurs nécessaires pour les validations
     Get.put(DevisController(), permanent: true);

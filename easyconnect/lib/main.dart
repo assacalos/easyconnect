@@ -4,9 +4,23 @@ import 'package:easyconnect/routes/app_routes.dart';
 import 'package:easyconnect/bindings/auth_binding.dart';
 import 'package:easyconnect/Views/Components/app_lifecycle_wrapper.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/services/notification_service_enhanced.dart';
+import 'package:easyconnect/services/push_notification_service.dart';
+
+/// Handler pour les notifications en arrière-plan (doit être top-level)
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Cette fonction est appelée quand une notification est reçue en arrière-plan
+  // Elle doit être top-level et ne peut pas être une méthode de classe
+  AppLogger.info(
+    'Notification reçue en arrière-plan: ${message.messageId}',
+    tag: 'PUSH_NOTIFICATION_BACKGROUND',
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +28,31 @@ void main() async {
   // Assurer l'initialisation du stockage avant de lancer l'app
   await GetStorage.init();
 
-  // Initialiser le service de notifications (non-bloquant)
+  // Initialiser Firebase
+  try {
+    await Firebase.initializeApp();
+    AppLogger.info('Firebase initialisé avec succès', tag: 'MAIN');
+
+    // Configurer le handler pour les notifications en arrière-plan
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // Initialiser le service de notifications push (non-bloquant)
+    PushNotificationService().initialize().catchError((e) {
+      AppLogger.error(
+        'Erreur lors de l\'initialisation des notifications push: $e',
+        tag: 'MAIN',
+      );
+    });
+  } catch (e, stackTrace) {
+    AppLogger.error(
+      'Erreur lors de l\'initialisation de Firebase: $e',
+      tag: 'MAIN',
+      error: e,
+      stackTrace: stackTrace,
+    );
+  }
+
+  // Initialiser le service de notifications locales (non-bloquant)
   NotificationServiceEnhanced().initialize().catchError((e) {
     AppLogger.error(
       'Erreur lors de l\'initialisation des notifications: $e',

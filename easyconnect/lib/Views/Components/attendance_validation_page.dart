@@ -5,6 +5,7 @@ import '../../services/attendance_punch_service.dart';
 import '../../Controllers/auth_controller.dart';
 import '../../utils/roles.dart';
 import '../../Views/Components/skeleton_loaders.dart';
+import '../../utils/map_helper.dart';
 
 class AttendanceValidationPage extends StatefulWidget {
   const AttendanceValidationPage({super.key});
@@ -263,6 +264,13 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
                     style: const TextStyle(color: Colors.grey),
                   ),
                 ),
+                if (attendance.latitude != 0.0 && attendance.longitude != 0.0)
+                  IconButton(
+                    icon: const Icon(Icons.map, size: 20),
+                    color: Colors.blue,
+                    onPressed: () => _openGoogleMaps(attendance),
+                    tooltip: 'Ouvrir dans Google Maps',
+                  ),
               ],
             ),
 
@@ -367,6 +375,22 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
         return Colors.orange;
       default:
         return Colors.grey;
+    }
+  }
+
+  Future<void> _openGoogleMaps(AttendancePunchModel attendance) async {
+    try {
+      await MapHelper.openGoogleMaps(
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        label: attendance.address,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible d\'ouvrir Google Maps: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
     }
   }
 }

@@ -399,22 +399,9 @@ class ClientController extends GetxController {
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('client');
 
-        // Notifier l'utilisateur concerné de la validation
-        final client = clients.firstWhereOrNull((c) => c.id == clientId);
-        if (client != null) {
-          NotificationHelper.notifyValidation(
-            entityType: 'client',
-            entityName: NotificationHelper.getEntityDisplayName(
-              'client',
-              client,
-            ),
-            entityId: clientId.toString(),
-            route: NotificationHelper.getEntityRoute(
-              'client',
-              clientId.toString(),
-            ),
-          );
-        }
+        // NOTE: Ne pas créer de notification locale ici car le backend
+        // crée déjà la notification d'approbation pour l'utilisateur concerné.
+        // Créer une notification locale créerait une duplication.
 
         Get.snackbar(
           'Succès',

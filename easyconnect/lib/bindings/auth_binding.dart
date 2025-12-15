@@ -7,6 +7,7 @@ import 'package:easyconnect/services/favorites_service.dart';
 import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
+import 'package:easyconnect/services/push_notification_service.dart';
 
 class AuthBinding extends Bindings {
   @override

@@ -53,10 +53,60 @@ class NotificationApiService {
         final data = ApiService.parseResponse(response);
         if (data['success'] == true) {
           final notificationsData = data['data'] as List<dynamic>;
-          return notificationsData
-              .map((json) => AppNotification.fromJson(json))
-              .toList();
+
+          // Log détaillé pour déboguer
+          AppLogger.info(
+            'Notifications reçues depuis l\'API: ${notificationsData.length}',
+            tag: 'NOTIFICATION_API_SERVICE',
+          );
+
+          // Log du contenu brut pour déboguer (première notification seulement)
+          if (notificationsData.isNotEmpty) {
+            AppLogger.info(
+              'Exemple de notification reçue: ${notificationsData[0]}',
+              tag: 'NOTIFICATION_API_SERVICE',
+            );
+          }
+
+          final notifications =
+              notificationsData
+                  .map((json) {
+                    try {
+                      final notification = AppNotification.fromJson(json);
+                      // Log chaque notification parsée pour déboguer
+                      AppLogger.info(
+                        'Notification parsée: ID=${notification.id}, Title=${notification.title}, EntityType=${notification.entityType}, EntityId=${notification.entityId}',
+                        tag: 'NOTIFICATION_API_SERVICE',
+                      );
+                      return notification;
+                    } catch (e, stackTrace) {
+                      AppLogger.error(
+                        'Erreur lors du parsing d\'une notification: $e\nStack: $stackTrace\nJSON: $json',
+                        tag: 'NOTIFICATION_API_SERVICE',
+                      );
+                      return null;
+                    }
+                  })
+                  .whereType<AppNotification>()
+                  .toList();
+
+          AppLogger.info(
+            'Notifications parsées avec succès: ${notifications.length}/${notificationsData.length}',
+            tag: 'NOTIFICATION_API_SERVICE',
+          );
+
+          return notifications;
+        } else {
+          AppLogger.warning(
+            'Réponse API sans success=true: $data',
+            tag: 'NOTIFICATION_API_SERVICE',
+          );
         }
+      } else {
+        AppLogger.warning(
+          'Réponse API avec code ${response.statusCode}: ${response.body}',
+          tag: 'NOTIFICATION_API_SERVICE',
+        );
       }
 
       return [];

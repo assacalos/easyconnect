@@ -499,7 +499,11 @@ class Host extends StatelessWidget {
         items: [
           BottomBarItem(icon: Icons.home, label: "Accueil"),
           BottomBarItem(icon: Icons.search, label: "Rechercher"),
-          BottomBarItem(icon: Icons.notifications, label: "Notifications"),
+          BottomBarItem(
+            icon: Icons.notifications,
+            label: "Notifications",
+            showBadge: true, // Afficher le badge avec le nombre de notifications non lues
+          ),
           BottomBarItem(icon: Icons.message_rounded, label: "Chat"),
           BottomBarItem(icon: Icons.print, label: "Scanner"),
         ],

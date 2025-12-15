@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/utils/map_helper.dart';
 
 class PointageDetail extends StatelessWidget {
   final AttendancePunchModel pointage;
@@ -74,6 +75,22 @@ class PointageDetail extends StatelessWidget {
                   'Précision',
                   '${pointage.accuracy!.toStringAsFixed(2)} mètres',
                 ),
+              if (pointage.latitude != 0.0 && pointage.longitude != 0.0) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openGoogleMaps(),
+                    icon: const Icon(Icons.map),
+                    label: const Text('Ouvrir dans Google Maps'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
             ]),
 
             // Photo si disponible
@@ -444,5 +461,21 @@ class PointageDetail extends StatelessWidget {
       'Fonctionnalité de partage à implémenter',
       snackPosition: SnackPosition.BOTTOM,
     );
+  }
+
+  Future<void> _openGoogleMaps() async {
+    try {
+      await MapHelper.openGoogleMaps(
+        latitude: pointage.latitude,
+        longitude: pointage.longitude,
+        label: pointage.address,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible d\'ouvrir Google Maps: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 }

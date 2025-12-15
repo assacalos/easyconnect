@@ -417,16 +417,17 @@ class ReportingController extends GetxController {
         reportId,
         comments: commentsController.text,
       );
-      
+
       // Vérifier si l'action a réussi
-      final isSuccess = result['success'] == true || 
-                       result['success'] == 1 ||
-                       result['success'] == 'true';
-      
+      final isSuccess =
+          result['success'] == true ||
+          result['success'] == 1 ||
+          result['success'] == 'true';
+
       if (isSuccess) {
         actionSuccess = true;
         Get.snackbar('Succès', 'Rapport approuvé avec succès');
-        
+
         // Rafraîchir les données en arrière-plan (non-bloquant)
         loadReports().catchError((e) {
           // Ignorer silencieusement les erreurs de refresh
@@ -440,7 +441,7 @@ class ReportingController extends GetxController {
         // L'action a réussi, ignorer les erreurs de parsing/refresh
         return;
       }
-      
+
       // Vérifier si c'est une erreur critique (authentification)
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('401') ||
@@ -476,16 +477,17 @@ class ReportingController extends GetxController {
         reportId,
         comments: reason ?? commentsController.text,
       );
-      
+
       // Vérifier si l'action a réussi
-      final isSuccess = result['success'] == true || 
-                       result['success'] == 1 ||
-                       result['success'] == 'true';
-      
+      final isSuccess =
+          result['success'] == true ||
+          result['success'] == 1 ||
+          result['success'] == 'true';
+
       if (isSuccess) {
         actionSuccess = true;
         Get.snackbar('Succès', 'Rapport rejeté avec succès');
-        
+
         // Rafraîchir les données en arrière-plan (non-bloquant)
         loadReports().catchError((e) {
           // Ignorer silencieusement les erreurs de refresh
@@ -499,7 +501,7 @@ class ReportingController extends GetxController {
         // L'action a réussi, ignorer les erreurs de parsing/refresh
         return;
       }
-      
+
       // Vérifier si c'est une erreur critique (authentification)
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('401') ||
@@ -947,13 +949,17 @@ class ReportingController extends GetxController {
     try {
       isLoading.value = true;
 
-      final result = await _reportingService.addPatronNote(reportId, note: note);
-      
+      final result = await _reportingService.addPatronNote(
+        reportId,
+        note: note,
+      );
+
       // Vérifier si l'action a réussi
-      final isSuccess = result['success'] == true || 
-                       result['success'] == 1 ||
-                       result['success'] == 'true';
-      
+      final isSuccess =
+          result['success'] == true ||
+          result['success'] == 1 ||
+          result['success'] == 'true';
+
       if (isSuccess) {
         actionSuccess = true;
         Get.snackbar(
@@ -962,13 +968,15 @@ class ReportingController extends GetxController {
               ? 'Note enregistrée avec succès'
               : 'Note supprimée avec succès',
         );
-        
+
         // Rafraîchir les données en arrière-plan (non-bloquant)
         loadReports().catchError((e) {
           // Ignorer silencieusement les erreurs de refresh
         });
       } else {
-        throw Exception(result['message'] ?? 'Erreur lors de l\'enregistrement de la note');
+        throw Exception(
+          result['message'] ?? 'Erreur lors de l\'enregistrement de la note',
+        );
       }
     } catch (e) {
       // Ne pas afficher d'erreur si l'action principale a réussi
@@ -976,7 +984,7 @@ class ReportingController extends GetxController {
         // L'action a réussi, ignorer les erreurs de parsing/refresh
         return;
       }
-      
+
       // Vérifier si c'est une erreur critique (authentification)
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('401') ||
@@ -994,7 +1002,10 @@ class ReportingController extends GetxController {
           // Probablement un problème de parsing après un succès
           // Ne rien afficher
         } else {
-          Get.snackbar('Erreur', 'Erreur lors de l\'enregistrement de la note: $e');
+          Get.snackbar(
+            'Erreur',
+            'Erreur lors de l\'enregistrement de la note: $e',
+          );
         }
       }
     } finally {

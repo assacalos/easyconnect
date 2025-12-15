@@ -32,6 +32,7 @@ use App\Http\Controllers\API\EquipmentController;
 use App\Http\Controllers\API\SalaryController;
 use App\Http\Controllers\API\LeaveRequestController;
 use App\Http\Controllers\API\LeaveBalanceController;
+use App\Http\Controllers\API\DeviceTokenController;
 
 /* -------------------------------------------------------------- */
 /* ROUTES PUBLIQUES (SANS AUTHENTIFICATION) */
@@ -103,6 +104,14 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/{id}/read', [NotificationController::class, 'markAsRead']);
         Route::put('/read-all', [NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+
+    // Routes pour les tokens d'appareil (tous les utilisateurs authentifiés)
+    Route::prefix('device-tokens')->group(function () {
+        Route::get('/', [DeviceTokenController::class, 'index']);
+        Route::post('/', [DeviceTokenController::class, 'store']);
+        Route::delete('/{id}', [DeviceTokenController::class, 'destroy']);
+        Route::delete('/', [DeviceTokenController::class, 'destroyAll']);
     });
     
     // Routes existantes pour compatibilité

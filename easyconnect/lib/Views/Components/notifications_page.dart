@@ -10,7 +10,23 @@ class NotificationsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(NotificationController());
+    // Utiliser l'instance existante si disponible, sinon en créer une nouvelle
+    final isRegistered = Get.isRegistered<NotificationController>();
+    final controller = isRegistered
+        ? Get.find<NotificationController>()
+        : Get.put(NotificationController());
+    
+    // Log pour déboguer
+    if (isRegistered) {
+      print('[NOTIFICATIONS_PAGE] NotificationController trouvé (instance existante)');
+    } else {
+      print('[NOTIFICATIONS_PAGE] NotificationController créé (nouvelle instance)');
+    }
+    
+    // Forcer le rechargement des notifications au premier affichage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadNotifications(forceRefresh: true);
+    });
 
     return Scaffold(
       appBar: AppBar(

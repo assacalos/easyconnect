@@ -25,9 +25,12 @@ class AppNotification {
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
+    // Accepter à la fois 'title' et 'titre' pour compatibilité avec le backend
+    final title = json['title'] ?? json['titre'] ?? '';
+
     return AppNotification(
       id: json['id'].toString(),
-      title: json['title'] ?? '',
+      title: title,
       message: json['message'] ?? '',
       type: json['type'] ?? 'info',
       entityType: json['entity_type'] ?? '',

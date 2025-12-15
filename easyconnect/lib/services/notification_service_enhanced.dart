@@ -302,7 +302,16 @@ class NotificationServiceEnhanced {
     required String soundType,
     bool addToList = true, // Par défaut, ajouter à la liste
   }) async {
+    AppLogger.info(
+      'showNotification appelé: ID=${notification.id}, Title=${notification.title}, SoundType=$soundType, AddToList=$addToList',
+      tag: 'NOTIFICATION',
+    );
+
     if (!_isInitialized) {
+      AppLogger.info(
+        'Service non initialisé, initialisation en cours...',
+        tag: 'NOTIFICATION',
+      );
       await initialize();
     }
 
@@ -314,22 +323,44 @@ class NotificationServiceEnhanced {
 
     // Afficher la notification locale (non-bloquant)
     if (_notificationsEnabled) {
-      _showLocalNotification(notification).catchError((e) {
-        AppLogger.error(
-          'Erreur lors de l\'affichage de la notification locale: $e',
-          tag: 'NOTIFICATION',
-        );
-      });
+      AppLogger.info(
+        'Affichage notification locale activé, affichage en cours...',
+        tag: 'NOTIFICATION',
+      );
+      _showLocalNotification(notification)
+          .then((_) {
+            AppLogger.info(
+              'Notification locale affichée avec succès: ID=${notification.id}',
+              tag: 'NOTIFICATION',
+            );
+          })
+          .catchError((e, stackTrace) {
+            AppLogger.error(
+              'Erreur lors de l\'affichage de la notification locale: $e\nStack: $stackTrace',
+              tag: 'NOTIFICATION',
+            );
+          });
+    } else {
+      AppLogger.warning(
+        'Notifications locales désactivées',
+        tag: 'NOTIFICATION',
+      );
     }
 
     // Jouer le son (non-bloquant)
     if (_soundsEnabled) {
+      AppLogger.info(
+        'Sons activés, lecture du son: $soundType',
+        tag: 'NOTIFICATION',
+      );
       _playSound(soundType).catchError((e) {
         AppLogger.error(
           'Erreur lors de la lecture du son: $e',
           tag: 'NOTIFICATION',
         );
       });
+    } else {
+      AppLogger.warning('Sons désactivés', tag: 'NOTIFICATION');
     }
 
     // Afficher le snackbar seulement si l'app est au premier plan
@@ -346,6 +377,11 @@ class NotificationServiceEnhanced {
 
   /// Afficher une notification locale
   Future<void> _showLocalNotification(AppNotification notification) async {
+    AppLogger.info(
+      'Affichage notification locale: ID=${notification.id}, Title=${notification.title}',
+      tag: 'NOTIFICATION',
+    );
+
     final androidDetails = AndroidNotificationDetails(
       'easyconnect_notifications', // Channel ID - doit correspondre au canal créé
       'Notifications EasyConnect',
@@ -374,13 +410,30 @@ class NotificationServiceEnhanced {
             ? '${notification.actionRoute}:${notification.entityId}'
             : null;
 
-    await _localNotifications.show(
-      notification.id.hashCode,
-      notification.title,
-      notification.message,
-      details,
-      payload: payload,
+    AppLogger.info(
+      'Appel _localNotifications.show: ID=${notification.id.hashCode}, Title=${notification.title}, Sound=${_soundsEnabled}',
+      tag: 'NOTIFICATION',
     );
+
+    try {
+      await _localNotifications.show(
+        notification.id.hashCode,
+        notification.title,
+        notification.message,
+        details,
+        payload: payload,
+      );
+      AppLogger.info(
+        'Notification locale affichée avec succès via _localNotifications.show',
+        tag: 'NOTIFICATION',
+      );
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de l\'appel _localNotifications.show: $e\nStack: $stackTrace',
+        tag: 'NOTIFICATION',
+      );
+      rethrow;
+    }
   }
 
   /// Jouer un son selon le type

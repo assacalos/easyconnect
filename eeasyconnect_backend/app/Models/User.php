@@ -112,4 +112,20 @@ class User extends Authenticatable
             return $roles[$this->role] ?? 'Inconnu';
         });
     }
+
+    /**
+     * Relation avec les tokens d'appareil
+     */
+    public function deviceTokens()
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
+
+    /**
+     * Obtenir les tokens actifs de l'utilisateur
+     */
+    public function activeDeviceTokens()
+    {
+        return $this->deviceTokens()->where('is_active', true);
+    }
 }

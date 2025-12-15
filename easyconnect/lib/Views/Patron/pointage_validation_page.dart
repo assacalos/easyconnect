@@ -6,6 +6,7 @@ import 'package:easyconnect/Models/attendance_punch_model.dart';
 import 'package:easyconnect/Views/Rh/pointage_detail.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/utils/map_helper.dart';
 
 class PointageValidationPage extends StatefulWidget {
   const PointageValidationPage({super.key});
@@ -271,9 +272,33 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Lieu:'),
-                            Text(pointage.address ?? 'Inconnu'),
+                            Expanded(
+                              child: Text(
+                                pointage.address ?? 'Inconnu',
+                                textAlign: TextAlign.end,
+                              ),
+                            ),
                           ],
                         ),
+                        if (pointage.latitude != 0.0 &&
+                            pointage.longitude != 0.0) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _openGoogleMaps(pointage),
+                              icon: const Icon(Icons.map, size: 18),
+                              label: const Text('Ouvrir dans Google Maps'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         // Photo affichée dans une section séparée ci-dessous
                         if (pointage.notes != null &&
                             pointage.notes!.isNotEmpty)
@@ -361,5 +386,21 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openGoogleMaps(AttendancePunchModel pointage) async {
+    try {
+      await MapHelper.openGoogleMaps(
+        latitude: pointage.latitude,
+        longitude: pointage.longitude,
+        label: pointage.address,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Impossible d\'ouvrir Google Maps: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 }

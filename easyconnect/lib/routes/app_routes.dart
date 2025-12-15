@@ -426,9 +426,7 @@ class AppRoutes {
     ),
     GetPage(
       name: '/user-reportings/:id',
-      page: () => ReportingDetail(
-        reporting: Get.arguments as ReportingModel,
-      ),
+      page: () => ReportingDetail(reporting: Get.arguments as ReportingModel),
       binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
@@ -738,6 +736,8 @@ class AppRoutes {
       name: '/notifications',
       page: () => const NotificationsPage(),
       middlewares: [AuthMiddleware()],
+      // Ne pas utiliser de binding ici car le NotificationController
+      // doit être permanent et partagé entre toutes les pages
     ),
     // Page des médias
     GetPage(
