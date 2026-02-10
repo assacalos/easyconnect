@@ -499,6 +499,20 @@ class ExpenseController extends GetxController {
         await loadExpenseStats();
         await loadPendingExpenses();
 
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'expense',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'expense',
+            expense,
+          ),
+          entityId: expense.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'expense',
+            expense.id.toString(),
+          ),
+        );
+
         Get.snackbar(
           'Succès',
           'Dépense soumise au patron',
@@ -551,6 +565,7 @@ class ExpenseController extends GetxController {
             'expense',
             expense.id.toString(),
           ),
+          entity: expense,
         );
 
         await loadExpenses();
@@ -607,6 +622,7 @@ class ExpenseController extends GetxController {
             'expense',
             expense.id.toString(),
           ),
+          entity: expense,
         );
 
         await loadExpenses();

@@ -7,7 +7,7 @@ import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/services/location_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class AttendanceController extends GetxController {
   final AttendancePunchService _attendanceService = AttendancePunchService();
@@ -274,13 +274,26 @@ class AttendanceController extends GetxController {
 
       if (result['success'] == true) {
         currentStatus.value = 'checked_in';
-        /* Get.snackbar(
-          'Succès',
-          'Pointage d\'arrivée enregistré',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-        ); */
+
+        // Notifier le patron du pointage d'arrivée
+        final attendanceData = result['data'] as AttendancePunchModel?;
+        if (attendanceData != null && attendanceData.id != null) {
+          final user = _authController.userAuth.value;
+          final employeeName =
+              user != null
+                  ? '${user.prenom ?? ''} ${user.nom ?? ''}'.trim()
+                  : 'Employé';
+
+          NotificationHelper.notifySubmission(
+            entityType: 'attendance',
+            entityName: 'Pointage d\'arrivée de $employeeName',
+            entityId: attendanceData.id.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'attendance',
+              attendanceData.id.toString(),
+            ),
+          );
+        }
 
         // Recharger les données
         await loadAttendanceData();
@@ -336,6 +349,31 @@ class AttendanceController extends GetxController {
 
       if (result['success'] == true) {
         currentStatus.value = 'checked_out';
+
+        // Notifier le patron du pointage de départ
+        try {
+          final attendanceData = result['data'];
+          if (attendanceData is AttendancePunchModel &&
+              attendanceData.id != null) {
+            final user = _authController.userAuth.value;
+            final employeeName =
+                user != null
+                    ? '${user.prenom ?? ''} ${user.nom ?? ''}'.trim()
+                    : 'Employé';
+
+            NotificationHelper.notifySubmission(
+              entityType: 'attendance',
+              entityName: 'Pointage de départ de $employeeName',
+              entityId: attendanceData.id.toString(),
+              route: NotificationHelper.getEntityRoute(
+                'attendance',
+                attendanceData.id.toString(),
+              ),
+            );
+          }
+        } catch (e) {
+          // Ignorer les erreurs de notification (non bloquant)
+        }
 
         // Recharger les données
         await loadAttendanceData();

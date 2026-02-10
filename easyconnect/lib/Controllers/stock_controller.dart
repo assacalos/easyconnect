@@ -592,6 +592,20 @@ class StockController extends GetxController {
       if (createdStock.id != null) {
         allStocks.add(createdStock);
         stocks.add(createdStock);
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'stock',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'stock',
+            createdStock,
+          ),
+          entityId: createdStock.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'stock',
+            createdStock.id.toString(),
+          ),
+        );
       }
 
       Get.snackbar(
@@ -885,6 +899,7 @@ class StockController extends GetxController {
         entityName: NotificationHelper.getEntityDisplayName('stock', stock),
         entityId: stock.id.toString(),
         route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
+        entity: stock,
       );
 
       Get.snackbar(
@@ -968,6 +983,7 @@ class StockController extends GetxController {
         entityId: stock.id.toString(),
         reason: commentaire ?? 'Rejeté par le patron',
         route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
+        entity: stock,
       );
 
       Get.snackbar(

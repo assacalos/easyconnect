@@ -470,6 +470,7 @@ class LeaveController extends GetxController {
             'leave',
             request.id.toString(),
           ),
+          entity: request,
         );
 
         Get.snackbar('Succès', 'Demande approuvée avec succès');
@@ -518,6 +519,7 @@ class LeaveController extends GetxController {
             'leave',
             request.id.toString(),
           ),
+          entity: request,
         );
 
         Get.snackbar('Succès', 'Demande rejetée');

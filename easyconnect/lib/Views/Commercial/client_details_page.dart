@@ -161,6 +161,13 @@ class ClientDetailsPage extends StatelessWidget {
                         'Situation géographique',
                         client.situationGeographique ?? '',
                       ),
+                      if (client.numeroContribuable != null &&
+                          client.numeroContribuable!.isNotEmpty)
+                        _buildInfoRow(
+                          Icons.badge,
+                          'Numéro contribuable',
+                          client.numeroContribuable ?? '',
+                        ),
                     ]),
                     if (client.status == 2 && client.commentaire != null) ...[
                       const SizedBox(height: 24),

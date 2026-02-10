@@ -34,7 +34,7 @@ class EmployeeService extends GetxService {
     String? position,
     String? status,
     int page = 1,
-    int perPage = 15,
+    int perPage = 10,
   }) async {
     print('📡 [EMPLOYEE_SERVICE] ===== getEmployeesPaginated APPELÉ =====');
     print(
@@ -103,9 +103,28 @@ class EmployeeService extends GetxService {
       }
 
       if (response.statusCode == 200) {
-        print('🔍 [EMPLOYEE_SERVICE] Parsing de la réponse JSON...');
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        print('🔍 [EMPLOYEE_SERVICE] Structure JSON: ${data.keys.toList()}');
+        Map<String, dynamic> data;
+        try {
+          print('🔍 [EMPLOYEE_SERVICE] Parsing de la réponse JSON...');
+          data = jsonDecode(response.body) as Map<String, dynamic>;
+          print('🔍 [EMPLOYEE_SERVICE] Structure JSON: ${data.keys.toList()}');
+        } on FormatException catch (e) {
+          print('❌ [EMPLOYEE_SERVICE] Erreur avec getEmployeesPaginated: $e');
+          if (perPage > 5) {
+            print(
+              '🔄 [EMPLOYEE_SERVICE] Réponse JSON tronquée, nouvel essai avec per_page=5',
+            );
+            return getEmployeesPaginated(
+              search: search,
+              department: department,
+              position: position,
+              status: status,
+              page: page,
+              perPage: 5,
+            );
+          }
+          rethrow;
+        }
 
         // Utiliser PaginationHelper pour parser la réponse
         PaginationResponse<Employee> paginatedResponse;
@@ -362,8 +381,8 @@ class EmployeeService extends GetxService {
     int? page,
     int? limit,
   }) async {
-    // Si aucune limite n'est spécifiée, utiliser une limite par défaut pour éviter les réponses trop grandes
-    final effectiveLimit = limit ?? 50;
+    // Si aucune limite n'est spécifiée, utiliser une limite modérée pour éviter les réponses tronquées (JSON)
+    final effectiveLimit = limit ?? 15;
     final effectivePage = page ?? 1;
 
     // OPTIMISATION : Vérifier le cache d'abord (sauf pour les recherches)

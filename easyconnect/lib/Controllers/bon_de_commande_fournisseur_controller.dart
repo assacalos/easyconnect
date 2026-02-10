@@ -12,6 +12,7 @@ import 'package:easyconnect/utils/reference_generator.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class BonDeCommandeFournisseurController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -317,6 +318,20 @@ class BonDeCommandeFournisseurController extends GetxController
           'Bon de commande ajouté à la liste: ${createdBonDeCommande.numeroCommande} (ID: ${createdBonDeCommande.id})',
           tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
         );
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'bon_de_commande_fournisseur',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'bon_de_commande_fournisseur',
+            createdBonDeCommande,
+          ),
+          entityId: createdBonDeCommande.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'bon_de_commande_fournisseur',
+            createdBonDeCommande.id.toString(),
+          ),
+        );
       }
 
       // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
@@ -500,6 +515,26 @@ class BonDeCommandeFournisseurController extends GetxController
           'bon_de_commande_fournisseur',
         );
 
+        // Notifier l'utilisateur concerné de la validation
+        final bonDeCommande = bonDeCommandes.firstWhereOrNull(
+          (b) => b.id == bonDeCommandeId,
+        );
+        if (bonDeCommande != null) {
+          NotificationHelper.notifyValidation(
+            entityType: 'bon_de_commande_fournisseur',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bon_de_commande_fournisseur',
+              bonDeCommande,
+            ),
+            entityId: bonDeCommandeId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'bon_de_commande_fournisseur',
+              bonDeCommandeId.toString(),
+            ),
+            entity: bonDeCommande,
+          );
+        }
+
         Get.snackbar(
           'Succès',
           'Bon de commande approuvé avec succès',
@@ -584,6 +619,27 @@ class BonDeCommandeFournisseurController extends GetxController
         DashboardRefreshHelper.refreshPatronCounter(
           'bon_de_commande_fournisseur',
         );
+
+        // Notifier l'utilisateur concerné du rejet
+        final bonDeCommande = bonDeCommandes.firstWhereOrNull(
+          (b) => b.id == bonDeCommandeId,
+        );
+        if (bonDeCommande != null) {
+          NotificationHelper.notifyRejection(
+            entityType: 'bon_de_commande_fournisseur',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bon_de_commande_fournisseur',
+              bonDeCommande,
+            ),
+            entityId: bonDeCommandeId.toString(),
+            reason: commentaire,
+            route: NotificationHelper.getEntityRoute(
+              'bon_de_commande_fournisseur',
+              bonDeCommandeId.toString(),
+            ),
+            entity: bonDeCommande,
+          );
+        }
 
         Get.snackbar(
           'Succès',
@@ -689,6 +745,7 @@ class BonDeCommandeFournisseurController extends GetxController
           bonDeCommande.items
               .map(
                 (item) => {
+                  'reference': item.ref ?? '',
                   'ref': item.ref ?? '',
                   'designation': item.designation,
                   'quantite': item.quantite,
@@ -701,10 +758,13 @@ class BonDeCommandeFournisseurController extends GetxController
       await PdfService().generateBonCommandePdf(
         bonCommande: {
           'reference': bonDeCommande.numeroCommande,
+          'titre': bonDeCommande.description,
           'date_creation': bonDeCommande.dateCommande,
           'montant_ht': bonDeCommande.montantTotalCalcule,
           'tva': 0.0,
           'total_ttc': bonDeCommande.montantTotalCalcule,
+          'delai_livraison': bonDeCommande.delaiLivraison,
+          'conditions_paiement': bonDeCommande.conditionsPaiement,
         },
         items: itemsData,
         fournisseur: {

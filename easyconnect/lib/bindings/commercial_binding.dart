@@ -2,6 +2,7 @@ import 'package:easyconnect/Controllers/attendance_controller.dart';
 import 'package:easyconnect/Controllers/intervention_controller.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
+import 'package:easyconnect/Controllers/task_controller.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/intervention_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
@@ -21,6 +22,7 @@ import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
+import 'package:easyconnect/services/task_service.dart';
 
 class CommercialBinding extends Bindings {
   @override
@@ -36,6 +38,7 @@ class CommercialBinding extends Bindings {
     Get.put(BonDeCommandeFournisseurService(), permanent: true);
     Get.put(InvoiceService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
+    Get.put(TaskService(), permanent: true);
     Get.put(InvoiceController(), permanent: true);
     Get.put(ReportingService(), permanent: true);
     Get.put(AttendancePunchService(), permanent: true);
@@ -53,5 +56,6 @@ class CommercialBinding extends Bindings {
     Get.put(InvoiceController(), permanent: true);
     Get.put(PaymentController(), permanent: true);
     Get.put(InterventionController(), permanent: true);
+    Get.put(TaskController(), permanent: true);
   }
 }

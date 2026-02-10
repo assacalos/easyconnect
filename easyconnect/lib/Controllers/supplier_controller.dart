@@ -3,7 +3,9 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class SupplierController extends GetxController {
   late final SupplierService _supplierService;
@@ -63,7 +65,15 @@ class SupplierController extends GetxController {
 
   // Charger tous les fournisseurs
   Future<void> loadSuppliers() async {
+    const cacheKey = 'suppliers_all';
     try {
+      // Afficher immédiatement les données du cache si disponibles
+      final cachedSuppliers = CacheHelper.get<List<Supplier>>(cacheKey);
+      if (cachedSuppliers != null && cachedSuppliers.isNotEmpty) {
+        allSuppliers.assignAll(cachedSuppliers);
+        applyFilters();
+      }
+
       isLoading.value = true;
 
       // Charger tous les fournisseurs sans filtre côté serveur
@@ -74,6 +84,9 @@ class SupplierController extends GetxController {
 
       // Stocker tous les fournisseurs
       allSuppliers.assignAll(loadedSuppliers);
+
+      // Sauvegarder dans le cache (durée 15 min)
+      CacheHelper.set(cacheKey, loadedSuppliers, duration: AppConfig.mediumCacheDuration);
 
       // Appliquer les filtres côté client
       applyFilters();
@@ -185,6 +198,20 @@ class SupplierController extends GetxController {
       // Ajouter le fournisseur à la liste localement (mise à jour optimiste)
       if (createdSupplier.id != null) {
         suppliers.add(createdSupplier);
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'supplier',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'supplier',
+            createdSupplier,
+          ),
+          entityId: createdSupplier.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'supplier',
+            createdSupplier.id.toString(),
+          ),
+        );
       }
 
       await loadSuppliers(); // Recharger tous les fournisseurs
@@ -328,6 +355,21 @@ class SupplierController extends GetxController {
         // Invalider le cache
         CacheHelper.clearByPrefix('suppliers_');
 
+        // Notifier l'utilisateur concerné de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'supplier',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'supplier',
+            supplier,
+          ),
+          entityId: supplier.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'supplier',
+            supplier.id.toString(),
+          ),
+          entity: supplier,
+        );
+
         Get.snackbar(
           'Succès',
           'Fournisseur validé avec succès',
@@ -419,6 +461,22 @@ class SupplierController extends GetxController {
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
         await loadSupplierStats();
+
+        // Notifier l'utilisateur concerné du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'supplier',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'supplier',
+            supplier,
+          ),
+          entityId: supplier.id.toString(),
+          reason: rejectionReason,
+          route: NotificationHelper.getEntityRoute(
+            'supplier',
+            supplier.id.toString(),
+          ),
+          entity: supplier,
+        );
 
         Get.snackbar(
           'Succès',
@@ -522,6 +580,20 @@ class SupplierController extends GetxController {
       if (success) {
         await loadSuppliers(); // Recharger tous les fournisseurs
         await loadSupplierStats();
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'supplier',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'supplier',
+            supplier,
+          ),
+          entityId: supplier.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'supplier',
+            supplier.id.toString(),
+          ),
+        );
 
         Get.snackbar(
           'Succès',

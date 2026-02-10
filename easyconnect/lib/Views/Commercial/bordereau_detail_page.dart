@@ -35,6 +35,8 @@ class BordereauDetailPage extends StatelessWidget {
             _header(bordereau, nf),
             const SizedBox(height: 16),
             _card('Informations', [
+              if (bordereau.titre != null && bordereau.titre!.isNotEmpty)
+                _row(Icons.title, 'Titre', bordereau.titre!),
               _row(
                 Icons.calendar_today,
                 'Date de création',
@@ -47,6 +49,16 @@ class BordereauDetailPage extends StatelessWidget {
                   formatDate.format(bordereau.dateValidation!),
                 ),
               _row(Icons.info, 'Statut', bordereau.statusText),
+              if (bordereau.etatLivraison != null && bordereau.etatLivraison!.isNotEmpty)
+                _row(Icons.local_shipping, 'État de livraison', _etatLivraisonLabel(bordereau.etatLivraison!)),
+              if (bordereau.garantie != null && bordereau.garantie!.isNotEmpty)
+                _row(Icons.verified_user, 'Garantie', bordereau.garantie!),
+              if (bordereau.dateLivraison != null)
+                _row(
+                  Icons.event,
+                  'Date de livraison',
+                  formatDate.format(bordereau.dateLivraison!),
+                ),
             ]),
             const SizedBox(height: 16),
             _card('Montants', [
@@ -173,6 +185,21 @@ class BordereauDetailPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _etatLivraisonLabel(String value) {
+    switch (value) {
+      case 'en_attente':
+        return 'En attente';
+      case 'en_cours':
+        return 'En cours';
+      case 'livre':
+        return 'Livré';
+      case 'partiel':
+        return 'Partiel';
+      default:
+        return value;
+    }
   }
 
   Widget _rejection(String title, String reason) {

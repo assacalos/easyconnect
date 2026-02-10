@@ -43,6 +43,7 @@ import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
 import 'package:easyconnect/services/recruitment_service.dart';
+import 'package:easyconnect/services/task_service.dart';
 
 class PatronBinding extends Bindings {
   @override
@@ -76,6 +77,7 @@ class PatronBinding extends Bindings {
     Get.put(BonDeCommandeFournisseurService(), permanent: true);
     Get.put(RecruitmentService(), permanent: true);
     Get.put(LeaveService(), permanent: true);
+    Get.put(TaskService(), permanent: true);
 
     // Contrôleur patron
     Get.put(PatronDashboardController(), permanent: true);

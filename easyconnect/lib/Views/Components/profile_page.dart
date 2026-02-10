@@ -1,6 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/models/user_model.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
@@ -36,7 +42,7 @@ class ProfilePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // En-tête avec avatar
-              _buildHeader(user),
+              _buildHeader(context, user),
               const SizedBox(height: 24),
 
               // Informations personnelles
@@ -109,7 +115,8 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(user) {
+  Widget _buildHeader(BuildContext context, dynamic user) {
+    final String? photoUrl = user is UserModel ? user.photoUrl : (user.avatar?.toString().trim().isNotEmpty == true && user.avatar.toString().startsWith('http') ? user.avatar : null);
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -117,21 +124,43 @@ class ProfilePage extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.blueGrey.shade700,
-              child: Text(
-                (user.prenom?.isNotEmpty == true
-                        ? user.prenom![0]
-                        : user.nom?.isNotEmpty == true
-                        ? user.nom![0]
-                        : "?")
-                    .toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+            GestureDetector(
+              onTap: () => _changeProfilePhoto(context, user),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.blueGrey.shade700,
+                    child: photoUrl != null
+                        ? ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: photoUrl,
+                              width: 100,
+                              height: 100,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => const Center(
+                                child: CircularProgressIndicator(color: Colors.white),
+                              ),
+                              errorWidget: (_, __, ___) => _avatarInitial(user),
+                            ),
+                          )
+                        : _avatarInitial(user),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade700,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 20),
@@ -181,6 +210,101 @@ class ProfilePage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _avatarInitial(dynamic user) {
+    return Text(
+      (user.prenom?.isNotEmpty == true
+              ? user.prenom![0]
+              : user.nom?.isNotEmpty == true
+                  ? user.nom![0]
+                  : "?")
+          .toUpperCase(),
+      style: const TextStyle(
+        fontSize: 40,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  Future<void> _changeProfilePhoto(BuildContext context, dynamic user) async {
+    Get.bottomSheet(
+      SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Prendre une photo'),
+              onTap: () async {
+                Get.back();
+                await _pickAndUploadPhoto(context, ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choisir depuis la galerie'),
+              onTap: () async {
+                Get.back();
+                await _pickAndUploadPhoto(context, ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text('Annuler'),
+              onTap: () => Get.back(),
+            ),
+          ],
+        ),
+      ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadPhoto(BuildContext context, ImageSource source) async {
+    final AuthController authController = Get.find<AuthController>();
+    try {
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final File file = File(picked.path);
+      if (!await file.exists()) return;
+
+      Get.snackbar('Chargement…', 'Mise à jour de la photo en cours…', snackPosition: SnackPosition.BOTTOM);
+      final response = await ApiService.updateProfilePhoto(file);
+      Get.closeCurrentSnackbar();
+
+      if (response['success'] == true && response['data'] != null) {
+        final data = Map<String, dynamic>.from(response['data'] as Map);
+        authController.userAuth.value = UserModel.fromJson(data);
+        await SessionService.saveUser(data);
+        Get.snackbar(
+          'Photo mise à jour',
+          'Votre photo de profil a été enregistrée.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        Get.snackbar(
+          'Erreur',
+          response['message']?.toString() ?? 'Impossible de mettre à jour la photo.',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 
   Widget _buildSection({
@@ -364,14 +488,58 @@ class ProfilePage extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              // TODO: Implémenter la mise à jour du profil via API
-              Get.snackbar(
-                'Information',
-                'La mise à jour du profil sera implémentée prochainement',
-                snackPosition: SnackPosition.BOTTOM,
-              );
-              Get.back();
+            onPressed: () async {
+              final nom = nomController.text.trim();
+              final prenom = prenomController.text.trim();
+              final email = emailController.text.trim();
+              if (nom.isEmpty || prenom.isEmpty || email.isEmpty) {
+                Get.snackbar(
+                  'Champs requis',
+                  'Veuillez remplir nom, prénom et email.',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                return;
+              }
+              if (!GetUtils.isEmail(email)) {
+                Get.snackbar(
+                  'Email invalide',
+                  'Veuillez saisir une adresse email valide.',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+                return;
+              }
+              try {
+                final response = await ApiService.updateUserProfile(
+                  nom: nom,
+                  prenom: prenom,
+                  email: email,
+                );
+                Get.back();
+                if (response['success'] == true && response['data'] != null) {
+                  authController.userAuth.value =
+                      UserModel.fromJson(Map<String, dynamic>.from(response['data'] as Map));
+                  await SessionService.saveUser(
+                      Map<String, dynamic>.from(response['data'] as Map));
+                  Get.snackbar(
+                    'Profil mis à jour',
+                    'Vos informations (dont l\'email) ont été enregistrées. Vous recevrez les notifications par mail.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                } else {
+                  Get.snackbar(
+                    'Erreur',
+                    response['message']?.toString() ?? 'Impossible de mettre à jour le profil.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                }
+              } catch (e) {
+                Get.back();
+                Get.snackbar(
+                  'Erreur',
+                  e.toString().replaceFirst('Exception: ', ''),
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
             },
             child: const Text('Enregistrer'),
           ),

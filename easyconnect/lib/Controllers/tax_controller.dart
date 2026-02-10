@@ -6,6 +6,7 @@ import 'package:easyconnect/services/tax_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class TaxController extends GetxController {
   late final TaxService _taxService;
@@ -365,6 +366,15 @@ class TaxController extends GetxController {
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('tax');
 
+        // Notifier l'utilisateur créateur de la validation
+        NotificationHelper.notifyValidation(
+          entityType: 'taxe',
+          entityName: NotificationHelper.getEntityDisplayName('taxe', tax),
+          entityId: tax.id.toString(),
+          route: NotificationHelper.getEntityRoute('taxe', tax.id.toString()),
+          entity: tax,
+        );
+
         Get.snackbar(
           'Succès',
           'Taxe validée avec succès',
@@ -461,6 +471,16 @@ class TaxController extends GetxController {
       if (success) {
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('tax');
+
+        // Notifier l'utilisateur créateur du rejet
+        NotificationHelper.notifyRejection(
+          entityType: 'taxe',
+          entityName: NotificationHelper.getEntityDisplayName('taxe', tax),
+          entityId: tax.id.toString(),
+          reason: reason,
+          route: NotificationHelper.getEntityRoute('taxe', tax.id.toString()),
+          entity: tax,
+        );
 
         Get.snackbar(
           'Succès',

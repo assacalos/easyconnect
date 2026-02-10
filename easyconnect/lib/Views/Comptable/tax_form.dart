@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class TaxForm extends StatefulWidget {
   final Tax? tax;
@@ -321,6 +322,20 @@ class _TaxFormState extends State<TaxForm> {
           // Sauvegarder dans le cache pour un affichage instantané
           final cacheKey = 'taxes_all';
           CacheHelper.set(cacheKey, controller.allTaxes.toList());
+
+          // Notifier le patron de la création de la taxe
+          NotificationHelper.notifySubmission(
+            entityType: 'taxe',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'taxe',
+              createdTax,
+            ),
+            entityId: createdTax.id.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'taxe',
+              createdTax.id.toString(),
+            ),
+          );
         }
 
         Get.snackbar(

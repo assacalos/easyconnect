@@ -11,6 +11,7 @@ class MediaItem {
   final String? entityType;
   final DateTime createdAt;
   final int? fileSize;
+  final int? userId; // ID de l'utilisateur qui a créé le média
 
   const MediaItem({
     required this.id,
@@ -23,6 +24,7 @@ class MediaItem {
     this.entityType,
     required this.createdAt,
     this.fileSize,
+    this.userId,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) {
@@ -40,6 +42,10 @@ class MediaItem {
               ? DateTime.parse(json['created_at'])
               : DateTime.now(),
       fileSize: json['file_size'],
+      userId:
+          json['user_id'] is String
+              ? int.tryParse(json['user_id'])
+              : json['user_id'],
     );
   }
 

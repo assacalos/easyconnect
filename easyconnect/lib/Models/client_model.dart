@@ -11,6 +11,7 @@ class Client {
   final String? adresse;
   final String? nomEntreprise;
   final String? situationGeographique;
+  final String? numeroContribuable; // Numéro contribuable
   final int? status; // 0: en attente, 1: validé, 2: rejeté
   final String? commentaire;
   final String? createdAt;
@@ -26,6 +27,7 @@ class Client {
     this.adresse,
     this.nomEntreprise,
     this.situationGeographique,
+    this.numeroContribuable,
     this.status = 0,
     this.commentaire,
     this.createdAt,
@@ -43,6 +45,7 @@ class Client {
       adresse: json['adresse'],
       nomEntreprise: json['nom_entreprise'],
       situationGeographique: json['situation_geographique'],
+      numeroContribuable: json['numero_contribuable'],
       status:
           json['status'] is String
               ? int.tryParse(json['status'])
@@ -67,6 +70,7 @@ class Client {
       'adresse': adresse,
       'nom_entreprise': nomEntreprise,
       'situation_geographique': situationGeographique,
+      'numero_contribuable': numeroContribuable,
       'status': status,
       'commentaire': commentaire,
       'user_id': userId,

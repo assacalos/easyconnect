@@ -28,6 +28,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
   late final TextEditingController remiseGlobaleController;
   late final TextEditingController tvaController;
   late final TextEditingController dateValiditeController;
+  late final TextEditingController titreController;
+  late final TextEditingController delaiLivraisonController;
+  late final TextEditingController garantieController;
 
   @override
   void initState() {
@@ -39,6 +42,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
     remiseGlobaleController = TextEditingController();
     tvaController = TextEditingController();
     dateValiditeController = TextEditingController();
+    titreController = TextEditingController();
+    delaiLivraisonController = TextEditingController();
+    garantieController = TextEditingController();
 
     // Ne pas appeler clearForm() ici car cela vide le formulaire même si l'utilisateur
     // a commencé à remplir des données. clearForm() sera appelé uniquement après
@@ -74,6 +80,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
       conditionsController.text = devis.conditions ?? '';
       remiseGlobaleController.text = devis.remiseGlobale?.toString() ?? '';
       tvaController.text = devis.tva?.toString() ?? '';
+      titreController.text = devis.titre ?? '';
+      delaiLivraisonController.text = devis.delaiLivraison ?? '';
+      garantieController.text = devis.garantie ?? '';
       if (devis.dateValidite != null) {
         dateValiditeController.text = formatDate.format(devis.dateValidite!);
       }
@@ -96,6 +105,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
     remiseGlobaleController.dispose();
     tvaController.dispose();
     dateValiditeController.dispose();
+    titreController.dispose();
+    delaiLivraisonController.dispose();
+    garantieController.dispose();
     super.dispose();
   }
 
@@ -231,6 +243,33 @@ class _DevisFormPageState extends State<DevisFormPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: titreController,
+              decoration: const InputDecoration(
+                labelText: 'Titre du devis',
+                border: OutlineInputBorder(),
+                hintText: 'Ex: Devis pour installation système',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: delaiLivraisonController,
+              decoration: const InputDecoration(
+                labelText: 'Délai de livraison',
+                border: OutlineInputBorder(),
+                hintText: 'Ex: 15 jours ouvrables',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: garantieController,
+              decoration: const InputDecoration(
+                labelText: 'Garantie',
+                border: OutlineInputBorder(),
+                hintText: 'Ex: 1 an pièces et main d\'œuvre',
+              ),
+            ),
           ],
         ),
       ),
@@ -278,7 +317,10 @@ class _DevisFormPageState extends State<DevisFormPage> {
                     child: ListTile(
                       title: Text(item.designation),
                       subtitle: Text(
-                        '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
+                        (item.reference != null && item.reference!.isNotEmpty
+                            ? '${item.reference!} • '
+                            : '') +
+                            '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -570,6 +612,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
   }
 
   void _showItemDialog({int? index, DevisItem? item}) {
+    final referenceController = TextEditingController(
+      text: item?.reference ?? '',
+    );
     final designationController = TextEditingController(
       text: item?.designation ?? '',
     );
@@ -586,6 +631,15 @@ class _DevisFormPageState extends State<DevisFormPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            TextFormField(
+              controller: referenceController,
+              decoration: const InputDecoration(
+                labelText: 'Référence article',
+                border: OutlineInputBorder(),
+                hintText: 'Ex: REF-001',
+              ),
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: designationController,
               decoration: const InputDecoration(
@@ -625,8 +679,10 @@ class _DevisFormPageState extends State<DevisFormPage> {
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
+              final ref = referenceController.text.trim();
               final newItem = DevisItem(
                 id: item?.id,
+                reference: ref.isEmpty ? null : ref,
                 designation: designationController.text,
                 quantite: int.tryParse(quantiteController.text) ?? 0,
                 prixUnitaire: double.tryParse(prixUnitaireController.text) ?? 0,
@@ -653,6 +709,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
     remiseGlobaleController.clear();
     tvaController.clear();
     dateValiditeController.clear();
+    titreController.clear();
+    delaiLivraisonController.clear();
+    garantieController.clear();
     controller.clearForm();
   }
 
@@ -734,6 +793,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
       'conditions': conditionsController.text,
       'remise_globale': double.tryParse(remiseGlobaleController.text),
       'tva': double.tryParse(tvaController.text),
+      'titre': titreController.text,
+      'delai_livraison': delaiLivraisonController.text,
+      'garantie': garantieController.text,
     };
 
     print('💾 [DEVIS FORM] Données préparées:');
@@ -757,14 +819,30 @@ class _DevisFormPageState extends State<DevisFormPage> {
       }
     } else {
       print('💾 [DEVIS FORM] Création d\'un nouveau devis');
-      final success = await controller.createDevis(data);
-      if (success) {
-        print('✅ [DEVIS FORM] Devis créé avec succès');
-        _clearForm();
-        await Future.delayed(const Duration(milliseconds: 500));
-        Get.offNamed('/devis');
-      } else {
-        print('❌ [DEVIS FORM] Échec de la création');
+      try {
+        final success = await controller.createDevis(data);
+        if (success) {
+          print('✅ [DEVIS FORM] Devis créé avec succès');
+          _clearForm();
+          await Future.delayed(const Duration(milliseconds: 500));
+          Get.offNamed('/devis');
+        } else {
+          print(
+            '❌ [DEVIS FORM] Échec de la création - createDevis a retourné false',
+          );
+          // Le message d'erreur est déjà affiché par le contrôleur
+        }
+      } catch (e, stackTrace) {
+        print('❌ [DEVIS FORM] Exception lors de la création: $e');
+        print('❌ [DEVIS FORM] Stack trace: $stackTrace');
+        Get.snackbar(
+          'Erreur',
+          'Une erreur inattendue s\'est produite: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+        );
       }
     }
   }

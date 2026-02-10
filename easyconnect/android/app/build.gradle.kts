@@ -6,6 +6,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 val localProperties = Properties()
@@ -17,8 +18,8 @@ val flutter_key_keyAlias = localProperties.getProperty("keyAlias")
 val flutter_key_keyPassword = localProperties.getProperty("keyPassword")
 
 android {
-    namespace = "com.example.easyconnect"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.easyconnect.app"
+    compileSdk = 34  // 34+ requis pour android:attr/lStar (plugins comme flutter_app_badger)
     ndkVersion = "28.2.13676358"
 
     signingConfigs {
@@ -46,7 +47,7 @@ android {
         applicationId = "com.easyconnect.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 21  // Android 5.0 (Lollipop) - Supporte la plupart des appareils
+        minSdk = 23  // Android 6.0 (Marshmallow) - Requis par Firebase Messaging 25.0.1+
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -85,6 +86,9 @@ android {
 dependencies {
     // Core library desugaring pour flutter_local_notifications
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-analytics")
 }
 
 flutter {

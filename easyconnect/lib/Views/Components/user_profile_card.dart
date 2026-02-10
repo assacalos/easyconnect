@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/models/user_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/permission_list.dart';
 
@@ -29,21 +31,7 @@ class UserProfileCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blueGrey.shade100,
-                child: Text(
-                  (user.prenom?.isNotEmpty == true
-                          ? user.prenom![0]
-                          : user.nom?.isNotEmpty == true
-                          ? user.nom![0]
-                          : "?")
-                      .toUpperCase(),
-                  style: TextStyle(
-                    color: Colors.blueGrey.shade700,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              leading: _buildAvatar(user),
               title: Text(
                 "${user.prenom ?? ''} ${user.nom ?? ''}",
                 style: const TextStyle(fontWeight: FontWeight.bold),
@@ -104,5 +92,48 @@ class UserProfileCard extends StatelessWidget {
         ),
       );
     });
+  }
+
+  Widget _buildAvatar(dynamic user) {
+    final String? photoUrl = user is UserModel
+        ? user.photoUrl
+        : (user.avatar != null &&
+                user.avatar.toString().trim().isNotEmpty &&
+                user.avatar.toString().startsWith('http')
+            ? user.avatar
+            : null);
+    const double avatarSize = 72;
+    return CircleAvatar(
+      radius: avatarSize / 2,
+      backgroundColor: Colors.blueGrey.shade100,
+      child: photoUrl != null
+          ? ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: photoUrl,
+                width: avatarSize,
+                height: avatarSize,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => _avatarInitial(user),
+                errorWidget: (_, __, ___) => _avatarInitial(user),
+              ),
+            )
+          : _avatarInitial(user),
+    );
+  }
+
+  Widget _avatarInitial(dynamic user) {
+    return Text(
+      (user.prenom?.isNotEmpty == true
+              ? user.prenom![0]
+              : user.nom?.isNotEmpty == true
+                  ? user.nom![0]
+                  : "?")
+          .toUpperCase(),
+      style: TextStyle(
+        color: Colors.blueGrey.shade700,
+        fontWeight: FontWeight.bold,
+        fontSize: 28,
+      ),
+    );
   }
 }

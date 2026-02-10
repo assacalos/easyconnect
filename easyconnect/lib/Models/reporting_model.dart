@@ -1,15 +1,37 @@
+import 'dart:convert';
+
 class ReportingModel {
   final int id;
   final int userId;
   final String userName;
   final String userRole;
   final DateTime reportDate;
-  final Map<String, dynamic> metrics;
   final String status; // 'submitted', 'approved', 'rejected'
+  
+  // Nouveaux champs du formulaire
+  final String? nature; // Nature du reporting (échange téléphonique, visite, dépannage, etc.)
+  final String? nomSociete;
+  final String? contactSociete;
+  final String? nomPersonne;
+  final String? contactPersonne;
+  final String? moyenContact; // mail, whatsapp, linkedin
+  final String? produitDemarche;
+  final String? commentaire;
+  final String? typeRelance; // relance_telephonique, relance_mail, relance_rdv
+  final DateTime? relanceDateHeure;
+  
+  // Métriques spécifiques selon le rôle (commercial, technicien, RH, etc.)
+  final Map<String, dynamic> metrics;
+  
+  // Champs de validation
   final DateTime? submittedAt;
   final DateTime? approvedAt;
-  final String? comments;
+  final int? approvedBy;
+  final DateTime? rejectedAt;
+  final int? rejectedBy;
+  final String? rejectionReason;
   final String? patronNote; // Note du patron avant validation
+  
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -19,15 +41,28 @@ class ReportingModel {
     required this.userName,
     required this.userRole,
     required this.reportDate,
-    required this.metrics,
     required this.status,
+    this.nature,
+    this.nomSociete,
+    this.contactSociete,
+    this.nomPersonne,
+    this.contactPersonne,
+    this.moyenContact,
+    this.produitDemarche,
+    this.commentaire,
+    this.typeRelance,
+    this.relanceDateHeure,
+    Map<String, dynamic>? metrics,
     this.submittedAt,
     this.approvedAt,
-    this.comments,
+    this.approvedBy,
+    this.rejectedAt,
+    this.rejectedBy,
+    this.rejectionReason,
     this.patronNote,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : metrics = metrics ?? {};
 
   factory ReportingModel.fromJson(Map<String, dynamic> json) {
     return ReportingModel(
@@ -36,14 +71,24 @@ class ReportingModel {
       userName: json['user_name'] ?? '',
       userRole: json['user_role'] ?? '',
       reportDate: _parseDateTime(json['report_date']) ?? DateTime.now(),
-      metrics:
-          json['metrics'] != null
-              ? Map<String, dynamic>.from(json['metrics'])
-              : {},
       status: json['status'] ?? 'submitted',
+      nature: json['nature'],
+      nomSociete: json['nom_societe'],
+      contactSociete: json['contact_societe'],
+      nomPersonne: json['nom_personne'],
+      contactPersonne: json['contact_personne'],
+      moyenContact: json['moyen_contact'],
+      produitDemarche: json['produit_demarche'],
+      commentaire: json['commentaire'],
+      typeRelance: json['type_relance'],
+      relanceDateHeure: _parseDateTime(json['relance_date_heure']),
+      metrics: _parseMetrics(json['metrics']),
       submittedAt: _parseDateTime(json['submitted_at']),
       approvedAt: _parseDateTime(json['approved_at']),
-      comments: json['comments'],
+      approvedBy: _parseInt(json['approved_by']),
+      rejectedAt: _parseDateTime(json['rejected_at']),
+      rejectedBy: _parseInt(json['rejected_by']),
+      rejectionReason: json['rejection_reason'],
       patronNote: json['patron_note'] ?? json['patronNote'],
       createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
@@ -57,18 +102,95 @@ class ReportingModel {
       'user_name': userName,
       'user_role': userRole,
       'report_date': reportDate.toIso8601String(),
-      'metrics': metrics,
       'status': status,
+      'nature': nature,
+      'nom_societe': nomSociete,
+      'contact_societe': contactSociete,
+      'nom_personne': nomPersonne,
+      'contact_personne': contactPersonne,
+      'moyen_contact': moyenContact,
+      'produit_demarche': produitDemarche,
+      'commentaire': commentaire,
+      'type_relance': typeRelance,
+      'relance_date_heure': relanceDateHeure?.toIso8601String(),
+      'metrics': metrics,
       'submitted_at': submittedAt?.toIso8601String(),
       'approved_at': approvedAt?.toIso8601String(),
-      'comments': comments,
+      'approved_by': approvedBy,
+      'rejected_at': rejectedAt?.toIso8601String(),
+      'rejected_by': rejectedBy,
+      'rejection_reason': rejectionReason,
       'patron_note': patronNote,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
   }
+  
+  // Accesseurs pour les libellés
+  String get natureLibelle {
+    switch (nature) {
+      case 'echange_telephonique':
+        return 'Échange téléphonique';
+      case 'visite':
+        return 'Visite';
+      case 'depannage_visite':
+        return 'Dépannage visite';
+      case 'depannage_bureau':
+        return 'Dépannage bureau';
+      case 'depannage_telephonique':
+        return 'Dépannage téléphonique';
+      case 'programmation':
+        return 'Programmation';
+      default:
+        return nature ?? '';
+    }
+  }
+  
+  String get moyenContactLibelle {
+    switch (moyenContact) {
+      case 'mail':
+        return 'Mail';
+      case 'whatsapp':
+        return 'WhatsApp';
+      case 'linkedin':
+        return 'LinkedIn';
+      default:
+        return moyenContact ?? '';
+    }
+  }
+  
+  String get typeRelanceLibelle {
+    switch (typeRelance) {
+      case 'relance_telephonique':
+      case 'telephonique':
+        return 'Relance téléphonique';
+      case 'relance_mail':
+      case 'mail':
+        return 'Relance par mail';
+      case 'relance_rdv':
+      case 'rdv':
+        return 'Relance par RDV';
+      default:
+        return typeRelance ?? '';
+    }
+  }
 
   // Méthodes de parsing robustes
+  static Map<String, dynamic> _parseMetrics(dynamic value) {
+    if (value == null) return {};
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is String) {
+      try {
+        if (value.trim().isEmpty) return {};
+        final parsed = jsonDecode(value);
+        return parsed is Map ? Map<String, dynamic>.from(parsed) : {};
+      } catch (_) {
+        return {};
+      }
+    }
+    return {};
+  }
+
   static int? _parseInt(dynamic value) {
     if (value == null) return null;
     if (value is int) return value;

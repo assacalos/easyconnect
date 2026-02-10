@@ -23,7 +23,9 @@ class CacheHelper {
     return entry.value as T?;
   }
 
-  /// Stocke une valeur dans le cache
+  /// Stocke une valeur dans le cache.
+  /// [duration] : null = 5 min (listes/compteurs), utiliser AppConfig.mediumCacheDuration (15 min)
+  /// pour employés/fournisseurs, AppConfig.longCacheDuration (1 h) pour référentiels.
   static void set<T>(String key, T value, {Duration? duration}) {
     final cacheDuration = duration ?? AppConfig.defaultCacheDuration;
     _cache[key] = _CacheEntry(

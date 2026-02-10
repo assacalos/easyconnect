@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -6,7 +7,10 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
 import '../services/push_notification_service.dart';
+import '../services/websocket_service.dart';
 import '../utils/roles.dart';
+import '../utils/logger.dart';
+import '../utils/cache_helper.dart';
 
 class AuthController extends GetxController {
   /// --- Observables
@@ -80,17 +84,25 @@ class AuthController extends GetxController {
           return;
         }
 
-        /// Sauvegarde en local via SessionService avec expiration (24h par défaut)
-        // Extraire expires_in depuis la réponse si disponible, sinon utiliser 24h
-        final expiresIn = data['expires_in'] as int? ?? 86400;
-        await SessionService.saveToken(data['token'], expiresIn: expiresIn);
+        /// Sauvegarde en local via SessionService (tokens permanents - n'expirent jamais)
+        // Les tokens ne sont invalidés que par le backend (déconnexion manuelle ou révocation)
+        final refreshToken = data['refresh_token'] as String?;
+        await SessionService.saveToken(
+          data['token'],
+          refreshToken: refreshToken,
+        );
         await SessionService.saveUser(data['user']);
+
+        // Démarrer les vérifications périodiques après connexion réussie
+        SessionService.startPeriodicValidation();
+        SessionService.startActivityTracking();
+        SessionService.updateLastActivity();
 
         // Attendre un peu pour s'assurer que le storage est bien écrit
         await Future.delayed(const Duration(milliseconds: 300));
 
         // Vérifier que le token est bien sauvegardé
-        final savedToken = SessionService.getToken();
+        final savedToken = SessionService.getTokenSync();
         if (savedToken == null || savedToken.isEmpty) {
           SessionService.setLoginInProgress(false);
           Get.snackbar("Erreur", "Erreur lors de la sauvegarde du token");
@@ -136,13 +148,42 @@ class AuthController extends GetxController {
         // Retirer le flag de connexion en cours juste avant la redirection
         SessionService.setLoginInProgress(false);
 
-        // Enregistrer le token FCM après connexion réussie
+        // Enregistrer le token FCM après connexion réussie (et retry différé si échec)
         try {
           final pushService = PushNotificationService();
+          await pushService.initialize();
           await pushService.registerTokenAfterLogin();
-        } catch (e) {
-          // Ignorer les erreurs d'enregistrement du token FCM
-          // L'enregistrement sera réessayé automatiquement
+          // Retry après 2 s au cas où le token FCM n'était pas encore prêt
+          Future.delayed(const Duration(seconds: 2), () async {
+            try {
+              await pushService.registerTokenAfterLogin();
+            } catch (_) {}
+          });
+        } catch (e, stackTrace) {
+          // Logger l'erreur mais ne pas bloquer la connexion
+          AppLogger.error(
+            'Erreur lors de l\'enregistrement du token FCM: $e',
+            tag: 'AUTH_CONTROLLER',
+            error: e,
+            stackTrace: stackTrace,
+          );
+        }
+
+        // Initialiser WebSocket pour les notifications en temps réel
+        try {
+          await WebSocketService.instance.initialize();
+          AppLogger.info(
+            'WebSocket initialisé après connexion',
+            tag: 'AUTH_CONTROLLER',
+          );
+        } catch (e, stackTrace) {
+          // Logger l'erreur mais ne pas bloquer la connexion
+          AppLogger.error(
+            'Erreur lors de l\'initialisation WebSocket: $e',
+            tag: 'AUTH_CONTROLLER',
+            error: e,
+            stackTrace: stackTrace,
+          );
         }
 
         // Rediriger vers le dashboard
@@ -254,7 +295,8 @@ class AuthController extends GetxController {
   }
 
   /// --- Déconnexion
-  Future<void> logout() async {
+  /// [silent] : Si true, ne pas afficher de message de déconnexion
+  Future<void> logout({bool silent = false}) async {
     try {
       // Marquer que l'utilisateur est en train de se déconnecter
       // Cela empêchera les autres contrôleurs de charger des données
@@ -266,6 +308,21 @@ class AuthController extends GetxController {
         await pushService.unregisterToken();
       } catch (e) {
         // Ignorer les erreurs de suppression du token FCM
+      }
+
+      // Retirer le badge de l'icône de l'app (nombre de notifications)
+      try {
+        await FlutterAppBadger.removeBadge();
+      } catch (e) {
+        // Ignorer si le launcher ne supporte pas le badge
+      }
+
+      // Déconnecter WebSocket
+      try {
+        WebSocketService.instance.disconnect();
+        AppLogger.info('WebSocket déconnecté', tag: 'AUTH_CONTROLLER');
+      } catch (e) {
+        // Ignorer les erreurs de déconnexion WebSocket
       }
 
       // Appeler l'API de déconnexion côté serveur (sans attendre si ça timeout)
@@ -281,8 +338,12 @@ class AuthController extends GetxController {
       }
 
       // Nettoyer le stockage local via SessionService (nettoie aussi le flag de connexion)
+      // clearSession() arrête automatiquement les vérifications périodiques
       await SessionService.clearSession();
       userAuth.value = null;
+
+      // Vider le cache métier pour ne pas afficher les données d'un autre utilisateur après reconnexion
+      CacheHelper.clear();
 
       // Nettoyer tous les contrôleurs enregistrés pour éviter les requêtes en cours
       _cleanupControllers();
@@ -293,6 +354,7 @@ class AuthController extends GetxController {
       // En cas d'erreur, forcer quand même la déconnexion
       storage.erase();
       userAuth.value = null;
+      CacheHelper.clear();
       Get.offAllNamed("/login");
     } finally {
       isLoading.value = false;
@@ -313,8 +375,8 @@ class AuthController extends GetxController {
   void loadUserFromStorage() {
     try {
       final savedUser = SessionService.getUser();
-      final savedToken = SessionService.getToken();
-      if (savedUser != null && savedToken != null) {
+      final savedToken = SessionService.getTokenSync();
+      if (savedUser != null && savedToken != null && savedToken.isNotEmpty) {
         userAuth.value = UserModel.fromJson(
           Map<String, dynamic>.from(savedUser),
         );
@@ -332,6 +394,38 @@ class AuthController extends GetxController {
       return SessionService.isAuthenticated();
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Rafraîchit les données utilisateur depuis le backend
+  /// Utile pour détecter les changements de rôle, désactivation, etc.
+  Future<void> refreshUserData() async {
+    try {
+      final token = await SessionService.getToken();
+      if (token == null || token.isEmpty) {
+        return;
+      }
+
+      // Appeler un endpoint pour récupérer les données utilisateur actualisées
+      final response = await ApiService.getUser();
+
+      if (response['success'] == true && response['data'] != null) {
+        // Mettre à jour les données utilisateur
+        userAuth.value = UserModel.fromJson(response['data']);
+        await SessionService.saveUser(response['data']);
+
+        AppLogger.info(
+          'Données utilisateur rafraîchies avec succès',
+          tag: 'AUTH_CONTROLLER',
+        );
+      }
+    } catch (e) {
+      // Si erreur 401, AuthErrorHandler déconnectera automatiquement
+      // Sinon, ignorer (problème réseau temporaire)
+      AppLogger.debug(
+        'Erreur lors du rafraîchissement des données utilisateur: $e',
+        tag: 'AUTH_CONTROLLER',
+      );
     }
   }
 

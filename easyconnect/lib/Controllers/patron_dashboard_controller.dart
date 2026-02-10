@@ -26,6 +26,8 @@ import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/services/contract_service.dart';
 import 'package:easyconnect/services/leave_service.dart';
+import 'package:easyconnect/services/task_service.dart';
+import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
 
@@ -55,6 +57,7 @@ class PatronDashboardController extends BaseDashboardController {
   final EmployeeService _employeeService = Get.find<EmployeeService>();
   final ContractService _contractService = Get.find<ContractService>();
   final LeaveService _leaveService = Get.find<LeaveService>();
+  final TaskService _taskService = Get.find<TaskService>();
 
   List<Filter> get filters => DashboardFilters.getFiltersForRole(Roles.PATRON);
 
@@ -83,6 +86,8 @@ class PatronDashboardController extends BaseDashboardController {
   final pendingLeaves = 0.obs;
   final pendingSuppliers = 0.obs;
   final pendingStocks = 0.obs;
+  final pendingRegistrations = 0.obs;
+  final pendingTasks = 0.obs;
 
   // Deuxième partie - Métriques de performance
   final validatedClients = 0.obs;
@@ -474,6 +479,12 @@ class PatronDashboardController extends BaseDashboardController {
 
       // Charger les stocks en attente (status = 'pending')
       _loadPendingStocks(),
+
+      // Charger les inscriptions en attente (is_active = false)
+      _loadPendingRegistrations(),
+
+      // Charger les tâches en attente (status = 'pending')
+      _loadPendingTasks(),
     ], eagerError: false); // Continuer même si une requête échoue
   }
 
@@ -592,6 +603,7 @@ class PatronDashboardController extends BaseDashboardController {
         perPage: 1, // On veut juste le total, pas les données
       );
       final count = paginatedResponse.meta.total;
+      // Mettre à jour l'observable - cela déclenchera automatiquement la mise à jour de l'UI
       pendingDevis.value = count;
       // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
       CacheHelper.set('dashboard_patron_pendingDevis', count);
@@ -600,6 +612,7 @@ class PatronDashboardController extends BaseDashboardController {
       try {
         final devis = await _devisService.getDevis(status: 1);
         final count = devis.length;
+        // Mettre à jour l'observable - cela déclenchera automatiquement la mise à jour de l'UI
         pendingDevis.value = count;
         CacheHelper.set('dashboard_patron_pendingDevis', count);
       } catch (fallbackError) {
@@ -858,6 +871,41 @@ class PatronDashboardController extends BaseDashboardController {
     }
   }
 
+  Future<void> _loadPendingRegistrations() async {
+    try {
+      final res = await ApiService.getPendingRegistrations();
+      if (res['success'] == true && res['data'] != null) {
+        final list = res['data'] as List;
+        final count = list.length;
+        pendingRegistrations.value = count;
+        CacheHelper.set('dashboard_patron_pendingRegistrations', count);
+      } else {
+        pendingRegistrations.value = 0;
+      }
+    } catch (e) {
+      pendingRegistrations.value = 0;
+    }
+  }
+
+  Future<void> _loadPendingTasks() async {
+    try {
+      final result = await _taskService.getTasks(
+        status: 'pending',
+        page: 1,
+        perPage: 1,
+      );
+      if (result['success'] == true) {
+        final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
+        final count = pagination['total'] as int? ?? 0;
+        pendingTasks.value = count;
+      } else {
+        pendingTasks.value = 0;
+      }
+    } catch (e) {
+      pendingTasks.value = 0;
+    }
+  }
+
   // Méthode publique pour rafraîchir uniquement les compteurs en attente
   // À appeler après chaque validation/rejet d'une entité
   Future<void> refreshPendingCounters() async {
@@ -950,6 +998,16 @@ class PatronDashboardController extends BaseDashboardController {
         case 'stock':
         case 'stocks':
           await _loadPendingStocks();
+          break;
+        case 'registration':
+        case 'registrations':
+          await _loadPendingRegistrations();
+          break;
+        case 'task':
+        case 'tasks':
+        case 'tache':
+        case 'taches':
+          await _loadPendingTasks();
           break;
         default:
           // Si le type n'est pas reconnu, rafraîchir tous les compteurs

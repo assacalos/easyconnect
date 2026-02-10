@@ -619,6 +619,23 @@ class PaymentController extends GetxController {
       final result = await _paymentService.submitPaymentToPatron(paymentId);
 
       if (result['success'] == true) {
+        // Notifier le patron de la soumission
+        final payment = payments.firstWhereOrNull((p) => p.id == paymentId);
+        if (payment != null) {
+          NotificationHelper.notifySubmission(
+            entityType: 'payment',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'payment',
+              payment,
+            ),
+            entityId: paymentId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'payment',
+              paymentId.toString(),
+            ),
+          );
+        }
+
         Get.snackbar('Succès', 'Paiement soumis au patron');
         await loadPayments();
       } else {
@@ -949,6 +966,7 @@ class PaymentController extends GetxController {
               'payment',
               paymentId.toString(),
             ),
+            entity: paymentData,
           );
         } catch (e) {
           // Ignorer les erreurs de notification pour ne pas bloquer la validation
@@ -1054,6 +1072,7 @@ class PaymentController extends GetxController {
               'payment',
               paymentId.toString(),
             ),
+            entity: paymentData,
           );
         } catch (e) {
           // Ignorer les erreurs de notification pour ne pas bloquer le rejet

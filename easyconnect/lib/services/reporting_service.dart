@@ -14,21 +14,57 @@ import 'package:easyconnect/utils/pagination_helper.dart';
 class ReportingService extends GetxService {
   static ReportingService get to => Get.find();
 
+  /// Convertit le type relance de l'app (relance_telephonique, relance_mail, relance_rdv)
+  /// vers le format API backend (telephonique, mail, rdv).
+  static String? _typeRelanceToApi(String? typeRelance) {
+    if (typeRelance == null || typeRelance.isEmpty) return null;
+    switch (typeRelance) {
+      case 'relance_telephonique':
+        return 'telephonique';
+      case 'relance_mail':
+        return 'mail';
+      case 'relance_rdv':
+        return 'rdv';
+      case 'telephonique':
+      case 'mail':
+      case 'rdv':
+        return typeRelance;
+      default:
+        return typeRelance;
+    }
+  }
+
   // Créer un rapport
   Future<Map<String, dynamic>> createReport({
     required int userId,
     required String userRole,
     required DateTime reportDate,
-    required Map<String, dynamic> metrics,
-    String? comments,
+    required String nature,
+    required String nomSociete,
+    String? contactSociete,
+    required String nomPersonne,
+    String? contactPersonne,
+    required String moyenContact,
+    String? produitDemarche,
+    String? commentaire,
+    String? typeRelance,
+    DateTime? relanceDateHeure,
   }) async {
     try {
       final requestBody = {
         'user_id': userId,
         'user_role': userRole,
         'report_date': reportDate.toIso8601String(),
-        'metrics': metrics,
-        'comments': comments,
+        'nature': nature,
+        'nom_societe': nomSociete,
+        'contact_societe': contactSociete,
+        'nom_personne': nomPersonne,
+        'contact_personne': contactPersonne,
+        'moyen_contact': moyenContact,
+        'produit_demarche': produitDemarche,
+        'commentaire': commentaire,
+        'type_relance': _typeRelanceToApi(typeRelance),
+        'relance_date_heure': relanceDateHeure?.toIso8601String(),
       };
 
       // Log pour déboguer
@@ -38,8 +74,9 @@ class ReportingService extends GetxService {
       print(
         '📤 [REPORTING_SERVICE] report_date: ${reportDate.toIso8601String()}',
       );
-      print('📤 [REPORTING_SERVICE] metrics: $metrics');
-      print('📤 [REPORTING_SERVICE] comments: $comments');
+      print('📤 [REPORTING_SERVICE] nature: $nature');
+      print('📤 [REPORTING_SERVICE] nom_societe: $nomSociete');
+      print('📤 [REPORTING_SERVICE] moyen_contact: $moyenContact');
 
       final jsonBody = jsonEncode(requestBody);
       print('📤 [REPORTING_SERVICE] Body JSON: $jsonBody');
@@ -66,8 +103,16 @@ class ReportingService extends GetxService {
               'user_id': userId,
               'user_role': userRole,
               'report_date': reportDate.toIso8601String(),
-              'metrics': metrics,
-              'comments': comments,
+              'nature': nature,
+              'nom_societe': nomSociete,
+              'contact_societe': contactSociete,
+              'nom_personne': nomPersonne,
+              'contact_personne': contactPersonne,
+              'moyen_contact': moyenContact,
+              'produit_demarche': produitDemarche,
+              'commentaire': commentaire,
+              'type_relance': _typeRelanceToApi(typeRelance),
+              'relance_date_heure': relanceDateHeure?.toIso8601String(),
               'status': 'submitted',
               'created_at': DateTime.now().toIso8601String(),
               'updated_at': DateTime.now().toIso8601String(),
@@ -84,8 +129,16 @@ class ReportingService extends GetxService {
             'user_id': userId,
             'user_role': userRole,
             'report_date': reportDate.toIso8601String(),
-            'metrics': metrics,
-            'comments': comments,
+            'nature': nature,
+            'nom_societe': nomSociete,
+            'contact_societe': contactSociete,
+            'nom_personne': nomPersonne,
+            'contact_personne': contactPersonne,
+            'moyen_contact': moyenContact,
+            'produit_demarche': produitDemarche,
+            'commentaire': commentaire,
+            'type_relance': _typeRelanceToApi(typeRelance),
+            'relance_date_heure': relanceDateHeure?.toIso8601String(),
             'status': 'submitted',
             'created_at': DateTime.now().toIso8601String(),
           },
@@ -186,75 +239,118 @@ class ReportingService extends GetxService {
   }
 
   /// Récupérer les rapports avec pagination côté serveur
+  /// [perPage] par défaut 10 pour limiter les réponses tronquées sur certains réseaux.
   Future<PaginationResponse<ReportingModel>> getReportsPaginated({
     DateTime? startDate,
     DateTime? endDate,
     String? userRole,
     int? userId,
     int page = 1,
-    int perPage = 15,
+    int perPage = 10,
     String? search,
   }) async {
     try {
-      String url = '${AppConfig.baseUrl}/user-reportings';
-      List<String> params = [];
-
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (userRole != null && userRole.isNotEmpty) {
-        params.add('user_role=$userRole');
-      }
-      if (userId != null) {
-        params.add('user_id=$userId');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'REPORTING_SERVICE');
-
-      final response = await RetryHelper.retryNetwork(
-        operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
-        maxRetries: AppConfig.defaultMaxRetries,
+      return await _getReportsPaginatedRequest(
+        startDate: startDate,
+        endDate: endDate,
+        userRole: userRole,
+        userId: userId,
+        page: page,
+        perPage: perPage,
+        search: search,
       );
-
-      AppLogger.httpResponse(
-        response.statusCode,
-        url,
-        tag: 'REPORTING_SERVICE',
-      );
-      await AuthErrorHandler.handleHttpResponse(response);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<ReportingModel>(
-          json: data,
-          fromJsonT: (json) => ReportingModel.fromJson(json),
+    } on FormatException catch (e) {
+      // Réponse JSON tronquée (ex: "Unexpected end of input") → retry avec moins d'éléments
+      if (perPage > 5 &&
+          (e.message.contains('Unexpected end of input') ||
+              e.message.contains('character'))) {
+        AppLogger.info(
+          'Réponse tronquée détectée, nouvel essai avec per_page=5',
+          tag: 'REPORTING_SERVICE',
         );
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération paginée des rapports: ${response.statusCode}',
+        return _getReportsPaginatedRequest(
+          startDate: startDate,
+          endDate: endDate,
+          userRole: userRole,
+          userId: userId,
+          page: page,
+          perPage: 5,
+          search: search,
         );
       }
+      rethrow;
+    }
+  }
+
+  Future<PaginationResponse<ReportingModel>> _getReportsPaginatedRequest({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? userRole,
+    int? userId,
+    required int page,
+    required int perPage,
+    String? search,
+  }) async {
+    String url = '${AppConfig.baseUrl}/user-reportings';
+    List<String> params = [];
+
+    if (startDate != null) {
+      params.add('start_date=${startDate.toIso8601String()}');
+    }
+    if (endDate != null) {
+      params.add('end_date=${endDate.toIso8601String()}');
+    }
+    if (userRole != null && userRole.isNotEmpty) {
+      params.add('user_role=$userRole');
+    }
+    if (userId != null) {
+      params.add('user_id=$userId');
+    }
+    if (search != null && search.isNotEmpty) {
+      params.add('search=$search');
+    }
+    params.add('page=$page');
+    params.add('per_page=$perPage');
+
+    if (params.isNotEmpty) {
+      url += '?${params.join('&')}';
+    }
+
+    AppLogger.httpRequest('GET', url, tag: 'REPORTING_SERVICE');
+
+    final response = await RetryHelper.retryNetwork(
+      operation: () => http.get(Uri.parse(url), headers: ApiService.headers()),
+      maxRetries: AppConfig.defaultMaxRetries,
+    );
+
+    AppLogger.httpResponse(
+      response.statusCode,
+      url,
+      tag: 'REPORTING_SERVICE',
+    );
+    await AuthErrorHandler.handleHttpResponse(response);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Erreur lors de la récupération paginée des rapports: ${response.statusCode}',
+      );
+    }
+
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       AppLogger.error(
-        'Erreur dans getReportsPaginated: $e',
+        'JSON invalide ou tronqué (${response.body.length} caractères): $e',
         tag: 'REPORTING_SERVICE',
       );
       rethrow;
     }
+
+    return PaginationHelper.parseResponse<ReportingModel>(
+      json: data,
+      fromJsonT: (json) => ReportingModel.fromJson(json),
+    );
   }
 
   // Récupérer tous les rapports (pour le patron)
@@ -356,16 +452,16 @@ class ReportingService extends GetxService {
     }
   }
 
-  // Approuver un rapport (pour le patron)
+  // Approuver un rapport (pour le patron). [patronNote] est envoyé au backend.
   Future<Map<String, dynamic>> approveReport(
     int reportId, {
-    String? comments,
+    String? patronNote,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/user-reportings-validate/$reportId'),
         headers: ApiService.headers(),
-        body: jsonEncode({'comments': comments}),
+        body: jsonEncode({'patron_note': patronNote}),
       );
 
       // Si le status code est 200 ou 201, considérer comme succès

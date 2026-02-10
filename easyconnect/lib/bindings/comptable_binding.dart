@@ -3,6 +3,7 @@ import 'package:easyconnect/Controllers/employee_controller.dart';
 import 'package:easyconnect/Controllers/invoice_controller.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:easyconnect/Controllers/task_controller.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/services/expense_service.dart';
@@ -13,6 +14,7 @@ import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/tax_service.dart';
+import 'package:easyconnect/services/task_service.dart';
 import 'package:easyconnect/services/comptable_dashboard_service.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/comptable_dashboard_controller.dart';
@@ -33,6 +35,7 @@ class ComptableBinding extends Bindings {
     Get.put(PaymentService(), permanent: true);
     Get.put(ExpenseService(), permanent: true);
     Get.put(SalaryService(), permanent: true);
+    Get.put(TaskService(), permanent: true);
     Get.put(ComptableDashboardService(), permanent: true);
     Get.put(AttendancePunchService(), permanent: true);
     Get.put(ReportingService(), permanent: true);
@@ -50,5 +53,6 @@ class ComptableBinding extends Bindings {
     Get.put(InvoiceController(), permanent: true);
     Get.put(ReportingController(), permanent: true);
     Get.put(EmployeeController(), permanent: true);
+    Get.put(TaskController(), permanent: true);
   }
 }

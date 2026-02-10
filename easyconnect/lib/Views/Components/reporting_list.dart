@@ -227,8 +227,8 @@ class _ReportingListState extends State<ReportingList> {
 
             const SizedBox(height: 16),
 
-            // Commentaires
-            if (report.comments != null && report.comments!.isNotEmpty) ...[
+            // Commentaire
+            if (report.commentaire != null && report.commentaire!.isNotEmpty) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -237,7 +237,7 @@ class _ReportingListState extends State<ReportingList> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  report.comments!,
+                  report.commentaire!,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),

@@ -218,6 +218,22 @@ class ClientController extends GetxController {
       // Ajouter le nouveau client à la liste localement (mise à jour optimiste)
       clients.insert(0, createdClient);
 
+      // Notifier le patron de la soumission
+      if (createdClient.id != null) {
+        NotificationHelper.notifySubmission(
+          entityType: 'client',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'client',
+            createdClient,
+          ),
+          entityId: createdClient.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'client',
+            createdClient.id.toString(),
+          ),
+        );
+      }
+
       // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
       try {
         await loadClients(forceRefresh: true);
@@ -265,6 +281,20 @@ class ClientController extends GetxController {
       // Le client créé a toujours le status 0 (en attente)
       if (createdClient.id != null) {
         clients.add(createdClient);
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'client',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'client',
+            createdClient,
+          ),
+          entityId: createdClient.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'client',
+            createdClient.id.toString(),
+          ),
+        );
       }
 
       // Si la création réussit, afficher le message de succès
@@ -399,9 +429,23 @@ class ClientController extends GetxController {
         // Rafraîchir les compteurs du dashboard patron
         DashboardRefreshHelper.refreshPatronCounter('client');
 
-        // NOTE: Ne pas créer de notification locale ici car le backend
-        // crée déjà la notification d'approbation pour l'utilisateur concerné.
-        // Créer une notification locale créerait une duplication.
+        // Notifier l'utilisateur concerné de la validation
+        final client = clients.firstWhereOrNull((c) => c.id == clientId);
+        if (client != null) {
+          NotificationHelper.notifyValidation(
+            entityType: 'client',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'client',
+              client,
+            ),
+            entityId: clientId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'client',
+              clientId.toString(),
+            ),
+            entity: client,
+          );
+        }
 
         Get.snackbar(
           'Succès',
@@ -512,6 +556,7 @@ class ClientController extends GetxController {
               'client',
               clientId.toString(),
             ),
+            entity: client,
           );
         }
 

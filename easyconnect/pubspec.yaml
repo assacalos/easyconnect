@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   get: ^4.7.2
   get_storage: ^2.1.1
+  flutter_secure_storage: ^9.0.0
   http: ^0.13.6
   intl: ^0.17.0
   shared_preferences: ^2.1.1
@@ -43,6 +44,7 @@ dependencies:
   geolocator: ^10.1.0
   geocoding: ^2.1.1
   image_picker: ^1.0.4
+  cached_network_image: ^3.3.1
   path_provider: ^2.1.1
   permission_handler: ^11.0.1
   pdf: ^3.10.7
@@ -50,11 +52,15 @@ dependencies:
   share_plus: ^7.2.2
   file_picker: ^8.0.0+1
   flutter_local_notifications: ^17.2.3
+  flutter_app_badger: ^1.5.0
   url_launcher: ^6.2.5
   firebase_core: ^2.24.2
   firebase_messaging: ^14.7.9
   device_info_plus: ^9.1.0
   package_info_plus: ^9.0.0
+  # WebSocket & Laravel Echo pour notifications en temps réel
+  pusher_client: ^2.0.0
+  laravel_echo: 1.0.0-beta.1
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +73,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.13.1
+  patch_package: ^0.0.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -109,11 +116,16 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# Configuration pour l'icône de l'application
+# Configuration pour l'icône de l'application (écran d'accueil, launcher)
+# Pour modifier l'icône :
+# 1. Placez votre nouvelle image dans assets/images/ (ex: app_icon.png)
+# 2. Mettez à jour image_path et adaptive_icon_foreground ci-dessous
+# 3. Exécutez : dart run flutter_launcher_icons
+# 4. Recompilez l'app (flutter run ou rebuild)
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/logo_top_left.png"
-  # Optionnel : adapter la couleur de fond pour Android
+  image_path: "assets/images/app_icon.png"
+  # Couleur de fond pour l'icône adaptative Android (forme ronde/carrée)
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/logo_top_left.png"
+  adaptive_icon_foreground: "assets/images/app_icon.png"

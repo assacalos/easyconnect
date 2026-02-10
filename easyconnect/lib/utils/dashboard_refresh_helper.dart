@@ -14,7 +14,16 @@ class DashboardRefreshHelper {
     try {
       if (Get.isRegistered<PatronDashboardController>()) {
         final patronController = Get.find<PatronDashboardController>();
-        patronController.refreshSpecificCounter(entityType);
+        // Exécuter immédiatement de manière asynchrone mais sans délai
+        Future.microtask(() async {
+          try {
+            await patronController.refreshSpecificCounter(entityType);
+          } catch (e) {
+            print(
+              '⚠️ [DASHBOARD REFRESH] Erreur lors du rafraîchissement du compteur $entityType: $e',
+            );
+          }
+        });
       }
     } catch (e) {
       print(
@@ -44,8 +53,16 @@ class DashboardRefreshHelper {
     try {
       if (Get.isRegistered<ComptableDashboardController>()) {
         final comptableController = Get.find<ComptableDashboardController>();
-        // Recharger les entités en attente
-        comptableController.refreshPendingEntities();
+        // Exécuter immédiatement de manière asynchrone mais sans délai
+        Future.microtask(() async {
+          try {
+            await comptableController.refreshPendingEntities();
+          } catch (e) {
+            print(
+              '⚠️ [DASHBOARD REFRESH] Erreur lors du rafraîchissement des entités en attente du comptable: $e',
+            );
+          }
+        });
       }
     } catch (e) {
       print(
@@ -59,8 +76,16 @@ class DashboardRefreshHelper {
     try {
       if (Get.isRegistered<ComptableDashboardController>()) {
         final comptableController = Get.find<ComptableDashboardController>();
-        // Recharger toutes les données
-        comptableController.loadData();
+        // Exécuter immédiatement de manière asynchrone mais sans délai
+        Future.microtask(() async {
+          try {
+            await comptableController.loadData();
+          } catch (e) {
+            print(
+              '⚠️ [DASHBOARD REFRESH] Erreur lors du rafraîchissement du dashboard comptable: $e',
+            );
+          }
+        });
       }
     } catch (e) {
       print(

@@ -13,6 +13,7 @@ import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/expense_service.dart';
 import 'package:easyconnect/services/salary_service.dart';
+import 'package:easyconnect/services/task_service.dart';
 
 class ComptableDashboardController extends BaseDashboardController {
   var currentSection = 'dashboard'.obs;
@@ -26,6 +27,7 @@ class ComptableDashboardController extends BaseDashboardController {
   final PaymentService _paymentService = Get.find<PaymentService>();
   final ExpenseService _expenseService = Get.find<ExpenseService>();
   final SalaryService _salaryService = Get.find<SalaryService>();
+  final TaskService _taskService = Get.find<TaskService>();
 
   List<Filter> get filters =>
       DashboardFilters.getFiltersForRole(Roles.COMPTABLE);
@@ -42,6 +44,7 @@ class ComptableDashboardController extends BaseDashboardController {
   final pendingPaiements = 0.obs;
   final pendingDepenses = 0.obs;
   final pendingSalaires = 0.obs;
+  final pendingTasks = 0.obs;
 
   // Deuxième partie - Entités validées
   final validatedFactures = 0.obs;
@@ -274,11 +277,33 @@ class ComptableDashboardController extends BaseDashboardController {
         'dashboard_comptable_pendingSalaires',
         pendingSalairesCount,
       );
+
+      await _loadPendingTasks();
     } catch (e) {
       pendingFactures.value = 0;
       pendingPaiements.value = 0;
       pendingDepenses.value = 0;
       pendingSalaires.value = 0;
+      pendingTasks.value = 0;
+    }
+  }
+
+  Future<void> _loadPendingTasks() async {
+    try {
+      final result = await _taskService.getTasks(
+        status: 'pending',
+        page: 1,
+        perPage: 1,
+      );
+      if (result['success'] == true) {
+        final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
+        final count = pagination['total'] as int? ?? 0;
+        pendingTasks.value = count;
+      } else {
+        pendingTasks.value = 0;
+      }
+    } catch (e) {
+      pendingTasks.value = 0;
     }
   }
 

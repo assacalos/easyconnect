@@ -1,5 +1,6 @@
 class BordereauItem {
   final int? id;
+  final String? reference;
   final String designation;
   final String unite;
   final int quantite;
@@ -7,6 +8,7 @@ class BordereauItem {
 
   BordereauItem({
     this.id,
+    this.reference,
     required this.designation,
     required this.unite,
     required this.quantite,
@@ -17,6 +19,7 @@ class BordereauItem {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'reference': reference,
     'designation': designation,
     'unite': unite,
     'quantite': quantite,
@@ -32,6 +35,7 @@ class BordereauItem {
                 ? json['id']
                 : null)
             : null,
+    reference: json['reference']?.toString(),
     designation: json['designation']?.toString() ?? '',
     unite: json['unite']?.toString() ?? 'unité',
     quantite:
@@ -47,6 +51,7 @@ class BordereauItem {
 class Bordereau {
   final int? id;
   final String reference;
+  final String? titre;
   final int clientId;
   final int? devisId; // Référence au devis
   final int commercialId;
@@ -56,10 +61,14 @@ class Bordereau {
   final List<BordereauItem> items;
   final int status; // 1: soumis, 2: validé, 3: rejeté
   final String? commentaireRejet;
+  final String? etatLivraison;
+  final String? garantie;
+  final DateTime? dateLivraison;
 
   Bordereau({
     this.id,
     required this.reference,
+    this.titre,
     required this.clientId,
     this.devisId,
     required this.commercialId,
@@ -69,6 +78,9 @@ class Bordereau {
     required this.items,
     this.status = 1,
     this.commentaireRejet,
+    this.etatLivraison,
+    this.garantie,
+    this.dateLivraison,
   });
 
   double get montantHT => 0.0;
@@ -92,6 +104,7 @@ class Bordereau {
   Map<String, dynamic> toJson() => {
     'id': id,
     'reference': reference,
+    'titre': titre,
     'client_id': clientId,
     'devis_id': devisId,
     'user_id': commercialId,
@@ -101,6 +114,9 @@ class Bordereau {
     'items': items.map((item) => item.toJson()).toList(),
     'status': status,
     'commentaire': commentaireRejet,
+    'etat_livraison': etatLivraison,
+    'garantie': garantie,
+    'date_livraison': dateLivraison?.toIso8601String(),
   };
 
   factory Bordereau.fromJson(Map<String, dynamic> json) {
@@ -127,6 +143,7 @@ class Bordereau {
       return Bordereau(
         id: _parseInt(json['id']),
         reference: json['reference']?.toString() ?? '',
+        titre: json['titre']?.toString(),
         clientId:
             _parseInt(
               json['client_id'] ?? json['cliennt_id'] ?? json['clieent_id'],
@@ -157,6 +174,9 @@ class Bordereau {
                 : [],
         status: _parseInt(json['status']) ?? 1,
         commentaireRejet: json['commentaire']?.toString(),
+        etatLivraison: json['etat_livraison']?.toString(),
+        garantie: json['garantie']?.toString(),
+        dateLivraison: parseDate(json['date_livraison']),
       );
     } catch (e, stackTrace) {
       print('❌ Bordereau.fromJson: Erreur: $e');
@@ -178,30 +198,6 @@ class Bordereau {
     if (value is num) {
       try {
         return value.toInt();
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  static double? _parseDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) {
-      final trimmed = value.trim();
-      if (trimmed.isEmpty || trimmed == 'null' || trimmed == 'NULL')
-        return null;
-      try {
-        return double.tryParse(trimmed);
-      } catch (e) {
-        return null;
-      }
-    }
-    if (value is num) {
-      try {
-        return value.toDouble();
       } catch (e) {
         return null;
       }

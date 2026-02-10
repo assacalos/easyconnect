@@ -235,15 +235,30 @@ class BordereauxController extends GetxController {
               ? generatedReference.value
               : data['reference'];
 
+      DateTime? parseDateLivraison(dynamic v) {
+        if (v == null) return null;
+        if (v is DateTime) return v;
+        if (v is String && v.isNotEmpty) {
+          try {
+            return DateTime.parse(v);
+          } catch (_) {}
+        }
+        return null;
+      }
+
       final newBordereau = Bordereau(
         clientId: selectedClient.value!.id!,
         devisId: selectedDevis.value?.id,
         reference: reference,
+        titre: data['titre']?.toString(),
         dateCreation: DateTime.now(),
         notes: data['notes'],
         status: 1, // Forcer le statut à 1 (En attente)
         items: items.toList(), // Convertir en liste
         commercialId: userId,
+        etatLivraison: data['etat_livraison']?.toString(),
+        garantie: data['garantie']?.toString(),
+        dateLivraison: parseDateLivraison(data['date_livraison']),
       );
 
       print(
@@ -299,6 +314,22 @@ class BordereauxController extends GetxController {
         'Bordereau ajouté à la liste: ${createdBordereau.reference} (ID: ${createdBordereau.id})',
         tag: 'BORDEREAU_CONTROLLER',
       );
+
+      // Notifier le patron de la soumission
+      if (createdBordereau.id != null) {
+        NotificationHelper.notifySubmission(
+          entityType: 'bordereau',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'bordereau',
+            createdBordereau,
+          ),
+          entityId: createdBordereau.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'bordereau',
+            createdBordereau.id.toString(),
+          ),
+        );
+      }
 
       // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
       print('⏸️ [BORDEREAU] Arrêt du loader');
@@ -430,15 +461,33 @@ class BordereauxController extends GetxController {
       final bordereauToUpdate = bordereaux.firstWhere(
         (b) => b.id == bordereauId,
       );
+      DateTime? parseDate(dynamic v) {
+        if (v == null) return null;
+        if (v is DateTime) return v;
+        if (v is String && v.isNotEmpty) {
+          try {
+            return DateTime.parse(v);
+          } catch (_) {}
+        }
+        return null;
+      }
+
       final updatedBordereau = Bordereau(
         id: bordereauId,
         clientId: bordereauToUpdate.clientId,
+        devisId: bordereauToUpdate.devisId,
         reference: data['reference'] ?? bordereauToUpdate.reference,
+        titre: data['titre'] ?? bordereauToUpdate.titre,
         dateCreation: bordereauToUpdate.dateCreation,
+        dateValidation: bordereauToUpdate.dateValidation,
         notes: data['notes'] ?? bordereauToUpdate.notes,
         status: bordereauToUpdate.status,
         items: items.isEmpty ? bordereauToUpdate.items : items,
         commercialId: bordereauToUpdate.commercialId,
+        commentaireRejet: bordereauToUpdate.commentaireRejet,
+        etatLivraison: data['etat_livraison'] ?? bordereauToUpdate.etatLivraison,
+        garantie: data['garantie'] ?? bordereauToUpdate.garantie,
+        dateLivraison: parseDate(data['date_livraison']) ?? bordereauToUpdate.dateLivraison,
       );
 
       await _bordereauService.updateBordereau(updatedBordereau);
@@ -600,6 +649,7 @@ class BordereauxController extends GetxController {
                 'bordereau',
                 bordereauId.toString(),
               ),
+              entity: bordereau,
             );
           }
 
@@ -699,6 +749,7 @@ class BordereauxController extends GetxController {
                 'bordereau',
                 bordereauId.toString(),
               ),
+              entity: bordereau,
             );
           }
 
@@ -879,8 +930,9 @@ class BordereauxController extends GetxController {
     items.clear();
     for (final devisItem in devis.items) {
       final bordereauItem = BordereauItem(
+        reference: devisItem.reference,
         designation: devisItem.designation,
-        unite: 'unité', // Valeur par défaut
+        unite: 'unité',
         quantite: devisItem.quantite,
         description: 'Basé sur le devis ${devis.reference}',
       );
@@ -927,21 +979,22 @@ class BordereauxController extends GetxController {
           bordereau.items
               .map(
                 (item) => {
+                  'reference': item.reference ?? '',
                   'designation': item.designation,
-                  'unite': item.unite,
                   'quantite': item.quantite,
-                  'montant_total': item.montantTotal,
                 },
               )
               .toList();
 
-      // Générer le PDF
       await PdfService().generateBordereauPdf(
         bordereau: {
           'reference': bordereau.reference,
+          'titre': bordereau.titre,
           'date_creation': bordereau.dateCreation,
           'montant_ht': bordereau.montantHT,
           'total_ttc': bordereau.montantTTC,
+          'date_livraison': bordereau.dateLivraison,
+          'garantie': bordereau.garantie,
         },
         items: items,
         client: {
@@ -951,6 +1004,7 @@ class BordereauxController extends GetxController {
           'email': client.email ?? '',
           'contact': client.contact ?? '',
           'adresse': client.adresse ?? '',
+          'numero_contribuable': client.numeroContribuable ?? '',
         },
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );

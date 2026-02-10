@@ -2,12 +2,12 @@ import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/services/notification_service.dart';
 import 'package:easyconnect/services/favorites_service.dart';
 import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
-import 'package:easyconnect/services/push_notification_service.dart';
 
 class AuthBinding extends Bindings {
   @override
@@ -27,6 +27,10 @@ class AuthBinding extends Bindings {
 
     // Contrôleur d'authentification
     Get.put(AuthController(), permanent: true);
+    
+    // NotificationController - Initialiser au démarrage pour que les notifications soient actives
+    // même sans ouvrir la page notifications
+    Get.put(NotificationController(), permanent: true);
 
     // Charger l'utilisateur depuis le stockage local (connexion permanente)
     try {

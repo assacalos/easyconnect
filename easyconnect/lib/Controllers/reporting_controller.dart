@@ -5,6 +5,7 @@ import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class ReportingController extends GetxController {
   final ReportingService _reportingService = Get.find<ReportingService>();
@@ -25,30 +26,25 @@ class ReportingController extends GetxController {
   final RxInt totalItems = 0.obs;
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  final RxInt perPage = 10.obs;
 
-  // Métriques spécifiques par rôle
-  var commercialMetrics = Rxn<CommercialMetrics>();
-  var comptableMetrics = Rxn<ComptableMetrics>();
-  var technicienMetrics = Rxn<TechnicienMetrics>();
-  var rhMetrics = Rxn<RhMetrics>();
+  // Clé de formulaire pour la validation
+  final formKey = GlobalKey<FormState>();
 
-  // Formulaires
+  // Nouveaux champs du formulaire
+  var nature = ''.obs;
+  final nomSocieteController = TextEditingController();
+  final contactSocieteController = TextEditingController();
+  final nomPersonneController = TextEditingController();
+  final contactPersonneController = TextEditingController();
+  var moyenContact = ''.obs;
+  final produitDemarcheController = TextEditingController();
+  final commentaireController = TextEditingController();
+  var typeRelance = ''.obs;
+  var relanceDateHeure = Rxn<DateTime>();
+
+  // Anciens champs (conservés pour compatibilité)
   final commentsController = TextEditingController();
-  final rdvClientController = TextEditingController();
-  final rdvDateController = TextEditingController();
-  final rdvHeureController = TextEditingController();
-  final rdvTypeController = TextEditingController();
-  final rdvNotesController = TextEditingController();
-
-  // Contrôleurs pour les notes des métriques
-  final noteClientsProspectesController = TextEditingController();
-  final noteDevisCreesController = TextEditingController();
-  final noteDevisAcceptesController = TextEditingController();
-  final noteNouveauxClientsController = TextEditingController();
-  final noteAppelsEffectuesController = TextEditingController();
-  final noteEmailsEnvoyesController = TextEditingController();
-  final noteVisitesRealiseesController = TextEditingController();
 
   @override
   void onInit() {
@@ -59,12 +55,13 @@ class ReportingController extends GetxController {
 
   @override
   void onClose() {
+    nomSocieteController.dispose();
+    contactSocieteController.dispose();
+    nomPersonneController.dispose();
+    contactPersonneController.dispose();
+    produitDemarcheController.dispose();
+    commentaireController.dispose();
     commentsController.dispose();
-    rdvClientController.dispose();
-    rdvDateController.dispose();
-    rdvHeureController.dispose();
-    rdvTypeController.dispose();
-    rdvNotesController.dispose();
     super.onClose();
   }
 
@@ -259,38 +256,32 @@ class ReportingController extends GetxController {
 
   // Créer un nouveau rapport
   Future<void> createReport() async {
+    // Valider le formulaire
+    if (formKey.currentState?.validate() != true) {
+      Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
     try {
       isLoading.value = true;
 
       final userRole = _authController.userAuth.value?.role;
       final userId = _authController.userAuth.value?.id;
 
-      Map<String, dynamic> metrics = {};
-
-      // Générer les métriques selon le rôle
-      switch (userRole) {
-        case Roles.COMMERCIAL:
-          metrics = _generateCommercialMetrics();
-          break;
-        case Roles.COMPTABLE:
-          metrics = _generateComptableMetrics();
-          break;
-        case Roles.TECHNICIEN:
-          metrics = _generateTechnicienMetrics();
-          break;
-        case Roles.RH:
-          metrics = _generateRhMetrics();
-          break;
-        default:
-          metrics = {};
-      }
-
       final response = await _reportingService.createReport(
         userId: userId!,
         userRole: Roles.getRoleName(userRole),
         reportDate: selectedDate.value,
-        metrics: metrics,
-        comments: commentsController.text,
+        nature: nature.value,
+        nomSociete: nomSocieteController.text,
+        contactSociete: contactSocieteController.text,
+        nomPersonne: nomPersonneController.text,
+        contactPersonne: contactPersonneController.text,
+        moyenContact: moyenContact.value,
+        produitDemarche: produitDemarcheController.text,
+        commentaire: commentaireController.text,
+        typeRelance: typeRelance.value.isEmpty ? null : typeRelance.value,
+        relanceDateHeure: relanceDateHeure.value,
       );
 
       // Extraire le reporting créé de la réponse
@@ -324,12 +315,17 @@ class ReportingController extends GetxController {
             userRole:
                 data['user_role'] as String? ?? Roles.getRoleName(userRole),
             reportDate: selectedDate.value,
-            metrics:
-                data['metrics'] is Map
-                    ? Map<String, dynamic>.from(data['metrics'] as Map)
-                    : metrics,
             status: data['status'] as String? ?? 'submitted',
-            comments: data['comments'] as String? ?? commentsController.text,
+            nature: data['nature'] as String? ?? nature.value,
+            nomSociete: data['nom_societe'] as String? ?? nomSocieteController.text,
+            contactSociete: data['contact_societe'] as String? ?? contactSocieteController.text,
+            nomPersonne: data['nom_personne'] as String? ?? nomPersonneController.text,
+            contactPersonne: data['contact_personne'] as String? ?? contactPersonneController.text,
+            moyenContact: data['moyen_contact'] as String? ?? moyenContact.value,
+            produitDemarche: data['produit_demarche'] as String? ?? produitDemarcheController.text,
+            commentaire: data['commentaire'] as String? ?? commentaireController.text,
+            typeRelance: data['type_relance'] as String? ?? (typeRelance.value.isEmpty ? null : typeRelance.value),
+            relanceDateHeure: relanceDateHeure.value,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           );
@@ -398,6 +394,31 @@ class ReportingController extends GetxController {
       isLoading.value = true;
 
       await _reportingService.submitReport(reportId);
+
+      // Notifier le patron de la soumission
+      final report = reports.firstWhereOrNull((r) => r.id == reportId);
+      if (report != null) {
+        // Inclure le nom de l'utilisateur dans le message
+        final userName =
+            report.userName.isNotEmpty
+                ? report.userName
+                : 'Utilisateur #${report.userId}';
+        final entityDisplayName = NotificationHelper.getEntityDisplayName(
+          'report',
+          report,
+        );
+
+        NotificationHelper.notifySubmission(
+          entityType: 'report',
+          entityName: 'Reporting de $userName - $entityDisplayName',
+          entityId: reportId.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'report',
+            reportId.toString(),
+          ),
+        );
+      }
+
       Get.snackbar('Succès', 'Rapport soumis avec succès');
       loadReports();
     } catch (e) {
@@ -407,15 +428,15 @@ class ReportingController extends GetxController {
     }
   }
 
-  // Approuver un rapport (patron seulement)
-  Future<void> approveReport(int reportId) async {
+  // Approuver un rapport (patron seulement). [patronNote] optionnel avant validation.
+  Future<void> approveReport(int reportId, {String? patronNote}) async {
     bool actionSuccess = false;
     try {
       isLoading.value = true;
 
       final result = await _reportingService.approveReport(
         reportId,
-        comments: commentsController.text,
+        patronNote: patronNote ?? (commentsController.text.trim().isEmpty ? null : commentsController.text.trim()),
       );
 
       // Vérifier si l'action a réussi
@@ -426,6 +447,25 @@ class ReportingController extends GetxController {
 
       if (isSuccess) {
         actionSuccess = true;
+
+        // Notifier l'utilisateur concerné de la validation
+        final report = reports.firstWhereOrNull((r) => r.id == reportId);
+        if (report != null) {
+          NotificationHelper.notifyValidation(
+            entityType: 'report',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'report',
+              report,
+            ),
+            entityId: reportId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'report',
+              reportId.toString(),
+            ),
+            entity: report,
+          );
+        }
+
         Get.snackbar('Succès', 'Rapport approuvé avec succès');
 
         // Rafraîchir les données en arrière-plan (non-bloquant)
@@ -486,6 +526,26 @@ class ReportingController extends GetxController {
 
       if (isSuccess) {
         actionSuccess = true;
+
+        // Notifier l'utilisateur concerné du rejet
+        final report = reports.firstWhereOrNull((r) => r.id == reportId);
+        if (report != null) {
+          NotificationHelper.notifyRejection(
+            entityType: 'report',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'report',
+              report,
+            ),
+            entityId: reportId.toString(),
+            reason: reason,
+            route: NotificationHelper.getEntityRoute(
+              'report',
+              reportId.toString(),
+            ),
+            entity: report,
+          );
+        }
+
         Get.snackbar('Succès', 'Rapport rejeté avec succès');
 
         // Rafraîchir les données en arrière-plan (non-bloquant)
@@ -527,407 +587,22 @@ class ReportingController extends GetxController {
     }
   }
 
-  // Ajouter un RDV (pour commercial)
-  void addRdv() {
-    if (rdvClientController.text.isEmpty ||
-        rdvDateController.text.isEmpty ||
-        rdvHeureController.text.isEmpty) {
-      Get.snackbar('Erreur', 'Veuillez remplir tous les champs du RDV');
-      return;
-    }
-
-    final rdv = RdvInfo(
-      clientName: rdvClientController.text,
-      dateRdv: DateTime.parse(rdvDateController.text),
-      heureRdv: rdvHeureController.text,
-      typeRdv:
-          rdvTypeController.text.isNotEmpty
-              ? rdvTypeController.text
-              : 'presentiel',
-      status: 'planifie',
-      notes: rdvNotesController.text,
-    );
-
-    // Ajouter le RDV à la liste des RDV du commercial
-    final currentMetrics =
-        commercialMetrics.value ??
-        CommercialMetrics(
-          clientsProspectes: 0,
-          rdvObtenus: 0,
-          rdvList: [],
-          devisCrees: 0,
-          devisAcceptes: 0,
-          nouveauxClients: 0,
-          appelsEffectues: 0,
-          emailsEnvoyes: 0,
-          visitesRealisees: 0,
-        );
-
-    final updatedRdvList = List<RdvInfo>.from(currentMetrics.rdvList)..add(rdv);
-
-    commercialMetrics.value = CommercialMetrics(
-      clientsProspectes: currentMetrics.clientsProspectes,
-      rdvObtenus: updatedRdvList.length,
-      rdvList: updatedRdvList,
-      devisCrees: currentMetrics.devisCrees,
-      devisAcceptes: currentMetrics.devisAcceptes,
-      nouveauxClients: currentMetrics.nouveauxClients,
-      appelsEffectues: currentMetrics.appelsEffectues,
-      emailsEnvoyes: currentMetrics.emailsEnvoyes,
-      visitesRealisees: currentMetrics.visitesRealisees,
-    );
-
-    // Vider les champs
-    rdvClientController.clear();
-    rdvDateController.clear();
-    rdvHeureController.clear();
-    rdvTypeController.clear();
-    rdvNotesController.clear();
-
-    Get.snackbar('Succès', 'RDV ajouté avec succès');
-  }
-
-  // Générer les métriques commercial
-  Map<String, dynamic> _generateCommercialMetrics() {
-    final metrics =
-        commercialMetrics.value ??
-        CommercialMetrics(
-          clientsProspectes: 0,
-          rdvObtenus: 0,
-          rdvList: [],
-          devisCrees: 0,
-          devisAcceptes: 0,
-          nouveauxClients: 0,
-          appelsEffectues: 0,
-          emailsEnvoyes: 0,
-          visitesRealisees: 0,
-        );
-
-    return metrics.toJson();
-  }
-
-  // Générer les métriques comptable
-  Map<String, dynamic> _generateComptableMetrics() {
-    final metrics =
-        comptableMetrics.value ??
-        ComptableMetrics(
-          facturesEmises: 0,
-          facturesPayees: 0,
-          montantFacture: 0,
-          montantEncaissement: 0,
-          bordereauxTraites: 0,
-          bonsCommandeTraites: 0,
-          chiffreAffaires: 0,
-          clientsFactures: 0,
-          relancesEffectuees: 0,
-          encaissements: 0,
-        );
-
-    return metrics.toJson();
-  }
-
-  // Générer les métriques technicien
-  Map<String, dynamic> _generateTechnicienMetrics() {
-    final metrics =
-        technicienMetrics.value ??
-        TechnicienMetrics(
-          interventionsPlanifiees: 0,
-          interventionsRealisees: 0,
-          interventionsAnnulees: 0,
-          interventionsList: [],
-          clientsVisites: 0,
-          problemesResolus: 0,
-          problemesEnCours: 0,
-          tempsTravail: 0,
-          deplacements: 0,
-        );
-
-    return metrics.toJson();
-  }
-
-  // Générer les métriques RH
-  Map<String, dynamic> _generateRhMetrics() {
-    final metrics =
-        rhMetrics.value ??
-        RhMetrics(
-          employesRecrutes: 0,
-          demandesCongeTraitees: 0,
-          demandesCongeApprouvees: 0,
-          demandesCongeRejetees: 0,
-          contratsCrees: 0,
-          contratsRenouveles: 0,
-          pointagesValides: 0,
-          entretiensRealises: 0,
-          formationsOrganisees: 0,
-          evaluationsEffectuees: 0,
-        );
-
-    return metrics.toJson();
-  }
-
-  // Mettre à jour les métriques commercial
-  void updateCommercialMetrics({
-    int? clientsProspectes,
-    int? devisCrees,
-    int? devisAcceptes,
-    int? nouveauxClients,
-    int? appelsEffectues,
-    int? emailsEnvoyes,
-    int? visitesRealisees,
-    String? noteClientsProspectes,
-    String? noteDevisCrees,
-    String? noteDevisAcceptes,
-    String? noteNouveauxClients,
-    String? noteAppelsEffectues,
-    String? noteEmailsEnvoyes,
-    String? noteVisitesRealisees,
-  }) {
-    final current =
-        commercialMetrics.value ??
-        CommercialMetrics(
-          clientsProspectes: 0,
-          rdvObtenus: 0,
-          rdvList: [],
-          devisCrees: 0,
-          devisAcceptes: 0,
-          nouveauxClients: 0,
-          appelsEffectues: 0,
-          emailsEnvoyes: 0,
-          visitesRealisees: 0,
-        );
-
-    commercialMetrics.value = CommercialMetrics(
-      clientsProspectes: clientsProspectes ?? current.clientsProspectes,
-      rdvObtenus: current.rdvObtenus,
-      rdvList: current.rdvList,
-      devisCrees: devisCrees ?? current.devisCrees,
-      devisAcceptes: devisAcceptes ?? current.devisAcceptes,
-      nouveauxClients: nouveauxClients ?? current.nouveauxClients,
-      appelsEffectues: appelsEffectues ?? current.appelsEffectues,
-      emailsEnvoyes: emailsEnvoyes ?? current.emailsEnvoyes,
-      visitesRealisees: visitesRealisees ?? current.visitesRealisees,
-      noteClientsProspectes:
-          noteClientsProspectes ?? current.noteClientsProspectes,
-      noteRdvObtenus: current.noteRdvObtenus,
-      noteDevisCrees: noteDevisCrees ?? current.noteDevisCrees,
-      noteDevisAcceptes: noteDevisAcceptes ?? current.noteDevisAcceptes,
-      noteNouveauxClients: noteNouveauxClients ?? current.noteNouveauxClients,
-      noteAppelsEffectues: noteAppelsEffectues ?? current.noteAppelsEffectues,
-      noteEmailsEnvoyes: noteEmailsEnvoyes ?? current.noteEmailsEnvoyes,
-      noteVisitesRealisees:
-          noteVisitesRealisees ?? current.noteVisitesRealisees,
-    );
-  }
-
-  // Mettre à jour les métriques comptable
-  void updateComptableMetrics({
-    int? facturesEmises,
-    int? facturesPayees,
-    double? montantFacture,
-    double? montantEncaissement,
-    int? bordereauxTraites,
-    int? bonsCommandeTraites,
-    double? chiffreAffaires,
-    int? clientsFactures,
-    int? relancesEffectuees,
-    double? encaissements,
-    String? noteFacturesEmises,
-    String? noteFacturesPayees,
-    String? noteMontantFacture,
-    String? noteMontantEncaissement,
-    String? noteBordereauxTraites,
-    String? noteBonsCommandeTraites,
-    String? noteChiffreAffaires,
-    String? noteClientsFactures,
-    String? noteRelancesEffectuees,
-    String? noteEncaissements,
-  }) {
-    final current =
-        comptableMetrics.value ??
-        ComptableMetrics(
-          facturesEmises: 0,
-          facturesPayees: 0,
-          montantFacture: 0,
-          montantEncaissement: 0,
-          bordereauxTraites: 0,
-          bonsCommandeTraites: 0,
-          chiffreAffaires: 0,
-          clientsFactures: 0,
-          relancesEffectuees: 0,
-          encaissements: 0,
-        );
-
-    comptableMetrics.value = ComptableMetrics(
-      facturesEmises: facturesEmises ?? current.facturesEmises,
-      facturesPayees: facturesPayees ?? current.facturesPayees,
-      montantFacture: montantFacture ?? current.montantFacture,
-      montantEncaissement: montantEncaissement ?? current.montantEncaissement,
-      bordereauxTraites: bordereauxTraites ?? current.bordereauxTraites,
-      bonsCommandeTraites: bonsCommandeTraites ?? current.bonsCommandeTraites,
-      chiffreAffaires: chiffreAffaires ?? current.chiffreAffaires,
-      clientsFactures: clientsFactures ?? current.clientsFactures,
-      relancesEffectuees: relancesEffectuees ?? current.relancesEffectuees,
-      encaissements: encaissements ?? current.encaissements,
-      noteFacturesEmises: noteFacturesEmises ?? current.noteFacturesEmises,
-      noteFacturesPayees: noteFacturesPayees ?? current.noteFacturesPayees,
-      noteMontantFacture: noteMontantFacture ?? current.noteMontantFacture,
-      noteMontantEncaissement:
-          noteMontantEncaissement ?? current.noteMontantEncaissement,
-      noteBordereauxTraites:
-          noteBordereauxTraites ?? current.noteBordereauxTraites,
-      noteBonsCommandeTraites:
-          noteBonsCommandeTraites ?? current.noteBonsCommandeTraites,
-      noteChiffreAffaires: noteChiffreAffaires ?? current.noteChiffreAffaires,
-      noteClientsFactures: noteClientsFactures ?? current.noteClientsFactures,
-      noteRelancesEffectuees:
-          noteRelancesEffectuees ?? current.noteRelancesEffectuees,
-      noteEncaissements: noteEncaissements ?? current.noteEncaissements,
-    );
-  }
-
-  // Mettre à jour les métriques technicien
-  void updateTechnicienMetrics({
-    int? interventionsPlanifiees,
-    int? interventionsRealisees,
-    int? interventionsAnnulees,
-    int? clientsVisites,
-    int? problemesResolus,
-    int? problemesEnCours,
-    double? tempsTravail,
-    int? deplacements,
-    String? notesTechniques,
-    String? noteInterventionsPlanifiees,
-    String? noteInterventionsRealisees,
-    String? noteInterventionsAnnulees,
-    String? noteClientsVisites,
-    String? noteProblemesResolus,
-    String? noteProblemesEnCours,
-    String? noteTempsTravail,
-    String? noteDeplacements,
-  }) {
-    final current =
-        technicienMetrics.value ??
-        TechnicienMetrics(
-          interventionsPlanifiees: 0,
-          interventionsRealisees: 0,
-          interventionsAnnulees: 0,
-          interventionsList: [],
-          clientsVisites: 0,
-          problemesResolus: 0,
-          problemesEnCours: 0,
-          tempsTravail: 0,
-          deplacements: 0,
-        );
-
-    technicienMetrics.value = TechnicienMetrics(
-      interventionsPlanifiees:
-          interventionsPlanifiees ?? current.interventionsPlanifiees,
-      interventionsRealisees:
-          interventionsRealisees ?? current.interventionsRealisees,
-      interventionsAnnulees:
-          interventionsAnnulees ?? current.interventionsAnnulees,
-      interventionsList: current.interventionsList,
-      clientsVisites: clientsVisites ?? current.clientsVisites,
-      problemesResolus: problemesResolus ?? current.problemesResolus,
-      problemesEnCours: problemesEnCours ?? current.problemesEnCours,
-      tempsTravail: tempsTravail ?? current.tempsTravail,
-      deplacements: deplacements ?? current.deplacements,
-      notesTechniques: notesTechniques ?? current.notesTechniques,
-      noteInterventionsPlanifiees:
-          noteInterventionsPlanifiees ?? current.noteInterventionsPlanifiees,
-      noteInterventionsRealisees:
-          noteInterventionsRealisees ?? current.noteInterventionsRealisees,
-      noteInterventionsAnnulees:
-          noteInterventionsAnnulees ?? current.noteInterventionsAnnulees,
-      noteClientsVisites: noteClientsVisites ?? current.noteClientsVisites,
-      noteProblemesResolus:
-          noteProblemesResolus ?? current.noteProblemesResolus,
-      noteProblemesEnCours:
-          noteProblemesEnCours ?? current.noteProblemesEnCours,
-      noteTempsTravail: noteTempsTravail ?? current.noteTempsTravail,
-      noteDeplacements: noteDeplacements ?? current.noteDeplacements,
-    );
-  }
-
-  // Mettre à jour les métriques RH
-  void updateRhMetrics({
-    int? employesRecrutes,
-    int? demandesCongeTraitees,
-    int? demandesCongeApprouvees,
-    int? demandesCongeRejetees,
-    int? contratsCrees,
-    int? contratsRenouveles,
-    int? pointagesValides,
-    int? entretiensRealises,
-    int? formationsOrganisees,
-    int? evaluationsEffectuees,
-    String? noteEmployesRecrutes,
-    String? noteDemandesCongeTraitees,
-    String? noteContratsCrees,
-    String? notePointagesValides,
-    String? noteEntretiensRealises,
-    String? noteFormationsOrganisees,
-    String? noteEvaluationsEffectuees,
-  }) {
-    final current =
-        rhMetrics.value ??
-        RhMetrics(
-          employesRecrutes: 0,
-          demandesCongeTraitees: 0,
-          demandesCongeApprouvees: 0,
-          demandesCongeRejetees: 0,
-          contratsCrees: 0,
-          contratsRenouveles: 0,
-          pointagesValides: 0,
-          entretiensRealises: 0,
-          formationsOrganisees: 0,
-          evaluationsEffectuees: 0,
-        );
-
-    rhMetrics.value = RhMetrics(
-      employesRecrutes: employesRecrutes ?? current.employesRecrutes,
-      demandesCongeTraitees:
-          demandesCongeTraitees ?? current.demandesCongeTraitees,
-      demandesCongeApprouvees:
-          demandesCongeApprouvees ?? current.demandesCongeApprouvees,
-      demandesCongeRejetees:
-          demandesCongeRejetees ?? current.demandesCongeRejetees,
-      contratsCrees: contratsCrees ?? current.contratsCrees,
-      contratsRenouveles: contratsRenouveles ?? current.contratsRenouveles,
-      pointagesValides: pointagesValides ?? current.pointagesValides,
-      entretiensRealises: entretiensRealises ?? current.entretiensRealises,
-      formationsOrganisees:
-          formationsOrganisees ?? current.formationsOrganisees,
-      evaluationsEffectuees:
-          evaluationsEffectuees ?? current.evaluationsEffectuees,
-      noteEmployesRecrutes:
-          noteEmployesRecrutes ?? current.noteEmployesRecrutes,
-      noteDemandesCongeTraitees:
-          noteDemandesCongeTraitees ?? current.noteDemandesCongeTraitees,
-      noteContratsCrees: noteContratsCrees ?? current.noteContratsCrees,
-      notePointagesValides:
-          notePointagesValides ?? current.notePointagesValides,
-      noteEntretiensRealises:
-          noteEntretiensRealises ?? current.noteEntretiensRealises,
-      noteFormationsOrganisees:
-          noteFormationsOrganisees ?? current.noteFormationsOrganisees,
-      noteEvaluationsEffectuees:
-          noteEvaluationsEffectuees ?? current.noteEvaluationsEffectuees,
-    );
-  }
+  // Méthodes obsolètes - conservées pour compatibilité mais non utilisées dans le nouveau système
+  // Ces méthodes peuvent être supprimées si elles ne sont plus nécessaires
 
   // Vider le formulaire
   void clearForm() {
+    nature.value = '';
+    nomSocieteController.clear();
+    contactSocieteController.clear();
+    nomPersonneController.clear();
+    contactPersonneController.clear();
+    moyenContact.value = '';
+    produitDemarcheController.clear();
+    commentaireController.clear();
+    typeRelance.value = '';
+    relanceDateHeure.value = null;
     commentsController.clear();
-    rdvClientController.clear();
-    rdvDateController.clear();
-    rdvHeureController.clear();
-    rdvTypeController.clear();
-    rdvNotesController.clear();
-    commercialMetrics.value = null;
-    comptableMetrics.value = null;
-    technicienMetrics.value = null;
-    rhMetrics.value = null;
   }
 
   // Changer la période de filtrage

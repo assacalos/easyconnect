@@ -24,6 +24,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
   late final TextEditingController emailController;
   late final TextEditingController telephoneController;
   late final TextEditingController adresseController;
+  late final TextEditingController numeroContribuableController;
 
   @override
   void initState() {
@@ -35,6 +36,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
     emailController = TextEditingController();
     telephoneController = TextEditingController();
     adresseController = TextEditingController();
+    numeroContribuableController = TextEditingController();
 
     // Pré-remplir si édition
     if (widget.isEditing && widget.clientId != null) {
@@ -57,6 +59,8 @@ class _ClientFormPageState extends State<ClientFormPage> {
       adresseController.text = client.adresse?.toString() ?? '';
       situationGeographiqueController.text =
           client.situationGeographique?.toString() ?? '';
+      numeroContribuableController.text =
+          client.numeroContribuable?.toString() ?? '';
     } catch (e) {
       // Le client n'est pas encore chargé
     }
@@ -70,6 +74,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
     emailController.clear();
     telephoneController.clear();
     adresseController.clear();
+    numeroContribuableController.clear();
     _formKey.currentState?.reset();
   }
 
@@ -82,6 +87,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
     emailController.dispose();
     telephoneController.dispose();
     adresseController.dispose();
+    numeroContribuableController.dispose();
     super.dispose();
   }
 
@@ -158,6 +164,14 @@ class _ClientFormPageState extends State<ClientFormPage> {
                               ? "Situation Géographique requise"
                               : null,
                 ),
+                SizedBox(height: 10),
+                TextFormField(
+                  controller: numeroContribuableController,
+                  decoration: InputDecoration(
+                    labelText: "Numéro Contribuable",
+                    hintText: "Ex: CI-ABJ-2014-A-12345",
+                  ),
+                ),
                 SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () async {
@@ -171,6 +185,8 @@ class _ClientFormPageState extends State<ClientFormPage> {
                         "email": emailController.text.trim(),
                         "contact": telephoneController.text.trim(),
                         "adresse": adresseController.text.trim(),
+                        "numero_contribuable":
+                            numeroContribuableController.text.trim(),
                       };
 
                       bool success = false;

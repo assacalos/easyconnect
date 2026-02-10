@@ -12,6 +12,7 @@ import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/services/pdf_service.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
 class BonCommandeController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -465,6 +466,20 @@ class BonCommandeController extends GetxController
       // Ajouter le bon de commande à la liste localement (mise à jour optimiste)
       if (createdBonCommande.id != null) {
         bonCommandes.add(createdBonCommande);
+
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'bon_commande',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'bon_commande',
+            createdBonCommande,
+          ),
+          entityId: createdBonCommande.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'bon_commande',
+            createdBonCommande.id.toString(),
+          ),
+        );
       }
 
       // Rafraîchir les compteurs du dashboard patron
@@ -493,19 +508,12 @@ class BonCommandeController extends GetxController
 
       return true;
     } catch (e) {
-      // Extraire le message d'erreur
-      String errorMessage = e.toString();
-      if (errorMessage.startsWith('Exception: ')) {
-        errorMessage = errorMessage.substring(11);
-      }
-
-      Get.snackbar(
-        'Erreur',
-        errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
+      // Utiliser ErrorHelper pour gérer les erreurs correctement
+      // Ne pas afficher les erreurs post-succès et masquer en production
+      ErrorHelper.showErrorIfNotPostSuccess(
+        e,
+        title: 'Erreur',
+        customMessage: 'Impossible de créer le bon de commande',
       );
       return false;
     } finally {
@@ -600,6 +608,26 @@ class BonCommandeController extends GetxController
       );
       if (success) {
         await loadBonCommandes();
+
+        // Notifier le patron de la soumission
+        final bonCommande = bonCommandes.firstWhereOrNull(
+          (b) => b.id == bonCommandeId,
+        );
+        if (bonCommande != null) {
+          NotificationHelper.notifySubmission(
+            entityType: 'bon_commande',
+            entityName: NotificationHelper.getEntityDisplayName(
+              'bon_commande',
+              bonCommande,
+            ),
+            entityId: bonCommandeId.toString(),
+            route: NotificationHelper.getEntityRoute(
+              'bon_commande',
+              bonCommandeId.toString(),
+            ),
+          );
+        }
+
         Get.snackbar(
           'Succès',
           'Bon de commande soumis avec succès',
@@ -665,6 +693,7 @@ class BonCommandeController extends GetxController
               'bon_commande',
               bonCommandeId.toString(),
             ),
+            entity: bonCommande,
           );
         }
 
@@ -776,6 +805,7 @@ class BonCommandeController extends GetxController
               'bon_commande',
               bonCommandeId.toString(),
             ),
+            entity: bonCommande,
           );
         }
 
@@ -966,6 +996,7 @@ class BonCommandeController extends GetxController
           'email': client.email ?? '',
           'contact': client.contact ?? '',
           'adresse': client.adresse ?? '',
+          'numero_contribuable': client.numeroContribuable ?? '',
         },
       );
 

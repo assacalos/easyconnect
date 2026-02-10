@@ -14,7 +14,7 @@ import 'package:easyconnect/services/devis_service.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
-import 'package:easyconnect/services/invoice_service.dart';
+import 'package:easyconnect/services/task_service.dart';
 import 'package:easyconnect/Controllers/client_controller.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
 import 'package:easyconnect/Controllers/bordereau_controller.dart';
@@ -33,7 +33,7 @@ class CommercialDashboardController extends BaseDashboardController {
   final BonCommandeService _bonCommandeService = Get.find<BonCommandeService>();
   final BonDeCommandeFournisseurService _bonCommandeFournisseurService =
       Get.find<BonDeCommandeFournisseurService>();
-  final InvoiceService _invoiceService = Get.find<InvoiceService>();
+  final TaskService _taskService = Get.find<TaskService>();
 
   List<Filter> get filters =>
       DashboardFilters.getFiltersForRole(Roles.COMMERCIAL);
@@ -51,6 +51,7 @@ class CommercialDashboardController extends BaseDashboardController {
   final pendingBordereaux = 0.obs;
   final pendingBonCommandes = 0.obs; // Bons de commande entreprise
   final pendingBonCommandesFournisseur = 0.obs; // Bons de commande fournisseur
+  final pendingTasks = 0.obs;
 
   // Deuxième partie - Entités validées
   final validatedClients = 0.obs;
@@ -413,12 +414,34 @@ class CommercialDashboardController extends BaseDashboardController {
         'dashboard_commercial_pendingBonCommandesFournisseur',
         pendingBonCommandesFournisseurCount,
       );
+
+      await _loadPendingTasks();
     } catch (e) {
       pendingClients.value = 0;
       pendingDevis.value = 0;
       pendingBordereaux.value = 0;
       pendingBonCommandes.value = 0;
       pendingBonCommandesFournisseur.value = 0;
+      pendingTasks.value = 0;
+    }
+  }
+
+  Future<void> _loadPendingTasks() async {
+    try {
+      final result = await _taskService.getTasks(
+        status: 'pending',
+        page: 1,
+        perPage: 1,
+      );
+      if (result['success'] == true) {
+        final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
+        final count = pagination['total'] as int? ?? 0;
+        pendingTasks.value = count;
+      } else {
+        pendingTasks.value = 0;
+      }
+    } catch (e) {
+      pendingTasks.value = 0;
     }
   }
 
@@ -459,21 +482,12 @@ class CommercialDashboardController extends BaseDashboardController {
 
   Future<void> _loadStatistics() async {
     try {
-      final invoices = await _invoiceService.getAllInvoices();
-      // Calculer le total des factures validées (chiffre d'affaires)
-      final statusLower = (String status) => status.toLowerCase().trim();
-      final revenue = invoices
-          .where((f) {
-            final status = statusLower(f.status);
-            return status == 'valide' ||
-                status == 'validated' ||
-                status == 'approved';
-          })
-          .fold(0.0, (sum, f) => sum + f.totalAmount);
+      final allDevis = await _devisService.getDevis();
+      // Chiffre d'affaires commercial = total de tous les devis (somme des totalTTC)
+      final revenue = allDevis.fold(0.0, (sum, d) => sum + d.totalTTC);
       totalRevenue.value = revenue;
       CacheHelper.set('dashboard_commercial_totalRevenue', revenue);
 
-      final allDevis = await _devisService.getDevis();
       pendingDevisAmount.value = allDevis
           .where((d) => d.status == 1)
           .fold(0.0, (sum, d) => sum + d.totalTTC);

@@ -25,18 +25,12 @@ abstract class BaseDashboard<T extends BaseDashboardController>
   Map<String, ChartConfig> get charts;
   Widget buildCustomContent(BuildContext context);
 
+  /// Override to enable pull-to-refresh (e.g. return () => controller.refreshPendingEntities()).
+  Future<void> Function()? get onRefresh => null;
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: buildAppBarActions(),
-      ),
-      drawer: buildDrawer(context),
-      body: PaginatedDataView(
+    final bodyContent = PaginatedDataView(
         scrollController: ScrollController(),
         onLoadMore: () => controller.loadNextPage(),
         hasMoreData: controller.hasMoreData.value,
@@ -81,7 +75,23 @@ abstract class BaseDashboard<T extends BaseDashboardController>
           // Contenu personnalisé
           buildCustomContent(context),
         ],
+      );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: buildAppBarActions(),
       ),
+      drawer: buildDrawer(context),
+      body: onRefresh != null
+          ? RefreshIndicator(
+              onRefresh: onRefresh!,
+              child: bodyContent,
+            )
+          : bodyContent,
       bottomNavigationBar: buildBottomNavigationBar(),
       floatingActionButton: buildFloatingActionButton(),
     );
@@ -231,6 +241,17 @@ abstract class BaseDashboard<T extends BaseDashboardController>
               onTap: () {
                 Navigator.pop(context);
                 Get.toNamed('/reporting');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.task_alt, color: Colors.white70),
+              title: const Text(
+                'Mes tâches',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Get.toNamed('/tasks');
               },
             ),
             Obx(() {

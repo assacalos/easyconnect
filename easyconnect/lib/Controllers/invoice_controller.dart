@@ -632,6 +632,7 @@ class InvoiceController extends GetxController {
               'facture',
               invoiceId.toString(),
             ),
+            entity: originalInvoice,
           );
         }
 
@@ -716,6 +717,7 @@ class InvoiceController extends GetxController {
               'facture',
               invoiceId.toString(),
             ),
+            entity: invoice,
           );
         }
         await loadInvoices();

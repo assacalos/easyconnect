@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/routes/app_routes.dart';
+import 'package:easyconnect/services/push_notification_service.dart';
+import 'package:easyconnect/services/websocket_service.dart';
+import 'package:easyconnect/utils/logger.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -32,6 +35,48 @@ class _SplashScreenState extends State<SplashScreen> {
       final userRole = authController.userAuth.value?.role;
 
       if (userRole != null) {
+        // Utilisateur connecté - initialiser les services de notifications
+        
+        // 1. S'assurer que le service push est initialisé puis enregistrer le token FCM
+        try {
+          final pushService = PushNotificationService();
+          await pushService.initialize();
+          await pushService.registerTokenAfterLogin();
+          AppLogger.info(
+            'Token FCM enregistré au démarrage (utilisateur déjà connecté)',
+            tag: 'SPLASH',
+          );
+          // Retry différé : si le premier envoi a échoué (réseau, token pas prêt), réessayer après 3 s
+          Future.delayed(const Duration(seconds: 3), () async {
+            try {
+              await pushService.registerTokenAfterLogin();
+              AppLogger.info(
+                'Token FCM (retry) enregistré au démarrage',
+                tag: 'SPLASH',
+              );
+            } catch (_) {}
+          });
+        } catch (e) {
+          AppLogger.error(
+            'Erreur lors de l\'enregistrement du token FCM au démarrage: $e',
+            tag: 'SPLASH',
+          );
+        }
+
+        // 2. Initialiser WebSocket pour les notifications en temps réel
+        try {
+          await WebSocketService.instance.initialize();
+          AppLogger.info(
+            'WebSocket initialisé au démarrage',
+            tag: 'SPLASH',
+          );
+        } catch (e) {
+          AppLogger.error(
+            'Erreur lors de l\'initialisation WebSocket au démarrage: $e',
+            tag: 'SPLASH',
+          );
+        }
+
         // Utilisateur connecté, rediriger vers son dashboard
         final initialRoute = AppRoutes.getInitialRoute(userRole);
         // Attendre un peu avant la redirection

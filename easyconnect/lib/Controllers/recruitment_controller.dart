@@ -448,6 +448,7 @@ class RecruitmentController extends GetxController {
             'recruitment',
             request.id.toString(),
           ),
+          entity: request,
         );
 
         Get.snackbar('Succès', 'Demande approuvée avec succès');
@@ -491,6 +492,7 @@ class RecruitmentController extends GetxController {
             'recruitment',
             request.id.toString(),
           ),
+          entity: request,
         );
 
         Get.snackbar('Succès', 'Demande rejetée');

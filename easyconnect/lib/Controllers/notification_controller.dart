@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:get/get.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/notification_api_service.dart';
 import 'package:easyconnect/services/notification_service_enhanced.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/logger.dart';
 
 /// Contrôleur pour gérer les notifications avec polling
@@ -46,6 +48,8 @@ class NotificationController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Synchroniser le badge de l'icône de l'app avec le nombre de non lues
+    ever(unreadCount, (_) => _updateAppIconBadge());
     // Initialiser le service de notifications locales
     _notificationService.initialize().catchError((e) {
       AppLogger.error(
@@ -55,6 +59,36 @@ class NotificationController extends GetxController {
     });
     loadNotifications();
     startPolling();
+  }
+
+  /// Met à jour le badge sur l'icône de l'application (menu du téléphone).
+  /// Affiche le nombre de non lues uniquement quand l'app est en arrière-plan ;
+  /// dès qu'on rentre dans l'app, le badge est retiré.
+  Future<void> _updateAppIconBadge() async {
+    try {
+      final supported = await FlutterAppBadger.isAppBadgeSupported();
+      if (!supported) return;
+
+      // Dès qu'on est au premier plan : pas de badge sur l'icône
+      if (!SessionService.isAppInBackground()) {
+        await FlutterAppBadger.removeBadge();
+        return;
+      }
+
+      final count = unreadCount.value;
+      if (count <= 0) {
+        await FlutterAppBadger.removeBadge();
+      } else {
+        final displayCount = count > 99 ? 99 : count;
+        await FlutterAppBadger.updateBadgeCount(displayCount);
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur lors de la mise à jour du badge icône: $e',
+        tag: 'NOTIFICATION_CONTROLLER',
+        error: e,
+      );
+    }
   }
 
   @override
@@ -113,24 +147,14 @@ class NotificationController extends GetxController {
 
       if (page == 1) {
         // Détecter les nouvelles notifications AVANT de mettre à jour la liste
-        // Cela permet de détecter les nouvelles notifications même au premier chargement
-        // si elles sont non lues (par exemple, si l'utilisateur ouvre l'app alors qu'il y a déjà des notifications)
+        // IMPORTANT: Ne pas afficher de notifications sonores au premier chargement
+        // car les notifications push FCM les gèrent déjà instantanément
+        // Seulement détecter les nouvelles notifications lors des rafraîchissements suivants
         if (!_isFirstLoad && forceRefresh) {
           _detectAndShowNewNotifications(loadedNotifications);
-        } else if (_isFirstLoad) {
-          // Au premier chargement, détecter les notifications non lues comme nouvelles
-          // pour afficher les notifications système
-          final unreadNotifications =
-              loadedNotifications.where((n) => !n.isRead).toList();
-          if (unreadNotifications.isNotEmpty) {
-            AppLogger.info(
-              'Premier chargement: ${unreadNotifications.length} notification(s) non lue(s) détectée(s)',
-              tag: 'NOTIFICATION_CONTROLLER',
-            );
-            // Afficher les notifications non lues comme nouvelles
-            _detectAndShowNewNotifications(unreadNotifications);
-          }
         }
+        // Supprimé: Ne plus afficher les notifications non lues au premier chargement
+        // car cela cause des notifications sonores quand on entre dans la page
 
         notifications.value = loadedNotifications;
         // Marquer toutes les notifications comme vues dans le set (pour éviter les doublons)

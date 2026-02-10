@@ -550,6 +550,7 @@ class SalaryController extends GetxController {
             'salary',
             salary.id.toString(),
           ),
+          entity: salary,
         );
 
         Get.snackbar(
@@ -660,6 +661,7 @@ class SalaryController extends GetxController {
             'salary',
             salary.id.toString(),
           ),
+          entity: salary,
         );
 
         Get.snackbar(

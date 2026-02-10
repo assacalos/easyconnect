@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:easyconnect/Controllers/patron_dashboard_controller.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Views/Components/base_dashboard.dart';
@@ -13,10 +14,13 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
   const PatronDashboardEnhanced({super.key});
 
   @override
-  String get title => 'Tableau de Bord Direction';
+  String get title => 'Direction';
 
   @override
-  Color get primaryColor => Colors.blueGrey.shade900;
+  Color get primaryColor => const Color(0xFF0F172A); // Slate 900
+
+  @override
+  Future<void> Function()? get onRefresh => () => controller.loadData();
 
   @override
   List<Filter> get availableFilters =>
@@ -24,48 +28,13 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
 
   @override
   List<FavoriteItem> get favoriteItems => [
-    FavoriteItem(
-      id: 'validation_clients',
-      label: 'Validation Clients',
-      icon: Icons.approval,
-      route: '/clients/validation',
-    ),
-    FavoriteItem(
-      id: 'validation_bordereaux',
-      label: 'Validation Bordereaux',
-      icon: Icons.assignment_turned_in,
-      route: '/bordereaux/validation',
-    ),
-    FavoriteItem(
-      id: 'validation_devis',
-      label: 'Validation Devis',
-      icon: Icons.assignment,
-      route: '/devis/validation',
-    ),
-    FavoriteItem(
-      id: 'validation_factures',
-      label: 'Validation Factures',
-      icon: Icons.receipt,
-      route: '/factures/validation',
-    ),
-    FavoriteItem(
-      id: 'validation_paiements',
-      label: 'Validation Paiements',
-      icon: Icons.payment,
-      route: '/paiements/validation',
-    ),
-    FavoriteItem(
-      id: 'validation_pointages',
-      label: 'Validation Pointages',
-      icon: Icons.camera_alt,
-      route: '/attendance-validation',
-    ),
-    FavoriteItem(
-      id: 'validation_bon_commandes_fournisseur',
-      label: 'Validation Bons de Commande Fournisseur',
-      icon: Icons.inventory_2,
-      route: '/bons-de-commande-fournisseur/validation',
-    ),
+    FavoriteItem(id: 'validation_inscriptions', label: 'Validation Inscriptions', icon: Icons.person_add, route: '/patron/registrations/validation'),
+    FavoriteItem(id: 'validation_clients', label: 'Validation Clients', icon: Icons.approval, route: '/clients/validation'),
+    FavoriteItem(id: 'validation_devis', label: 'Validation Devis', icon: Icons.assignment, route: '/devis/validation'),
+    FavoriteItem(id: 'validation_factures', label: 'Validation Factures', icon: Icons.receipt, route: '/factures/validation'),
+    FavoriteItem(id: 'validation_pointages', label: 'Validation Pointages', icon: Icons.camera_alt, route: '/attendance-validation'),
+    FavoriteItem(id: 'validation_bon_commandes_fournisseur', label: 'Validation Bons Fournisseur', icon: Icons.inventory_2, route: '/bons-de-commande-fournisseur/validation'),
+    FavoriteItem(id: 'tasks', label: 'Tâches', icon: Icons.task_alt, route: '/tasks'),
   ];
 
   @override
@@ -74,376 +43,408 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
   @override
   Map<String, ChartConfig> get charts => {};
 
+  static String _formatAmount(double value) {
+    if (value >= 1e6) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
+    if (value >= 1e3) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
+    return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
+  }
+
   @override
   Widget buildCustomContent(BuildContext context) {
-    return Obx(
-      () => SingleChildScrollView(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildWelcomeCard(context),
+          const SizedBox(height: 24),
+          _buildQuickActions(context),
+          const SizedBox(height: 28),
+          _buildSectionLabel('Validations en attente', Icons.approval, const Color(0xFFF59E0B)),
+          const SizedBox(height: 12),
+          _buildValidationSection(context),
+          const SizedBox(height: 28),
+          _buildSectionLabel('Métriques', Icons.trending_up, const Color(0xFF059669)),
+          const SizedBox(height: 12),
+          _buildPerformanceSection(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String label, IconData icon, Color color) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeCard(BuildContext context) {
+    return Obx(() {
+      final user = Get.find<AuthController>().userAuth.value;
+      final prenom = user?.prenom?.trim().isNotEmpty == true ? user!.prenom! : 'Direction';
+      final hour = DateTime.now().hour;
+      final greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF0F172A),
+              const Color(0xFF1E293B),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Première partie - Cases stylées pour les validations
-            _buildValidationSection(),
-
-            const SizedBox(height: 24),
-
-            // Deuxième partie - Métriques de performance
-            _buildPerformanceSection(),
+            Text(
+              '$greeting, $prenom',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withOpacity(0.7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
-      ),
-    );
+      );
+    });
   }
 
-  Widget _buildValidationSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.approval, color: Colors.blue.shade700, size: 24),
-              const SizedBox(width: 10),
-              Text(
-                'Validations en Attente',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount:
-                Get.width > 1200
-                    ? 4
-                    : Get.width > 800
-                    ? 3
-                    : 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.3,
-            children: [
-              _buildValidationCard(
-                title: 'Clients',
-                count: controller.pendingClients.value,
-                icon: Icons.people,
-                color: Colors.blue,
-                onTap: () => Get.toNamed('/clients/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Devis',
-                count: controller.pendingDevis.value,
-                icon: Icons.description,
-                color: Colors.green,
-                onTap: () => Get.toNamed('/devis/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Bordereaux',
-                count: controller.pendingBordereaux.value,
-                icon: Icons.assignment_turned_in,
-                color: Colors.orange,
-                onTap: () => Get.toNamed('/bordereaux/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Bons de Commande',
-                count: controller.pendingBonCommandes.value,
-                icon: Icons.shopping_cart,
-                color: Colors.purple,
-                onTap: () => Get.toNamed('/bon-commandes/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Bons de Commande Fournisseur',
-                count: 0, // TODO: Ajouter le compteur dans le contrôleur
-                icon: Icons.inventory_2,
-                color: Colors.indigo,
-                onTap:
-                    () =>
-                        Get.toNamed('/bons-de-commande-fournisseur/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Factures',
-                count: controller.pendingFactures.value,
-                icon: Icons.receipt,
-                color: Colors.red,
-                onTap: () => Get.toNamed('/factures/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Paiements',
-                count: controller.pendingPaiements.value,
-                icon: Icons.payment,
-                color: Colors.teal,
-                onTap: () => Get.toNamed('/paiements/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Dépenses',
-                count: controller.pendingDepenses.value,
-                icon: Icons.money_off,
-                color: Colors.purple,
-                onTap: () => Get.toNamed('/depenses/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Salaires',
-                count: controller.pendingSalaires.value,
-                icon: Icons.account_balance_wallet,
-                color: Colors.amber,
-                onTap: () => Get.toNamed('/salaires/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Reporting',
-                count: controller.pendingReporting.value,
-                icon: Icons.analytics,
-                color: Colors.indigo,
-                onTap: () => Get.toNamed('/reporting/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Pointages',
-                count: controller.pendingPointages.value,
-                icon: Icons.access_time,
-                color: Colors.brown,
-                onTap: () => Get.toNamed('/pointage/validation'),
-              ),
-              _buildValidationCard(
-                title: 'Employés',
-                count: 0, // TODO: Ajouter le compteur dans le contrôleur
-                icon: Icons.people,
-                color: Colors.cyan,
-                onTap: () => Get.toNamed('/employees/validation'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildValidationCard({
-    required String title,
-    required int count,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: LinearGradient(
-              colors: [color.withOpacity(0.12), color.withOpacity(0.06)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
+  Widget _buildQuickActions(BuildContext context) {
+    final actions = [
+      _QuickAction('Inscriptions', Icons.person_add, '/patron/registrations/validation', const Color(0xFFEA580C)),
+      _QuickAction('Clients', Icons.people, '/clients/validation', const Color(0xFF3B82F6)),
+      _QuickAction('Devis', Icons.description, '/devis/validation', const Color(0xFF10B981)),
+      _QuickAction('Factures', Icons.receipt, '/factures/validation', const Color(0xFFDC2626)),
+      _QuickAction('Pointages', Icons.access_time, '/pointage/validation', const Color(0xFFF59E0B)),
+      _QuickAction('Tâches', Icons.task_alt, '/tasks', const Color(0xFF7C3AED)),
+    ];
+    final screenWidth = MediaQuery.of(context).size.width;
+    return SizedBox(
+      height: 48,
+      width: screenWidth - 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final a = actions[index];
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => Get.toNamed(a.route),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  color: a.color.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: a.color.withOpacity(0.2), width: 1),
                 ),
-                child: Icon(icon, size: 28, color: color),
-              ),
-              const SizedBox(height: 10),
-              Flexible(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade900,
-                    letterSpacing: 0.5,
-                    height: 1.2,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.3),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(a.icon, size: 20, color: a.color),
+                    const SizedBox(width: 8),
+                    Text(
+                      a.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade800,
+                      ),
                     ),
                   ],
                 ),
-                child: Text(
-                  count.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
               ),
-            ],
-          ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildValidationSection(BuildContext context) {
+    final items = [
+      _ValItem('Inscriptions', controller.pendingRegistrations, Icons.person_add, const Color(0xFFEA580C), '/patron/registrations/validation'),
+      _ValItem('Clients', controller.pendingClients, Icons.people, const Color(0xFF3B82F6), '/clients/validation'),
+      _ValItem('Devis', controller.pendingDevis, Icons.description, const Color(0xFF10B981), '/devis/validation'),
+      _ValItem('Bordereaux', controller.pendingBordereaux, Icons.assignment_turned_in, const Color(0xFFF59E0B), '/bordereaux/validation'),
+      _ValItem('Bons de Commande', controller.pendingBonCommandes, Icons.shopping_cart, const Color(0xFF7C3AED), '/bon-commandes/validation'),
+      _ValItem('Bons Fournisseur', null, Icons.inventory_2, const Color(0xFF6366F1), '/bons-de-commande-fournisseur/validation'),
+      _ValItem('Factures', controller.pendingFactures, Icons.receipt, const Color(0xFFDC2626), '/factures/validation'),
+      _ValItem('Paiements', controller.pendingPaiements, Icons.payment, const Color(0xFF0D9488), '/paiements/validation'),
+      _ValItem('Dépenses', controller.pendingDepenses, Icons.money_off, const Color(0xFF7C3AED), '/depenses/validation'),
+      _ValItem('Salaires', controller.pendingSalaires, Icons.account_balance_wallet, const Color(0xFFEAB308), '/salaires/validation'),
+      _ValItem('Reporting', controller.pendingReporting, Icons.analytics, const Color(0xFF6366F1), '/reporting/validation'),
+      _ValItem('Pointages', controller.pendingPointages, Icons.access_time, const Color(0xFF78716C), '/pointage/validation'),
+      _ValItem('Employés', null, Icons.people, const Color(0xFF06B6D4), '/employees/validation'),
+      _ValItem('Tâches', controller.pendingTasks, Icons.task_alt, const Color(0xFF7C3AED), '/tasks'),
+    ];
+    final crossCount = Get.width > 1200 ? 4 : Get.width > 800 ? 3 : 2;
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: crossCount,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.05,
+      children: items.map((e) => _buildModernCard(
+        title: e.title,
+        countRx: e.countRx,
+        icon: e.icon,
+        color: e.color,
+        onTap: () => Get.toNamed(e.route),
+        badgeColor: const Color(0xFFF59E0B),
+      )).toList(),
+    );
+  }
+
+  Widget _buildPerformanceSection(BuildContext context) {
+    return Column(
+      children: [
+        _buildStatRow<int>(
+          'Clients validés',
+          controller.validatedClients,
+          (v) => v.toString(),
+          Icons.verified_user,
+          const Color(0xFF059669),
+          'Clients actifs',
         ),
-      ),
+        const SizedBox(height: 12),
+        _buildStatRow<int>(
+          'Fournisseurs',
+          controller.totalSuppliers,
+          (v) => v.toString(),
+          Icons.business,
+          const Color(0xFFEA580C),
+          'Partenaires',
+        ),
+        const SizedBox(height: 12),
+        _buildStatRow<double>(
+          'Chiffre d\'affaires',
+          controller.totalRevenue,
+          _formatAmount,
+          Icons.euro,
+          const Color(0xFF7C3AED),
+          'Montant total des factures',
+        ),
+      ],
     );
   }
 
-  Widget _buildPerformanceSection() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.trending_up, color: Colors.green.shade700, size: 28),
-              const SizedBox(width: 12),
-              Text(
-                'Métriques de Performance',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount:
-                Get.width > 1200
-                    ? 4
-                    : Get.width > 800
-                    ? 2
-                    : 1,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 2.5,
-            children: [
-              _buildPerformanceCard(
-                title: 'Clients Validés',
-                value: controller.validatedClients.value.toString(),
-                icon: Icons.verified_user,
-                color: Colors.green,
-                subtitle: 'Clients actifs',
-              ),
-              _buildPerformanceCard(
-                title: 'Fournisseurs',
-                value: controller.totalSuppliers.value.toString(),
-                icon: Icons.business,
-                color: Colors.orange,
-                subtitle: 'Partenaires',
-              ),
-              _buildPerformanceCard(
-                title: 'Chiffre d\'Affaires',
-                value:
-                    '${controller.totalRevenue.value.toStringAsFixed(0)} FCFA',
-                icon: Icons.euro,
-                color: Colors.purple,
-                subtitle: 'Montant total des factures',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPerformanceCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required String subtitle,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.all(12),
+  Widget _buildStatRow<T>(String title, Rx<T> valueRx, String Function(T) valueFormat, IconData icon, Color color, String subtitle) {
+    return Obx(() {
+      final value = valueFormat(valueRx.value);
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.05), color.withOpacity(0.02)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 28, color: color),
+              child: Icon(icon, size: 22, color: color),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     value,
                     style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
                       color: color,
+                      letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildModernCard({
+    required String title,
+    required RxInt? countRx,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    required Color badgeColor,
+  }) {
+    final badge = countRx != null
+        ? Obx(() {
+            final c = countRx.value;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: badgeColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                c.toString(),
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: badgeColor,
+                ),
+              ),
+            );
+          })
+        : Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: badgeColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '0',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: badgeColor,
+              ),
+            ),
+          );
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, size: 22, color: color),
+                  ),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: badge,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade800,
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -452,15 +453,6 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
   @override
   List<Widget> buildDrawerItems(BuildContext context) {
     return [
-      /*  ListTile(
-        leading: const Icon(Icons.dashboard, color: Colors.white70),
-        title: const Text(
-          'Tableau de bord',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () {},
-      ), */
-      // Section Validations
       const Divider(color: Colors.white54),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -473,154 +465,26 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
           ),
         ),
       ),
-      ListTile(
-        leading: const Icon(Icons.people, color: Colors.white70),
-        title: const Text(
-          'Validation Clients',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/clients/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.assignment, color: Colors.white70),
-        title: const Text(
-          'Validation Devis',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/devis/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.description, color: Colors.white70),
-        title: const Text(
-          'Validation Bordereaux',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/bordereaux/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.receipt, color: Colors.white70),
-        title: const Text(
-          'Validation Factures',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/factures/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.payment, color: Colors.white70),
-        title: const Text(
-          'Validation Paiements',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/paiements/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.shopping_cart, color: Colors.white70),
-        title: const Text(
-          'Validation Bons de Commande',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/bon-commandes/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.money_off, color: Colors.white70),
-        title: const Text(
-          'Validation Dépenses',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/depenses/validation'),
-      ),
-      ListTile(
-        leading: const Icon(
-          Icons.account_balance_wallet,
-          color: Colors.white70,
-        ),
-        title: const Text(
-          'Validation Salaires',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/salaires/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.analytics, color: Colors.white70),
-        title: const Text(
-          'Validation Reporting',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/reporting/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.build, color: Colors.white70),
-        title: const Text(
-          'Validation Interventions',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/interventions/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.account_balance, color: Colors.white70),
-        title: const Text(
-          'Validation Taxes',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/taxes/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.business, color: Colors.white70),
-        title: const Text(
-          'Validation Fournisseurs',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/suppliers/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.inventory, color: Colors.white70),
-        title: const Text(
-          'Validation Stock',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/stock/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.access_time, color: Colors.white70),
-        title: const Text(
-          'Validation Pointage',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/pointage/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.work, color: Colors.white70),
-        title: const Text(
-          'Validation Recrutements',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/recrutement/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.description, color: Colors.white70),
-        title: const Text(
-          'Validation Contrats',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/contrats/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.event_busy, color: Colors.white70),
-        title: const Text(
-          'Validation Congés',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/conges/validation'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.people, color: Colors.white70),
-        title: const Text(
-          'Validation Employés',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/employees/validation'),
-      ),
-      // Section Navigation générale
+      _drawerItem(context, Icons.person_add, 'Validation Inscriptions', '/patron/registrations/validation'),
+      _drawerItem(context, Icons.people, 'Validation Clients', '/clients/validation'),
+      _drawerItem(context, Icons.assignment, 'Validation Devis', '/devis/validation'),
+      _drawerItem(context, Icons.assignment_turned_in, 'Validation Bordereaux', '/bordereaux/validation'),
+      _drawerItem(context, Icons.receipt, 'Validation Factures', '/factures/validation'),
+      _drawerItem(context, Icons.payment, 'Validation Paiements', '/paiements/validation'),
+      _drawerItem(context, Icons.shopping_cart, 'Validation Bons de Commande', '/bon-commandes/validation'),
+      _drawerItem(context, Icons.money_off, 'Validation Dépenses', '/depenses/validation'),
+      _drawerItem(context, Icons.account_balance_wallet, 'Validation Salaires', '/salaires/validation'),
+      _drawerItem(context, Icons.analytics, 'Validation Reporting', '/reporting/validation'),
+      _drawerItem(context, Icons.build, 'Validation Interventions', '/interventions/validation'),
+      _drawerItem(context, Icons.account_balance, 'Validation Taxes', '/taxes/validation'),
+      _drawerItem(context, Icons.business, 'Validation Fournisseurs', '/suppliers/validation'),
+      _drawerItem(context, Icons.inventory, 'Validation Stock', '/stock/validation'),
+      _drawerItem(context, Icons.access_time, 'Validation Pointage', '/pointage/validation'),
+      _drawerItem(context, Icons.work, 'Validation Recrutements', '/recrutement/validation'),
+      _drawerItem(context, Icons.description, 'Validation Contrats', '/contrats/validation'),
+      _drawerItem(context, Icons.event_busy, 'Validation Congés', '/conges/validation'),
+      _drawerItem(context, Icons.people_outline, 'Validation Employés', '/employees/validation'),
+      _drawerItem(context, Icons.inventory_2, 'Validation Bons Fournisseur', '/bons-de-commande-fournisseur/validation'),
       const Divider(color: Colors.white54),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -633,47 +497,48 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
           ),
         ),
       ),
-      ListTile(
-        leading: const Icon(Icons.list, color: Colors.white70),
-        title: const Text(
-          'Liste des Clients',
-          style: TextStyle(color: Colors.white70),
-        ),
-        onTap: () => Get.toNamed('/clients'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.euro, color: Colors.white70),
-        title: const Text('Finances', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/patron/finances'),
-      ),
-      ListTile(
-        leading: const Icon(Icons.analytics, color: Colors.white70),
-        title: const Text('Rapports', style: TextStyle(color: Colors.white70)),
-        onTap: () => Get.toNamed('/patron/reports'),
-      ),
-      // Bouton Paramètres (visible pour tous, mais accès restreint aux admins)
+      _drawerItem(context, Icons.list, 'Liste des Clients', '/clients'),
+      _drawerItem(context, Icons.euro, 'Finances', '/patron/finances'),
+      _drawerItem(context, Icons.book, 'Journal des comptes', '/journal'),
+      _drawerItem(context, Icons.analytics, 'Rapports', '/patron/reports'),
       Obx(() {
         final userRole = Get.find<AuthController>().userAuth.value?.role;
         if (userRole == 1) {
-          return ListTile(
-            leading: const Icon(Icons.settings, color: Colors.white70),
-            title: const Text(
-              'Paramètres',
-              style: TextStyle(color: Colors.white70),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Get.toNamed('/admin/settings');
-            },
-          );
+          return _drawerItem(context, Icons.settings_applications, 'Paramètres', '/admin/settings');
         }
         return const SizedBox.shrink();
       }),
     ];
   }
 
-  @override
-  Widget? buildFloatingActionButton() {
-    return null;
+  Widget _drawerItem(BuildContext context, IconData icon, String label, String route) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70, size: 22),
+      title: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 15)),
+      onTap: () {
+        Navigator.pop(context);
+        Get.toNamed(route);
+      },
+    );
   }
+
+  @override
+  Widget? buildFloatingActionButton() => null;
+}
+
+class _QuickAction {
+  final String label;
+  final IconData icon;
+  final String route;
+  final Color color;
+  _QuickAction(this.label, this.icon, this.route, this.color);
+}
+
+class _ValItem {
+  final String title;
+  final RxInt? countRx;
+  final IconData icon;
+  final Color color;
+  final String route;
+  _ValItem(this.title, this.countRx, this.icon, this.color, this.route);
 }

@@ -112,24 +112,40 @@ class PdfService {
       pdf = pw.Document();
 
       pdf.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.symmetric(horizontal: 35, vertical: 28),
           build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                _buildHeader('DEVIS', (devis['reference'] ?? 'N/A').toString()),
-                pw.SizedBox(height: 20),
-                _buildClientInfo(client),
-                pw.SizedBox(height: 20),
-                _buildItemsTable(items),
-                pw.SizedBox(height: 20),
-                _buildTotals(devis),
-                pw.SizedBox(height: 30),
-                _buildFooter(commercial),
-              ],
-            );
+            return [
+              _buildHeader(
+                'DEVIS',
+                (devis['reference'] ?? 'N/A').toString(),
+                titre: devis['titre']?.toString(),
+                compact: true,
+              ),
+              pw.SizedBox(height: 12),
+              _buildClientInfo(client, compact: true),
+              pw.SizedBox(height: 12),
+              ..._buildItemsTableWithPagination(items, compact: true),
+              pw.SizedBox(height: 12),
+              _buildAdditionalInfo(devis, compact: true),
+              pw.SizedBox(height: 12),
+              _buildTotals(devis, compact: true),
+              pw.SizedBox(height: 12),
+              _buildPaymentConditions(devis, compact: true),
+              pw.SizedBox(height: 20),
+              _buildSignature(compact: true),
+            ];
           },
+          // Footer uniquement sur la dernière page (sans signature)
+          footer: (pw.Context context) {
+            if (context.pageNumber == context.pagesCount) {
+              return _buildFooter(commercial);
+            }
+            return pw.SizedBox.shrink();
+          },
+          // Forcer la pagination même si le contenu dépasse
+          maxPages: 10,
         ),
       );
 
@@ -143,7 +159,7 @@ class PdfService {
     }
   }
 
-  // Générer un PDF de bordereau
+  // Générer un PDF de bordereau (structure comme devis : infos entreprise en bas, signature)
   Future<void> generateBordereauPdf({
     required Map<String, dynamic> bordereau,
     required List<Map<String, dynamic>> items,
@@ -156,28 +172,43 @@ class PdfService {
       pdf = pw.Document();
 
       pdf.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.symmetric(horizontal: 35, vertical: 28),
           build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                _buildHeader('BORDEREAU', (bordereau['reference'] ?? 'N/A').toString()),
-                pw.SizedBox(height: 20),
-                _buildClientInfo(client),
-                pw.SizedBox(height: 20),
-                _buildItemsTable(items),
-                pw.SizedBox(height: 20),
-                _buildTotals(bordereau),
-                pw.SizedBox(height: 30),
-                _buildFooter(commercial),
-              ],
-            );
+            return [
+              _buildHeader(
+                'BORDEREAU',
+                (bordereau['reference'] ?? 'N/A').toString(),
+                titre: bordereau['titre']?.toString(),
+              ),
+              pw.SizedBox(height: 20),
+              _buildClientInfo(client),
+              pw.SizedBox(height: 20),
+              _buildBordereauItemsTable([
+                ...items,
+                {'reference': '', 'designation': 'Assistance et formation', 'quantite': '-'},
+              ]),
+              pw.SizedBox(height: 12),
+              _buildBordereauExtraInfoInline(bordereau),
+              pw.SizedBox(height: 20),
+              _buildSignature(),
+            ];
           },
+          footer: (pw.Context context) {
+            if (context.pageNumber == context.pagesCount) {
+              return _buildFooter(commercial);
+            }
+            return pw.SizedBox.shrink();
+          },
+          maxPages: 10,
         ),
       );
 
-      await _saveAndOpenPdf(pdf, 'bordereau_${bordereau['reference'] ?? 'N/A'}.pdf');
+      await _saveAndOpenPdf(
+        pdf,
+        'bordereau_${bordereau['reference'] ?? 'N/A'}.pdf',
+      );
     } catch (e) {
       throw Exception('Erreur lors de la génération du PDF bordereau: $e');
     } finally {
@@ -186,48 +217,61 @@ class PdfService {
     }
   }
 
-  // Générer un PDF de bon de commande
+  // Générer un PDF de bon de commande (structure comme devis/bordereau : infos entreprise en bas, signature)
   Future<void> generateBonCommandePdf({
     required Map<String, dynamic> bonCommande,
     required List<Map<String, dynamic>> items,
     required Map<String, dynamic> fournisseur,
-    Map<String, dynamic>? client, // Optionnel pour les bons de commande entreprise
+    Map<String, dynamic>?
+    client, // Optionnel pour les bons de commande entreprise
   }) async {
     pw.Document? pdf;
     try {
       await _loadImages();
       pdf = pw.Document();
 
+      final tableItems = [
+        ...items,
+        {'reference': '', 'ref': '', 'designation': 'Assistance et formation', 'quantite': '-', 'prix_unitaire': 0.0, 'montant_total': 0.0},
+      ];
+
       pdf.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.symmetric(horizontal: 35, vertical: 28),
           build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                _buildHeader('BON DE COMMANDE', bonCommande['reference'] ?? 'N/A'),
-                pw.SizedBox(height: 20),
-                // Utiliser _buildClientInfo si c'est un client, sinon _buildSupplierInfo
-                client != null
-                    ? _buildClientInfo(client)
-                    : _buildSupplierInfo(fournisseur),
-                pw.SizedBox(height: 20),
-                _buildItemsTable(items),
-                pw.SizedBox(height: 20),
-                _buildTotals(bonCommande),
-                pw.SizedBox(height: 30),
-                _buildFooter(null),
-              ],
-            );
+            return [
+              _buildHeader(
+                'BON DE COMMANDE',
+                (bonCommande['reference'] ?? 'N/A').toString(),
+                titre: bonCommande['titre']?.toString(),
+              ),
+              pw.SizedBox(height: 20),
+              client != null
+                  ? _buildClientInfo(client)
+                  : _buildSupplierInfo(fournisseur),
+              pw.SizedBox(height: 20),
+              _buildItemsTable(tableItems),
+              pw.SizedBox(height: 12),
+              _buildBonCommandeExtraInfoInline(bonCommande),
+              pw.SizedBox(height: 20),
+              _buildTotals(bonCommande),
+              pw.SizedBox(height: 20),
+              _buildSignature(),
+            ];
           },
+          footer: (pw.Context context) {
+            if (context.pageNumber == context.pagesCount) {
+              return _buildFooter(null);
+            }
+            return pw.SizedBox.shrink();
+          },
+          maxPages: 10,
         ),
       );
 
       final reference = bonCommande['reference']?.toString() ?? 'N/A';
-      await _saveAndOpenPdf(
-        pdf,
-        'bon_commande_${reference}.pdf',
-      );
+      await _saveAndOpenPdf(pdf, 'bon_commande_${reference}.pdf');
     } catch (e) {
       throw Exception(
         'Erreur lors de la génération du PDF bon de commande: $e',
@@ -257,7 +301,10 @@ class PdfService {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader('FACTURE', facture['reference']),
+                _buildHeader(
+                  'FACTURE',
+                  (facture['reference'] ?? 'N/A').toString(),
+                ),
                 pw.SizedBox(height: 20),
                 _buildClientInfo(client),
                 pw.SizedBox(height: 20),
@@ -272,7 +319,10 @@ class PdfService {
         ),
       );
 
-      await _saveAndOpenPdf(pdf, 'facture_${facture['reference']}.pdf');
+      await _saveAndOpenPdf(
+        pdf,
+        'facture_${facture['reference'] ?? 'N/A'}.pdf',
+      );
     } catch (e) {
       throw Exception('Erreur lors de la génération du PDF facture: $e');
     } finally {
@@ -299,7 +349,10 @@ class PdfService {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                _buildHeader('REÇU DE PAIEMENT', paiement['reference']),
+                _buildHeader(
+                  'REÇU DE PAIEMENT',
+                  (paiement['reference'] ?? 'N/A').toString(),
+                ),
                 pw.SizedBox(height: 20),
                 _buildClientInfo(client),
                 pw.SizedBox(height: 20),
@@ -312,7 +365,10 @@ class PdfService {
         ),
       );
 
-      await _saveAndOpenPdf(pdf, 'paiement_${paiement['reference']}.pdf');
+      await _saveAndOpenPdf(
+        pdf,
+        'paiement_${paiement['reference'] ?? 'N/A'}.pdf',
+      );
     } catch (e) {
       throw Exception('Erreur lors de la génération du PDF paiement: $e');
     } finally {
@@ -322,90 +378,147 @@ class PdfService {
   }
 
   // Construire l'en-tête du document
-  pw.Widget _buildHeader(String documentType, String reference) {
+  pw.Widget _buildHeader(
+    String documentType,
+    String reference, {
+    String? titre,
+    bool compact = false,
+  }) {
+    final padding = compact ? 12.0 : 20.0;
+    final logoSize = compact ? 52.0 : 100.0;
+    final titleSpacing = compact ? 6.0 : 10.0;
+    final refFontSize = compact ? 14.0 : 18.0;
+    final dateFontSize = compact ? 10.0 : 12.0;
+    final titreSpacing = compact ? 8.0 : 15.0;
+    final titreFontSize = compact ? 12.0 : 16.0;
     return pw.Container(
-      padding: const pw.EdgeInsets.all(20),
+      padding: pw.EdgeInsets.all(padding),
       decoration: pw.BoxDecoration(
         color: PdfColors.blue50,
         border: pw.Border.all(color: PdfColors.blue200),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              // Logo de l'entreprise
-              if (_logoImage != null) ...[
-                pw.Image(
-                  _logoImage!,
-                  width: 100, // Augmenté pour meilleure visibilité
-                  height: 100, // Augmenté pour meilleure visibilité
-                  fit: pw.BoxFit.contain,
-                ),
-                pw.SizedBox(height: 10),
-              ],
-              pw.Text(
-                documentType,
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue600,
-                ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  if (_logoImage != null) ...[
+                    pw.Image(
+                      _logoImage!,
+                      width: logoSize,
+                      height: logoSize,
+                      fit: pw.BoxFit.contain,
+                    ),
+                    pw.SizedBox(height: titleSpacing),
+                  ],
+                  pw.Text(
+                    '$documentType : ${reference.isNotEmpty ? reference : 'N/A'}',
+                    style: pw.TextStyle(
+                      fontSize: refFontSize,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue600,
+                    ),
+                  ),
+                ],
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text(
+                    'Date: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
+                    style: pw.TextStyle(fontSize: dateFontSize),
+                  ),
+                ],
               ),
             ],
           ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                'Référence: ${reference.isNotEmpty ? reference : 'N/A'}',
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                ),
+          if (titre != null && titre.isNotEmpty) ...[
+            pw.SizedBox(height: titreSpacing),
+            pw.Text(
+              titre,
+              style: pw.TextStyle(
+                fontSize: titreFontSize,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue800,
               ),
-              pw.SizedBox(height: 5),
-              pw.Text(
-                'Date: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   // Construire les informations client
-  pw.Widget _buildClientInfo(Map<String, dynamic> client) {
+  pw.Widget _buildClientInfo(Map<String, dynamic> client,
+      {bool compact = false}) {
+    final hasNomEntreprise =
+        client['nom_entreprise'] != null &&
+        client['nom_entreprise'].toString().isNotEmpty;
+    final hasNumeroContribuable =
+        client['numero_contribuable'] != null &&
+        client['numero_contribuable'].toString().isNotEmpty;
+    final hasAdresse =
+        client['adresse'] != null && client['adresse'].toString().isNotEmpty;
+
+    if (!hasNomEntreprise && !hasNumeroContribuable && !hasAdresse) {
+      return pw.SizedBox.shrink();
+    }
+
+    final padding = compact ? 10.0 : 15.0;
+    final nomFontSize = compact ? 12.0 : 16.0;
+    final smallFontSize = compact ? 9.0 : 12.0;
+    final spacing1 = compact ? 4.0 : 8.0;
+    final spacing2 = compact ? 3.0 : 5.0;
+
     return pw.Container(
-      padding: const pw.EdgeInsets.all(15),
+      padding: pw.EdgeInsets.all(padding),
       decoration: pw.BoxDecoration(
         color: PdfColors.grey50,
         border: pw.Border.all(color: PdfColors.grey300),
       ),
-      child: pw.Column(
+      child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(
-            'INFORMATIONS CLIENT',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blue800,
+          pw.SizedBox.shrink(),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                if (hasNomEntreprise) ...[
+                  pw.Text(
+                    '${client['nom_entreprise']}',
+                    style: pw.TextStyle(
+                      fontSize: nomFontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                    textAlign: pw.TextAlign.right,
+                  ),
+                  if (hasNumeroContribuable || hasAdresse)
+                    pw.SizedBox(height: spacing1),
+                ],
+                if (hasNumeroContribuable) ...[
+                  pw.Text(
+                    'N° Contribuable: ${client['numero_contribuable']}',
+                    textAlign: pw.TextAlign.right,
+                    style: pw.TextStyle(fontSize: smallFontSize),
+                  ),
+                  if (hasAdresse) pw.SizedBox(height: spacing2),
+                ],
+                if (hasAdresse) ...[
+                  pw.Text(
+                    '${client['adresse']}',
+                    textAlign: pw.TextAlign.right,
+                    style: pw.TextStyle(fontSize: smallFontSize),
+                  ),
+                ],
+              ],
             ),
           ),
-          pw.SizedBox(height: 10),
-          pw.Text('Nom: ${(client['nom'] ?? '')} ${(client['prenom'] ?? '')}'.trim()),
-          if (client['nom_entreprise'] != null && client['nom_entreprise'].toString().isNotEmpty)
-            pw.Text('Entreprise: ${client['nom_entreprise']}'),
-          if (client['email'] != null && client['email'].toString().isNotEmpty)
-            pw.Text('Email: ${client['email']}'),
-          if (client['contact'] != null && client['contact'].toString().isNotEmpty)
-            pw.Text('Contact: ${client['contact']}'),
-          if (client['adresse'] != null && client['adresse'].toString().isNotEmpty)
-            pw.Text('Adresse: ${client['adresse']}'),
         ],
       ),
     );
@@ -432,93 +545,177 @@ class PdfService {
           ),
           pw.SizedBox(height: 10),
           pw.Text('Nom: ${fournisseur['nom'] ?? 'Non spécifié'}'),
-          if (fournisseur['email'] != null && fournisseur['email'].toString().isNotEmpty)
+          if (fournisseur['email'] != null &&
+              fournisseur['email'].toString().isNotEmpty)
             pw.Text('Email: ${fournisseur['email']}'),
-          if (fournisseur['contact'] != null && fournisseur['contact'].toString().isNotEmpty)
+          if (fournisseur['contact'] != null &&
+              fournisseur['contact'].toString().isNotEmpty)
             pw.Text('Contact: ${fournisseur['contact']}'),
-          if (fournisseur['adresse'] != null && fournisseur['adresse'].toString().isNotEmpty)
+          if (fournisseur['adresse'] != null &&
+              fournisseur['adresse'].toString().isNotEmpty)
             pw.Text('Adresse: ${fournisseur['adresse']}'),
         ],
       ),
     );
   }
 
-  // Construire le tableau des articles
-  pw.Widget _buildItemsTable(List<Map<String, dynamic>> items) {
+  // Construire le tableau des articles avec pagination intelligente
+  List<pw.Widget> _buildItemsTableWithPagination(
+    List<Map<String, dynamic>> items, {
+    bool compact = false,
+  }) {
+    if (items.isEmpty) {
+      return [
+        pw.Container(
+          padding: pw.EdgeInsets.all(compact ? 12 : 20),
+          child: pw.Text(
+            'Aucun article dans ce devis',
+            style: pw.TextStyle(
+              fontSize: compact ? 10 : 12,
+              fontStyle: pw.FontStyle.italic,
+              color: PdfColors.grey600,
+            ),
+          ),
+        ),
+      ];
+    }
+
+    const int maxItemsPerPage = 5;
+    final List<pw.Widget> tables = [];
+
+    if (items.length <= maxItemsPerPage) {
+      tables.add(_buildSingleItemsTable(items, showHeader: true, compact: compact));
+      return tables;
+    }
+
+    int currentIndex = 0;
+    bool isFirstPage = true;
+
+    while (currentIndex < items.length) {
+      int remainingItems = items.length - currentIndex;
+      int itemsForThisPage =
+          remainingItems <= maxItemsPerPage ? remainingItems : maxItemsPerPage;
+      final pageItems = items.sublist(
+        currentIndex,
+        currentIndex + itemsForThisPage,
+      );
+      tables.add(_buildSingleItemsTable(pageItems,
+          showHeader: isFirstPage, compact: compact));
+      if (isFirstPage) isFirstPage = false;
+      currentIndex += itemsForThisPage;
+    }
+
+    return tables;
+  }
+
+  // Construire un tableau simple avec les items donnés
+  pw.Widget _buildSingleItemsTable(
+    List<Map<String, dynamic>> items, {
+    bool showHeader = true,
+    bool compact = false,
+  }) {
+    final cellPadding = compact ? 5.0 : 8.0;
+    final cellFontSize = compact ? 9.0 : 12.0;
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300),
       columnWidths: {
-        0: const pw.FlexColumnWidth(3),
-        1: const pw.FlexColumnWidth(1),
+        0: const pw.FlexColumnWidth(1.2),
+        1: const pw.FlexColumnWidth(3),
         2: const pw.FlexColumnWidth(1),
-        3: const pw.FlexColumnWidth(1),
+        3: const pw.FlexColumnWidth(1.5),
         4: const pw.FlexColumnWidth(1.5),
       },
       children: [
-        // En-tête du tableau
-        pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.blue100),
-          children: [
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(
-                'Désignation',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              ),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(
-                'Qté',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                textAlign: pw.TextAlign.center,
-              ),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(
-                'Prix U.',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                textAlign: pw.TextAlign.right,
-              ),
-            ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(8),
-              child: pw.Text(
-                'Total',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                textAlign: pw.TextAlign.right,
-              ),
-            ),
-          ],
-        ),
-        // Lignes des articles
-        ...items.map(
-          (item) => pw.TableRow(
+        if (showHeader)
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.blue100),
             children: [
               pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Text(item['designation'] ?? ''),
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  'Référence',
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: cellFontSize),
+                ),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
+                padding: pw.EdgeInsets.all(cellPadding),
                 child: pw.Text(
-                  '${item['quantite'] ?? 0}',
+                  'Désignation',
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: cellFontSize),
+                ),
+              ),
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  'Qté',
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: cellFontSize),
                   textAlign: pw.TextAlign.center,
                 ),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
+                padding: pw.EdgeInsets.all(cellPadding),
                 child: pw.Text(
-                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(item['prix_unitaire'] ?? 0)} FCFA',
+                  'Prix U.',
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: cellFontSize),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
+                padding: pw.EdgeInsets.all(cellPadding),
                 child: pw.Text(
-                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(item['montant_total'] ?? 0)} FCFA',
+                  'Total',
+                  style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, fontSize: cellFontSize),
                   textAlign: pw.TextAlign.right,
+                ),
+              ),
+            ],
+          ),
+        ...items.map(
+          (item) => pw.TableRow(
+            children: [
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  (item['reference'] ?? item['ref'])?.toString() ?? '',
+                  style: pw.TextStyle(fontSize: cellFontSize),
+                  maxLines: compact ? 2 : null,
+                ),
+              ),
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  item['designation']?.toString() ?? '',
+                  style: pw.TextStyle(fontSize: cellFontSize),
+                  maxLines: compact ? 2 : null,
+                ),
+              ),
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  '${item['quantite'] ?? 0}',
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(fontSize: cellFontSize),
+                ),
+              ),
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format((item['prix_unitaire'] as num?)?.toDouble() ?? 0.0)} FCFA',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(fontSize: cellFontSize),
+                ),
+              ),
+              pw.Padding(
+                padding: pw.EdgeInsets.all(cellPadding),
+                child: pw.Text(
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format((item['montant_total'] as num?)?.toDouble() ?? 0.0)} FCFA',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(fontSize: cellFontSize),
                 ),
               ),
             ],
@@ -528,8 +725,172 @@ class PdfService {
     );
   }
 
+  // Construire le tableau des articles (méthode de compatibilité)
+  pw.Widget _buildItemsTable(List<Map<String, dynamic>> items) {
+    final tables = _buildItemsTableWithPagination(items);
+    // Si un seul tableau, le retourner directement
+    if (tables.length == 1) {
+      return tables[0];
+    }
+    // Sinon, retourner une colonne avec tous les tableaux
+    return pw.Column(children: tables);
+  }
+
+  // Tableau des articles du bordereau : Référence, Désignation, Quantité
+  pw.Widget _buildBordereauItemsTable(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(20),
+        child: pw.Text(
+          'Aucun article dans ce bordereau',
+          style: pw.TextStyle(
+            fontSize: 12,
+            fontStyle: pw.FontStyle.italic,
+            color: PdfColors.grey600,
+          ),
+        ),
+      );
+    }
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey300),
+      columnWidths: {
+        0: const pw.FlexColumnWidth(1.5),
+        1: const pw.FlexColumnWidth(4),
+        2: const pw.FlexColumnWidth(1),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.blue100),
+          children: [
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(
+                'Référence',
+                style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold, fontSize: 12),
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(
+                'Désignation',
+                style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold, fontSize: 12),
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(8),
+              child: pw.Text(
+                'Quantité',
+                style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold, fontSize: 12),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+        ...items.map(
+          (item) => pw.TableRow(
+            children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(
+                  item['reference']?.toString() ?? '',
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(
+                  item['designation']?.toString() ?? '',
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(8),
+                child: pw.Text(
+                  '${item['quantite'] ?? 0}',
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Lignes après le tableau du bordereau (sans cadre) : Date de livraison, Délai de garantie
+  pw.Widget _buildBordereauExtraInfoInline(Map<String, dynamic> bordereau) {
+    final dateLivraison = bordereau['date_livraison'];
+    final garantie = bordereau['garantie']?.toString();
+    String formatDate(dynamic v) {
+      if (v == null) return '';
+      if (v is DateTime) return DateFormat('dd/MM/yyyy').format(v);
+      if (v is String) {
+        try {
+          return DateFormat('dd/MM/yyyy').format(DateTime.parse(v));
+        } catch (_) {
+          return v;
+        }
+      }
+      return '';
+    }
+    final dateLivraisonStr = formatDate(dateLivraison);
+    final hasGarantie = garantie != null && garantie.isNotEmpty;
+    if (dateLivraisonStr.isEmpty && !hasGarantie) {
+      return pw.SizedBox.shrink();
+    }
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (dateLivraisonStr.isNotEmpty)
+          pw.Text(
+            'Date de livraison : $dateLivraisonStr',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+        if (dateLivraisonStr.isNotEmpty && hasGarantie) pw.SizedBox(height: 6),
+        if (hasGarantie)
+          pw.Text(
+            'Délai de garantie : $garantie',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+      ],
+    );
+  }
+
+  // Lignes après le tableau du bon de commande : Délai de livraison, Conditions de paiement
+  pw.Widget _buildBonCommandeExtraInfoInline(Map<String, dynamic> bonCommande) {
+    final delaiLivraison = bonCommande['delai_livraison'];
+    final conditionsPaiement = bonCommande['conditions_paiement']?.toString();
+    final hasDelai = delaiLivraison != null &&
+        (delaiLivraison is int ? delaiLivraison > 0 : delaiLivraison.toString().isNotEmpty);
+    final hasConditions =
+        conditionsPaiement != null && conditionsPaiement.isNotEmpty;
+    if (!hasDelai && !hasConditions) {
+      return pw.SizedBox.shrink();
+    }
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (hasDelai)
+          pw.Text(
+            'Délai de livraison : ${delaiLivraison is int ? "$delaiLivraison jours" : delaiLivraison}',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+        if (hasDelai && hasConditions) pw.SizedBox(height: 6),
+        if (hasConditions)
+          pw.Text(
+            'Conditions de paiement : $conditionsPaiement',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+      ],
+    );
+  }
+
   // Construire les totaux
-  pw.Widget _buildTotals(Map<String, dynamic> document) {
+  pw.Widget _buildTotals(Map<String, dynamic> document, {bool compact = false}) {
     // Convertir en double de manière sécurisée
     double parseDouble(dynamic value) {
       if (value == null) return 0.0;
@@ -540,15 +901,32 @@ class PdfService {
       }
       return 0.0;
     }
-    
-    final montantHT = parseDouble(document['montant_ht']);
-    final tva = parseDouble(document['tva']);
-    final tvaPercent = tva > 0 ? tva : 20.0; // Par défaut 20% si null ou 0
-    final montantTVA = montantHT * (tvaPercent / 100);
-    final montantTTC = montantHT + montantTVA;
 
+    final montantHT = parseDouble(document['montant_ht']);
+    final tvaPercent = parseDouble(
+      document['tva'],
+    ); // TVA en pourcentage (0, 18, 20, etc.)
+    final montantTTC = parseDouble(
+      document['total_ttc'],
+    ); // Utiliser le montant TTC du document
+
+    // Calculer le montant TVA : différence entre TTC et HT, ou calculer à partir du pourcentage
+    final montantTVA =
+        montantTTC > 0
+            ? montantTTC -
+                montantHT // Utiliser la différence si TTC est disponible
+            : montantHT *
+                (tvaPercent / 100); // Sinon calculer à partir du pourcentage
+
+    // Utiliser le TTC du document s'il est disponible, sinon calculer
+    final montantTTCFinal =
+        montantTTC > 0 ? montantTTC : montantHT + montantTVA;
+
+    final padding = compact ? 10.0 : 15.0;
+    final totalFontSize = compact ? 12.0 : 16.0;
+    final spacing = compact ? 5.0 : 10.0;
     return pw.Container(
-      padding: const pw.EdgeInsets.all(15),
+      padding: pw.EdgeInsets.all(padding),
       decoration: pw.BoxDecoration(
         color: PdfColors.grey50,
         border: pw.Border.all(color: PdfColors.grey300),
@@ -556,28 +934,25 @@ class PdfService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Sous-total HT:'),
-              pw.Text(
-                '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantHT)} FCFA',
-              ),
-            ],
-          ),
-          pw.SizedBox(height: 5),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('TVA (${tvaPercent.toStringAsFixed(0)}%):'),
-              pw.Text(
-                '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantTVA)} FCFA',
-              ),
-            ],
-          ),
-          pw.SizedBox(height: 10),
+          if (tvaPercent > 0 || montantTVA > 0) ...[
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('TVA (${tvaPercent.toStringAsFixed(0)}%):',
+                    style: pw.TextStyle(
+                        fontSize: compact ? 9.0 : 12.0)),
+                pw.Text(
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantTVA)} FCFA',
+                  style: pw.TextStyle(
+                      fontSize: compact ? 9.0 : 12.0),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: compact ? 3.0 : 5.0),
+          ],
+          pw.SizedBox(height: spacing),
           pw.Container(
-            padding: const pw.EdgeInsets.all(10),
+            padding: pw.EdgeInsets.all(compact ? 6.0 : 10.0),
             decoration: pw.BoxDecoration(
               color: PdfColors.blue100,
               border: pw.Border.all(color: PdfColors.blue300),
@@ -589,18 +964,122 @@ class PdfService {
                   'TOTAL TTC:',
                   style: pw.TextStyle(
                     fontWeight: pw.FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: totalFontSize,
                   ),
                 ),
                 pw.Text(
-                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantTTC)} FCFA',
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(montantTTCFinal)} FCFA',
                   style: pw.TextStyle(
                     fontWeight: pw.FontWeight.bold,
-                    fontSize: 16,
+                    fontSize: totalFontSize,
                   ),
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Construire les informations supplémentaires (délai de livraison et garantie)
+  pw.Widget _buildAdditionalInfo(Map<String, dynamic> devis,
+      {bool compact = false}) {
+    final delaiLivraison = devis['delai_livraison']?.toString();
+    final garantie = devis['garantie']?.toString();
+
+    if ((delaiLivraison == null || delaiLivraison.isEmpty) &&
+        (garantie == null || garantie.isEmpty)) {
+      return pw.SizedBox.shrink();
+    }
+
+    final padding = compact ? 10.0 : 15.0;
+    final fontSize = compact ? 10.0 : 12.0;
+    final spacing = compact ? 6.0 : 10.0;
+    return pw.Container(
+      padding: pw.EdgeInsets.all(padding),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey50,
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (delaiLivraison != null && delaiLivraison.isNotEmpty) ...[
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Délai de livraison: ',
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: fontSize,
+                  ),
+                ),
+                pw.Expanded(
+                  child: pw.Text(
+                    delaiLivraison,
+                    style: pw.TextStyle(fontSize: fontSize),
+                  ),
+                ),
+              ],
+            ),
+            if (garantie != null && garantie.isNotEmpty)
+              pw.SizedBox(height: spacing),
+          ],
+          if (garantie != null && garantie.isNotEmpty) ...[
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Garantie: ',
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: fontSize,
+                  ),
+                ),
+                pw.Expanded(
+                  child: pw.Text(
+                    garantie,
+                    style: pw.TextStyle(fontSize: fontSize),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Construire les conditions de règlement
+  pw.Widget _buildPaymentConditions(Map<String, dynamic> devis,
+      {bool compact = false}) {
+    final conditions = devis['conditions']?.toString();
+
+    if (conditions == null || conditions.isEmpty) {
+      return pw.SizedBox.shrink();
+    }
+
+    final padding = compact ? 10.0 : 15.0;
+    final fontSize = compact ? 10.0 : 12.0;
+    return pw.Container(
+      padding: pw.EdgeInsets.all(padding),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey50,
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Condition de règlement: ',
+            style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold, fontSize: fontSize),
+          ),
+          pw.Expanded(
+            child: pw.Text(conditions,
+                style: pw.TextStyle(fontSize: fontSize)),
           ),
         ],
       ),
@@ -652,9 +1131,7 @@ class PdfService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text('Date de paiement:'),
-              pw.Text(
-                _formatPaymentDate(paiement['date_paiement']),
-              ),
+              pw.Text(_formatPaymentDate(paiement['date_paiement'])),
             ],
           ),
           pw.SizedBox(height: 10),
@@ -672,7 +1149,7 @@ class PdfService {
     if (dateValue == null) {
       return 'Non spécifiée';
     }
-    
+
     try {
       DateTime date;
       if (dateValue is DateTime) {
@@ -688,7 +1165,31 @@ class PdfService {
     }
   }
 
-  // Construire le pied de page
+  // Construire la signature (séparée du footer)
+  pw.Widget _buildSignature({bool compact = false}) {
+    if (_signatureImage == null) {
+      return pw.SizedBox.shrink();
+    }
+
+    final size = compact ? 90.0 : 150.0;
+    final topPadding = compact ? 12.0 : 20.0;
+    return pw.Container(
+      padding: pw.EdgeInsets.only(top: topPadding),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.end,
+        children: [
+          pw.Image(
+            _signatureImage!,
+            width: size,
+            height: size,
+            fit: pw.BoxFit.contain,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Construire le pied de page (sans signature)
   pw.Widget _buildFooter(Map<String, dynamic>? commercial) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(15),
@@ -696,20 +1197,28 @@ class PdfService {
         color: PdfColors.white,
         border: pw.Border.all(color: PdfColors.white),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.end,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          // Espace vide à gauche pour pousser la signature à droite
-          pw.Spacer(),
-          // Signature en bas à droite
-          if (_signatureImage != null)
-            pw.Image(
-              _signatureImage!,
-              width: 150, // Augmenté pour meilleure visibilité
-              height: 150, // Augmenté pour meilleure visibilité
-              fit: pw.BoxFit.contain,
+          // Informations de l'entreprise
+          pw.Container(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.Text(
+                  'Contact : 07 88 94 43 63 - Email: alebconsulting19@gmail.com',
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                  textAlign: pw.TextAlign.center,
+                ),
+                pw.SizedBox(height: 5),
+                pw.Text(
+                  'S.A au Capital de 1 000 000 francs CFA. COCODY ANGRE CITE GESTOCI. 16 BP 676 Abidjan 16 - RC : CI.ABJ-2014-A-13970',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );

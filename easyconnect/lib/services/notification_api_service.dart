@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -256,6 +257,87 @@ class NotificationApiService {
       AppLogger.error(
         'Erreur lors de la suppression de la notification: $e',
         tag: 'NOTIFICATION_API_SERVICE',
+      );
+      return false;
+    }
+  }
+
+  /// Créer une notification dans le backend
+  /// Cette méthode envoie une requête au backend pour créer une notification
+  /// Le backend créera la notification dans la BDD et enverra les push FCM
+  Future<bool> createNotification({
+    required String title,
+    required String message,
+    required String type,
+    required String entityType,
+    required String entityId,
+    String? actionRoute,
+    Map<String, dynamic>? metadata,
+    List<int>? recipientIds,
+    String? recipientRole,
+  }) async {
+    try {
+      final url = '${AppConfig.baseUrl}/notifications';
+
+      final body = {
+        'title': title,
+        'message': message,
+        'type': type,
+        'entity_type': entityType,
+        'entity_id': entityId,
+        if (actionRoute != null) 'action_route': actionRoute,
+        if (metadata != null) 'metadata': metadata,
+        if (recipientIds != null) 'recipient_ids': recipientIds,
+        if (recipientRole != null) 'recipient_role': recipientRole,
+      };
+
+      AppLogger.httpRequest('POST', url, tag: 'NOTIFICATION_API_SERVICE');
+      AppLogger.info(
+        'Création de notification: $body',
+        tag: 'NOTIFICATION_API_SERVICE',
+      );
+
+      final response = await RetryHelper.retryNetwork(
+        operation: () => http.post(
+          Uri.parse(url),
+          headers: {
+            ...ApiService.headers(),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'NOTIFICATION_API_SERVICE',
+      );
+      await AuthErrorHandler.handleHttpResponse(response);
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = ApiService.parseResponse(response);
+        if (data['success'] == true) {
+          AppLogger.info(
+            'Notification créée avec succès dans le backend',
+            tag: 'NOTIFICATION_API_SERVICE',
+          );
+          return true;
+        }
+      }
+
+      AppLogger.warning(
+        'Échec de la création de notification: ${response.statusCode} - ${response.body}',
+        tag: 'NOTIFICATION_API_SERVICE',
+      );
+      return false;
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la création de la notification: $e',
+        tag: 'NOTIFICATION_API_SERVICE',
+        error: e,
+        stackTrace: stackTrace,
       );
       return false;
     }

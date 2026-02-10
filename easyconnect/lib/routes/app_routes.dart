@@ -30,6 +30,7 @@ import 'package:easyconnect/Views/Patron/taxe_validation_page.dart';
 import 'package:easyconnect/Views/Patron/reporting_validation_page.dart';
 import 'package:easyconnect/Views/Patron/supplier_validation_page.dart';
 import 'package:easyconnect/Views/Patron/employee_validation_page.dart';
+import 'package:easyconnect/Views/Patron/registration_validation_page.dart';
 import 'package:easyconnect/Views/Patron/patron_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Admin/admin_dashboard.dart';
 import 'package:easyconnect/Views/Components/global_search_page.dart';
@@ -37,8 +38,11 @@ import 'package:easyconnect/Views/Components/profile_page.dart';
 import 'package:easyconnect/Views/Admin/user_management_page.dart';
 import 'package:easyconnect/Views/Admin/user_form_page.dart';
 import 'package:easyconnect/Views/Admin/app_settings_page.dart';
+import 'package:easyconnect/Views/Admin/push_notification_test_page.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Views/Auth/login_page.dart';
+import 'package:easyconnect/Views/Auth/welcome_page.dart';
+import 'package:easyconnect/Views/Auth/register_page.dart';
 import 'package:easyconnect/Views/Auth/unauthorized_page.dart';
 import 'package:easyconnect/Views/Commercial/commercial_dashboard_enhanced.dart';
 import 'package:easyconnect/Views/Comptable/comptable_dashboard_enhanced.dart';
@@ -104,11 +108,19 @@ import 'package:easyconnect/Views/Rh/contract_detail.dart';
 import 'package:easyconnect/Views/Patron/finances_page.dart';
 import 'package:easyconnect/Views/Patron/patron_reports_page.dart';
 import 'package:easyconnect/Views/Components/media_page.dart';
+import 'package:easyconnect/Views/Components/task_list_page.dart';
+import 'package:easyconnect/Views/Components/task_form_page.dart';
+import 'package:easyconnect/Views/Components/task_detail_page.dart';
+import 'package:easyconnect/Views/Components/journal_list_page.dart';
+import 'package:easyconnect/Views/Components/journal_detail_page.dart';
+import 'package:easyconnect/bindings/task_binding.dart';
 
 class AppRoutes {
   static final routes = [
+    GetPage(name: '/welcome', page: () => const WelcomePage()),
     GetPage(name: '/splash', page: () => const SplashScreen()),
     GetPage(name: '/login', page: () => LoginPage()),
+    GetPage(name: '/register', page: () => const RegisterPage()),
     GetPage(name: '/unauthorized', page: () => UnauthorizedPage()),
     GetPage(
       name: '/commercial',
@@ -137,6 +149,24 @@ class AppRoutes {
     GetPage(
       name: '/patron/reports',
       page: () => const PatronReportsPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/tasks',
+      page: () => const TaskListPage(),
+      binding: TaskBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/tasks/new',
+      page: () => const TaskFormPage(),
+      binding: TaskBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/tasks/:id',
+      page: () => TaskDetailPage(taskId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0),
+      binding: TaskBinding(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -183,6 +213,11 @@ class AppRoutes {
     GetPage(
       name: '/admin/settings',
       page: () => const AppSettingsPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/admin/push-test',
+      page: () => const PushNotificationTestPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -413,6 +448,12 @@ class AppRoutes {
       binding: PatronBinding(),
       middlewares: [AuthMiddleware()],
     ),
+    GetPage(
+      name: '/patron/registrations/validation',
+      page: () => const RegistrationValidationPage(),
+      binding: PatronBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
     // Routes de reporting
     GetPage(
       name: '/reporting',
@@ -522,6 +563,16 @@ class AppRoutes {
     GetPage(
       name: '/expenses',
       page: () => const ExpenseList(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/journal',
+      page: () => const JournalListPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/journal/:id',
+      page: () => JournalDetailPage(entryId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(

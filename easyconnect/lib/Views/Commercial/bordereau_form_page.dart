@@ -26,6 +26,10 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   // Contrôleurs de formulaire
   late final TextEditingController referenceController;
   late final TextEditingController notesController;
+  late final TextEditingController titreController;
+  late final TextEditingController garantieController;
+  String? _etatLivraison;
+  DateTime? _dateLivraison;
 
   final formKey = GlobalKey<FormState>();
   bool _isInitialized = false;
@@ -36,6 +40,8 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     // Toujours réinitialiser les contrôleurs pour avoir des champs vides
     referenceController = TextEditingController();
     notesController = TextEditingController();
+    titreController = TextEditingController();
+    garantieController = TextEditingController();
 
     // S'assurer que le formulaire du contrôleur est aussi réinitialisé
     if (!widget.isEditing) {
@@ -58,6 +64,8 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   void dispose() {
     referenceController.dispose();
     notesController.dispose();
+    titreController.dispose();
+    garantieController.dispose();
     super.dispose();
   }
 
@@ -69,6 +77,10 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
         );
         referenceController.text = bordereau.reference;
         notesController.text = bordereau.notes ?? '';
+        titreController.text = bordereau.titre ?? '';
+        garantieController.text = bordereau.garantie ?? '';
+        _etatLivraison = bordereau.etatLivraison;
+        _dateLivraison = bordereau.dateLivraison;
         controller.items.value = bordereau.items;
         _isInitialized = true;
       } catch (e) {
@@ -352,6 +364,67 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                       }),
                       const SizedBox(height: 16),
                       TextFormField(
+                        controller: titreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Titre du bordereau',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _etatLivraison,
+                        decoration: const InputDecoration(
+                          labelText: 'État de livraison',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('-- Non renseigné --')),
+                          DropdownMenuItem(value: 'en_attente', child: Text('En attente')),
+                          DropdownMenuItem(value: 'en_cours', child: Text('En cours')),
+                          DropdownMenuItem(value: 'livre', child: Text('Livré')),
+                          DropdownMenuItem(value: 'partiel', child: Text('Partiel')),
+                        ],
+                        onChanged: (value) => setState(() => _etatLivraison = value),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: garantieController,
+                        decoration: const InputDecoration(
+                          labelText: 'Garantie',
+                          border: OutlineInputBorder(),
+                          hintText: 'Ex: 12 mois',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Date de livraison'),
+                        subtitle: Text(
+                          _dateLivraison != null
+                              ? DateFormat('dd/MM/yyyy').format(_dateLivraison!)
+                              : 'Non renseignée',
+                        ),
+                        trailing: TextButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _dateLivraison ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) setState(() => _dateLivraison = picked);
+                          },
+                          icon: const Icon(Icons.calendar_today, size: 18),
+                          label: Text(_dateLivraison == null ? 'Choisir' : 'Modifier'),
+                        ),
+                      ),
+                      if (_dateLivraison != null)
+                        TextButton(
+                          onPressed: () => setState(() => _dateLivraison = null),
+                          child: const Text('Effacer la date'),
+                        ),
+                      const SizedBox(height: 16),
+                      TextFormField(
                         controller: notesController,
                         decoration: const InputDecoration(
                           labelText: 'Notes',
@@ -505,6 +578,10 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
             final data = {
               'reference': reference,
               'notes': notesController.text,
+              'titre': titreController.text.trim().isEmpty ? null : titreController.text.trim(),
+              'etat_livraison': _etatLivraison,
+              'garantie': garantieController.text.trim().isEmpty ? null : garantieController.text.trim(),
+              'date_livraison': _dateLivraison?.toIso8601String(),
             };
 
             if (widget.isEditing && widget.bordereauId != null) {
@@ -547,7 +624,12 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     return Card(
       child: ListTile(
         title: Text(item.designation),
-        subtitle: Text('${item.quantite} ${item.unite}'),
+        subtitle: Text(
+          (item.reference != null && item.reference!.isNotEmpty
+              ? '${item.reference!} • '
+              : '') +
+              '${item.quantite} ${item.unite}',
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -659,6 +741,9 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
 
   void _showItemForm(BuildContext context, {BordereauItem? item, int? index}) {
     final formKey = GlobalKey<FormState>();
+    final referenceController = TextEditingController(
+      text: item?.reference ?? '',
+    );
     final designationController = TextEditingController(
       text: item?.designation,
     );
@@ -683,6 +768,13 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    TextFormField(
+                      controller: referenceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Référence article',
+                        hintText: 'Ex: REF-001',
+                      ),
+                    ),
                     TextFormField(
                       controller: designationController,
                       decoration: const InputDecoration(
@@ -736,13 +828,16 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                 child: const Text('Annuler'),
               ),
               ElevatedButton(
-                onPressed: () {
+                  onPressed: () {
                   if (formKey.currentState!.validate()) {
+                    final ref = referenceController.text.trim();
                     final newItem = BordereauItem(
+                      id: item?.id,
+                      reference: ref.isEmpty ? null : ref,
                       designation: designationController.text,
                       unite: uniteController.text,
                       quantite: int.parse(quantiteController.text),
-                      description: descriptionController.text,
+                      description: descriptionController.text.isEmpty ? null : descriptionController.text,
                     );
 
                     if (index != null) {

@@ -23,9 +23,14 @@ class NotificationsPage extends StatelessWidget {
       print('[NOTIFICATIONS_PAGE] NotificationController créé (nouvelle instance)');
     }
     
-    // Forcer le rechargement des notifications au premier affichage
+    // Ne PAS forcer le rechargement au premier affichage si le controller est déjà initialisé
+    // Le controller se charge déjà automatiquement via onInit() et le polling
+    // Cela évite de déclencher des notifications sonores quand on entre dans la page
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadNotifications(forceRefresh: true);
+      // Seulement rafraîchir si la liste est vide (première fois)
+      if (controller.notifications.isEmpty && !controller.isLoading.value) {
+        controller.loadNotifications(forceRefresh: true);
+      }
     });
 
     return Scaffold(

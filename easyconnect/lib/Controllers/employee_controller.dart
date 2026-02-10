@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/notification_helper.dart';
 
 class EmployeeController extends GetxController {
   final EmployeeService _employeeService = EmployeeService.to;
@@ -252,10 +254,10 @@ class EmployeeController extends GetxController {
       // Sinon, ajouter à la liste existante (pour le scroll infini)
       if (page == 1) {
         employees.value = employeesList;
-        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
+        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois (durée 15 min)
         final cacheKey =
             'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
-        CacheHelper.set(cacheKey, employeesList);
+        CacheHelper.set(cacheKey, employeesList, duration: AppConfig.mediumCacheDuration);
       } else {
         // Ajouter les nouveaux éléments à la liste existante
         final existingIds = employees.map((e) => e.id).toSet();
@@ -824,6 +826,21 @@ class EmployeeController extends GetxController {
   Future<void> submitEmployeeForApproval(Employee employee) async {
     try {
       await _employeeService.submitEmployeeForApproval(employee.id!);
+
+      // Notifier le patron de la soumission
+      NotificationHelper.notifySubmission(
+        entityType: 'employee',
+        entityName: NotificationHelper.getEntityDisplayName(
+          'employee',
+          employee,
+        ),
+        entityId: employee.id.toString(),
+        route: NotificationHelper.getEntityRoute(
+          'employee',
+          employee.id.toString(),
+        ),
+      );
+
       Get.snackbar('Succès', 'Employé soumis pour approbation');
       loadEmployees();
     } catch (e) {
@@ -843,6 +860,22 @@ class EmployeeController extends GetxController {
   Future<void> approveEmployee(Employee employee, {String? comments}) async {
     try {
       await _employeeService.approveEmployee(employee.id!, comments: comments);
+
+      // Notifier l'utilisateur concerné de la validation
+      NotificationHelper.notifyValidation(
+        entityType: 'employee',
+        entityName: NotificationHelper.getEntityDisplayName(
+          'employee',
+          employee,
+        ),
+        entityId: employee.id.toString(),
+        route: NotificationHelper.getEntityRoute(
+          'employee',
+          employee.id.toString(),
+        ),
+        entity: employee,
+      );
+
       Get.snackbar('Succès', 'Employé approuvé');
       loadEmployees();
     } catch (e) {
@@ -865,6 +898,23 @@ class EmployeeController extends GetxController {
   }) async {
     try {
       await _employeeService.rejectEmployee(employee.id!, reason: reason);
+
+      // Notifier l'utilisateur concerné du rejet
+      NotificationHelper.notifyRejection(
+        entityType: 'employee',
+        entityName: NotificationHelper.getEntityDisplayName(
+          'employee',
+          employee,
+        ),
+        entityId: employee.id.toString(),
+        reason: reason,
+        route: NotificationHelper.getEntityRoute(
+          'employee',
+          employee.id.toString(),
+        ),
+        entity: employee,
+      );
+
       Get.snackbar('Succès', 'Employé rejeté');
       loadEmployees();
     } catch (e) {

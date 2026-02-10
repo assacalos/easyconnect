@@ -493,6 +493,7 @@ class InterventionController extends GetxController {
             'intervention',
             intervention.id.toString(),
           ),
+          entity: intervention,
         );
 
         _notifyDashboard();
@@ -649,6 +650,7 @@ class InterventionController extends GetxController {
             'intervention',
             intervention.id.toString(),
           ),
+          entity: intervention,
         );
 
         _notifyDashboard();

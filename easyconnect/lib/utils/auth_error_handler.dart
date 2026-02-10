@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/utils/logger.dart';
 
@@ -10,8 +12,33 @@ class AuthErrorHandler {
 
   /// Vérifie si une réponse HTTP contient une erreur d'authentification
   /// et déconnecte automatiquement l'utilisateur si nécessaire
-  static Future<void> handleHttpResponse(http.Response response) async {
+  /// [skipRefresh] : Si true, ne tente pas de rafraîchir le token avant de déconnecter
+  static Future<void> handleHttpResponse(
+    http.Response response, {
+    bool skipRefresh = false,
+  }) async {
     if (response.statusCode == 401) {
+      // Si on ne doit pas sauter le rafraîchissement, essayer de rafraîchir d'abord
+      if (!skipRefresh) {
+        try {
+          final refreshed = await SessionService.refreshToken();
+          if (refreshed) {
+            // Si le rafraîchissement réussit, ne pas déconnecter
+            AppLogger.info(
+              'Token rafraîchi avec succès après erreur 401',
+              tag: 'AUTH_ERROR_HANDLER',
+            );
+            return;
+          }
+        } catch (e) {
+          AppLogger.warning(
+            'Erreur lors du rafraîchissement: $e',
+            tag: 'AUTH_ERROR_HANDLER',
+          );
+        }
+      }
+
+      // Si le rafraîchissement échoue ou est ignoré, déconnecter
       await _handleUnauthorized();
     }
   }
@@ -27,7 +54,8 @@ class AuthErrorHandler {
   }
 
   /// Gère la déconnexion automatique en cas d'erreur 401
-  static Future<void> _handleUnauthorized() async {
+  /// [showMessage] : Si false, ne pas afficher de message (par défaut: seulement en debug)
+  static Future<void> _handleUnauthorized({bool? showMessage}) async {
     // Éviter les déconnexions multiples simultanées
     if (_isHandlingLogout) {
       return;
@@ -49,22 +77,27 @@ class AuthErrorHandler {
           tag: 'AUTH_ERROR_HANDLER',
         );
 
-        // Afficher un message informatif à l'utilisateur
-        Get.snackbar(
-          'Session expirée',
-          'Votre session a expiré. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-          icon: const Icon(Icons.warning, color: Colors.white),
-        );
+        // Afficher un message seulement si demandé explicitement ou en mode debug
+        // En production, ne pas afficher de message pour éviter les interruptions
+        final shouldShowMessage = showMessage ?? kDebugMode;
 
-        // Attendre un peu pour que l'utilisateur voie le message
-        await Future.delayed(const Duration(milliseconds: 500));
+        if (shouldShowMessage) {
+          Get.snackbar(
+            'Session expirée',
+            'Votre session a expiré. Veuillez vous reconnecter.',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            icon: const Icon(Icons.warning, color: Colors.white),
+          );
 
-        // Déconnecter l'utilisateur
-        await authController.logout();
+          // Attendre un peu pour que l'utilisateur voie le message
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+
+        // Déconnecter l'utilisateur silencieusement
+        await authController.logout(silent: !shouldShowMessage);
       }
     } catch (e, stackTrace) {
       AppLogger.error(

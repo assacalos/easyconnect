@@ -363,6 +363,16 @@ class _DevisValidationPageState extends State<DevisValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (item.reference != null && item.reference!.isNotEmpty)
+                  Text(
+                    item.reference!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                if (item.reference != null && item.reference!.isNotEmpty)
+                  const SizedBox(height: 2),
                 Text(
                   item.designation,
                   style: const TextStyle(fontWeight: FontWeight.w500),

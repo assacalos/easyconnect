@@ -9,7 +9,7 @@ class AppConfig {
   static const String _defaultBaseUrl = 'http://10.0.2.2:8000/api';
   static const String _productionBaseUrl =
       'https://easykonect.smil-app.com/api';
-
+  static const String websocketKey = "b3cf8d63e6ba9c6b2b1b"; // PUSHER_APP_KEY
   /// Récupère l'URL de base de l'API
   static String get baseUrl {
     // Vérifier si une URL personnalisée est stockée (priorité la plus haute)
@@ -83,8 +83,9 @@ class AppConfig {
   static const Duration retryInitialDelay = Duration(seconds: 1);
   static const Duration retryMaxDelay = Duration(seconds: 30);
 
-  // Cache
+  // Cache (stratégie : court = listes/compteurs, moyen = employés/fournisseurs, long = référentiels)
   static const Duration defaultCacheDuration = Duration(minutes: 5);
+  static const Duration mediumCacheDuration = Duration(minutes: 15);
   static const Duration longCacheDuration = Duration(hours: 1);
 
   // Pagination

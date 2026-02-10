@@ -215,321 +215,82 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     final statusText = _getStatusText(report.status);
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () {
-          // Naviguer vers la page de détail
-          Get.toNamed(
-            '/user-reportings/${report.id}',
-            arguments: report,
-          );
+        onTap: () async {
+          await Get.toNamed('/user-reportings/${report.id}', arguments: report);
+          _loadReports(); // Rafraîchir la liste au retour (ex. après validation)
         },
-        child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: statusColor.withOpacity(0.1),
-          child: Icon(statusIcon, color: statusColor),
-        ),
-        title: Text(
-          'Rapport - ${formatDate.format(report.reportDate)}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('Utilisateur: ${report.userName}'),
-            Text('Rôle: ${report.userRole}'),
-            Text('Date: ${formatDate.format(report.reportDate)}'),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: statusColor),
-              ),
-              child: Text(
-                statusText,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Informations utilisateur
-                const Text(
-                  'Informations utilisateur',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Utilisateur: ${report.userName}'),
-                      Text('Rôle: ${report.userRole}'),
-                      Text(
-                        'Date du rapport: ${formatDate.format(report.reportDate)}',
-                      ),
-                      if (report.submittedAt != null)
-                        Text(
-                          'Soumis le: ${formatDate.format(report.submittedAt!)}',
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Métriques
-                const Text(
-                  'Métriques',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey),
-                  ),
-                  child: Column(
-                    children:
-                        report.metrics.entries.map((entry) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(entry.key),
-                                Text(
-                                  entry.value.toString(),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                ),
-                if (report.comments != null && report.comments!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Commentaires',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      report.comments!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
-                // Note du patron (uniquement pour les rapports soumis)
-                if (report.status == 'submitted') ...[
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Note du patron',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          report.patronNote != null &&
-                                  report.patronNote!.isNotEmpty
-                              ? Icons.edit
-                              : Icons.note_add,
-                          color: Colors.blue,
-                        ),
-                        onPressed: () => _showPatronNoteDialog(report),
-                        tooltip:
-                            report.patronNote != null &&
-                                    report.patronNote!.isNotEmpty
-                                ? 'Modifier la note'
-                                : 'Ajouter une note',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color:
-                          report.patronNote != null &&
-                                  report.patronNote!.isNotEmpty
-                              ? Colors.blue.withOpacity(0.1)
-                              : Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color:
-                            report.patronNote != null &&
-                                    report.patronNote!.isNotEmpty
-                                ? Colors.blue
-                                : Colors.grey,
-                      ),
-                    ),
-                    child: Text(
-                      report.patronNote != null && report.patronNote!.isNotEmpty
-                          ? report.patronNote!
-                          : 'Aucune note ajoutée. Cliquez sur l\'icône pour ajouter une note.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontStyle:
-                            report.patronNote != null &&
-                                    report.patronNote!.isNotEmpty
-                                ? FontStyle.normal
-                                : FontStyle.italic,
-                        color:
-                            report.patronNote != null &&
-                                    report.patronNote!.isNotEmpty
-                                ? Colors.black87
-                                : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _buildActionButtons(report, statusColor),
-              ],
-            ),
-          ),
-        ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons(ReportingModel report, Color statusColor) {
-    if (report.status == 'submitted') {
-      // En attente - Afficher boutons Valider/Rejeter
-      return Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
             children: [
-              ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(report),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: statusColor.withOpacity(0.15),
+                child: Icon(statusIcon, color: statusColor, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Rapport du ${formatDate.format(report.reportDate)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      report.userName,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      report.userRole,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: statusColor.withOpacity(0.5)),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(report),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Colors.grey[500],
               ),
             ],
           ),
-        ],
-      );
-    } else if (report.status == 'approved') {
-      // Validé - Afficher seulement info
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 8),
-            Text(
-              'Rapport validé',
-              style: TextStyle(
-                color: Colors.green[700],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
-    } else if (report.status == 'rejected') {
-      // Rejeté - Afficher motif du rejet
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.red),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.cancel, color: Colors.red),
-            const SizedBox(width: 8),
-            Text(
-              'Rapport rejeté',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Autres statuts
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.help, color: Colors.grey[600]),
-            const SizedBox(width: 8),
-            Text(
-              'Statut: ${report.status}',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+      ),
+    );
   }
 
   Color _getStatusColor(String status) {
@@ -571,107 +332,4 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     }
   }
 
-  void _showApproveConfirmation(ReportingModel report) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce rapport ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveReport(report.id);
-        _loadReports();
-      },
-    );
-  }
-
-  void _showRejectDialog(ReportingModel report) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le rapport',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
-          ),
-        ],
-      ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectReport(report.id, reason: commentController.text);
-        _loadReports();
-      },
-    );
-  }
-
-  void _showPatronNoteDialog(ReportingModel report) {
-    final noteController = TextEditingController(text: report.patronNote ?? '');
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Note du patron'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Ajoutez une note sur ce rapport avant validation :',
-                style: TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(
-                  labelText: 'Note',
-                  hintText: 'Entrez votre note sur ce rapport...',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 5,
-                minLines: 3,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              final note = noteController.text.trim();
-              Get.back();
-              controller.addPatronNote(
-                report.id,
-                note: note.isEmpty ? null : note,
-              );
-              _loadReports();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enregistrer'),
-          ),
-        ],
-      ),
-    );
-  }
 }

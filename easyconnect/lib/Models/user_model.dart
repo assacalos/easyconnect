@@ -1,8 +1,11 @@
+import 'package:easyconnect/utils/app_config.dart';
+
 class UserModel {
   final int id;
   final String? nom;
   final String? prenom;
   final String? email;
+  final String? avatar;
   final int? role;
   final dynamic createdAt;
   final dynamic updatedAt;
@@ -13,11 +16,32 @@ class UserModel {
     this.nom,
     this.prenom,
     this.email,
+    this.avatar,
     this.role,
     this.createdAt,
     this.updatedAt,
     required this.isActive,
   });
+
+  /// URL complète de la photo de profil (avatar) pour affichage.
+  /// - Si le backend renvoie un chemin relatif, on construit l'URL avec l'origine de l'API.
+  /// - Si l'URL absolue pointe vers un autre domaine (ex. localhost), on la reconstruit avec l'origine de l'API.
+  String? get photoUrl {
+    if (avatar == null || avatar!.trim().isEmpty) return null;
+    final a = avatar!.trim();
+    final origin = AppConfig.baseUrl.replaceFirst(RegExp(r'/api$'), '');
+    if (a.startsWith('http://') || a.startsWith('https://')) {
+      try {
+        final uri = Uri.parse(a);
+        final apiUri = Uri.parse(AppConfig.baseUrl);
+        if (uri.host == apiUri.host && uri.port == apiUri.port) return a;
+        return origin + (uri.path.startsWith('/') ? uri.path : '/$uri.path');
+      } catch (_) {
+        return a;
+      }
+    }
+    return origin + (a.startsWith('/') ? a : '/storage/$a');
+  }
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     // Conversion ID en int (avec gestion robuste)
@@ -63,6 +87,7 @@ class UserModel {
       nom: json['nom'],
       prenom: json['prenom'],
       email: json['email'],
+      avatar: json['avatar'] as String?,
       role: roleValue,
       createdAt: json['created_at'],
       updatedAt: json['updated_at'],
@@ -75,9 +100,10 @@ class UserModel {
     'nom': nom,
     'prenom': prenom,
     'email': email,
+    'avatar': avatar,
     'role': role,
     'created_at': createdAt,
     'updated_at': updatedAt,
-    'is_active': isActive, // pour Laravel
+    'is_active': isActive,
   };
 }

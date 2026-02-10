@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 class DevisItem {
   final int? id;
+  final String? reference;
   final String designation;
   final int quantite;
   final double prixUnitaire;
 
   DevisItem({
     this.id,
+    this.reference,
     required this.designation,
     required this.quantite,
     required this.prixUnitaire,
@@ -21,6 +23,7 @@ class DevisItem {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'reference': reference,
       'designation': designation,
       'quantite': quantite,
       'prix_unitaire': prixUnitaire,
@@ -30,6 +33,7 @@ class DevisItem {
   factory DevisItem.fromJson(Map<String, dynamic> json) {
     return DevisItem(
       id: json['id'] is String ? int.tryParse(json['id']) : json['id'],
+      reference: json['reference']?.toString(),
       designation: json['designation']?.toString() ?? '',
       quantite:
           json['quantite'] is String
@@ -72,6 +76,9 @@ class Devis {
   final String? rejectionComment; // Commentaire de rejet du patron
   final DateTime? submittedAt; // Date de soumission
   final DateTime? validatedAt; // Date de validation
+  final String? titre; // Titre du devis
+  final String? delaiLivraison; // Délai de livraison
+  final String? garantie; // Garantie
 
   Devis({
     this.id,
@@ -91,6 +98,9 @@ class Devis {
     this.rejectionComment,
     this.submittedAt,
     this.validatedAt,
+    this.titre,
+    this.delaiLivraison,
+    this.garantie,
   });
 
   double get sousTotal {
@@ -189,6 +199,9 @@ class Devis {
       'rejection_comment': rejectionComment,
       'submitted_at': submittedAt?.toIso8601String(),
       'validated_at': validatedAt?.toIso8601String(),
+      'titre': titre,
+      'delai_livraison': delaiLivraison,
+      'garantie': garantie,
     };
   }
 
@@ -239,6 +252,9 @@ class Devis {
           json['validated_at'] != null
               ? DateTime.parse(json['validated_at'])
               : null,
+      titre: json['titre'],
+      delaiLivraison: json['delai_livraison'],
+      garantie: json['garantie'],
     );
   }
 

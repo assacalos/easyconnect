@@ -167,13 +167,47 @@ class DevisController extends GetxController {
 
         // Mettre à jour la liste
         if (page == 1) {
+          // Sauvegarder les devis locaux (créés récemment) avant de remplacer
+          final localDevis =
+              devis
+                  .where(
+                    (d) =>
+                        d.id != null &&
+                        d.status == status &&
+                        d.commercialId == userId,
+                  )
+                  .toList();
+
+          // Remplacer la liste avec les nouvelles données du serveur
           devis.value = paginatedResponse.data;
+
+          // Vérifier si des devis locaux ne sont pas dans la réponse serveur
+          // et les réajouter s'ils ont le bon statut et le bon commercialId
+          final missingDevis =
+              localDevis
+                  .where(
+                    (local) =>
+                        !paginatedResponse.data.any(
+                          (loaded) => loaded.id == local.id,
+                        ),
+                  )
+                  .toList();
+
+          if (missingDevis.isNotEmpty) {
+            AppLogger.info(
+              'Réajout de ${missingDevis.length} devis locaux non trouvés dans la réponse serveur',
+              tag: 'DEVIS_CONTROLLER',
+            );
+            devis.insertAll(0, missingDevis);
+            devis.refresh();
+          }
+
           AppLogger.info(
             'Devis chargés avec succès: ${paginatedResponse.data.length} devis (statut: ${status ?? 'all'})',
             tag: 'DEVIS_CONTROLLER',
           );
 
-          if (paginatedResponse.data.isEmpty) {
+          if (paginatedResponse.data.isEmpty && missingDevis.isEmpty) {
             AppLogger.warning(
               'Liste de devis vide après chargement. Total en base: ${paginatedResponse.meta.total}',
               tag: 'DEVIS_CONTROLLER',
@@ -321,6 +355,35 @@ class DevisController extends GetxController {
     try {
       isLoading.value = true;
 
+      // Validation des données avant création
+      if (selectedClient.value == null || selectedClient.value!.id == null) {
+        AppLogger.error(
+          'Client non sélectionné ou ID manquant',
+          tag: 'DEVIS_CONTROLLER',
+        );
+        Get.snackbar(
+          'Erreur',
+          'Veuillez sélectionner un client valide',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return false;
+      }
+
+      if (items.isEmpty) {
+        AppLogger.error('Aucun article dans le devis', tag: 'DEVIS_CONTROLLER');
+        Get.snackbar(
+          'Erreur',
+          'Veuillez ajouter au moins un article',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return false;
+      }
+
+      AppLogger.info(
+        'Création du devis avec référence: ${data['reference']}',
+        tag: 'DEVIS_CONTROLLER',
+      );
+
       final newDevis = Devis(
         clientId: selectedClient.value!.id!,
         reference: data['reference'],
@@ -333,6 +396,14 @@ class DevisController extends GetxController {
         tva: data['tva'],
         conditions: data['conditions'],
         commercialId: userId,
+        titre: data['titre'],
+        delaiLivraison: data['delai_livraison'],
+        garantie: data['garantie'],
+      );
+
+      AppLogger.debug(
+        'Devis préparé: ${newDevis.toJson()}',
+        tag: 'DEVIS_CONTROLLER',
       );
 
       final createdDevis = await _devisService.createDevis(newDevis);
@@ -343,15 +414,45 @@ class DevisController extends GetxController {
       // Ajouter le devis à la liste localement (mise à jour optimiste)
       // Le nouveau devis a toujours le statut 1 (en attente)
       if (createdDevis.id != null) {
-        // Ajouter en début de liste pour qu'il apparaisse en premier
-        devis.insert(0, createdDevis);
-        AppLogger.info(
-          'Devis ajouté à la liste: ${createdDevis.reference} (ID: ${createdDevis.id})',
-          tag: 'DEVIS_CONTROLLER',
+        // S'assurer que le devis a bien le statut 1 et le commercialId correct
+        final devisToAdd = Devis(
+          id: createdDevis.id,
+          clientId: createdDevis.clientId,
+          reference: createdDevis.reference,
+          dateCreation: createdDevis.dateCreation,
+          dateValidite: createdDevis.dateValidite,
+          notes: createdDevis.notes,
+          status: 1, // Forcer le statut à 1 (en attente)
+          items: createdDevis.items,
+          remiseGlobale: createdDevis.remiseGlobale,
+          tva: createdDevis.tva,
+          conditions: createdDevis.conditions,
+          commercialId: userId, // S'assurer que le commercialId est correct
+          titre: createdDevis.titre,
+          delaiLivraison: createdDevis.delaiLivraison,
+          garantie: createdDevis.garantie,
         );
+
+        // Ajouter le devis directement à la liste complète en début
+        // Vérifier qu'il n'est pas déjà dans la liste
+        if (!devis.any((d) => d.id == devisToAdd.id)) {
+          devis.insert(0, devisToAdd);
+          // Forcer la mise à jour de la liste observable
+          devis.refresh();
+
+          AppLogger.info(
+            'Devis ajouté à la liste: ${devisToAdd.reference} (ID: ${devisToAdd.id}, Status: ${devisToAdd.status}, CommercialId: ${devisToAdd.commercialId})',
+            tag: 'DEVIS_CONTROLLER',
+          );
+        } else {
+          AppLogger.warning(
+            'Devis ${devisToAdd.id} déjà présent dans la liste',
+            tag: 'DEVIS_CONTROLLER',
+          );
+        }
       }
 
-      // Rafraîchir les compteurs du dashboard patron
+      // Rafraîchir les compteurs du dashboard patron immédiatement
       DashboardRefreshHelper.refreshPatronCounter('devis');
 
       // Notifier le patron de la soumission
@@ -386,8 +487,11 @@ class DevisController extends GetxController {
       // Recharger la liste avec le statut actuel pour synchroniser avec le serveur
       // IMPORTANT: Recharger en arrière-plan après un court délai pour laisser le temps au serveur
       // de traiter la création, mais garder le devis dans la liste immédiatement
-      Future.delayed(const Duration(milliseconds: 500), () async {
+      Future.delayed(const Duration(milliseconds: 1000), () async {
         try {
+          // Sauvegarder l'ID du devis créé avant le rechargement
+          final createdDevisId = createdDevis.id;
+
           // Recharger avec le statut 1 (en attente) car le nouveau devis a ce statut
           // Cela garantit que le devis apparaîtra dans l'onglet "En attente"
           await loadDevis(
@@ -396,15 +500,51 @@ class DevisController extends GetxController {
           );
 
           // Vérifier que le devis créé est toujours dans la liste après rechargement
-          if (createdDevis.id != null) {
-            final devisExists = devis.any((d) => d.id == createdDevis.id);
+          if (createdDevisId != null) {
+            final devisExists = devis.any(
+              (d) => d.id == createdDevisId && d.status == 1,
+            );
             if (!devisExists) {
               // Si le devis n'est pas dans la liste après rechargement, le rajouter
               AppLogger.warning(
-                'Devis créé non trouvé après rechargement, réajout à la liste',
+                'Devis créé (ID: $createdDevisId) non trouvé après rechargement, réajout à la liste',
                 tag: 'DEVIS_CONTROLLER',
               );
-              devis.insert(0, createdDevis);
+
+              // Réajouter le devis créé avec les bonnes valeurs
+              final devisToReadd = Devis(
+                id: createdDevis.id,
+                clientId: createdDevis.clientId,
+                reference: createdDevis.reference,
+                dateCreation: createdDevis.dateCreation,
+                dateValidite: createdDevis.dateValidite,
+                notes: createdDevis.notes,
+                status: 1,
+                items: createdDevis.items,
+                remiseGlobale: createdDevis.remiseGlobale,
+                tva: createdDevis.tva,
+                conditions: createdDevis.conditions,
+                commercialId: userId,
+              );
+
+              // Filtrer la liste actuelle pour ne garder que les devis avec statut 1
+              final currentDevisList =
+                  devis.where((d) => d.status == 1).toList();
+              if (!currentDevisList.any((d) => d.id == devisToReadd.id)) {
+                currentDevisList.insert(0, devisToReadd);
+                // Mettre à jour la liste complète en gardant les autres statuts
+                final otherDevis = devis.where((d) => d.status != 1).toList();
+                devis.value = [...currentDevisList, ...otherDevis];
+                AppLogger.info(
+                  'Devis réajouté à la liste après rechargement',
+                  tag: 'DEVIS_CONTROLLER',
+                );
+              }
+            } else {
+              AppLogger.info(
+                'Devis trouvé dans la liste après rechargement',
+                tag: 'DEVIS_CONTROLLER',
+              );
             }
           }
 
@@ -423,12 +563,35 @@ class DevisController extends GetxController {
       });
 
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Erreur lors de la création du devis: $e',
+        tag: 'DEVIS_CONTROLLER',
+        error: e,
+        stackTrace: stackTrace,
+      );
+
+      // Afficher un message d'erreur plus détaillé
+      String errorMessage = 'Impossible de créer le devis';
+      if (e.toString().contains('Exception:')) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+      } else if (e.toString().contains('HttpException')) {
+        errorMessage = 'Erreur de connexion au serveur';
+      } else if (e.toString().contains('FormatException')) {
+        errorMessage = 'Erreur de format des données';
+      } else if (e.toString().contains('timeout')) {
+        errorMessage = 'Délai d\'attente dépassé. Veuillez réessayer.';
+      }
+
       Get.snackbar(
         'Erreur',
-        'Impossible de créer le devis: $e',
+        errorMessage,
         snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
       );
+
       return false;
     } finally {
       isLoading.value = false;
@@ -452,6 +615,9 @@ class DevisController extends GetxController {
         tva: data['tva'] ?? devisToUpdate.tva,
         conditions: data['conditions'] ?? devisToUpdate.conditions,
         commercialId: devisToUpdate.commercialId,
+        titre: data['titre'] ?? devisToUpdate.titre,
+        delaiLivraison: data['delai_livraison'] ?? devisToUpdate.delaiLivraison,
+        garantie: data['garantie'] ?? devisToUpdate.garantie,
       );
 
       await _devisService.updateDevis(updatedDevis);
@@ -561,17 +727,22 @@ class DevisController extends GetxController {
           rejectionComment: originalDevis.rejectionComment,
           submittedAt: originalDevis.submittedAt,
           validatedAt: DateTime.now(), // Date de validation
+          titre: originalDevis.titre,
+          delaiLivraison: originalDevis.delaiLivraison,
+          garantie: originalDevis.garantie,
         );
 
-        // Si on est sur l'onglet "En attente" (status = 1), retirer le devis de la liste
-        // car il n'est plus en attente
-        if (_currentStatus == 1) {
-          devis.removeAt(devisIndex);
-        } else {
-          // Sinon (onglet "Tous" ou autres), mettre à jour le statut dans la liste
-          // pour que le changement soit visible immédiatement
-          devis[devisIndex] = updatedDevis;
-        }
+        // Mettre à jour le statut dans la liste complète
+        // Remplacer le devis dans la liste par la version mise à jour
+        devis[devisIndex] = updatedDevis;
+
+        // Forcer la mise à jour de la liste observable pour que tous les onglets se rafraîchissent
+        devis.refresh();
+
+        AppLogger.info(
+          'Devis ${devisId} mis à jour avec statut 2 (Validé) dans la liste',
+          tag: 'DEVIS_CONTROLLER',
+        );
       }
 
       // Appel API
@@ -608,6 +779,7 @@ class DevisController extends GetxController {
                 'devis',
                 devisId.toString(),
               ),
+              entity: originalDevis,
             );
           }
         });
@@ -623,29 +795,34 @@ class DevisController extends GetxController {
             );
           });
 
-          // Si on était sur l'onglet "Tous" (status = null), recharger aussi les autres onglets
-          // pour s'assurer que le devis validé apparaît partout avec le bon statut
-          if (_currentStatus == null) {
-            // Recharger aussi l'onglet "Validés" pour que le devis validé apparaisse
-            Future.delayed(const Duration(milliseconds: 300), () {
-              loadDevis(status: 2, forceRefresh: true).catchError((e) {
-                AppLogger.error(
-                  'Erreur lors du rechargement des devis validés: $e',
-                  tag: 'DEVIS_CONTROLLER',
-                );
-              });
+          // Recharger tous les onglets pour que le changement de statut soit visible partout
+          // Onglet "En attente" (status = 1) - pour retirer le devis validé
+          if (_currentStatus != 1) {
+            loadDevis(status: 1, forceRefresh: true).catchError((e) {
+              AppLogger.debug(
+                'Erreur lors du rechargement de l\'onglet En attente: $e',
+                tag: 'DEVIS_CONTROLLER',
+              );
             });
           }
-          // Si on était sur l'onglet "En attente", recharger aussi l'onglet "Validés"
-          // pour que le devis validé apparaisse
-          else if (_currentStatus == 1) {
-            Future.delayed(const Duration(milliseconds: 300), () {
-              loadDevis(status: 2, forceRefresh: true).catchError((e) {
-                AppLogger.error(
-                  'Erreur lors du rechargement des devis validés: $e',
-                  tag: 'DEVIS_CONTROLLER',
-                );
-              });
+
+          // Onglet "Validés" (status = 2) - pour ajouter le devis validé
+          if (_currentStatus != 2) {
+            loadDevis(status: 2, forceRefresh: true).catchError((e) {
+              AppLogger.debug(
+                'Erreur lors du rechargement de l\'onglet Validés: $e',
+                tag: 'DEVIS_CONTROLLER',
+              );
+            });
+          }
+
+          // Onglet "Rejetés" (status = 3) - pour s'assurer qu'il n'y a pas de confusion
+          if (_currentStatus != 3) {
+            loadDevis(status: 3, forceRefresh: true).catchError((e) {
+              AppLogger.debug(
+                'Erreur lors du rechargement de l\'onglet Rejetés: $e',
+                tag: 'DEVIS_CONTROLLER',
+              );
             });
           }
         });
@@ -781,6 +958,7 @@ class DevisController extends GetxController {
                 'devis',
                 devisId.toString(),
               ),
+              entity: originalDevis,
             );
           }
         });
@@ -953,14 +1131,21 @@ class DevisController extends GetxController {
           selectedDevis.items
               .map(
                 (item) => {
+                  'reference': item.reference ?? '',
                   'designation':
                       (item.designation.isNotEmpty
                           ? item.designation
                           : 'Article sans désignation'),
                   'unite': 'unité',
-                  'quantite': item.quantite,
-                  'prix_unitaire': item.prixUnitaire,
-                  'montant_total': (item.total.isFinite ? item.total : 0.0),
+                  'quantite': item.quantite > 0 ? item.quantite : 1,
+                  'prix_unitaire':
+                      (item.prixUnitaire.isFinite && item.prixUnitaire >= 0)
+                          ? item.prixUnitaire
+                          : 0.0,
+                  'montant_total':
+                      (item.total.isFinite && item.total >= 0)
+                          ? item.total
+                          : 0.0,
                 },
               )
               .toList();
@@ -978,6 +1163,10 @@ class DevisController extends GetxController {
           'tva': selectedDevis.tva ?? 0.0, // tva peut être null
           'total_ttc':
               (selectedDevis.totalTTC.isFinite ? selectedDevis.totalTTC : 0.0),
+          'titre': selectedDevis.titre,
+          'delai_livraison': selectedDevis.delaiLivraison,
+          'garantie': selectedDevis.garantie,
+          'conditions': selectedDevis.conditions, // Ajouter les conditions
         },
         items: items,
         client: {
@@ -987,6 +1176,7 @@ class DevisController extends GetxController {
           'email': client.email ?? '',
           'contact': client.contact ?? '',
           'adresse': client.adresse ?? '',
+          'numero_contribuable': client.numeroContribuable ?? '',
         },
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );

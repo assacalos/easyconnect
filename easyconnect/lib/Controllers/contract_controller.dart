@@ -676,6 +676,20 @@ class ContractController extends GetxController {
       final result = await _contractService.submitContract(contract.id!);
 
       if (result['success'] == true) {
+        // Notifier le patron de la soumission
+        NotificationHelper.notifySubmission(
+          entityType: 'contract',
+          entityName: NotificationHelper.getEntityDisplayName(
+            'contract',
+            contract,
+          ),
+          entityId: contract.id.toString(),
+          route: NotificationHelper.getEntityRoute(
+            'contract',
+            contract.id.toString(),
+          ),
+        );
+
         Get.snackbar('Succès', 'Contrat soumis avec succès');
         loadContracts();
         loadContractStats();
@@ -719,6 +733,7 @@ class ContractController extends GetxController {
             'contract',
             contract.id.toString(),
           ),
+          entity: contract,
         );
 
         Get.snackbar('Succès', 'Contrat approuvé avec succès');
@@ -765,6 +780,7 @@ class ContractController extends GetxController {
             'contract',
             contract.id.toString(),
           ),
+          entity: contract,
         );
 
         Get.snackbar('Succès', 'Contrat rejeté');

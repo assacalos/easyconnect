@@ -178,10 +178,6 @@ class PushNotificationService {
   /// Enregistrer le token auprès du backend
   Future<void> _registerTokenToBackend(String fcmToken) async {
     if (!SessionService.isAuthenticated()) {
-      AppLogger.warning(
-        'Utilisateur non authentifié, token non enregistré',
-        tag: 'PUSH_NOTIFICATION',
-      );
       return;
     }
 
@@ -190,44 +186,51 @@ class PushNotificationService {
       final deviceId = await _getDeviceId();
       final appVersion = await _getAppVersion();
 
-      final authToken = SessionService.getToken();
-      if (authToken == null) {
-        AppLogger.warning(
-          'Token d\'authentification manquant',
-          tag: 'PUSH_NOTIFICATION',
-        );
+      final authToken = await SessionService.getToken();
+      if (authToken == null || authToken.isEmpty) {
         return;
       }
 
-      final response = await http.post(
-        Uri.parse('${AppConfig.baseUrl}/device-tokens'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $authToken',
-        },
-        body: jsonEncode({
-          'token': fcmToken,
-          'device_type': deviceType,
-          'device_id': deviceId,
-          'app_version': appVersion,
-        }),
-      );
+      final url = '${AppConfig.baseUrl}/device-tokens';
+      final payload = {
+        'fcm_token':
+            fcmToken, // Format attendu par le nouveau NotificationService Laravel
+        'token': fcmToken, // Garder pour compatibilité avec l'ancien système
+        'device_type': deviceType,
+        'device_id': deviceId,
+        'app_version': appVersion,
+      };
+
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('Timeout lors de l\'enregistrement du token FCM');
+            },
+          );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         AppLogger.info(
-          'Token enregistré avec succès sur le backend',
+          'Token FCM enregistré avec succès',
           tag: 'PUSH_NOTIFICATION',
         );
       } else {
-        AppLogger.warning(
-          'Erreur lors de l\'enregistrement du token: ${response.statusCode}',
+        AppLogger.error(
+          'Erreur lors de l\'enregistrement du token FCM: ${response.statusCode}',
           tag: 'PUSH_NOTIFICATION',
         );
-        AppLogger.debug('Réponse: ${response.body}', tag: 'PUSH_NOTIFICATION');
       }
     } catch (e, stackTrace) {
       AppLogger.error(
-        'Erreur lors de l\'enregistrement du token: $e',
+        'Erreur lors de l\'enregistrement du token FCM: $e',
         tag: 'PUSH_NOTIFICATION',
         error: e,
         stackTrace: stackTrace,
@@ -243,11 +246,41 @@ class PushNotificationService {
         'Notification reçue au premier plan: ${message.messageId}',
         tag: 'PUSH_NOTIFICATION',
       );
-      _showLocalNotification(message);
 
-      // Appeler le callback si défini
+      // Logger les données reçues pour debug (format FCM v1)
+      AppLogger.info(
+        'Données de la notification (FCM v1): ${message.data}',
+        tag: 'PUSH_NOTIFICATION',
+      );
+
+      // Extraire les données au format FCM v1
+      final notificationData = extractNotificationData(message.data);
+      AppLogger.info(
+        'Données extraites - Type: ${notificationData['type']}, EntityId: ${notificationData['entity_id']}, ActionRoute: ${notificationData['action_route']}',
+        tag: 'PUSH_NOTIFICATION',
+      );
+
+      // Afficher la notification locale IMMÉDIATEMENT avec son et vibration
+      _showLocalNotification(message)
+          .then((_) {
+            AppLogger.info(
+              'Notification locale affichée avec succès',
+              tag: 'PUSH_NOTIFICATION',
+            );
+          })
+          .catchError((e) {
+            AppLogger.error(
+              'Erreur lors de l\'affichage de la notification locale: $e',
+              tag: 'PUSH_NOTIFICATION',
+              error: e,
+            );
+          });
+
+      // Appeler le callback si défini avec les données extraites
+      // Note: Quand l'app est ouverte, Pusher devrait gérer les notifications en temps réel
+      // mais on garde ce callback pour la compatibilité et les cas où FCM arrive avant Pusher
       if (onNotificationReceived != null) {
-        onNotificationReceived!(message.data);
+        onNotificationReceived!(notificationData);
       }
     });
 
@@ -257,21 +290,83 @@ class PushNotificationService {
         'Notification ouverte depuis l\'arrière-plan: ${message.messageId}',
         tag: 'PUSH_NOTIFICATION',
       );
-      _handleNotificationTap(message.data);
+      AppLogger.info(
+        'Données de la notification: ${message.data}',
+        tag: 'PUSH_NOTIFICATION',
+      );
+
+      // Extraire les données au format FCM v1
+      final notificationData = extractNotificationData(message.data);
+      _handleNotificationTap(notificationData);
     });
 
-    // Vérifier si l'app a été ouverte depuis une notification
-    FirebaseMessaging.instance.getInitialMessage().then((
-      RemoteMessage? message,
-    ) {
-      if (message != null) {
-        AppLogger.info(
-          'App ouverte depuis une notification: ${message.messageId}',
-          tag: 'PUSH_NOTIFICATION',
-        );
-        _handleNotificationTap(message.data);
+    // Note: getInitialMessage() est maintenant géré dans main.dart après l'initialisation complète
+    // pour éviter les problèmes de timing avec GetX
+  }
+
+  /// Extrait et normalise les données de notification au format FCM v1
+  /// Supporte les formats: {type, entity_id, action_route} et l'ancien format pour compatibilité
+  /// Format FCM v1 attendu depuis Laravel NotificationService:
+  /// {
+  ///   'type': 'client' | 'devis' | 'conge' | etc.,
+  ///   'entity_id': '123',
+  ///   'action_route': '/devis/12' (optionnel, prioritaire sur type+entity_id)
+  /// }
+  Map<String, dynamic> extractNotificationData(Map<String, dynamic> rawData) {
+    final data = <String, dynamic>{};
+
+    AppLogger.info(
+      'Extraction des données FCM v1 - Raw data: $rawData',
+      tag: 'PUSH_NOTIFICATION',
+    );
+
+    // Format FCM v1 (prioritaire) - type
+    if (rawData.containsKey('type')) {
+      data['type'] = rawData['type']?.toString().toLowerCase();
+    } else if (rawData.containsKey('entity_type')) {
+      // Ancien format pour compatibilité
+      data['type'] = rawData['entity_type']?.toString().toLowerCase();
+    }
+
+    // Entity ID - format FCM v1
+    if (rawData.containsKey('entity_id')) {
+      final entityId = rawData['entity_id'];
+      data['entity_id'] = entityId?.toString();
+    } else if (rawData.containsKey('id')) {
+      // Fallback sur 'id' si entity_id n'existe pas
+      data['entity_id'] = rawData['id']?.toString();
+    } else if (rawData.containsKey('devis_id')) {
+      data['entity_id'] = rawData['devis_id']?.toString();
+      if (data['type'] == null) data['type'] = 'devis';
+    } else if (rawData.containsKey('client_id')) {
+      data['entity_id'] = rawData['client_id']?.toString();
+      if (data['type'] == null) data['type'] = 'client';
+    } else if (rawData.containsKey('conge_id')) {
+      data['entity_id'] = rawData['conge_id']?.toString();
+      if (data['type'] == null) data['type'] = 'conge';
+    }
+
+    // Action route (nouveau format FCM v1) - PRIORITAIRE pour la navigation
+    if (rawData.containsKey('action_route')) {
+      final actionRoute = rawData['action_route'];
+      if (actionRoute != null && actionRoute.toString().isNotEmpty) {
+        data['action_route'] = actionRoute.toString();
+      }
+    }
+
+    // Conserver toutes les autres données pour compatibilité
+    rawData.forEach((key, value) {
+      if (!data.containsKey(key)) {
+        data[key] = value;
       }
     });
+
+    AppLogger.info(
+      'Données extraites - Type: ${data['type']}, EntityId: ${data['entity_id']}, ActionRoute: ${data['action_route']}',
+      tag: 'PUSH_NOTIFICATION',
+    );
+
+    return data;
   }
 
   /// Afficher une notification locale
@@ -280,29 +375,91 @@ class PushNotificationService {
     final android = message.notification?.android;
 
     if (notification != null) {
-      await _localNotifications.show(
-        message.hashCode,
-        notification.title,
-        notification.body,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'high_importance_channel',
-            'Notifications importantes',
-            channelDescription:
-                'Ce canal est utilisé pour les notifications importantes',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            icon: android?.smallIcon ?? '@mipmap/ic_launcher',
+      try {
+        await _localNotifications.show(
+          message.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'high_importance_channel',
+              'Notifications importantes',
+              channelDescription:
+                  'Ce canal est utilisé pour les notifications importantes',
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+              showWhen: true,
+              icon: android?.smallIcon ?? '@mipmap/ic_launcher',
+            ),
+            iOS: const DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
-          iOS: const DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
-        payload: jsonEncode(message.data),
-      );
+          payload: jsonEncode(message.data),
+        );
+
+        AppLogger.info(
+          'Notification locale affichée avec succès: ${notification.title}',
+          tag: 'PUSH_NOTIFICATION',
+        );
+      } catch (e, stackTrace) {
+        AppLogger.error(
+          'Erreur lors de l\'affichage de la notification locale: $e',
+          tag: 'PUSH_NOTIFICATION',
+          error: e,
+          stackTrace: stackTrace,
+        );
+      }
+    } else {
+      // Si pas de notification, créer une notification à partir des données
+      final title = message.data['title'] ?? 'Nouvelle notification';
+      final body = message.data['body'] ?? message.data['message'] ?? '';
+
+      if (body.isNotEmpty) {
+        try {
+          await _localNotifications.show(
+            message.hashCode,
+            title,
+            body,
+            const NotificationDetails(
+              android: AndroidNotificationDetails(
+                'high_importance_channel',
+                'Notifications importantes',
+                channelDescription:
+                    'Ce canal est utilisé pour les notifications importantes',
+                importance: Importance.high,
+                priority: Priority.high,
+                playSound: true,
+                enableVibration: true,
+                showWhen: true,
+                icon: '@mipmap/ic_launcher',
+              ),
+              iOS: DarwinNotificationDetails(
+                presentAlert: true,
+                presentBadge: true,
+                presentSound: true,
+              ),
+            ),
+            payload: jsonEncode(message.data),
+          );
+
+          AppLogger.info(
+            'Notification locale créée à partir des données: $title',
+            tag: 'PUSH_NOTIFICATION',
+          );
+        } catch (e, stackTrace) {
+          AppLogger.error(
+            'Erreur lors de l\'affichage de la notification locale (data): $e',
+            tag: 'PUSH_NOTIFICATION',
+            error: e,
+            stackTrace: stackTrace,
+          );
+        }
+      }
     }
   }
 
@@ -360,24 +517,72 @@ class PushNotificationService {
   }
 
   /// Enregistrer le token après connexion
-  Future<void> registerTokenAfterLogin() async {
-    if (_fcmToken == null) {
+  /// Cette méthode est appelée après une connexion réussie pour s'assurer
+  /// que le token FCM est bien enregistré sur le backend
+  /// Retourne true si l'enregistrement a réussi, false sinon
+  Future<bool> registerTokenAfterLogin() async {
+    // Vérifier que l'utilisateur est bien authentifié
+    if (!SessionService.isAuthenticated()) {
+      return false;
+    }
+
+    // Obtenir le token FCM s'il n'est pas déjà disponible
+    if (_fcmToken == null || _fcmToken!.isEmpty) {
       await _getFCMToken();
     }
-    if (_fcmToken != null) {
-      await _registerTokenToBackend(_fcmToken!);
+
+    if (_fcmToken == null || _fcmToken!.isEmpty) {
+      AppLogger.error(
+        'Impossible d\'obtenir le token FCM',
+        tag: 'PUSH_NOTIFICATION',
+      );
+      return false;
     }
+
+    // Enregistrer le token sur le backend
+    try {
+      await _registerTokenToBackend(_fcmToken!);
+      return true;
+    } catch (e) {
+      AppLogger.error(
+        'Exception lors de l\'enregistrement du token FCM: $e',
+        tag: 'PUSH_NOTIFICATION',
+        error: e,
+      );
+      return false;
+    }
+  }
+
+  /// Forcer l'enregistrement du token (utile pour le débogage)
+  /// Cette méthode peut être appelée manuellement pour réessayer l'enregistrement
+  Future<bool> forceRegisterToken() async {
+    // Réinitialiser le token pour forcer une nouvelle obtention
+    _fcmToken = null;
+
+    // Obtenir un nouveau token
+    await _getFCMToken();
+
+    if (_fcmToken == null || _fcmToken!.isEmpty) {
+      AppLogger.error(
+        'Impossible d\'obtenir le token FCM',
+        tag: 'PUSH_NOTIFICATION',
+      );
+      return false;
+    }
+
+    // Enregistrer le token
+    return await registerTokenAfterLogin();
   }
 
   /// Supprimer le token du backend (lors de la déconnexion)
   Future<void> unregisterToken() async {
-    if (_fcmToken == null) {
+    if (_fcmToken == null || _fcmToken!.isEmpty) {
       return;
     }
 
     try {
-      final token = SessionService.getToken();
-      if (token == null) {
+      final token = await SessionService.getToken();
+      if (token == null || token.isEmpty) {
         return;
       }
 
@@ -403,6 +608,25 @@ class PushNotificationService {
 
   /// Obtenir le token FCM actuel
   String? get fcmToken => _fcmToken;
+
+  /// Efface toutes les notifications locales de la barre de notification.
+  /// À appeler quand l'app revient au premier plan pour éviter que les anciennes
+  /// notifications s'affichent encore comme nouvelles.
+  Future<void> cancelAllNotifications() async {
+    try {
+      await _localNotifications.cancelAll();
+      AppLogger.info(
+        'Notifications locales effacées de la barre',
+        tag: 'PUSH_NOTIFICATION',
+      );
+    } catch (e) {
+      AppLogger.error(
+        'Erreur lors de l\'effacement des notifications: $e',
+        tag: 'PUSH_NOTIFICATION',
+        error: e,
+      );
+    }
+  }
 
   /// Nettoyer les ressources
   void dispose() {

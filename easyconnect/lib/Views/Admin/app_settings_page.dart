@@ -111,6 +111,31 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
           const SizedBox(height: 16),
 
+          // Section Tests
+          _buildSectionHeader('Tests et développement'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text('Test Notifications Push'),
+                  subtitle: const Text(
+                    'Tester la configuration Firebase et FCM',
+                  ),
+                  leading: const Icon(
+                    Icons.notifications_active,
+                    color: Colors.blue,
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () {
+                    Get.toNamed('/admin/push-test');
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
           // Section Sécurité
           _buildSectionHeader('Sécurité'),
           Card(

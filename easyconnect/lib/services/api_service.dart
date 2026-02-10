@@ -8,12 +8,34 @@ class ApiService {
   // -------------------- HEADERS --------------------
   /// Génère les headers HTTP standardisés pour toutes les requêtes API
   /// Utilise SessionService pour récupérer le token de manière centralisée
+  /// Version synchrone pour compatibilité avec le code existant
   static Map<String, String> headers({bool jsonContent = true}) {
-    final token = SessionService.getToken();
+    final token = SessionService.getTokenSync();
     final map = <String, String>{
       'Accept': 'application/json',
       // ⚠️ User-Agent minimal pour contourner Tiger Protect
       // On garde seulement l'essentiel comme curl
+      'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+    if (token != null && token.isNotEmpty) {
+      map['Authorization'] = 'Bearer $token';
+    }
+    if (jsonContent) map['Content-Type'] = 'application/json';
+    return map;
+  }
+
+  /// Version asynchrone avec rafraîchissement automatique du token
+  /// À utiliser pour les nouvelles requêtes qui nécessitent un token valide
+  static Future<Map<String, String>> headersAsync({
+    bool jsonContent = true,
+  }) async {
+    // S'assurer que le token est valide avant la requête
+    await SessionService.ensureValidToken();
+
+    final token = await SessionService.getToken();
+    final map = <String, String>{
+      'Accept': 'application/json',
       'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
@@ -92,6 +114,66 @@ class ApiService {
     }
   }
 
+  /// Inscription publique (sans token). Compte créé en attente de validation par le patron.
+  /// Si [photo] est fourni, la requête est envoyée en multipart pour inclure le fichier.
+  static Future<Map<String, dynamic>> register({
+    required String nom,
+    required String prenom,
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+    File? photo,
+  }) async {
+    try {
+      final url = '$baseUrl/register';
+
+      if (photo != null) {
+        final request = http.MultipartRequest('POST', Uri.parse(url));
+        final h = headers();
+        h.remove('Content-Type');
+        request.headers.addAll(h);
+        request.fields['nom'] = nom;
+        request.fields['prenom'] = prenom;
+        request.fields['email'] = email;
+        request.fields['password'] = password;
+        request.fields['password_confirmation'] = passwordConfirmation;
+        request.files.add(await http.MultipartFile.fromPath(
+          'photo',
+          photo.path,
+          filename: 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ));
+        final streamedResponse = await request.send().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () =>
+              throw Exception('Le serveur ne répond pas. Réessayez.'),
+        );
+        final response = await http.Response.fromStream(streamedResponse);
+        return parseResponse(response);
+      }
+
+      final body = jsonEncode({
+        'nom': nom,
+        'prenom': prenom,
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      });
+      final response = await http
+          .post(Uri.parse(url), headers: headers(), body: body)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () =>
+                throw Exception('Le serveur ne répond pas. Réessayez.'),
+          );
+      return parseResponse(response);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': e.toString().replaceFirst('Exception: ', ''),
+      };
+    }
+  }
+
   static Future<Map<String, dynamic>> logout() async {
     try {
       final response = await http.post(
@@ -111,11 +193,104 @@ class ApiService {
     return parseResponse(res);
   }
 
+  /// Récupère les données de l'utilisateur connecté
+  static Future<Map<String, dynamic>> getUser() async {
+    final res = await http.get(Uri.parse('$baseUrl/user'), headers: headers());
+    return parseResponse(res);
+  }
+
+  /// Met à jour le profil de l'utilisateur connecté (nom, prénom, email).
+  /// Retourne les données utilisateur mises à jour dans [data].
+  static Future<Map<String, dynamic>> updateUserProfile({
+    required String nom,
+    required String prenom,
+    required String email,
+  }) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/user-profile'),
+        headers: headers(),
+        body: jsonEncode({
+          'nom': nom,
+          'prenom': prenom,
+          'email': email,
+        }),
+      );
+      return parseResponse(res);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': e.toString().replaceFirst('Exception: ', ''),
+      };
+    }
+  }
+
+  /// Met à jour la photo de profil (avatar) de l'utilisateur connecté.
+  /// Retourne les données utilisateur mises à jour dans [data].
+  static Future<Map<String, dynamic>> updateProfilePhoto(File photo) async {
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/user-profile-photo'),
+      );
+      final h = headers();
+      h.remove('Content-Type');
+      request.headers.addAll(h);
+      request.files.add(await http.MultipartFile.fromPath(
+        'photo',
+        photo.path,
+        filename: 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('Le serveur ne répond pas. Réessayez.'),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+      return parseResponse(response);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': e.toString().replaceFirst('Exception: ', ''),
+      };
+    }
+  }
+
   static Future<Map<String, dynamic>> updateUserRole(int id, int role) async {
     final res = await http.put(
       Uri.parse('$baseUrl/users/$id'),
       headers: headers(),
       body: jsonEncode({'role': role}),
+    );
+    return parseResponse(res);
+  }
+
+  /// Liste des inscriptions en attente (patron/admin)
+  static Future<Map<String, dynamic>> getPendingRegistrations() async {
+    final h = await headersAsync();
+    final res = await http.get(
+      Uri.parse('$baseUrl/users-pending-registrations'),
+      headers: h,
+    );
+    return parseResponse(res);
+  }
+
+  /// Valider une inscription : attribuer le rôle et activer le compte
+  static Future<Map<String, dynamic>> approveRegistration(int id, int role) async {
+    final h = await headersAsync();
+    final res = await http.post(
+      Uri.parse('$baseUrl/users-approve-registration/$id'),
+      headers: h,
+      body: jsonEncode({'role': role}),
+    );
+    return parseResponse(res);
+  }
+
+  /// Rejeter une inscription (supprime le compte en attente)
+  static Future<Map<String, dynamic>> rejectRegistration(int id) async {
+    final h = await headersAsync();
+    final res = await http.post(
+      Uri.parse('$baseUrl/users-reject-registration/$id'),
+      headers: h,
     );
     return parseResponse(res);
   }
@@ -182,6 +357,65 @@ class ApiService {
     return parseResponse(res);
   }
 
+  // -------------------- JOURNAL (entrées / sorties) --------------------
+  /// Journal avec solde initial, lignes, solde final. Query: mois, annee ou date_debut, date_fin.
+  static Future<Map<String, dynamic>> getJournal({int? mois, int? annee, String? dateDebut, String? dateFin}) async {
+    final q = <String, String>{};
+    if (mois != null && annee != null) {
+      q['mois'] = '$mois';
+      q['annee'] = '$annee';
+    } else if (dateDebut != null && dateFin != null) {
+      q['date_debut'] = dateDebut;
+      q['date_fin'] = dateFin;
+    }
+    final uri = Uri.parse('$baseUrl/journal').replace(queryParameters: q.isEmpty ? null : q);
+    final res = await http.get(uri, headers: headers());
+    return parseResponse(res);
+  }
+
+  /// Liste paginée des écritures (pour édition / suppression).
+  static Future<Map<String, dynamic>> getJournalList({int? mois, int? annee, String? dateDebut, String? dateFin, int page = 1, int perPage = 50}) async {
+    final q = <String, String>{'page': '$page', 'per_page': '$perPage'};
+    if (mois != null && annee != null) {
+      q['mois'] = '$mois';
+      q['annee'] = '$annee';
+    } else if (dateDebut != null && dateFin != null) {
+      q['date_debut'] = dateDebut;
+      q['date_fin'] = dateFin;
+    }
+    final uri = Uri.parse('$baseUrl/journal-list').replace(queryParameters: q);
+    final res = await http.get(uri, headers: headers());
+    return parseResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getJournalShow(int id) async {
+    final res = await http.get(Uri.parse('$baseUrl/journal-show/$id'), headers: headers());
+    return parseResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> journalCreate(Map<String, dynamic> data) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/journal-create'),
+      headers: headers(),
+      body: jsonEncode(data),
+    );
+    return parseResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> journalUpdate(int id, Map<String, dynamic> data) async {
+    final res = await http.put(
+      Uri.parse('$baseUrl/journal-update/$id'),
+      headers: headers(),
+      body: jsonEncode(data),
+    );
+    return parseResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> journalDestroy(int id) async {
+    final res = await http.delete(Uri.parse('$baseUrl/journal-destroy/$id'), headers: headers());
+    return parseResponse(res);
+  }
+
   // -------------------- PARSE --------------------
   /// Parse la réponse HTTP selon le format standardisé de l'API
   /// Format standardisé:
@@ -207,6 +441,12 @@ class ApiService {
       // 3. Gérer les erreurs HTTP (4xx, 5xx) AVANT le décodage JSON
       if (statusCode >= 400) {
         return _handleHttpError(res, statusCode);
+      }
+
+      // 3.5. Mettre à jour l'activité utilisateur pour les requêtes réussies (2xx)
+      // Cela évite la déconnexion automatique pendant l'utilisation normale de l'app
+      if (statusCode >= 200 && statusCode < 300) {
+        SessionService.updateLastActivity();
       }
 
       // 4. Pour les succès (2xx), décoder le JSON
