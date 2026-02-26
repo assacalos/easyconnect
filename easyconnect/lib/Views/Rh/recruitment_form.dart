@@ -447,11 +447,12 @@ class RecruitmentForm extends StatelessWidget {
               const SizedBox(height: 32),
 
               // Boutons d'action uniformes
-              UniformFormButtons(
+              Obx(() => UniformFormButtons(
                 onCancel: () => Get.back(),
                 onSubmit: () => _saveRecruitmentRequest(controller),
                 submitText: 'Soumettre',
-              ),
+                isLoading: controller.isLoading.value,
+              )),
             ],
           ),
         ),

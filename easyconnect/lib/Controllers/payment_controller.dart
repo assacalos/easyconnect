@@ -16,6 +16,7 @@ class PaymentController extends GetxController {
   // Observables pour la liste des paiements
   final RxList<PaymentModel> payments = <PaymentModel>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxString searchQuery = ''.obs;
   final RxString selectedStatus = 'all'.obs;
   final RxString selectedType = 'all'.obs;
@@ -39,6 +40,7 @@ class PaymentController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Observables pour le formulaire
   final RxBool isCreating = false.obs;
@@ -133,15 +135,28 @@ class PaymentController extends GetxController {
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey =
           'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
-      final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
-      if (cachedPayments != null && cachedPayments.isNotEmpty && page == 1) {
-        payments.assignAll(cachedPayments);
-        isLoading.value = false; // Permettre l'affichage immédiat
-      } else {
+
+      if (page == 1) {
+        final hiveList = PaymentService.getCachedPaiements();
+        if (hiveList.isNotEmpty) {
+          payments.assignAll(hiveList);
+          isLoading.value = false;
+          Future.microtask(() => _refreshPaymentsFromApi(cacheKey));
+          return;
+        }
+        final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
+        if (cachedPayments != null && cachedPayments.isNotEmpty) {
+          payments.assignAll(cachedPayments);
+          isLoading.value = false;
+          Future.microtask(() => _refreshPaymentsFromApi(cacheKey));
+          return;
+        }
+        payments.value = [];
         isLoading.value = true;
+      } else if (page > 1) {
+        isLoadingMore.value = true;
       }
 
       try {
@@ -193,10 +208,28 @@ class PaymentController extends GetxController {
           CacheHelper.set(cacheKey, paginatedResponse.data);
         }
       } catch (e) {
-        // Si le chargement échoue mais qu'on a du cache, on garde le cache
-        if (cachedPayments == null || cachedPayments.isEmpty || page > 1) {
-          if (payments.isEmpty) {
-            // Vérifier une dernière fois le cache avant de vider la liste
+        if (page > 1 || payments.isNotEmpty) rethrow;
+        final fallbackCache = CacheHelper.get<List<PaymentModel>>(cacheKey);
+        if (fallbackCache != null && fallbackCache.isNotEmpty) {
+          payments.assignAll(fallbackCache);
+          return;
+        }
+        final hiveList = PaymentService.getCachedPaiements();
+        if (hiveList.isNotEmpty) {
+          payments.assignAll(hiveList);
+          return;
+        }
+        rethrow;
+      }
+    } catch (e) {
+      // Ne pas vider la liste si elle contient déjà des paiements (Hive/cache)
+      if (payments.isEmpty) {
+        final hiveList = PaymentService.getCachedPaiements();
+        if (hiveList.isNotEmpty) {
+          payments.assignAll(hiveList);
+        } else {
+          final user = _authController.userAuth.value;
+          if (user != null) {
             final cacheKey =
                 'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
             final cachedPayments = CacheHelper.get<List<PaymentModel>>(
@@ -204,30 +237,12 @@ class PaymentController extends GetxController {
             );
             if (cachedPayments != null && cachedPayments.isNotEmpty) {
               payments.assignAll(cachedPayments);
-              return; // Ne pas afficher d'erreur si on a du cache
+            } else {
+              payments.value = [];
             }
-          }
-          rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
-        }
-      }
-    } catch (e) {
-      // Ne pas vider la liste si elle contient déjà des paiements
-      // (ils peuvent s'être chargés avant l'erreur)
-      if (payments.isEmpty) {
-        // Vérifier une dernière fois le cache avant de vider la liste
-        final user = _authController.userAuth.value;
-        if (user != null) {
-          final cacheKey =
-              'payments_${user.role}_${_currentApprovalStatusFilter ?? 'all'}';
-          final cachedPayments = CacheHelper.get<List<PaymentModel>>(cacheKey);
-          if (cachedPayments != null && cachedPayments.isNotEmpty) {
-            // Charger les données du cache si disponibles
-            payments.assignAll(cachedPayments);
           } else {
             payments.value = [];
           }
-        } else {
-          payments.value = [];
         }
       }
 
@@ -242,12 +257,66 @@ class PaymentController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les paiements depuis l'API (page 1) et met à jour la liste/cache si le filtre est inchangé.
+  Future<void> _refreshPaymentsFromApi(String cacheKey) async {
+    try {
+      final user = _authController.userAuth.value;
+      if (user == null) return;
+
+      final paginatedResponse =
+          (user.role == 1 || user.role == 6)
+              ? await _paymentService.getAllPaymentsPaginated(
+                startDate: startDate.value,
+                endDate: endDate.value,
+                status: null,
+                type: null,
+                page: 1,
+                perPage: perPage.value,
+                search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+              )
+              : await _paymentService.getComptablePaymentsPaginated(
+                comptableId: user.id,
+                startDate: startDate.value,
+                endDate: endDate.value,
+                status:
+                    selectedStatus.value != 'all' ? selectedStatus.value : null,
+                type: selectedType.value != 'all' ? selectedType.value : null,
+                page: 1,
+                perPage: perPage.value,
+                search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+              );
+      final stillSame =
+          _currentApprovalStatusFilter ==
+          (selectedApprovalStatus.value == 'all'
+              ? null
+              : selectedApprovalStatus.value);
+      if (!stillSame) return;
+
+      payments.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      CacheHelper.set(cacheKey, paginatedResponse.data);
+      loadPaymentStats().catchError((_) {});
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadPayments(page: currentPage.value + 1);
     }
   }
@@ -896,6 +965,13 @@ class PaymentController extends GetxController {
     loadPayments();
   }
 
+  /// Charge les paiements pour l’onglet [index] (0=Tous, 1=En attente, 2=Validés, 3=Rejetés). Cache-first.
+  void loadByStatus(int index) {
+    const statuses = ['all', 'pending', 'approved', 'rejected'];
+    selectedApprovalStatus.value = statuses[index];
+    loadPayments();
+  }
+
   List<PaymentModel> getPendingPayments() {
     final pendingPayments =
         payments.where((payment) => payment.isPending).toList();
@@ -1165,6 +1241,7 @@ class PaymentController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     descriptionController.dispose();
     notesController.dispose();
     referenceController.dispose();

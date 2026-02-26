@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/expense_controller.dart';
 import 'package:easyconnect/Models/expense_model.dart';
 import 'package:easyconnect/Views/Comptable/expense_form.dart';
 import 'package:easyconnect/Views/Comptable/expense_detail.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -138,7 +139,11 @@ class _ExpenseListState extends State<ExpenseList>
               }
               return _filteredExpenses.isEmpty
                   ? const Center(child: Text('Aucune dépense trouvée'))
-                  : ListView.builder(
+                  : PaginatedListView(
+                    scrollController: controller.scrollController,
+                    onLoadMore: controller.loadMore,
+                    hasNextPage: controller.hasNextPage.value,
+                    isLoadingMore: controller.isLoadingMore.value,
                     itemCount: _filteredExpenses.length,
                     itemBuilder: (context, index) {
                       final expense = _filteredExpenses[index];

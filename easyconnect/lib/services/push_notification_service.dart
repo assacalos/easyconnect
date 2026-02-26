@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/app_config.dart';
 import '../services/session_service.dart';
 import '../utils/logger.dart';
+import '../utils/encoding_helper.dart';
 
 /// Service de gestion des notifications push Firebase Cloud Messaging
 class PushNotificationService {
@@ -162,7 +163,7 @@ class PushNotificationService {
           tag: 'PUSH_NOTIFICATION',
         );
         // Enregistrer le token seulement si l'utilisateur est authentifié
-        if (SessionService.isAuthenticated()) {
+        if (await SessionService.isAuthenticated()) {
           await _registerTokenToBackend(_fcmToken!);
         }
       }
@@ -177,7 +178,7 @@ class PushNotificationService {
 
   /// Enregistrer le token auprès du backend
   Future<void> _registerTokenToBackend(String fcmToken) async {
-    if (!SessionService.isAuthenticated()) {
+    if (!(await SessionService.isAuthenticated())) {
       return;
     }
 
@@ -378,8 +379,8 @@ class PushNotificationService {
       try {
         await _localNotifications.show(
           message.hashCode,
-          notification.title,
-          notification.body,
+          fixUtf8Mojibake(notification.title),
+          fixUtf8Mojibake(notification.body),
           NotificationDetails(
             android: AndroidNotificationDetails(
               'high_importance_channel',
@@ -416,8 +417,8 @@ class PushNotificationService {
       }
     } else {
       // Si pas de notification, créer une notification à partir des données
-      final title = message.data['title'] ?? 'Nouvelle notification';
-      final body = message.data['body'] ?? message.data['message'] ?? '';
+      final title = fixUtf8Mojibake(message.data['title'] ?? 'Nouvelle notification');
+      final body = fixUtf8Mojibake(message.data['body'] ?? message.data['message'] ?? '');
 
       if (body.isNotEmpty) {
         try {
@@ -521,8 +522,7 @@ class PushNotificationService {
   /// que le token FCM est bien enregistré sur le backend
   /// Retourne true si l'enregistrement a réussi, false sinon
   Future<bool> registerTokenAfterLogin() async {
-    // Vérifier que l'utilisateur est bien authentifié
-    if (!SessionService.isAuthenticated()) {
+    if (!(await SessionService.isAuthenticated())) {
       return false;
     }
 

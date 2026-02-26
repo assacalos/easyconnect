@@ -9,6 +9,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class EquipmentService {
   final storage = GetStorage();
@@ -188,13 +189,19 @@ class EquipmentService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-list$queryString'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/equipment-list$queryString'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            AppConfig.extraLongTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final decodedBody = json.decode(response.body);
@@ -297,6 +304,7 @@ class EquipmentService {
           print('🔍 [EQUIPMENT_SERVICE] Tous les statuts parsés: $allStatuses');
         }
 
+        _saveEquipmentsToHive(equipments);
         return equipments;
       }
       throw Exception(
@@ -853,6 +861,30 @@ class EquipmentService {
       );
     } catch (e) {
       throw Exception('Erreur lors de la recherche d\'équipements: $e');
+    }
+  }
+
+  static void _saveEquipmentsToHive(List<Equipment> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyEquipments,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Persiste la liste en cache Hive (appelé après création ou refresh API).
+  static void saveEquipmentsToHive(List<Equipment> list) {
+    _saveEquipmentsToHive(list);
+  }
+
+  /// Cache Hive : liste des équipements pour affichage instantané.
+  static List<Equipment> getCachedEquipments() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyEquipments);
+      return raw.map((e) => Equipment.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

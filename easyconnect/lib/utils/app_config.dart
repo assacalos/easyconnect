@@ -9,7 +9,11 @@ class AppConfig {
   static const String _defaultBaseUrl = 'http://10.0.2.2:8000/api';
   static const String _productionBaseUrl =
       'https://easykonect.smil-app.com/api';
-  static const String websocketKey = "b3cf8d63e6ba9c6b2b1b"; // PUSHER_APP_KEY
+  /// Clé Pusher (PUSHER_APP_KEY) – alignée avec le .env production (BROADCAST_DRIVER=pusher).
+  static const String websocketKey = "b3cf8d63e6ba9c6b2b1b";
+  /// Cluster Pusher – aligné avec PUSHER_APP_CLUSTER en production (eu).
+  static const String websocketCluster = "eu";
+
   /// Récupère l'URL de base de l'API
   static String get baseUrl {
     // Vérifier si une URL personnalisée est stockée (priorité la plus haute)
@@ -45,6 +49,18 @@ class AppConfig {
     return _productionBaseUrl;
   }
 
+  /// URL racine du serveur (sans /api). Utilisée pour l'auth broadcasting Laravel (/broadcasting/auth).
+  static String get baseUrlWithoutApi {
+    final url = baseUrl;
+    if (url.endsWith('/api')) return url.substring(0, url.length - 4);
+    if (url.endsWith('/api/')) return url.substring(0, url.length - 5);
+    return url;
+  }
+
+  /// true si le WebSocket (Pusher) est activé. En production la clé est définie → connexion active.
+  static bool get websocketEnabled =>
+      websocketKey.isNotEmpty && websocketKey.length > 5;
+
   /// Retourne l'URL de production
   static String get productionUrl => _productionBaseUrl;
 
@@ -76,6 +92,8 @@ class AppConfig {
   // Timeouts
   static const Duration defaultTimeout = Duration(seconds: 15);
   static const Duration longTimeout = Duration(seconds: 30);
+  /// Timeout étendu pour endpoints lents (ex. liste employés sur serveur distant)
+  static const Duration extraLongTimeout = Duration(seconds: 60);
   static const Duration shortTimeout = Duration(seconds: 5);
 
   // Retry

@@ -14,18 +14,23 @@ class TaskListPage extends StatefulWidget {
 }
 
 class _TaskListPageState extends State<TaskListPage> {
+  bool _initialLoadScheduled = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (_initialLoadScheduled) return;
+      _initialLoadScheduled = true;
+      // Court délai pour laisser la route/connexion prête (évite échec au premier chargement)
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
       final taskController = Get.find<TaskController>();
-      final authController = Get.find<AuthController>();
       if (taskController.canAssignTasks) {
         taskController.loadUsers();
-        taskController.loadTasks();
+        taskController.loadTasks(page: 1);
       } else {
-        // Utilisateurs non-patron : afficher uniquement les tâches qui leur sont assignées
-        taskController.setAssignedToFilter(authController.userAuth.value?.id);
+        taskController.setAssignedToFilter(Get.find<AuthController>().userAuth.value?.id);
       }
     });
   }
@@ -49,8 +54,40 @@ class _TaskListPageState extends State<TaskListPage> {
         ],
       ),
       body: Obx(() {
-        if (taskController.isLoading.value && taskController.tasks.isEmpty) {
+        if (taskController.isLoading.value && taskController.tasks.isEmpty && !taskController.loadError.value) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (taskController.loadError.value) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.orange.shade700),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Impossible de charger les tâches',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      taskController.loadError.value = false;
+                      taskController.loadTasks(page: 1);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Réessayer'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
         if (taskController.tasks.isEmpty) {
           return Center(

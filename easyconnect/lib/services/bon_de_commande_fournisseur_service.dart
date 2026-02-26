@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 
@@ -31,16 +33,27 @@ class BonDeCommandeFournisseurService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
       final url = '$baseUrl/bons-de-commande-list$queryString';
+      AppLogger.httpRequest('GET', url, tag: 'BON_COMMANDE_FOURNISSEUR_SERVICE');
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            AppConfig.extraLongTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
+
+      AppLogger.httpResponse(
+        response.statusCode,
+        url,
+        tag: 'BON_COMMANDE_FOURNISSEUR_SERVICE',
       );
-
-      // Gérer les erreurs d'authentification
       await AuthErrorHandler.handleHttpResponse(response);
 
       // Utiliser ApiService.parseResponse pour gérer le format standardisé
@@ -115,9 +128,11 @@ class BonDeCommandeFournisseurService {
             'Erreur lors de la récupération des bons de commande',
       );
     } catch (e) {
-      throw Exception(
-        'Erreur lors de la récupération des bons de commande: $e',
+      AppLogger.error(
+        'getBonDeCommandes: $e',
+        tag: 'BON_COMMANDE_FOURNISSEUR_SERVICE',
       );
+      rethrow;
     }
   }
 

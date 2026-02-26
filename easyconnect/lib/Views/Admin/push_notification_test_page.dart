@@ -180,7 +180,7 @@ class _PushNotificationTestPageState extends State<PushNotificationTestPage> {
       return;
     }
 
-    if (!SessionService.isAuthenticated()) {
+    if (!(await SessionService.isAuthenticated())) {
       ErrorHelper.showValidationError(
         'Vous devez être connecté pour enregistrer le token',
       );
@@ -321,7 +321,7 @@ class _PushNotificationTestPageState extends State<PushNotificationTestPage> {
     await Future.delayed(const Duration(seconds: 1));
     await _testGetFCMToken();
     await Future.delayed(const Duration(seconds: 1));
-    if (SessionService.isAuthenticated()) {
+    if (await SessionService.isAuthenticated()) {
       await _testRegisterToken();
     } else {
       _addLog('⚠️ Non authentifié - Test d\'enregistrement ignoré');

@@ -12,6 +12,7 @@ import '../utils/auth_error_handler.dart';
 import '../utils/logger.dart';
 import '../utils/retry_helper.dart';
 import '../utils/pagination_helper.dart';
+import 'storage_service.dart';
 
 class AttendancePunchService {
   static final AttendancePunchService _instance =
@@ -66,7 +67,11 @@ class AttendancePunchService {
 
       request.files.add(multipartFile);
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(
+        AppConfig.extraLongTimeout,
+        onTimeout: () =>
+            throw Exception('Timeout: le serveur ne répond pas (envoi du pointage)'),
+      );
 
       final response = await http.Response.fromStream(streamedResponse);
 
@@ -258,7 +263,6 @@ class AttendancePunchService {
                 foundAttendance = mostRecentAttendance;
               }
             }
-          } catch (e) {
           } catch (e) {
             // Ignorer l'erreur
           }
@@ -812,7 +816,7 @@ class AttendancePunchService {
     */
   }
 
-  /// Obtenir la liste des pointages avec pagination côté serveur
+  /// Point d'entrée unique pour la lecture : pointages avec pagination.
   Future<PaginationResponse<AttendancePunchModel>> getAttendancesPaginated({
     String? status,
     String? type,
@@ -824,56 +828,52 @@ class AttendancePunchService {
     String? search,
   }) async {
     try {
-      String url = '${AppConfig.baseUrl}/attendances';
-      List<String> params = [];
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (status != null && status.isNotEmpty) queryParams['status'] = status;
+      if (type != null && type.isNotEmpty) queryParams['type'] = type;
+      if (userId != null) queryParams['user_id'] = userId.toString();
+      if (dateFrom != null && dateFrom.isNotEmpty) queryParams['date_from'] = dateFrom;
+      if (dateTo != null && dateTo.isNotEmpty) queryParams['date_to'] = dateTo;
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      if (status != null && status.isNotEmpty) {
-        params.add('status=$status');
-      }
-      if (type != null && type.isNotEmpty) {
-        params.add('type=$type');
-      }
-      if (userId != null) {
-        params.add('user_id=$userId');
-      }
-      if (dateFrom != null && dateFrom.isNotEmpty) {
-        params.add('date_from=$dateFrom');
-      }
-      if (dateTo != null && dateTo.isNotEmpty) {
-        params.add('date_to=$dateTo');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'ATTENDANCE_PUNCH_SERVICE');
+      final uri = Uri.parse('${AppConfig.baseUrl}/attendances').replace(
+        queryParameters: queryParams,
+      );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'ATTENDANCE_PUNCH_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
-        operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        operation: () => http
+            .get(uri, headers: ApiService.headers())
+            .timeout(
+              AppConfig.defaultTimeout,
+              onTimeout: () =>
+                  throw Exception('Timeout: le serveur ne répond pas'),
+            ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
-      AppLogger.httpResponse(
-        response.statusCode,
-        url,
-        tag: 'ATTENDANCE_PUNCH_SERVICE',
-      );
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'ATTENDANCE_PUNCH_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<AttendancePunchModel>(
+        final result = PaginationHelper.parseResponseSafe<AttendancePunchModel>(
           json: data,
-          fromJsonT: (json) => AttendancePunchModel.fromJson(json),
+          fromJsonT: (json) {
+            try {
+              return AttendancePunchModel.fromJson(json);
+            } catch (_) {
+              return null;
+            }
+          },
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveAttendancesToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des pointages: ${response.statusCode}',
@@ -888,7 +888,7 @@ class AttendancePunchService {
     }
   }
 
-  // Obtenir la liste des pointages
+  /// Liste des pointages : délègue à getAttendancesPaginated (page 1, perPage 500).
   Future<List<AttendancePunchModel>> getAttendances({
     String? status,
     String? type,
@@ -897,72 +897,24 @@ class AttendancePunchService {
     String? dateTo,
   }) async {
     try {
-      String url = '$baseUrl/attendances';
-      List<String> params = [];
-
-      if (status != null) params.add('status=$status');
-      if (type != null) params.add('type=$type');
-      if (userId != null) params.add('user_id=$userId');
-      if (dateFrom != null) params.add('date_from=$dateFrom');
-      if (dateTo != null) params.add('date_to=$dateTo');
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      final res = await getAttendancesPaginated(
+        status: status,
+        type: type,
+        userId: userId,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        page: 1,
+        perPage: 500,
       );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        List<dynamic> attendancesData = [];
-
-        if (data is List) {
-          attendancesData = data;
-        } else if (data is Map && data['data'] != null) {
-          final dataField = data['data'];
-
-          if (dataField is List) {
-            attendancesData = dataField;
-          } else if (dataField is Map && dataField['data'] != null) {
-            attendancesData =
-                dataField['data'] is List
-                    ? dataField['data']
-                    : [dataField['data']];
-          } else if (dataField is Map) {
-            attendancesData = [dataField];
-          } else {
-            attendancesData = [dataField];
-          }
-        } else if (data is Map &&
-            data['success'] == true &&
-            data['data'] != null) {
-          if (data['data'] is List) {
-            attendancesData = data['data'];
-          } else {
-            attendancesData = [data['data']];
-          }
-        }
-
-        final attendances =
-            attendancesData
-                .map((json) {
-                  try {
-                    return AttendancePunchModel.fromJson(json);
-                  } catch (e) {
-                    return null;
-                  }
-                })
-                .where((attendance) => attendance != null)
-                .cast<AttendancePunchModel>()
-                .toList();
-        return attendances;
+      if (res.data.isNotEmpty) {
+        _saveAttendancesToHive(res.data);
       }
-      return [];
+      return res.data;
     } catch (e) {
+      AppLogger.error(
+        'Erreur getAttendances: $e',
+        tag: 'ATTENDANCE_PUNCH_SERVICE',
+      );
       return [];
     }
   }
@@ -975,22 +927,34 @@ class AttendancePunchService {
   // Approuver un pointage
   Future<Map<String, dynamic>> approveAttendance(int attendanceId) async {
     try {
-      var response = await http.post(
-        Uri.parse('$baseUrl/attendances-validate/$attendanceId'),
-        headers: ApiService.headers(jsonContent: true),
-        body: jsonEncode({'comment': ''}),
-      );
+      var response = await http
+          .post(
+            Uri.parse('$baseUrl/attendances-validate/$attendanceId'),
+            headers: ApiService.headers(jsonContent: true),
+            body: jsonEncode({'comment': ''}),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 500 || response.statusCode == 400) {
-        response = await http.put(
-          Uri.parse('$baseUrl/attendances/$attendanceId'),
-          headers: ApiService.headers(jsonContent: true),
-          body: jsonEncode({
-            'status': 'valide',
-            'validated_by': null,
-            'validated_at': null,
-          }),
-        );
+        response = await http
+            .put(
+              Uri.parse('$baseUrl/attendances/$attendanceId'),
+              headers: ApiService.headers(jsonContent: true),
+              body: jsonEncode({
+                'status': 'valide',
+                'validated_by': null,
+                'validated_at': null,
+              }),
+            )
+            .timeout(
+              AppConfig.defaultTimeout,
+              onTimeout: () =>
+                  throw Exception('Timeout: le serveur ne répond pas'),
+            );
       }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1031,11 +995,17 @@ class AttendancePunchService {
     String reason,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/attendances-reject/$attendanceId'),
-        headers: ApiService.headers(jsonContent: true),
-        body: jsonEncode({'reason': reason}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/attendances-reject/$attendanceId'),
+            headers: ApiService.headers(jsonContent: true),
+            body: jsonEncode({'reason': reason}),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1067,5 +1037,76 @@ class AttendancePunchService {
         'message': 'Erreur lors du rejet: ${e.toString()}',
       };
     }
+  }
+
+  static void _saveAttendancesToHive(List<AttendancePunchModel> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyAttendances,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des pointages pour affichage instantané.
+  static List<AttendancePunchModel> getCachedAttendances() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyAttendances);
+      return raw.map((e) => AttendancePunchModel.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Résumé des présences par employé (semaine / mois / année). Pour le patron.
+  /// Retourne { success, period, period_label, date_debut, date_fin, employees: [{ user_id, nom_complet, presence_count }] }
+  Future<Map<String, dynamic>> getPresenceSummary({
+    required String period,
+    int? year,
+    int? month,
+    int? week,
+  }) async {
+    try {
+      final now = DateTime.now();
+      year ??= now.year;
+      month ??= now.month;
+      week ??= _isoWeek(now);
+
+      final query = <String, String>{
+        'period': period,
+        'year': year.toString(),
+        if (period == 'month') 'month': month.toString(),
+        if (period == 'week') 'week': week.toString(),
+      };
+      final qs = query.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+      final url = '$baseUrl/attendances-presence-summary?$qs';
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: ApiService.headers(),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && (data['success'] == true)) {
+        return Map<String, dynamic>.from(data);
+      }
+      return {
+        'success': false,
+        'message': data['message'] ?? 'Erreur lors du chargement des présences',
+        'employees': <Map<String, dynamic>>[],
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Erreur: ${e.toString()}',
+        'employees': <Map<String, dynamic>>[],
+      };
+    }
+  }
+
+  static int _isoWeek(DateTime d) {
+    final thursday = d.add(Duration(days: 4 - d.weekday % 7));
+    final jan1 = DateTime(thursday.year, 1, 1);
+    return 1 + (thursday.difference(jan1).inDays / 7).floor();
   }
 }

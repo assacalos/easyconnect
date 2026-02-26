@@ -57,10 +57,8 @@ class RecruitmentController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadDepartments();
-    loadPositions();
-    loadRecruitmentRequests();
-    loadRecruitmentStats();
+    // Chargement différé : les données sont chargées par la page (recruitment_list)
+    // au premier affichage pour éviter une avalanche d'appels API au binding.
   }
 
   @override
@@ -91,39 +89,53 @@ class RecruitmentController extends GetxController {
     } catch (e) {}
   }
 
-  // Charger les demandes de recrutement
-  Future<void> loadRecruitmentRequests() async {
-    try {
-      isLoading.value = true;
+  bool _isLoadingRecruitmentsInProgress = false;
 
+  /// Charge les demandes de recrutement : Hive d'abord (affichage immédiat), puis API dans la même méthode.
+  Future<void> loadRecruitmentRequests() async {
+    if (_isLoadingRecruitmentsInProgress) return;
+    _isLoadingRecruitmentsInProgress = true;
+
+    isLoading.value = true;
+    final cached = RecruitmentService.getCachedRecruitments();
+    if (cached.isNotEmpty) {
+      recruitmentRequests.assignAll(cached);
+      applyFilters();
+      isLoading.value = false;
+    } else {
+      recruitmentRequests.value = [];
+    }
+
+    try {
       final requests = await _recruitmentService.getAllRecruitmentRequests(
         status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-        department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
-        position:
-            selectedPosition.value != 'all' ? selectedPosition.value : null,
+        department: selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+        position: selectedPosition.value != 'all' ? selectedPosition.value : null,
       );
 
-      recruitmentRequests.value = requests;
+      recruitmentRequests.assignAll(requests);
       applyFilters();
     } catch (e) {
-      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
-      final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('session expirée') &&
-          !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        if (recruitmentRequests.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Impossible de charger les demandes de recrutement',
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 5),
-          );
+      if (recruitmentRequests.isEmpty) {
+        final fallback = RecruitmentService.getCachedRecruitments();
+        if (fallback.isNotEmpty) {
+          recruitmentRequests.assignAll(fallback);
+          applyFilters();
+        } else {
+          final err = e.toString().toLowerCase();
+          if (!err.contains('401') && !err.contains('unauthorized')) {
+            Get.snackbar(
+              'Erreur',
+              'Impossible de charger les demandes de recrutement',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 5),
+            );
+          }
         }
       }
     } finally {
       isLoading.value = false;
+      _isLoadingRecruitmentsInProgress = false;
     }
   }
 

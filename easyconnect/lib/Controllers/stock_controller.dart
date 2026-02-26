@@ -12,6 +12,7 @@ class StockController extends GetxController {
 
   // Variables observables
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxBool isCreating = false.obs;
   final RxBool isUpdating = false.obs;
   final RxBool isDeleting = false.obs;
@@ -37,6 +38,7 @@ class StockController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire
   final TextEditingController nameController = TextEditingController();
@@ -159,6 +161,7 @@ class StockController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     nameController.dispose();
     descriptionController.dispose();
     skuController.dispose();
@@ -188,15 +191,30 @@ class StockController extends GetxController {
   // Charger les stocks
   Future<void> loadStocks({String? statusFilter, int page = 1}) async {
     try {
-      isLoading.value = true;
-      _currentStatusFilter = statusFilter; // Mémoriser le filtre actuel
+      _currentStatusFilter = statusFilter;
       AppLogger.info(
         'Chargement des stocks - Page $page',
         tag: 'STOCK_CONTROLLER',
       );
 
+      if (page == 1) {
+        final hiveList = StockService.getCachedStocks();
+        if (hiveList.isNotEmpty) {
+          allStocks.assignAll(hiveList);
+          stocks.assignAll(hiveList);
+          isLoading.value = false;
+          Future.microtask(() => _refreshStocksFromApi());
+          return;
+        }
+        allStocks.value = [];
+        stocks.value = [];
+        isLoading.value = true;
+      }
+      if (page > 1) {
+        isLoadingMore.value = true;
+      }
+
       try {
-        // Utiliser la méthode paginée
         final paginatedResponse = await _stockService.getStocksPaginated(
           search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
           category:
@@ -259,9 +277,19 @@ class StockController extends GetxController {
         stocks.assignAll(loadedStocks);
       }
     } catch (e) {
-      // Vider la liste des stocks en cas d'erreur
-      allStocks.value = [];
-      stocks.value = [];
+      // Ne pas vider la liste si des données sont déjà affichées (Hive/cache)
+      isLoading.value = false;
+      isLoadingMore.value = false;
+      if (allStocks.isEmpty && stocks.isEmpty) {
+        final hiveList = StockService.getCachedStocks();
+        if (hiveList.isNotEmpty) {
+          allStocks.value = hiveList;
+          stocks.value = hiveList;
+        } else {
+          allStocks.value = [];
+          stocks.value = [];
+        }
+      }
 
       // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
       // (elle est déjà gérée par AuthErrorHandler)
@@ -325,6 +353,60 @@ class StockController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les stocks depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
+  Future<void> _refreshStocksFromApi() async {
+    try {
+      final paginatedResponse = await _stockService.getStocksPaginated(
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        category:
+            selectedCategoryFilter.value != 'all'
+                ? selectedCategoryFilter.value
+                : null,
+        status:
+            _currentStatusFilter != null && _currentStatusFilter != 'all'
+                ? _currentStatusFilter
+                : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      allStocks.value = paginatedResponse.data;
+      stocks.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadStocks(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value + 1,
+      );
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadStocks(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value - 1,
+      );
     }
   }
 

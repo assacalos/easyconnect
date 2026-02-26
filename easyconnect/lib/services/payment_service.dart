@@ -11,6 +11,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class PaymentService extends GetxService {
   static PaymentService get to => Get.find();
@@ -31,7 +32,7 @@ class PaymentService extends GetxService {
               'Authorization': 'Bearer $token',
             },
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(AppConfig.extraLongTimeout);
 
       final result = ApiService.parseResponse(response);
       return result['success'] == true;
@@ -42,7 +43,7 @@ class PaymentService extends GetxService {
 
   // ===== MÉTHODES PRINCIPALES DES PAIEMENTS =====
 
-  /// Récupérer les paiements avec pagination côté serveur (pour le patron)
+  /// Point d'entrée unique pour la lecture : paiements avec pagination.
   Future<PaginationResponse<PaymentModel>> getAllPaymentsPaginated({
     DateTime? startDate,
     DateTime? endDate,
@@ -54,38 +55,25 @@ class PaymentService extends GetxService {
   }) async {
     try {
       final token = storage.read('token');
-      String url = '$baseUrl/payments';
-      List<String> params = [];
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (startDate != null) queryParams['start_date'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['end_date'] = endDate.toIso8601String();
+      if (status != null) queryParams['status'] = status;
+      if (type != null) queryParams['type'] = type;
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (status != null) {
-        params.add('status=$status');
-      }
-      if (type != null) {
-        params.add('type=$type');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'PAYMENT_SERVICE');
+      final uri = Uri.parse('$baseUrl/payments').replace(
+        queryParameters: queryParams,
+      );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'PAYMENT_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
             () => http.get(
-              Uri.parse(url),
+              uri,
               headers: {
                 'Accept': 'application/json',
                 'Authorization': 'Bearer $token',
@@ -94,15 +82,25 @@ class PaymentService extends GetxService {
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
-      AppLogger.httpResponse(response.statusCode, url, tag: 'PAYMENT_SERVICE');
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'PAYMENT_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<PaymentModel>(
+        final result = PaginationHelper.parseResponseSafe<PaymentModel>(
           json: data,
-          fromJsonT: (json) => PaymentModel.fromJson(json),
+          fromJsonT: (json) {
+            try {
+              return PaymentModel.fromJson(json);
+            } catch (_) {
+              return null;
+            }
+          },
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _savePaiementsToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des paiements: ${response.statusCode}',
@@ -117,107 +115,26 @@ class PaymentService extends GetxService {
     }
   }
 
-  // Récupérer tous les paiements (pour le patron)
+  /// Récupère la première page (délégation vers getAllPaymentsPaginated pour compatibilité).
   Future<List<PaymentModel>> getAllPayments({
     DateTime? startDate,
     DateTime? endDate,
     String? status,
     String? type,
   }) async {
-    try {
-      final token = storage.read('token');
-
-      // Essayer d'abord /paiements-list, puis /payments en fallback
-      String url = '$baseUrl/paiements-list';
-      List<String> params = [];
-
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (status != null) {
-        params.add('status=$status');
-      }
-      if (type != null) {
-        params.add('type=$type');
-      }
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      http.Response response;
-      try {
-        response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        );
-      } catch (e) {
-        // Si /paiements-list échoue, essayer /payments
-        url = url.replaceAll('/paiements-list', '/payments');
-        response = await http.get(
-          Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        );
-      }
-
-      final result = ApiService.parseResponse(response);
-
-      if (result['success'] == true) {
-        try {
-          final responseData = result['data'];
-          List<dynamic> data = [];
-
-          // Gérer différents formats de réponse
-          if (responseData is List) {
-            data = responseData;
-          } else if (responseData is Map && responseData['data'] != null) {
-            if (responseData['data'] is List) {
-              data = responseData['data'];
-            } else if (responseData['data']['data'] != null &&
-                responseData['data']['data'] is List) {
-              data = responseData['data']['data'];
-            }
-          } else if (responseData['paiements'] != null) {
-            if (responseData['paiements'] is List) {
-              data = responseData['paiements'];
-            }
-          } else if (responseData['payments'] != null) {
-            if (responseData['payments'] is List) {
-              data = responseData['payments'];
-            }
-          } else if (responseData['success'] == true) {
-            if (responseData['data'] != null && responseData['data'] is List) {
-              data = responseData['data'];
-            } else if (responseData['paiements'] != null &&
-                responseData['paiements'] is List) {
-              data = responseData['paiements'];
-            } else if (responseData['payments'] != null &&
-                responseData['payments'] is List) {
-              data = responseData['payments'];
-            }
-          }
-
-          return data.map((json) => PaymentModel.fromJson(json)).toList();
-        } catch (e) {
-          return [];
-        }
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération des paiements: ${response.statusCode}',
-        );
-      }
-    } catch (e) {
-      rethrow;
+    final res = await getAllPaymentsPaginated(
+      startDate: startDate,
+      endDate: endDate,
+      status: status,
+      type: type,
+      page: 1,
+      perPage: 500,
+      search: null,
+    );
+    if (res.data.isNotEmpty) {
+      _savePaiementsToHive(res.data);
     }
+    return res.data;
   }
 
   // Récupérer un paiement par ID
@@ -305,10 +222,14 @@ class PaymentService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<PaymentModel>(
+        final result = PaginationHelper.parseResponse<PaymentModel>(
           json: data,
           fromJsonT: (json) => PaymentModel.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _savePaiementsToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des paiements comptable: ${response.statusCode}',
@@ -1390,5 +1311,24 @@ class PaymentService extends GetxService {
                   : word[0].toUpperCase() + word.substring(1).toLowerCase(),
         )
         .join(' ');
+  }
+
+  static void _savePaiementsToHive(List<PaymentModel> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyPaiements,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des paiements pour affichage instantané.
+  static List<PaymentModel> getCachedPaiements() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyPaiements);
+      return raw.map((e) => PaymentModel.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
   }
 }

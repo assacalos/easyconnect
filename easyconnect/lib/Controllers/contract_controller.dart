@@ -13,6 +13,7 @@ class ContractController extends GetxController {
 
   // Variables observables
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxList<Contract> contracts = <Contract>[].obs;
   final RxList<Contract> filteredContracts = <Contract>[].obs;
   final Rx<Contract?> selectedContract = Rx<Contract?>(null);
@@ -70,6 +71,7 @@ class ContractController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire de création
   final RxInt selectedEmployeeId = 0.obs;
@@ -90,16 +92,15 @@ class ContractController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadEmployees();
-    loadDepartments();
-    loadContractTemplates();
-    loadContracts();
-    loadContractStats();
+    // Chargement différé : les données sont chargées par la page (contract_list)
+    // au premier affichage pour éviter une avalanche d'appels API au binding.
     generateContractNumber();
   }
 
   @override
+  @override
   void onClose() {
+    scrollController.dispose();
     jobTitleController.dispose();
     jobDescriptionController.dispose();
     workLocationController.dispose();
@@ -218,10 +219,22 @@ class ContractController extends GetxController {
   // Charger les contrats
   Future<void> loadContracts({int page = 1}) async {
     try {
-      isLoading.value = true;
+      if (page == 1) {
+        final hiveList = ContractService.getCachedContracts();
+        if (hiveList.isNotEmpty) {
+          contracts.value = hiveList;
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshContractsFromApi());
+          return;
+        }
+        isLoading.value = true;
+      }
+      if (page > 1) {
+        isLoadingMore.value = true;
+      }
 
       try {
-        // Utiliser la méthode paginée
         final paginatedResponse = await _contractService.getContractsPaginated(
           status: selectedStatus.value != 'all' ? selectedStatus.value : null,
           contractType:
@@ -290,12 +303,45 @@ class ContractController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les contrats depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
+  Future<void> _refreshContractsFromApi() async {
+    try {
+      final paginatedResponse = await _contractService.getContractsPaginated(
+        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+        contractType:
+            selectedContractType.value != 'all'
+                ? selectedContractType.value
+                : null,
+        department:
+            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+        search: searchController.text.isNotEmpty ? searchController.text : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      contracts.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      applyFilters();
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadContracts(page: currentPage.value + 1);
     }
   }

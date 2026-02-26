@@ -14,6 +14,7 @@ import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Controllers/salary_controller.dart';
 import 'package:easyconnect/Controllers/stock_controller.dart';
 import 'package:easyconnect/Controllers/supplier_controller.dart';
+import 'package:easyconnect/Controllers/task_controller.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/services/leave_service.dart';
 import 'package:get/get.dart';
@@ -48,70 +49,159 @@ import 'package:easyconnect/services/task_service.dart';
 class PatronBinding extends Bindings {
   @override
   void dependencies() {
-    print('=== INITIALISATION PATRON BINDING ===');
+    // Idempotent : chaque dépendance n'est enregistrée que si pas déjà présente,
+    // pour éviter ré-initialisation à chaque navigation (et doublons d'appels API).
+    final alreadyInitialized = Get.isRegistered<PatronDashboardController>();
+    if (!alreadyInitialized) {
+      print('=== INITIALISATION PATRON BINDING ===');
+    }
 
-    // S'assurer que l'AuthController est disponible
     if (!Get.isRegistered<AuthController>()) {
       Get.put(AuthController(), permanent: true);
     }
 
-    // Services d'abord
-    Get.put(PatronDashboardService(), permanent: true);
-    Get.put(EmployeeService(), permanent: true);
-    Get.put(PaymentService(), permanent: true);
-    Get.put(SalaryService(), permanent: true);
-    Get.put(TaxService(), permanent: true);
-    Get.put(ExpenseService(), permanent: true);
-    Get.put(InvoiceService(), permanent: true);
-    Get.put(SupplierService(), permanent: true);
-    Get.put(StockService(), permanent: true);
-    Get.put(InterventionService(), permanent: true);
-    Get.put(ContractService(), permanent: true);
-    Get.put(EquipmentService(), permanent: true);
-    Get.put(AttendancePunchService(), permanent: true);
-    Get.put(ReportingService(), permanent: true);
-    Get.put(ClientService(), permanent: true);
-    Get.put(DevisService(), permanent: true);
-    Get.put(BordereauService(), permanent: true);
-    Get.put(BonCommandeService(), permanent: true);
-    Get.put(BonDeCommandeFournisseurService(), permanent: true);
-    Get.put(RecruitmentService(), permanent: true);
-    Get.put(LeaveService(), permanent: true);
-    Get.put(TaskService(), permanent: true);
+    if (!Get.isRegistered<PatronDashboardService>()) {
+      Get.put(PatronDashboardService(), permanent: true);
+    }
+    if (!Get.isRegistered<EmployeeService>()) {
+      Get.put(EmployeeService(), permanent: true);
+    }
+    if (!Get.isRegistered<PaymentService>()) {
+      Get.put(PaymentService(), permanent: true);
+    }
+    if (!Get.isRegistered<SalaryService>()) {
+      Get.put(SalaryService(), permanent: true);
+    }
+    if (!Get.isRegistered<TaxService>()) {
+      Get.put(TaxService(), permanent: true);
+    }
+    if (!Get.isRegistered<ExpenseService>()) {
+      Get.put(ExpenseService(), permanent: true);
+    }
+    if (!Get.isRegistered<InvoiceService>()) {
+      Get.put(InvoiceService(), permanent: true);
+    }
+    if (!Get.isRegistered<SupplierService>()) {
+      Get.put(SupplierService(), permanent: true);
+    }
+    if (!Get.isRegistered<StockService>()) {
+      Get.put(StockService(), permanent: true);
+    }
+    if (!Get.isRegistered<InterventionService>()) {
+      Get.put(InterventionService(), permanent: true);
+    }
+    if (!Get.isRegistered<ContractService>()) {
+      Get.put(ContractService(), permanent: true);
+    }
+    if (!Get.isRegistered<EquipmentService>()) {
+      Get.put(EquipmentService(), permanent: true);
+    }
+    if (!Get.isRegistered<AttendancePunchService>()) {
+      Get.put(AttendancePunchService(), permanent: true);
+    }
+    if (!Get.isRegistered<ReportingService>()) {
+      Get.put(ReportingService(), permanent: true);
+    }
+    if (!Get.isRegistered<ClientService>()) {
+      Get.put(ClientService(), permanent: true);
+    }
+    if (!Get.isRegistered<DevisService>()) {
+      Get.put(DevisService(), permanent: true);
+    }
+    if (!Get.isRegistered<BordereauService>()) {
+      Get.put(BordereauService(), permanent: true);
+    }
+    if (!Get.isRegistered<BonCommandeService>()) {
+      Get.put(BonCommandeService(), permanent: true);
+    }
+    if (!Get.isRegistered<BonDeCommandeFournisseurService>()) {
+      Get.put(BonDeCommandeFournisseurService(), permanent: true);
+    }
+    if (!Get.isRegistered<RecruitmentService>()) {
+      Get.put(RecruitmentService(), permanent: true);
+    }
+    if (!Get.isRegistered<LeaveService>()) {
+      Get.put(LeaveService(), permanent: true);
+    }
+    if (!Get.isRegistered<TaskService>()) {
+      Get.put(TaskService(), permanent: true);
+    }
 
-    // Contrôleur patron
-    Get.put(PatronDashboardController(), permanent: true);
+    if (!Get.isRegistered<PatronDashboardController>()) {
+      Get.put(PatronDashboardController(), permanent: true);
+    }
 
-    // NotificationController - S'assurer qu'il est initialisé pour le patron
-    // IMPORTANT: Utiliser permanent: true pour que le controller ne soit pas supprimé
-    // lors de la navigation, ce qui permet au polling de continuer
     if (!Get.isRegistered<NotificationController>()) {
       Get.put(NotificationController(), permanent: true);
       print('NotificationController initialisé dans PatronBinding');
     } else {
-      print('NotificationController déjà enregistré, réutilisation de l\'instance existante');
+      print(
+        'NotificationController déjà enregistré, réutilisation de l\'instance existante',
+      );
     }
 
-    // Contrôleurs nécessaires pour les validations
-    Get.put(DevisController(), permanent: true);
-    Get.put(BordereauxController(), permanent: true);
-    Get.put(BonCommandeController(), permanent: true);
-    Get.put(BonDeCommandeFournisseurController(), permanent: true);
-    Get.put(ClientController(), permanent: true);
-    Get.put(TaxController(), permanent: true);
-    Get.put(ExpenseController(), permanent: true);
-    Get.put(SalaryController(), permanent: true);
-    Get.put(PaymentController(), permanent: true);
-    Get.put(ReportingController(), permanent: true);
-    Get.put(AttendanceController(), permanent: true);
-    Get.put(InvoiceController(), permanent: true);
-    Get.put(SupplierController(), permanent: true);
-    Get.put(StockController(), permanent: true);
-    Get.put(InterventionController(), permanent: true);
-    Get.put(EmployeeController(), permanent: true);
-    Get.put(ContractController(), permanent: true);
-    Get.put(EquipmentController(), permanent: true);
-    Get.put(RecruitmentController(), permanent: true);
-    Get.put(LeaveController(), permanent: true);
+    if (!Get.isRegistered<DevisController>()) {
+      Get.put(DevisController(), permanent: true);
+    }
+    if (!Get.isRegistered<BordereauxController>()) {
+      Get.put(BordereauxController(), permanent: true);
+    }
+    if (!Get.isRegistered<BonCommandeController>()) {
+      Get.put(BonCommandeController(), permanent: true);
+    }
+    if (!Get.isRegistered<BonDeCommandeFournisseurController>()) {
+      Get.put(BonDeCommandeFournisseurController(), permanent: true);
+    }
+    if (!Get.isRegistered<ClientController>()) {
+      Get.put(ClientController(), permanent: true);
+    }
+    if (!Get.isRegistered<TaxController>()) {
+      Get.put(TaxController(), permanent: true);
+    }
+    if (!Get.isRegistered<ExpenseController>()) {
+      Get.put(ExpenseController(), permanent: true);
+    }
+    if (!Get.isRegistered<SalaryController>()) {
+      Get.put(SalaryController(), permanent: true);
+    }
+    if (!Get.isRegistered<PaymentController>()) {
+      Get.put(PaymentController(), permanent: true);
+    }
+    if (!Get.isRegistered<ReportingController>()) {
+      Get.put(ReportingController(), permanent: true);
+    }
+    if (!Get.isRegistered<AttendanceController>()) {
+      Get.put(AttendanceController(), permanent: true);
+    }
+    if (!Get.isRegistered<InvoiceController>()) {
+      Get.put(InvoiceController(), permanent: true);
+    }
+    if (!Get.isRegistered<SupplierController>()) {
+      Get.put(SupplierController(), permanent: true);
+    }
+    if (!Get.isRegistered<StockController>()) {
+      Get.put(StockController(), permanent: true);
+    }
+    if (!Get.isRegistered<InterventionController>()) {
+      Get.put(InterventionController(), permanent: true);
+    }
+    if (!Get.isRegistered<EmployeeController>()) {
+      Get.put(EmployeeController(), permanent: true);
+    }
+    if (!Get.isRegistered<ContractController>()) {
+      Get.put(ContractController(), permanent: true);
+    }
+    if (!Get.isRegistered<EquipmentController>()) {
+      Get.put(EquipmentController(), permanent: true);
+    }
+    if (!Get.isRegistered<RecruitmentController>()) {
+      Get.put(RecruitmentController(), permanent: true);
+    }
+    if (!Get.isRegistered<LeaveController>()) {
+      Get.put(LeaveController(), permanent: true);
+    }
+    if (!Get.isRegistered<TaskController>()) {
+      Get.put(TaskController(), permanent: true);
+    }
   }
 }

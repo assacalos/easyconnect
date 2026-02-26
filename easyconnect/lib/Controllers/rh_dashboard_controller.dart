@@ -184,7 +184,7 @@ class RhDashboardController extends BaseDashboardController {
         pendingLeaves.value =
             leaves.where((l) => (l as dynamic).status == 'pending').length;
       } catch (e) {
-        pendingLeaves.value = 0;
+        // Ne pas réinitialiser
       }
 
       // Charger les recrutements en attente
@@ -196,7 +196,7 @@ class RhDashboardController extends BaseDashboardController {
                 .where((r) => (r as dynamic).status == 'published')
                 .length;
       } catch (e) {
-        pendingRecruitments.value = 0;
+        // Ne pas réinitialiser
       }
 
       // Charger les pointages en attente
@@ -207,7 +207,7 @@ class RhDashboardController extends BaseDashboardController {
                 .where((a) => (a as dynamic).status.toLowerCase() == 'pending')
                 .length;
       } catch (e) {
-        pendingAttendance.value = 0;
+        // Ne pas réinitialiser
       }
 
       // Charger les contrats en attente
@@ -216,17 +216,12 @@ class RhDashboardController extends BaseDashboardController {
         pendingContracts.value =
             contracts.where((c) => (c as dynamic).status == 'pending').length;
       } catch (e) {
-        pendingContracts.value = 0;
+        // Ne pas réinitialiser
       }
 
       await _loadPendingTasks();
     } catch (e) {
-      // En cas d'erreur globale, réinitialiser tous les compteurs
-      pendingLeaves.value = 0;
-      pendingRecruitments.value = 0;
-      pendingAttendance.value = 0;
-      pendingContracts.value = 0;
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser : garder les anciennes valeurs
     }
   }
 
@@ -241,11 +236,9 @@ class RhDashboardController extends BaseDashboardController {
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
         final count = pagination['total'] as int? ?? 0;
         pendingTasks.value = count;
-      } else {
-        pendingTasks.value = 0;
       }
     } catch (e) {
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -266,10 +259,7 @@ class RhDashboardController extends BaseDashboardController {
       approvedContracts.value =
           contracts.where((c) => c.status == 'active').length;
     } catch (e) {
-      activeEmployees.value = 0;
-      approvedLeaves.value = 0;
-      completedRecruitments.value = 0;
-      approvedContracts.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -279,8 +269,7 @@ class RhDashboardController extends BaseDashboardController {
       recruitmentCost.value = 0.0;
       trainingCost.value = 0.0;
     } catch (e) {
-      recruitmentCost.value = 0.0;
-      trainingCost.value = 0.0;
+      // Ne pas réinitialiser
     }
   }
 }

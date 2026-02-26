@@ -231,9 +231,20 @@ class ComptableDashboardController extends BaseDashboardController {
     }
   }
 
-  // Méthode publique pour recharger les entités en attente
+  // Rafraîchissement silencieux : ne pas réinitialiser les compteurs à 0.
   Future<void> refreshPendingEntities() async {
-    await _loadPendingEntities();
+    try {
+      isLoading.value = true;
+      try {
+        await _loadPendingEntities();
+        await _loadValidatedEntities();
+        await _loadStatistics();
+      } finally {
+        isLoading.value = false;
+      }
+    } catch (e) {
+      isLoading.value = false;
+    }
   }
 
   Future<void> _loadPendingEntities() async {
@@ -280,11 +291,7 @@ class ComptableDashboardController extends BaseDashboardController {
 
       await _loadPendingTasks();
     } catch (e) {
-      pendingFactures.value = 0;
-      pendingPaiements.value = 0;
-      pendingDepenses.value = 0;
-      pendingSalaires.value = 0;
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser : garder les anciennes valeurs
     }
   }
 
@@ -299,11 +306,9 @@ class ComptableDashboardController extends BaseDashboardController {
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
         final count = pagination['total'] as int? ?? 0;
         pendingTasks.value = count;
-      } else {
-        pendingTasks.value = 0;
       }
     } catch (e) {
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -329,10 +334,7 @@ class ComptableDashboardController extends BaseDashboardController {
       final salaires = results[3] as List;
       validatedSalaires.value = salaires.length - pendingSalaires.value;
     } catch (e) {
-      validatedFactures.value = 0;
-      validatedPaiements.value = 0;
-      validatedDepenses.value = 0;
-      validatedSalaires.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -377,11 +379,7 @@ class ComptableDashboardController extends BaseDashboardController {
 
       netProfit.value = revenue - expenses - salaries;
     } catch (e) {
-      totalRevenue.value = 0.0;
-      totalPayments.value = 0.0;
-      totalExpenses.value = 0.0;
-      totalSalaries.value = 0.0;
-      netProfit.value = 0.0;
+      // Ne pas réinitialiser
     }
   }
 }

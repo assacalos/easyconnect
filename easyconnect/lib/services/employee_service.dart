@@ -8,7 +8,7 @@ import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
-import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 
 class EmployeeService extends GetxService {
@@ -36,83 +36,44 @@ class EmployeeService extends GetxService {
     int page = 1,
     int perPage = 10,
   }) async {
-    print('📡 [EMPLOYEE_SERVICE] ===== getEmployeesPaginated APPELÉ =====');
-    print(
-      '📡 [EMPLOYEE_SERVICE] Paramètres: search=$search, department=$department, position=$position, status=$status, page=$page, perPage=$perPage',
-    );
-
     try {
-      String url = '${AppConfig.baseUrl}/employees';
-      List<String> params = [];
-      print('📡 [EMPLOYEE_SERVICE] URL de base: $url');
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+      if (department != null && department.isNotEmpty) queryParams['department'] = department;
+      if (position != null && position.isNotEmpty) queryParams['position'] = position;
+      if (status != null && status.isNotEmpty) queryParams['status'] = status;
 
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      if (department != null && department.isNotEmpty) {
-        params.add('department=$department');
-      }
-      if (position != null && position.isNotEmpty) {
-        params.add('position=$position');
-      }
-      if (status != null && status.isNotEmpty) {
-        params.add('status=$status');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
+      final uri = Uri.parse('${AppConfig.baseUrl}/employees').replace(
+        queryParameters: queryParams,
+      );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'EMPLOYEE_SERVICE');
 
-      // Construire l'URL avec les paramètres
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-      print('📡 [EMPLOYEE_SERVICE] URL finale: $url');
+      final response = await RetryHelper.retryNetwork(
+        operation: () => http
+            .get(uri, headers: ApiService.headers())
+            .timeout(
+              AppConfig.extraLongTimeout,
+              onTimeout: () =>
+                  throw Exception('Timeout: le serveur ne répond pas'),
+            ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
 
-      http.Response response;
-      try {
-        print('📡 [EMPLOYEE_SERVICE] Tentative GET sur $url...');
-        response = await http.get(
-          Uri.parse(url),
-          headers: ApiService.headers(),
-        );
-        print(
-          '✅ [EMPLOYEE_SERVICE] Réponse reçue: status=${response.statusCode}, body length=${response.body.length}',
-        );
-      } catch (e) {
-        print(
-          '⚠️ [EMPLOYEE_SERVICE] Erreur avec /employees, tentative avec /employees-list: $e',
-        );
-        // Si la route /employees échoue, essayer /employees-list
-        url = '${AppConfig.baseUrl}/employees-list';
-        if (params.isNotEmpty) {
-          url += '?${params.join('&')}';
-        }
-        print('📡 [EMPLOYEE_SERVICE] Nouvelle tentative sur: $url');
-        response = await http.get(
-          Uri.parse(url),
-          headers: ApiService.headers(),
-        );
-        print(
-          '✅ [EMPLOYEE_SERVICE] Réponse fallback: status=${response.statusCode}, body length=${response.body.length}',
-        );
-      }
-
-      // Ne pas appeler AuthErrorHandler si c'est une erreur 500 (pour permettre le fallback)
-      if (response.statusCode != 200 && response.statusCode != 500) {
-        await AuthErrorHandler.handleHttpResponse(response);
-      }
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'EMPLOYEE_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         Map<String, dynamic> data;
         try {
-          print('🔍 [EMPLOYEE_SERVICE] Parsing de la réponse JSON...');
           data = jsonDecode(response.body) as Map<String, dynamic>;
-          print('🔍 [EMPLOYEE_SERVICE] Structure JSON: ${data.keys.toList()}');
         } on FormatException catch (e) {
-          print('❌ [EMPLOYEE_SERVICE] Erreur avec getEmployeesPaginated: $e');
           if (perPage > 5) {
-            print(
-              '🔄 [EMPLOYEE_SERVICE] Réponse JSON tronquée, nouvel essai avec per_page=5',
+            AppLogger.warning(
+              'Réponse JSON tronquée, nouvel essai avec per_page=5: $e',
+              tag: 'EMPLOYEE_SERVICE',
             );
             return getEmployeesPaginated(
               search: search,
@@ -126,240 +87,24 @@ class EmployeeService extends GetxService {
           rethrow;
         }
 
-        // Utiliser PaginationHelper pour parser la réponse
-        PaginationResponse<Employee> paginatedResponse;
-        try {
-          print('🔍 [EMPLOYEE_SERVICE] Tentative avec PaginationHelper...');
-          paginatedResponse = PaginationHelper.parseResponse<Employee>(
-            json: data,
-            fromJsonT: (json) => Employee.fromJson(json),
-          );
-          print(
-            '✅ [EMPLOYEE_SERVICE] PaginationHelper réussi: ${paginatedResponse.data.length} employés',
-          );
-        } catch (e, stackTrace) {
-          print('❌ [EMPLOYEE_SERVICE] Erreur avec PaginationHelper: $e');
-          print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
-
-          // Fallback si PaginationHelper échoue
-          AppLogger.warning(
-            'Erreur avec PaginationHelper, parsing manuel: $e',
-            tag: 'EMPLOYEE_SERVICE',
-          );
-          print(
-            '🔄 [EMPLOYEE_SERVICE] Tentative de parsing manuel en fallback...',
-          );
-
-          List<Employee> fallbackData = [];
-          if (data.containsKey('data')) {
-            final dataValue = data['data'];
-            print(
-              '🔍 [EMPLOYEE_SERVICE] Fallback: dataValue type=${dataValue.runtimeType}',
-            );
-
-            if (dataValue is List) {
-              print(
-                '🔍 [EMPLOYEE_SERVICE] Fallback: dataValue est une List avec ${dataValue.length} éléments',
-              );
-              fallbackData =
-                  dataValue
-                      .map((json) {
-                        try {
-                          return Employee.fromJson(
-                            json as Map<String, dynamic>,
-                          );
-                        } catch (e) {
-                          print(
-                            '❌ [EMPLOYEE_SERVICE] Fallback: Erreur parsing employé: $e',
-                          );
-                          AppLogger.warning(
-                            'Erreur parsing employé: $e',
-                            tag: 'EMPLOYEE_SERVICE',
-                          );
-                          return null;
-                        }
-                      })
-                      .where((e) => e != null)
-                      .cast<Employee>()
-                      .toList();
-              print(
-                '✅ [EMPLOYEE_SERVICE] Fallback: ${fallbackData.length} employés parsés depuis List',
-              );
-            } else if (dataValue is Map &&
-                dataValue.containsKey('data') &&
-                dataValue['data'] is List) {
-              final dataList = dataValue['data'] as List;
-              print(
-                '🔍 [EMPLOYEE_SERVICE] Fallback: dataValue est un Map avec data List de ${dataList.length} éléments',
-              );
-              fallbackData =
-                  dataList
-                      .map((json) {
-                        try {
-                          return Employee.fromJson(
-                            json as Map<String, dynamic>,
-                          );
-                        } catch (e) {
-                          print(
-                            '❌ [EMPLOYEE_SERVICE] Fallback: Erreur parsing employé: $e',
-                          );
-                          AppLogger.warning(
-                            'Erreur parsing employé: $e',
-                            tag: 'EMPLOYEE_SERVICE',
-                          );
-                          return null;
-                        }
-                      })
-                      .where((e) => e != null)
-                      .cast<Employee>()
-                      .toList();
-              print(
-                '✅ [EMPLOYEE_SERVICE] Fallback: ${fallbackData.length} employés parsés depuis Map.data',
-              );
-            } else {
-              print(
-                '⚠️ [EMPLOYEE_SERVICE] Fallback: Format de data non reconnu',
-              );
-            }
-          } else {
-            print(
-              '⚠️ [EMPLOYEE_SERVICE] Fallback: Pas de clé "data" dans la réponse',
-            );
-          }
-
-          // Créer une PaginationResponse factice
-          paginatedResponse = PaginationResponse<Employee>(
-            data: fallbackData,
-            meta: PaginationMeta(
-              currentPage: page,
-              lastPage: 1,
-              perPage: fallbackData.length,
-              total: fallbackData.length,
-              path: url,
-            ),
-          );
-          print(
-            '✅ [EMPLOYEE_SERVICE] PaginationResponse créée avec ${paginatedResponse.data.length} employés',
-          );
-        }
-
-        if (paginatedResponse.data.isNotEmpty) {
-          print(
-            '📝 [EMPLOYEE_SERVICE] Premier employé parsé: id=${paginatedResponse.data.first.id}, name=${paginatedResponse.data.first.firstName} ${paginatedResponse.data.first.lastName}',
-          );
-        }
-
-        return paginatedResponse;
-      } else {
-        // Si erreur 500 ou autre, essayer /employees-list en fallback
-        print(
-          '⚠️ [EMPLOYEE_SERVICE] Erreur ${response.statusCode} avec /employees, tentative avec /employees-list...',
-        );
-        try {
-          String fallbackUrl = '${AppConfig.baseUrl}/employees-list';
-          if (params.isNotEmpty) {
-            fallbackUrl += '?${params.join('&')}';
-          }
-          print('📡 [EMPLOYEE_SERVICE] Tentative fallback sur: $fallbackUrl');
-
-          final fallbackResponse = await http.get(
-            Uri.parse(fallbackUrl),
-            headers: ApiService.headers(),
-          );
-
-          print(
-            '✅ [EMPLOYEE_SERVICE] Réponse fallback: status=${fallbackResponse.statusCode}, body length=${fallbackResponse.body.length}',
-          );
-
-          if (fallbackResponse.statusCode == 200) {
-            print(
-              '🔍 [EMPLOYEE_SERVICE] Parsing de la réponse fallback JSON...',
-            );
-            final fallbackData =
-                jsonDecode(fallbackResponse.body) as Map<String, dynamic>;
-            print(
-              '🔍 [EMPLOYEE_SERVICE] Structure JSON fallback: ${fallbackData.keys.toList()}',
-            );
-
-            // Utiliser PaginationHelper pour parser la réponse
-            PaginationResponse<Employee> paginatedResponse;
+        final result = PaginationHelper.parseResponseSafe<Employee>(
+          json: data,
+          fromJsonT: (json) {
             try {
-              print(
-                '🔍 [EMPLOYEE_SERVICE] Tentative avec PaginationHelper (fallback)...',
-              );
-              paginatedResponse = PaginationHelper.parseResponse<Employee>(
-                json: fallbackData,
-                fromJsonT: (json) => Employee.fromJson(json),
-              );
-              print(
-                '✅ [EMPLOYEE_SERVICE] PaginationHelper réussi (fallback): ${paginatedResponse.data.length} employés',
-              );
-            } catch (e, stackTrace) {
-              print(
-                '❌ [EMPLOYEE_SERVICE] Erreur avec PaginationHelper (fallback): $e',
-              );
-              print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
-
-              // Fallback manuel
-              List<Employee> fallbackDataList = [];
-              if (fallbackData.containsKey('data')) {
-                final dataValue = fallbackData['data'];
-                if (dataValue is List) {
-                  fallbackDataList =
-                      dataValue
-                          .map((json) {
-                            try {
-                              return Employee.fromJson(
-                                json as Map<String, dynamic>,
-                              );
-                            } catch (e) {
-                              print(
-                                '❌ [EMPLOYEE_SERVICE] Fallback: Erreur parsing employé: $e',
-                              );
-                              return null;
-                            }
-                          })
-                          .where((e) => e != null)
-                          .cast<Employee>()
-                          .toList();
-                }
-              }
-
-              paginatedResponse = PaginationResponse<Employee>(
-                data: fallbackDataList,
-                meta: PaginationMeta(
-                  currentPage: page,
-                  lastPage: 1,
-                  perPage: fallbackDataList.length,
-                  total: fallbackDataList.length,
-                  path: fallbackUrl,
-                ),
-              );
-              print(
-                '✅ [EMPLOYEE_SERVICE] PaginationResponse créée (fallback manuel): ${paginatedResponse.data.length} employés',
-              );
+              return Employee.fromJson(json);
+            } catch (_) {
+              return null;
             }
-
-            if (paginatedResponse.data.isNotEmpty) {
-              print(
-                '📝 [EMPLOYEE_SERVICE] Premier employé parsé (fallback): id=${paginatedResponse.data.first.id}, name=${paginatedResponse.data.first.firstName} ${paginatedResponse.data.first.lastName}',
-              );
-            }
-
-            return paginatedResponse;
-          } else {
-            throw Exception(
-              'Erreur lors de la récupération des employés: ${response.statusCode} - ${response.body} (fallback aussi échoué: ${fallbackResponse.statusCode})',
-            );
-          }
-        } catch (fallbackError) {
-          print(
-            '❌ [EMPLOYEE_SERVICE] Le fallback vers /employees-list a aussi échoué: $fallbackError',
-          );
-          throw Exception(
-            'Erreur lors de la récupération des employés: ${response.statusCode} - ${response.body}',
-          );
+          },
+        );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveEmployeesToHive(result.data);
         }
+        return result;
+      } else {
+        throw Exception(
+          'Erreur lors de la récupération des employés: ${response.statusCode}',
+        );
       }
     } catch (e) {
       AppLogger.error(
@@ -371,8 +116,7 @@ class EmployeeService extends GetxService {
     }
   }
 
-  // Récupérer tous les employés (méthode legacy pour compatibilité)
-  // Note: Cette méthode charge toutes les pages automatiquement
+  /// Récupère la première page (délégation vers getEmployeesPaginated pour compatibilité).
   Future<List<Employee>> getEmployees({
     String? search,
     String? department,
@@ -381,169 +125,20 @@ class EmployeeService extends GetxService {
     int? page,
     int? limit,
   }) async {
-    // Si aucune limite n'est spécifiée, utiliser une limite modérée pour éviter les réponses tronquées (JSON)
-    final effectiveLimit = limit ?? 15;
+    final effectiveLimit = limit ?? 500;
     final effectivePage = page ?? 1;
-
-    // OPTIMISATION : Vérifier le cache d'abord (sauf pour les recherches)
-    if (search == null || search.isEmpty) {
-      final cacheKey =
-          'employees_${department ?? 'all'}_${position ?? 'all'}_${status ?? 'all'}_${effectivePage}_$effectiveLimit';
-      final cached = CacheHelper.get<List<Employee>>(cacheKey);
-      if (cached != null) {
-        AppLogger.debug('Using cached employees', tag: 'EMPLOYEE_SERVICE');
-        return cached;
-      }
+    final res = await getEmployeesPaginated(
+      search: search,
+      department: department,
+      position: position,
+      status: status,
+      page: effectivePage,
+      perPage: effectiveLimit,
+    );
+    if (res.data.isNotEmpty && (search == null || search.isEmpty)) {
+      _saveEmployeesToHive(res.data);
     }
-
-    try {
-      print('📡 [EMPLOYEE_SERVICE] Appel de getEmployeesPaginated...');
-      print(
-        '📡 [EMPLOYEE_SERVICE] Paramètres: search=$search, department=$department, position=$position, status=$status, page=$effectivePage, limit=$effectiveLimit',
-      );
-
-      // Utiliser la méthode paginée
-      final paginatedResponse = await getEmployeesPaginated(
-        search: search,
-        department: department,
-        position: position,
-        status: status,
-        page: effectivePage,
-        perPage: effectiveLimit,
-      );
-
-      print(
-        '✅ [EMPLOYEE_SERVICE] getEmployeesPaginated retourné: ${paginatedResponse.data.length} employés',
-      );
-
-      final employees = paginatedResponse.data;
-
-      // Mettre en cache pour 5 minutes (sauf pour les recherches)
-      if (search == null || search.isEmpty) {
-        final cacheKey =
-            'employees_${department ?? 'all'}_${position ?? 'all'}_${status ?? 'all'}_${effectivePage}_$effectiveLimit';
-        CacheHelper.set(
-          cacheKey,
-          employees,
-          duration: AppConfig.defaultCacheDuration,
-        );
-        print(
-          '💾 [EMPLOYEE_SERVICE] Données mises en cache avec la clé: $cacheKey',
-        );
-      }
-
-      if (employees.isNotEmpty) {
-        print(
-          '📝 [EMPLOYEE_SERVICE] Premier employé: id=${employees.first.id}, name=${employees.first.firstName} ${employees.first.lastName}',
-        );
-      }
-
-      return employees;
-    } catch (e, stackTrace) {
-      print('❌ [EMPLOYEE_SERVICE] Erreur avec getEmployeesPaginated: $e');
-      print('❌ [EMPLOYEE_SERVICE] Stack trace: $stackTrace');
-
-      // Si la méthode paginée échoue, essayer de récupérer directement depuis /employees-list
-      AppLogger.warning(
-        'Erreur avec getEmployeesPaginated, tentative avec /employees-list: $e',
-        tag: 'EMPLOYEE_SERVICE',
-      );
-      print(
-        '🔄 [EMPLOYEE_SERVICE] Tentative avec /employees-list en fallback...',
-      );
-
-      try {
-        String url = '${AppConfig.baseUrl}/employees-list';
-        List<String> params = [];
-
-        if (search != null && search.isNotEmpty) {
-          params.add('search=$search');
-        }
-        if (department != null && department.isNotEmpty) {
-          params.add('department=$department');
-        }
-        if (position != null && position.isNotEmpty) {
-          params.add('position=$position');
-        }
-        if (status != null && status.isNotEmpty) {
-          params.add('status=$status');
-        }
-
-        if (params.isNotEmpty) {
-          url += '?${params.join('&')}';
-        }
-
-        final response = await http.get(
-          Uri.parse(url),
-          headers: ApiService.headers(),
-        );
-
-        await AuthErrorHandler.handleHttpResponse(response);
-
-        if (response.statusCode == 200) {
-          final decodedBody = jsonDecode(response.body);
-
-          // Gérer différents formats de réponse
-          List<dynamic> dataList = [];
-
-          if (decodedBody is List) {
-            dataList = decodedBody;
-          } else if (decodedBody is Map) {
-            if (decodedBody.containsKey('data')) {
-              final dataValue = decodedBody['data'];
-              if (dataValue is List) {
-                dataList = dataValue;
-              } else if (dataValue is Map &&
-                  dataValue.containsKey('data') &&
-                  dataValue['data'] is List) {
-                dataList = dataValue['data'] as List;
-              }
-            }
-          }
-
-          final employees =
-              dataList
-                  .map((json) {
-                    try {
-                      return Employee.fromJson(json as Map<String, dynamic>);
-                    } catch (e) {
-                      AppLogger.warning(
-                        'Erreur parsing employé: $e',
-                        tag: 'EMPLOYEE_SERVICE',
-                      );
-                      return null;
-                    }
-                  })
-                  .where((e) => e != null)
-                  .cast<Employee>()
-                  .toList();
-
-          // Mettre en cache
-          if (search == null || search.isEmpty) {
-            final cacheKey =
-                'employees_${department ?? 'all'}_${position ?? 'all'}_${status ?? 'all'}_${effectivePage}_$effectiveLimit';
-            CacheHelper.set(
-              cacheKey,
-              employees,
-              duration: AppConfig.defaultCacheDuration,
-            );
-          }
-
-          AppLogger.info(
-            '${employees.length} employés récupérés via fallback',
-            tag: 'EMPLOYEE_SERVICE',
-          );
-          return employees;
-        }
-      } catch (fallbackError) {
-        AppLogger.error(
-          'Erreur dans le fallback getEmployees: $fallbackError',
-          tag: 'EMPLOYEE_SERVICE',
-        );
-      }
-
-      rethrow;
-    }
+    return res.data;
   }
 
   // Récupérer un employé par ID
@@ -758,36 +353,42 @@ class EmployeeService extends GetxService {
     String? notes,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('${AppConfig.baseUrl}/employees/$id'),
-        headers: ApiService.headers(),
-        body: jsonEncode({
-          'first_name': firstName,
-          'last_name': lastName,
-          'email': email,
-          'phone': phone,
-          'address': address,
-          'birth_date': birthDate?.toIso8601String(),
-          'gender': gender,
-          'marital_status': maritalStatus,
-          'nationality': nationality,
-          'id_number': idNumber,
-          'social_security_number': socialSecurityNumber,
-          'position': position,
-          'department': department,
-          'manager': manager,
-          'hire_date': hireDate?.toIso8601String(),
-          'contract_start_date': contractStartDate?.toIso8601String(),
-          'contract_end_date': contractEndDate?.toIso8601String(),
-          'contract_type': contractType,
-          'salary': salary,
-          'currency': currency,
-          'work_schedule': workSchedule,
-          'status': status,
-          'profile_picture': profilePicture,
-          'notes': notes,
-        }),
-      );
+      final response = await http
+          .put(
+            Uri.parse('${AppConfig.baseUrl}/employees/$id'),
+            headers: ApiService.headers(),
+            body: jsonEncode({
+              'first_name': firstName,
+              'last_name': lastName,
+              'email': email,
+              'phone': phone,
+              'address': address,
+              'birth_date': birthDate?.toIso8601String(),
+              'gender': gender,
+              'marital_status': maritalStatus,
+              'nationality': nationality,
+              'id_number': idNumber,
+              'social_security_number': socialSecurityNumber,
+              'position': position,
+              'department': department,
+              'manager': manager,
+              'hire_date': hireDate?.toIso8601String(),
+              'contract_start_date': contractStartDate?.toIso8601String(),
+              'contract_end_date': contractEndDate?.toIso8601String(),
+              'contract_type': contractType,
+              'salary': salary,
+              'currency': currency,
+              'work_schedule': workSchedule,
+              'status': status,
+              'profile_picture': profilePicture,
+              'notes': notes,
+            }),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -1138,6 +739,30 @@ class EmployeeService extends GetxService {
       }
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static void _saveEmployeesToHive(List<Employee> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyEmployees,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Persiste la liste en cache Hive (appelé après création ou refresh API).
+  static void saveCachedEmployees(List<Employee> list) {
+    _saveEmployeesToHive(list);
+  }
+
+  /// Cache Hive : liste des employés pour affichage instantané.
+  static List<Employee> getCachedEmployees() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyEmployees);
+      return raw.map((e) => Employee.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

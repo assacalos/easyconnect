@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/stock_controller.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/Views/Comptable/stock_form.dart';
 import 'package:easyconnect/Views/Comptable/stock_detail.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -172,7 +173,11 @@ class _StockListState extends State<StockList>
                       ],
                     ),
                   )
-                  : ListView.builder(
+                  : PaginatedListView(
+                    scrollController: controller.scrollController,
+                    onLoadMore: controller.loadMore,
+                    hasNextPage: controller.hasNextPage.value,
+                    isLoadingMore: controller.isLoadingMore.value,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {

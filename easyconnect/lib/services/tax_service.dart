@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class TaxService {
   final storage = GetStorage();
@@ -26,7 +27,7 @@ class TaxService {
               'Authorization': 'Bearer $token',
             },
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(AppConfig.extraLongTimeout);
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -83,10 +84,14 @@ class TaxService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         try {
-          return PaginationHelper.parseResponse<Tax>(
+          final result = PaginationHelper.parseResponse<Tax>(
             json: data,
             fromJsonT: (json) => Tax.fromJson(json),
           );
+          if (page == 1 && result.data.isNotEmpty) {
+            _saveTaxesToHive(result.data);
+          }
+          return result;
         } catch (e) {
           // Fallback si PaginationHelper échoue
           AppLogger.warning(
@@ -116,7 +121,9 @@ class TaxService {
             }
           }
 
-          // Créer une réponse paginée simulée
+          if (page == 1 && taxes.isNotEmpty) {
+            _saveTaxesToHive(taxes);
+          }
           return PaginationResponse<Tax>(
             data: taxes,
             meta: PaginationMeta.fromJson({
@@ -196,9 +203,9 @@ class TaxService {
           }
 
           try {
-            return data.map((json) {
-              return Tax.fromJson(json);
-            }).toList();
+            final list = data.map((json) => Tax.fromJson(json)).toList();
+            _saveTaxesToHive(list);
+            return list;
           } catch (e) {
             throw Exception('Erreur de format des données: $e');
           }
@@ -239,9 +246,9 @@ class TaxService {
           }
 
           try {
-            return data.map((json) {
-              return Tax.fromJson(json);
-            }).toList();
+            final list = data.map((json) => Tax.fromJson(json)).toList();
+            _saveTaxesToHive(list);
+            return list;
           } catch (e) {
             rethrow;
           }
@@ -530,7 +537,7 @@ class TaxService {
                   'Authorization': 'Bearer $token',
                 },
               )
-              .timeout(const Duration(seconds: 10));
+              .timeout(AppConfig.extraLongTimeout);
           if (response.statusCode == 200) {
             final responseBody = json.decode(response.body);
             if (responseBody is Map) {}
@@ -786,6 +793,25 @@ class TaxService {
       }
     } catch (e) {
       throw Exception('Erreur lors de la récupération de l\'historique: $e');
+    }
+  }
+
+  static void _saveTaxesToHive(List<Tax> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyTaxes,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des taxes pour affichage instantané.
+  static List<Tax> getCachedTaxes() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyTaxes);
+      return raw.map((e) => Tax.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

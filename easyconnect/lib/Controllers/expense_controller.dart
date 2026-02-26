@@ -20,6 +20,7 @@ class ExpenseController extends GetxController {
   final RxList<Expense> pendingExpenses = <Expense>[].obs;
   final RxList<ExpenseCategory> expenseCategories = <ExpenseCategory>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final Rx<ExpenseStats?> expenseStats = Rx<ExpenseStats?>(null);
 
   // Variables pour le formulaire
@@ -35,6 +36,7 @@ class ExpenseController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Contrôleurs de formulaire
   final TextEditingController titleController = TextEditingController();
@@ -61,6 +63,7 @@ class ExpenseController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     titleController.dispose();
     descriptionController.dispose();
     amountController.dispose();
@@ -71,15 +74,39 @@ class ExpenseController extends GetxController {
   // Charger toutes les dépenses
   Future<void> loadExpenses({int page = 1}) async {
     try {
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey =
           'expenses_${selectedStatus.value}_${selectedCategory.value}';
-      final cachedExpenses = CacheHelper.get<List<Expense>>(cacheKey);
-      if (cachedExpenses != null && cachedExpenses.isNotEmpty && page == 1) {
-        expenses.assignAll(cachedExpenses);
-        isLoading.value = false; // Permettre l'affichage immédiat
-      } else {
+      final statusParam =
+          selectedStatus.value == 'all' ? null : selectedStatus.value;
+      final categoryParam =
+          selectedCategory.value == 'all' ? null : selectedCategory.value;
+
+      if (page == 1) {
+        final hiveList = ExpenseService.getCachedDepenses(
+          statusParam,
+          categoryParam,
+        );
+        if (hiveList.isNotEmpty) {
+          expenses.assignAll(hiveList);
+          isLoading.value = false;
+          Future.microtask(
+            () => _refreshExpensesFromApi(cacheKey, statusParam, categoryParam),
+          );
+          return;
+        }
+        final cachedExpenses = CacheHelper.get<List<Expense>>(cacheKey);
+        if (cachedExpenses != null && cachedExpenses.isNotEmpty) {
+          expenses.assignAll(cachedExpenses);
+          isLoading.value = false;
+          Future.microtask(
+            () => _refreshExpensesFromApi(cacheKey, statusParam, categoryParam),
+          );
+          return;
+        }
+        expenses.value = [];
         isLoading.value = true;
+      } else if (page > 1) {
+        isLoadingMore.value = true;
       }
 
       try {
@@ -176,12 +203,52 @@ class ExpenseController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  Future<void> _refreshExpensesFromApi(
+    String cacheKey,
+    String? statusParam,
+    String? categoryParam,
+  ) async {
+    try {
+      final paginatedResponse = await _expenseService.getExpensesPaginated(
+        status: statusParam,
+        category: categoryParam,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      final sameFilter =
+          (statusParam == null && selectedStatus.value == 'all') ||
+          (statusParam != null && selectedStatus.value == statusParam);
+      final sameCategory =
+          (categoryParam == null && selectedCategory.value == 'all') ||
+          (categoryParam != null && selectedCategory.value == categoryParam);
+      if (sameFilter && sameCategory) {
+        expenses.value = paginatedResponse.data;
+        totalPages.value = paginatedResponse.meta.lastPage;
+        totalItems.value = paginatedResponse.meta.total;
+        hasNextPage.value = paginatedResponse.hasNextPage;
+        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+        currentPage.value = 1;
+        CacheHelper.set(cacheKey, paginatedResponse.data);
+      }
+    } catch (_) {}
+    isLoading.value = false;
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadExpenses(page: currentPage.value + 1);
     }
   }

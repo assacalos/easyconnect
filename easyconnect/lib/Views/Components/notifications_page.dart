@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/Models/notification_model.dart';
+import 'package:easyconnect/utils/encoding_helper.dart' show fixUtf8Mojibake;
 
 /// Page de liste des notifications
 class NotificationsPage extends StatelessWidget {
@@ -95,7 +97,11 @@ class NotificationsPage extends StatelessWidget {
 
         return RefreshIndicator(
           onRefresh: () => controller.loadNotifications(forceRefresh: true),
-          child: ListView.builder(
+          child: PaginatedListView(
+            scrollController: controller.scrollController,
+            onLoadMore: controller.loadMore,
+            hasNextPage: controller.hasNextPage.value,
+            isLoadingMore: controller.isLoadingMore.value,
             padding: const EdgeInsets.all(8),
             itemCount: controller.notifications.length,
             itemBuilder: (context, index) {
@@ -130,7 +136,7 @@ class NotificationItemWidget extends StatelessWidget {
           child: Icon(icon, color: color),
         ),
         title: Text(
-          notification.title,
+          fixUtf8Mojibake(notification.title),
           style: TextStyle(
             fontWeight:
                 notification.isRead ? FontWeight.normal : FontWeight.bold,
@@ -140,7 +146,7 @@ class NotificationItemWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text(notification.message),
+            Text(fixUtf8Mojibake(notification.message)),
             if (notification.rejectionReason != null) ...[
               const SizedBox(height: 8),
               Container(

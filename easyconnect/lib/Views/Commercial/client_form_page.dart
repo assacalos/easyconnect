@@ -173,43 +173,54 @@ class _ClientFormPageState extends State<ClientFormPage> {
                   ),
                 ),
                 SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (_formKey.currentState!.validate()) {
-                      final data = {
-                        "nom": nomController.text.trim(),
-                        "prenom": prenomController.text.trim(),
-                        "nom_entreprise": nomEntrepriseController.text.trim(),
-                        "situation_geographique":
-                            situationGeographiqueController.text.trim(),
-                        "email": emailController.text.trim(),
-                        "contact": telephoneController.text.trim(),
-                        "adresse": adresseController.text.trim(),
-                        "numero_contribuable":
-                            numeroContribuableController.text.trim(),
-                      };
+                Obx(() {
+                  final loading = controller.isLoading.value;
+                  return ElevatedButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            if (_formKey.currentState!.validate()) {
+                              final data = {
+                                "nom": nomController.text.trim(),
+                                "prenom": prenomController.text.trim(),
+                                "nom_entreprise":
+                                    nomEntrepriseController.text.trim(),
+                                "situation_geographique":
+                                    situationGeographiqueController.text.trim(),
+                                "email": emailController.text.trim(),
+                                "contact": telephoneController.text.trim(),
+                                "adresse": adresseController.text.trim(),
+                                "numero_contribuable":
+                                    numeroContribuableController.text.trim(),
+                              };
 
-                      bool success = false;
-                      if (widget.isEditing && widget.clientId != null) {
-                        success = await controller.updateClient(data);
-                      } else {
-                        success = await controller.createClientFromMap(data);
-                      }
+                              bool success = false;
+                              if (widget.isEditing && widget.clientId != null) {
+                                success = await controller.updateClient(data);
+                              } else {
+                                success =
+                                    await controller.createClientFromMap(data);
+                              }
 
-                      if (success) {
-                        // Réinitialiser les champs
-                        _clearForm();
-                        // Attendre un peu pour que le snackbar s'affiche
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        // Rediriger vers la page de liste des clients
-                        if (mounted) {
-                          Get.offNamed('/clients');
-                        }
-                      }
-                    }
-                  },
-                  child: Text(widget.isEditing ? "Modifier" : "Enregistrer"),
-                ),
+                              if (success && mounted) {
+                                _clearForm();
+                                await Future.delayed(
+                                    const Duration(milliseconds: 500));
+                                Get.offNamed('/clients');
+                              }
+                            }
+                          },
+                    child: loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            widget.isEditing ? "Modifier" : "Enregistrer",
+                          ),
+                  );
+                }),
                 SizedBox(height: 20),
               ],
             ),

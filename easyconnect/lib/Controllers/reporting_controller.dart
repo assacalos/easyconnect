@@ -4,7 +4,6 @@ import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 
 class ReportingController extends GetxController {
@@ -13,8 +12,9 @@ class ReportingController extends GetxController {
 
   // Observables
   var isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   var reports = <ReportingModel>[].obs;
-  var currentReport = Rxn<ReportingModel>();
+  var currentReport = Rxn<ReportingModel>(); // rapport en cours d'édition
   var selectedDate = DateTime.now().obs;
   var selectedUserRole = Rxn<String>();
   var startDate = DateTime.now().subtract(const Duration(days: 30)).obs;
@@ -27,6 +27,7 @@ class ReportingController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 10.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Clé de formulaire pour la validation
   final formKey = GlobalKey<FormState>();
@@ -55,6 +56,7 @@ class ReportingController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     nomSocieteController.dispose();
     contactSocieteController.dispose();
     nomPersonneController.dispose();
@@ -65,192 +67,115 @@ class ReportingController extends GetxController {
     super.onClose();
   }
 
-  // Charger les rapports
+  bool _isLoadingReportsInProgress = false;
+
+  /// Charge les rapports : Hive d'abord (affichage immédiat), puis API dans la même méthode.
   Future<void> loadReports({int page = 1, bool forceRefresh = false}) async {
-    print('🚀 [REPORTING_CONTROLLER] ===== loadReports APPELÉ =====');
-    print('🚀 [REPORTING_CONTROLLER] page: $page, forceRefresh: $forceRefresh');
-    print(
-      '🚀 [REPORTING_CONTROLLER] Liste actuelle: ${reports.length} reportings',
-    );
+    if (_isLoadingReportsInProgress) return;
+    _isLoadingReportsInProgress = true;
+    final userRole = _authController.userAuth.value?.role;
+    final userId = _authController.userAuth.value?.id;
+
+    if (page == 1) {
+      isLoading.value = true;
+      final hiveList = ReportingService.getCachedReporting();
+      if (hiveList.isNotEmpty && !forceRefresh) {
+        reports.assignAll(hiveList);
+        isLoading.value = false;
+      } else {
+        reports.value = [];
+      }
+    } else {
+      isLoadingMore.value = true;
+    }
 
     try {
-      isLoading.value = true;
-      print('🚀 [REPORTING_CONTROLLER] isLoading mis à true');
-
-      final userRole = _authController.userAuth.value?.role;
-      final userId = _authController.userAuth.value?.id;
-      print('🔍 [REPORTING_CONTROLLER] userRole: $userRole, userId: $userId');
-      print(
-        '🔍 [REPORTING_CONTROLLER] startDate: ${startDate.value}, endDate: ${endDate.value}',
-      );
-      print(
-        '🔍 [REPORTING_CONTROLLER] selectedUserRole: ${selectedUserRole.value}',
+      final paginatedResponse = await _reportingService.getReportsPaginated(
+        startDate: startDate.value,
+        endDate: endDate.value,
+        userRole: selectedUserRole.value,
+        userId: (userRole == Roles.ADMIN || userRole == Roles.PATRON) ? null : userId,
+        page: page,
+        perPage: perPage.value,
       );
 
+      List<ReportingModel> filteredData = paginatedResponse.data;
+      if (userRole != Roles.ADMIN && userRole != Roles.PATRON && userId != null) {
+        filteredData = paginatedResponse.data.where((report) => report.userId == userId).toList();
+      }
+
+      if (page == 1) {
+        reports.assignAll(filteredData);
+        ReportingService.saveCachedReporting(filteredData);
+      } else {
+        reports.addAll(filteredData);
+      }
+
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = paginatedResponse.meta.currentPage;
+    } catch (e) {
       try {
-        // Utiliser la méthode paginée
-        print('📡 [REPORTING_CONTROLLER] Appel de getReportsPaginated...');
-        final paginatedResponse = await _reportingService.getReportsPaginated(
-          startDate: startDate.value,
-          endDate: endDate.value,
-          userRole: selectedUserRole.value,
-          userId:
-              (userRole == Roles.ADMIN || userRole == Roles.PATRON)
-                  ? null
-                  : userId,
-          page: page,
-          perPage: perPage.value,
-        );
-
-        print(
-          '✅ [REPORTING_CONTROLLER] Réponse paginée reçue: ${paginatedResponse.data.length} reportings',
-        );
-        print(
-          '✅ [REPORTING_CONTROLLER] Meta: total=${paginatedResponse.meta.total}, lastPage=${paginatedResponse.meta.lastPage}',
-        );
-
-        // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
-
-        // Filtrer les reportings pour s'assurer que l'utilisateur ne voit que ses propres reportings
-        // (sauf pour ADMIN et PATRON qui peuvent voir tous les reportings)
-        List<ReportingModel> filteredData = paginatedResponse.data;
-        print(
-          '🔍 [REPORTING_CONTROLLER] AVANT filtrage: ${filteredData.length} reportings',
-        );
-
-        if (userRole != Roles.ADMIN &&
-            userRole != Roles.PATRON &&
-            userId != null) {
-          filteredData =
-              paginatedResponse.data.where((report) {
-                final matches = report.userId == userId;
-                print(
-                  '🔍 [REPORTING_CONTROLLER] Filtrage - report.userId=${report.userId}, userId=$userId, matches=$matches',
-                );
-                return matches;
-              }).toList();
-
-          print(
-            '🔍 [REPORTING_CONTROLLER] APRÈS filtrage: ${filteredData.length} reportings',
+        if (page == 1 && (userRole == Roles.ADMIN || userRole == Roles.PATRON)) {
+          final allReports = await _reportingService.getAllReports(
+            startDate: startDate.value,
+            endDate: endDate.value,
+            userRole: selectedUserRole.value,
           );
-          AppLogger.info(
-            'Filtrage des reportings: ${paginatedResponse.data.length} -> ${filteredData.length} (userId: $userId)',
-            tag: 'REPORTING_CONTROLLER',
+          reports.assignAll(allReports);
+          totalItems.value = allReports.length;
+          totalPages.value = 1;
+          if (allReports.isNotEmpty) ReportingService.saveCachedReporting(allReports);
+        } else if (page == 1 && userId != null) {
+          final userReports = await _reportingService.getUserReports(
+            userId: userId,
+            startDate: startDate.value,
+            endDate: endDate.value,
           );
-        }
-
-        // Mettre à jour la liste
-        if (page == 1) {
-          print(
-            '📝 [REPORTING_CONTROLLER] AVANT assignation: ${reports.length} reportings',
-          );
-          reports.value = filteredData;
-          print(
-            '📝 [REPORTING_CONTROLLER] APRÈS assignation: ${reports.length} reportings',
-          );
-
-          if (reports.isNotEmpty) {
-            print(
-              '📝 [REPORTING_CONTROLLER] Premier reporting: id=${reports.first.id}, userId=${reports.first.userId}, role=${reports.first.userRole}',
-            );
-          } else {
-            print(
-              '⚠️ [REPORTING_CONTROLLER] ATTENTION: La liste est vide après assignation!',
-            );
-          }
+          final filtered = userReports.where((r) => r.userId == userId).toList();
+          reports.assignAll(filtered);
+          totalItems.value = filtered.length;
+          totalPages.value = 1;
+          if (filtered.isNotEmpty) ReportingService.saveCachedReporting(filtered);
         } else {
-          reports.addAll(filteredData);
-          print(
-            '📝 [REPORTING_CONTROLLER] Reportings ajoutés (page $page): ${reports.length} reportings au total',
-          );
+          throw e;
         }
-      } catch (e, stackTrace) {
-        print('❌ [REPORTING_CONTROLLER] Erreur dans getReportsPaginated: $e');
-        print('❌ [REPORTING_CONTROLLER] Stack trace: $stackTrace');
-
-        // En cas d'erreur, essayer la méthode non-paginée en fallback
-        try {
-          print('🔄 [REPORTING_CONTROLLER] Tentative avec méthode fallback...');
-          if (userRole == Roles.ADMIN || userRole == Roles.PATRON) {
-            print('🔄 [REPORTING_CONTROLLER] Appel de getAllReports...');
-            final allReports = await _reportingService.getAllReports(
-              startDate: startDate.value,
-              endDate: endDate.value,
-              userRole: selectedUserRole.value,
-            );
-            print(
-              '🔄 [REPORTING_CONTROLLER] getAllReports retourné: ${allReports.length} reportings',
-            );
-            if (page == 1) {
-              reports.value = allReports;
-              print(
-                '🔄 [REPORTING_CONTROLLER] Liste mise à jour avec getAllReports: ${reports.length} reportings',
-              );
-            } else {
-              reports.addAll(allReports);
-            }
+      } catch (_) {
+        if (reports.isEmpty) {
+          final fallback = ReportingService.getCachedReporting();
+          if (fallback.isNotEmpty) {
+            reports.assignAll(fallback);
           } else {
-            print(
-              '🔄 [REPORTING_CONTROLLER] Appel de getUserReports pour userId=$userId...',
-            );
-            final userReports = await _reportingService.getUserReports(
-              userId: userId!,
-              startDate: startDate.value,
-              endDate: endDate.value,
-            );
-            print(
-              '🔄 [REPORTING_CONTROLLER] getUserReports retourné: ${userReports.length} reportings',
-            );
-            // Ne filtrer que par userId, pas par rôle (le userId est déjà unique)
-            // Le backend devrait déjà retourner les reportings du bon utilisateur
-            print(
-              '🔄 [REPORTING_CONTROLLER] Filtrage uniquement par userId: $userId',
-            );
-
-            final filteredReports =
-                userReports.where((report) {
-                  final matches = report.userId == userId;
-                  print(
-                    '🔄 [REPORTING_CONTROLLER] Fallback filtrage - report.userId=${report.userId}, userId=$userId, report.userRole="${report.userRole}", matches=$matches',
-                  );
-                  return matches;
-                }).toList();
-            print(
-              '🔄 [REPORTING_CONTROLLER] Après filtrage fallback: ${filteredReports.length} reportings',
-            );
-            if (page == 1) {
-              reports.value = filteredReports;
-              print(
-                '🔄 [REPORTING_CONTROLLER] Liste mise à jour avec getUserReports: ${reports.length} reportings',
-              );
-            } else {
-              reports.addAll(filteredReports);
-            }
+            Get.snackbar('Erreur', 'Erreur lors du chargement des rapports', snackPosition: SnackPosition.BOTTOM);
           }
-        } catch (fallbackError, fallbackStackTrace) {
-          print(
-            '❌ [REPORTING_CONTROLLER] Erreur dans le fallback: $fallbackError',
-          );
-          print(
-            '❌ [REPORTING_CONTROLLER] Stack trace fallback: $fallbackStackTrace',
-          );
-          rethrow;
         }
       }
-    } catch (e, stackTrace) {
-      print('❌ [REPORTING_CONTROLLER] ERREUR FINALE dans loadReports: $e');
-      print('❌ [REPORTING_CONTROLLER] Stack trace: $stackTrace');
-      Get.snackbar('Erreur', 'Erreur lors du chargement des rapports: $e');
     } finally {
       isLoading.value = false;
-      print(
-        '✅ [REPORTING_CONTROLLER] loadReports terminé. Liste finale: ${reports.length} reportings',
-      );
+      isLoadingMore.value = false;
+      _isLoadingReportsInProgress = false;
+    }
+  }
+
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadReports(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadReports(page: currentPage.value - 1);
     }
   }
 
@@ -336,12 +261,10 @@ class ReportingController extends GetxController {
         );
       }
 
-      // Mise à jour optimiste : ajouter le reporting à la liste immédiatement
+      // Mise à jour optimiste : ajouter le reporting à la liste et persister le cache
       if (createdReport != null) {
-        print(
-          '✅ [REPORTING_CONTROLLER] Ajout optimiste du reporting à la liste',
-        );
         reports.insert(0, createdReport);
+        ReportingService.saveCachedReporting(reports.toList());
       }
 
       isLoading.value = false;
@@ -351,23 +274,7 @@ class ReportingController extends GetxController {
 
       // Navigation automatique vers la page de liste des reportings
       Get.offNamed('/reporting');
-
-      // Recharger les reportings en arrière-plan pour synchroniser avec le serveur
-      Future.microtask(() async {
-        await Future.delayed(const Duration(milliseconds: 500));
-        await loadReports(forceRefresh: true);
-
-        // Si le reporting créé n'est pas dans la liste après le refresh, le ré-ajouter
-        if (createdReport != null) {
-          final exists = reports.any((r) => r.id == createdReport!.id);
-          if (!exists) {
-            print(
-              '🔄 [REPORTING_CONTROLLER] Ré-ajout du reporting après refresh',
-            );
-            reports.insert(0, createdReport);
-          }
-        }
-      });
+      // Pas de loadReports(forceRefresh: true) pour ne pas écraser l'insertion
     } catch (e) {
       String errorMessage = 'Erreur lors de la création du rapport';
       if (e.toString().contains('Erreur de format') ||
@@ -592,6 +499,7 @@ class ReportingController extends GetxController {
 
   // Vider le formulaire
   void clearForm() {
+    currentReport.value = null;
     nature.value = '';
     nomSocieteController.clear();
     contactSocieteController.clear();
@@ -603,6 +511,61 @@ class ReportingController extends GetxController {
     typeRelance.value = '';
     relanceDateHeure.value = null;
     commentsController.clear();
+  }
+
+  /// Remplir le formulaire pour éditer un rapport (soumis uniquement, backend canBeEdited)
+  void loadReportForEdit(ReportingModel report) {
+    currentReport.value = report;
+    selectedDate.value = report.reportDate;
+    nature.value = report.nature ?? '';
+    nomSocieteController.text = report.nomSociete ?? '';
+    contactSocieteController.text = report.contactSociete ?? '';
+    nomPersonneController.text = report.nomPersonne ?? '';
+    contactPersonneController.text = report.contactPersonne ?? '';
+    moyenContact.value = report.moyenContact ?? '';
+    produitDemarcheController.text = report.produitDemarche ?? '';
+    commentaireController.text = report.commentaire ?? '';
+    typeRelance.value = report.typeRelance ?? '';
+    relanceDateHeure.value = report.relanceDateHeure;
+    commentsController.text = report.commentaire ?? '';
+  }
+
+  /// Mettre à jour un rapport existant (statut submitted uniquement côté backend)
+  Future<void> updateReport() async {
+    final report = currentReport.value;
+    if (report == null) return;
+    if (formKey.currentState?.validate() != true) {
+      Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+    try {
+      isLoading.value = true;
+      await _reportingService.updateReport(
+        reportId: report.id,
+        nature: nature.value.isEmpty ? null : nature.value,
+        nomSociete: nomSocieteController.text.trim().isEmpty ? null : nomSocieteController.text.trim(),
+        contactSociete: contactSocieteController.text.trim().isEmpty ? null : contactSocieteController.text.trim(),
+        nomPersonne: nomPersonneController.text.trim().isEmpty ? null : nomPersonneController.text.trim(),
+        contactPersonne: contactPersonneController.text.trim().isEmpty ? null : contactPersonneController.text.trim(),
+        moyenContact: moyenContact.value.isEmpty ? null : moyenContact.value,
+        produitDemarche: produitDemarcheController.text.trim().isEmpty ? null : produitDemarcheController.text.trim(),
+        commentaire: commentaireController.text.trim().isEmpty ? null : commentaireController.text.trim(),
+        typeRelance: typeRelance.value.isEmpty ? null : typeRelance.value,
+        relanceDateHeure: relanceDateHeure.value,
+      );
+      clearForm();
+      Get.snackbar('Succès', 'Rapport mis à jour avec succès');
+      Get.offNamed('/reporting');
+      loadReports(forceRefresh: true);
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        e.toString().replaceFirst('Exception: ', ''),
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // Changer la période de filtrage

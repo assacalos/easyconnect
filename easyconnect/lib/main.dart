@@ -16,6 +16,7 @@ import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/services/notification_navigation_service.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 /// Handler pour les notifications en arrière-plan (doit être top-level)
 /// Gère les notifications au format FCM v1 avec type, entity_id, action_route
@@ -152,10 +153,17 @@ void main() async {
   // Initialiser les données de formatage des dates pour la locale française
   await initializeDateFormatting('fr_FR');
 
-  // Assurer l'initialisation du stockage avant de lancer l'app
+  // GetStorage : session (token, user), préférences. Hive : cache listes (clients, devis, etc.). Pas de conflit.
   await GetStorage.init();
 
-  // Initialiser le service de session
+  try {
+    await HiveStorageService.init();
+    AppLogger.info('HiveStorageService initialisé', tag: 'MAIN');
+  } catch (e) {
+    AppLogger.error('Erreur init Hive: $e', tag: 'MAIN');
+  }
+
+  // Initialiser le service de session (critique pour le premier écran / splash)
   try {
     await SessionService.initialize();
     AppLogger.info('SessionService initialisé avec succès', tag: 'MAIN');
@@ -166,62 +174,47 @@ void main() async {
     );
   }
 
-  // Initialiser Firebase
-  try {
-    await Firebase.initializeApp();
-    AppLogger.info('Firebase initialisé avec succès', tag: 'MAIN');
+  // Lancer l'app sans attendre Firebase/push (premier écran plus rapide)
+  runApp(const MyApp());
 
-    // Configurer le handler pour les notifications en arrière-plan
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-    // Initialiser le service de notifications push (BLOQUANT pour s'assurer qu'il est prêt)
-    final pushService = PushNotificationService();
-
-    // Configurer les callbacks pour la navigation depuis les notifications
-    pushService.onNotificationTapped = (Map<String, dynamic> data) {
-      NotificationNavigationService().handleNavigation(data);
-    };
-
-    pushService.onNotificationReceived = (Map<String, dynamic> data) {
-      // Mettre à jour le compteur de notifications non lues
-      // et déclencher un rechargement des notifications si le controller est disponible
-      try {
-        if (Get.isRegistered<NotificationController>()) {
-          final notificationController = Get.find<NotificationController>();
-          notificationController.loadNotifications(forceRefresh: true);
-        }
-      } catch (e, stackTrace) {
-        AppLogger.error(
-          'Erreur lors de la mise à jour du controller: $e',
-          tag: 'PUSH_NOTIFICATION',
-          error: e,
-          stackTrace: stackTrace,
-        );
-      }
-    };
-
-    // Initialiser de manière synchrone pour s'assurer que le service est prêt
+  // Initialisations non bloquantes (pas critiques pour le premier écran)
+  Future(() async {
     try {
+      await Firebase.initializeApp();
+      AppLogger.info('Firebase initialisé avec succès', tag: 'MAIN');
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+      final pushService = PushNotificationService();
+      pushService.onNotificationTapped = (Map<String, dynamic> data) {
+        NotificationNavigationService().handleNavigation(data);
+      };
+      pushService.onNotificationReceived = (Map<String, dynamic> data) {
+        try {
+          if (Get.isRegistered<NotificationController>()) {
+            Get.find<NotificationController>().loadNotifications(forceRefresh: true);
+          }
+        } catch (e, stackTrace) {
+          AppLogger.error(
+            'Erreur lors de la mise à jour du controller: $e',
+            tag: 'PUSH_NOTIFICATION',
+            error: e,
+            stackTrace: stackTrace,
+          );
+        }
+      };
+
       await pushService.initialize();
 
-      // Vérifier si l'app a été ouverte depuis une notification (app fermée)
-      // Cette vérification doit être faite après l'initialisation complète
       final initialMessage =
           await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         AppLogger.info(
-          'App ouverte depuis une notification (app était fermée): ${initialMessage.messageId}',
+          'App ouverte depuis une notification: ${initialMessage.messageId}',
           tag: 'PUSH_NOTIFICATION',
         );
-        AppLogger.info(
-          'Données FCM v1 (initial message): ${initialMessage.data}',
-          tag: 'PUSH_NOTIFICATION',
-        );
-        // Extraire les données au format FCM v1 avant la navigation
         final notificationData = pushService.extractNotificationData(
           initialMessage.data,
         );
-        // Attendre un peu pour que l'app soit complètement initialisée
         Future.delayed(const Duration(milliseconds: 500), () {
           NotificationNavigationService().handleNavigation(notificationData);
         });
@@ -232,30 +225,20 @@ void main() async {
       );
     } catch (e, stackTrace) {
       AppLogger.error(
-        'Erreur lors de l\'initialisation des notifications push: $e',
+        'Erreur init Firebase/push: $e',
         tag: 'MAIN',
         error: e,
         stackTrace: stackTrace,
       );
     }
-  } catch (e, stackTrace) {
-    AppLogger.error(
-      'Erreur lors de l\'initialisation de Firebase: $e',
-      tag: 'MAIN',
-      error: e,
-      stackTrace: stackTrace,
-    );
-  }
 
-  // Initialiser le service de notifications locales (non-bloquant)
-  NotificationServiceEnhanced().initialize().catchError((e) {
-    AppLogger.error(
-      'Erreur lors de l\'initialisation des notifications: $e',
-      tag: 'MAIN',
-    );
+    NotificationServiceEnhanced().initialize().catchError((e) {
+      AppLogger.error(
+        'Erreur lors de l\'initialisation des notifications: $e',
+        tag: 'MAIN',
+      );
+    });
   });
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -282,7 +265,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: '/welcome',
+      initialRoute: '/splash',
       getPages: AppRoutes.routes,
       initialBinding:
           AuthBinding(), // Utilisation du binding d'authentification

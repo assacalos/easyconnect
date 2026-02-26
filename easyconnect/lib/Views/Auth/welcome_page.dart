@@ -15,8 +15,8 @@ class _WelcomePageState extends State<WelcomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (SessionService.isAuthenticated()) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (await SessionService.isAuthenticated()) {
         Get.offNamed('/splash');
       }
     });

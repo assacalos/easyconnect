@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/notification_model.dart';
+import 'package:easyconnect/utils/encoding_helper.dart';
 
 class NotificationService extends GetxService {
   static NotificationService get to => Get.find();
@@ -32,8 +33,8 @@ class NotificationService extends GetxService {
 
   void _showNotificationSnackbar(AppNotification notification) {
     Get.snackbar(
-      notification.title,
-      notification.message,
+      fixUtf8Mojibake(notification.title),
+      fixUtf8Mojibake(notification.message),
       duration: const Duration(seconds: 4),
       isDismissible: true,
     );

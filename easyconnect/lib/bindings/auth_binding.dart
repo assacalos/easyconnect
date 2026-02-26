@@ -14,10 +14,8 @@ class AuthBinding extends Bindings {
   void dependencies() {
     print('=== INITIALISATION AUTH BINDING ===');
 
-    // Initialisation du stockage local
     GetStorage.init();
 
-    // Services essentiels
     Get.put(NotificationService(), permanent: true);
     Get.put(FavoritesService(), permanent: true);
     Get.put(ReportingService(), permanent: true);
@@ -25,14 +23,11 @@ class AuthBinding extends Bindings {
     Get.put(InvoiceService(), permanent: true);
     Get.put(PaymentService(), permanent: true);
 
-    // Contrôleur d'authentification
     Get.put(AuthController(), permanent: true);
-    
-    // NotificationController - Initialiser au démarrage pour que les notifications soient actives
-    // même sans ouvrir la page notifications
     Get.put(NotificationController(), permanent: true);
 
-    // Charger l'utilisateur depuis le stockage local (connexion permanente)
+    // SessionService.initialize() a déjà été appelé et terminé dans main() avant runApp().
+    // On charge l'utilisateur depuis le cache (GetStorage) après cette synchro.
     try {
       final authController = Get.find<AuthController>();
       authController.loadUserFromStorage();

@@ -296,12 +296,13 @@ class AuthController extends GetxController {
 
   /// --- Déconnexion
   /// [silent] : Si true, ne pas afficher de message de déconnexion
-  Future<void> logout({bool silent = false}) async {
+  /// [redirectTo] : Route après déconnexion (ex: '/login', '/welcome'). null = ne pas rediriger
+  Future<void> logout({
+    bool silent = false,
+    String? redirectTo = '/login',
+  }) async {
+    isLoading.value = true;
     try {
-      // Marquer que l'utilisateur est en train de se déconnecter
-      // Cela empêchera les autres contrôleurs de charger des données
-      isLoading.value = true;
-
       // Supprimer le token FCM du backend
       try {
         final pushService = PushNotificationService();
@@ -336,29 +337,32 @@ class AuthController extends GetxController {
       } catch (e) {
         // Ignorer les erreurs de déconnexion serveur
       }
-
-      // Nettoyer le stockage local via SessionService (nettoie aussi le flag de connexion)
-      // clearSession() arrête automatiquement les vérifications périodiques
-      await SessionService.clearSession();
-      userAuth.value = null;
-
-      // Vider le cache métier pour ne pas afficher les données d'un autre utilisateur après reconnexion
-      CacheHelper.clear();
-
-      // Nettoyer tous les contrôleurs enregistrés pour éviter les requêtes en cours
-      _cleanupControllers();
-
-      // Rediriger vers la page de login
-      Get.offAllNamed("/login");
     } catch (e) {
-      // En cas d'erreur, forcer quand même la déconnexion
-      storage.erase();
-      userAuth.value = null;
-      CacheHelper.clear();
-      Get.offAllNamed("/login");
-    } finally {
-      isLoading.value = false;
+      // Ignorer toute erreur des étapes optionnelles
     }
+
+    // Toujours nettoyer la session (GetStorage + FlutterSecureStorage) pour que la déconnexion soit effective
+    try {
+      await SessionService.clearSession();
+    } catch (e) {
+      AppLogger.warning(
+        'clearSession a échoué, nettoyage GetStorage de secours',
+        tag: 'AUTH_CONTROLLER',
+      );
+      storage.erase();
+      try {
+        await SessionService.clearSession();
+      } catch (_) {}
+    }
+
+    userAuth.value = null;
+    CacheHelper.clear();
+    _cleanupControllers();
+
+    if (redirectTo != null && redirectTo.isNotEmpty) {
+      Get.offAllNamed(redirectTo);
+    }
+    isLoading.value = false;
   }
 
   /// Nettoyer tous les contrôleurs pour éviter les requêtes en cours
@@ -391,7 +395,7 @@ class AuthController extends GetxController {
   /// --- Vérifier la validité du token (optionnel)
   Future<bool> validateToken() async {
     try {
-      return SessionService.isAuthenticated();
+      return await SessionService.isAuthenticated();
     } catch (e) {
       return false;
     }

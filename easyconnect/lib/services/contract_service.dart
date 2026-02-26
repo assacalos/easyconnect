@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class ContractService extends GetxService {
   static ContractService get to => Get.find();
@@ -139,10 +140,14 @@ class ContractService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Contract>(
+        final result = PaginationHelper.parseResponse<Contract>(
           json: data,
           fromJsonT: (json) => Contract.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveContractsToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des contrats: ${response.statusCode}',
@@ -185,10 +190,13 @@ class ContractService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(Uri.parse(url), headers: ApiService.headers())
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -207,7 +215,9 @@ class ContractService extends GetxService {
             return [];
           }
 
-          return dataList.map((json) => Contract.fromJson(json)).toList();
+          final list = dataList.map((json) => Contract.fromJson(json)).toList();
+          _saveContractsToHive(list);
+          return list;
         } else {
           return [];
         }
@@ -224,10 +234,16 @@ class ContractService extends GetxService {
   // Récupérer un contrat par ID
   Future<Contract> getContract(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/contracts/$id'),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/contracts/$id'),
+            headers: ApiService.headers(),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -740,6 +756,25 @@ class ContractService extends GetxService {
     } catch (e) {
       final now = DateTime.now();
       return 'CTR-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.millisecondsSinceEpoch.toString().substring(8)}';
+    }
+  }
+
+  static void _saveContractsToHive(List<Contract> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyContracts,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des contrats pour affichage instantané.
+  static List<Contract> getCachedContracts() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyContracts);
+      return raw.map((e) => Contract.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

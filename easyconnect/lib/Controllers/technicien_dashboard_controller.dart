@@ -211,11 +211,20 @@ class TechnicienDashboardController extends BaseDashboardController {
     super.onClose();
   }
 
-  // Méthode pour recharger uniquement les entités en attente (appelée depuis l'extérieur)
+  // Rafraîchissement silencieux : ne pas réinitialiser les compteurs à 0.
   Future<void> refreshPendingEntities() async {
-    await _loadPendingEntities();
-    await _loadValidatedEntities();
-    await _loadStatistics();
+    try {
+      isLoading.value = true;
+      try {
+        await _loadPendingEntities();
+        await _loadValidatedEntities();
+        await _loadStatistics();
+      } finally {
+        isLoading.value = false;
+      }
+    } catch (e) {
+      isLoading.value = false;
+    }
   }
 
   @override
@@ -303,7 +312,7 @@ class TechnicienDashboardController extends BaseDashboardController {
               return status == 'pending' || status == 'submitted';
             }).length;
       } catch (e) {
-        pendingReports.value = 0;
+        // Ne pas réinitialiser
       }
 
       try {
@@ -322,16 +331,12 @@ class TechnicienDashboardController extends BaseDashboardController {
                   (e as dynamic).needsMaintenance == true;
             }).length;
       } catch (e) {
-        pendingEquipments.value = 0;
+        // Ne pas réinitialiser
       }
 
       await _loadPendingTasks();
     } catch (e) {
-      pendingInterventions.value = 0;
-      pendingMaintenance.value = 0;
-      pendingReports.value = 0;
-      pendingEquipments.value = 0;
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -346,11 +351,9 @@ class TechnicienDashboardController extends BaseDashboardController {
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
         final count = pagination['total'] as int? ?? 0;
         pendingTasks.value = count;
-      } else {
-        pendingTasks.value = 0;
       }
     } catch (e) {
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -386,10 +389,7 @@ class TechnicienDashboardController extends BaseDashboardController {
       operationalEquipments.value =
           equipments.where((e) => e.status.toLowerCase() == 'active').length;
     } catch (e) {
-      completedInterventions.value = 0;
-      completedMaintenance.value = 0;
-      validatedReports.value = 0;
-      operationalEquipments.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -411,10 +411,7 @@ class TechnicienDashboardController extends BaseDashboardController {
       maintenanceCost.value = 0.0;
       savings.value = 0.0;
     } catch (e) {
-      interventionCost.value = 0.0;
-      maintenanceCost.value = 0.0;
-      equipmentValue.value = 0.0;
-      savings.value = 0.0;
+      // Ne pas réinitialiser
     }
   }
 }

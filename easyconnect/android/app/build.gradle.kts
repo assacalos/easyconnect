@@ -19,7 +19,7 @@ val flutter_key_keyPassword = localProperties.getProperty("keyPassword")
 
 android {
     namespace = "com.easyconnect.app"
-    compileSdk = 34  // 34+ requis pour android:attr/lStar (plugins comme flutter_app_badger)
+    compileSdk = 35  // requis par plusieurs plugins (flutter_plugin_android_lifecycle, geolocator_android, etc.)
     ndkVersion = "28.2.13676358"
 
     signingConfigs {

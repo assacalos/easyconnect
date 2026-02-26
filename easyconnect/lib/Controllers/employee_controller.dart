@@ -11,6 +11,7 @@ class EmployeeController extends GetxController {
 
   // Variables observables
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxBool isCreating = false.obs;
   final RxBool isUpdating = false.obs;
   final RxBool isDeleting = false.obs;
@@ -36,6 +37,7 @@ class EmployeeController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire
   final TextEditingController firstNameController = TextEditingController();
@@ -170,14 +172,14 @@ class EmployeeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadEmployees();
-    loadEmployeeStats();
-    loadDepartments();
-    loadPositions();
+    // Chargement différé : les données sont chargées par la page (employee_list)
+    // au premier affichage pour éviter une avalanche d'appels API au binding.
   }
 
   @override
+  @override
   void onClose() {
+    scrollController.dispose();
     firstNameController.dispose();
     lastNameController.dispose();
     emailController.dispose();
@@ -200,128 +202,120 @@ class EmployeeController extends GetxController {
     super.onClose();
   }
 
-  // Charger les employés avec pagination
-  Future<void> loadEmployees({bool loadAll = false, int page = 1}) async {
-    try {
-      // Afficher immédiatement les données du cache si disponibles (seulement pour la première page)
-      if (page == 1) {
-        final cacheKey =
-            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
-        final cachedEmployees = CacheHelper.get<List<Employee>>(cacheKey);
-        if (cachedEmployees != null && cachedEmployees.isNotEmpty) {
-          employees.value = cachedEmployees;
-          isLoading.value = false; // Permettre l'affichage immédiat
-        } else {
-          isLoading.value = true;
-        }
+  bool _isLoadingEmployeesInProgress = false;
+
+  /// Charge les employés : Hive d'abord (affichage immédiat), puis API dans la même méthode.
+  Future<void> loadEmployees({
+    bool loadAll = false,
+    int page = 1,
+    bool forceRefresh = false,
+  }) async {
+    if (_isLoadingEmployeesInProgress) return;
+    _isLoadingEmployeesInProgress = true;
+    final cacheKey =
+        'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+
+    if (page == 1) {
+      isLoading.value = true;
+      final hiveList = EmployeeService.getCachedEmployees();
+      if (hiveList.isNotEmpty && !forceRefresh) {
+        employees.assignAll(hiveList);
+        isLoading.value = false;
+        currentPage.value = 1;
       } else {
-        isLoading.value = true;
+        final cached = CacheHelper.get<List<Employee>>(cacheKey);
+        if (cached != null && cached.isNotEmpty && !forceRefresh) {
+          employees.assignAll(cached);
+          isLoading.value = false;
+        } else {
+          employees.value = [];
+        }
       }
+    } else {
+      isLoadingMore.value = true;
+    }
 
-      currentPage.value = page;
-
-      // Utiliser la méthode paginée pour obtenir les métadonnées
+    try {
       final paginatedResponse = await _employeeService.getEmployeesPaginated(
         search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
         department:
-            selectedDepartment.value != 'all' &&
-                    selectedDepartment.value.isNotEmpty
+            selectedDepartment.value != 'all' && selectedDepartment.value.isNotEmpty
                 ? selectedDepartment.value
                 : null,
         position:
             selectedPosition.value != 'all' && selectedPosition.value.isNotEmpty
                 ? selectedPosition.value
                 : null,
-        status:
-            (loadAll || selectedStatus.value == 'all')
-                ? null
-                : selectedStatus.value,
+        status: (loadAll || selectedStatus.value == 'all') ? null : selectedStatus.value,
         page: page,
         perPage: perPage.value,
       );
 
-      // Mettre à jour les métadonnées de pagination
       totalPages.value = paginatedResponse.meta.lastPage;
       totalItems.value = paginatedResponse.meta.total;
       hasNextPage.value = paginatedResponse.hasNextPage;
       hasPreviousPage.value = paginatedResponse.hasPreviousPage;
       currentPage.value = paginatedResponse.meta.currentPage;
 
-      // Mettre à jour la liste des employés
       final employeesList = paginatedResponse.data;
-
-      // Si c'est la première page, remplacer la liste
-      // Sinon, ajouter à la liste existante (pour le scroll infini)
       if (page == 1) {
-        employees.value = employeesList;
-        // Sauvegarder dans le cache pour un affichage instantané la prochaine fois (durée 15 min)
-        final cacheKey =
-            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+        employees.assignAll(employeesList);
         CacheHelper.set(cacheKey, employeesList, duration: AppConfig.mediumCacheDuration);
       } else {
-        // Ajouter les nouveaux éléments à la liste existante
         final existingIds = employees.map((e) => e.id).toSet();
-        final newEmployees =
-            employeesList
-                .where((e) => e.id != null && !existingIds.contains(e.id))
-                .toList();
-        employees.addAll(newEmployees);
+        employees.addAll(
+          employeesList.where((e) => e.id != null && !existingIds.contains(e.id)),
+        );
       }
 
-      // Trier la liste
       employees.sort((a, b) {
         final nameA = '${a.lastName} ${a.firstName}'.toLowerCase();
         final nameB = '${b.lastName} ${b.firstName}'.toLowerCase();
         return nameA.compareTo(nameB);
       });
     } catch (e) {
-      // Extraire le message d'erreur
-      String errorMessage = e.toString();
-      if (errorMessage.startsWith('Exception: ')) {
-        errorMessage = errorMessage.substring(11);
-      }
-
-      // Vérifier le cache en cas d'erreur réseau (seulement pour la première page)
       if (page == 1 && employees.isEmpty) {
-        final cacheKey =
-            'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
-        final cachedEmployees = CacheHelper.get<List<Employee>>(cacheKey);
-        if (cachedEmployees != null && cachedEmployees.isNotEmpty) {
-          // Charger les données du cache si disponibles
-          employees.value = cachedEmployees;
-          // Ne pas afficher d'erreur si on a des données en cache
-          return;
-        }
-      }
-
-      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
-      final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('session expirée') &&
-          !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        if (employees.isEmpty) {
-          // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Get.snackbar(
-              'Erreur',
-              'Impossible de charger les employés: $errorMessage',
-              snackPosition: SnackPosition.BOTTOM,
-              backgroundColor: Colors.red,
-              colorText: Colors.white,
-              duration: const Duration(seconds: 5),
-            );
-          });
+        final fallback = EmployeeService.getCachedEmployees();
+        if (fallback.isNotEmpty) {
+          employees.assignAll(fallback);
+        } else {
+          final cached = CacheHelper.get<List<Employee>>(cacheKey);
+          if (cached != null && cached.isNotEmpty) {
+            employees.assignAll(cached);
+          } else {
+            final err = e.toString().toLowerCase();
+            if (!err.contains('401') && !err.contains('unauthorized')) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                Get.snackbar(
+                  'Erreur',
+                  'Impossible de charger les employés',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                  duration: const Duration(seconds: 5),
+                );
+              });
+            }
+          }
         }
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+      _isLoadingEmployeesInProgress = false;
+    }
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante (pour scroll infini)
   Future<void> loadNextPage() async {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       await loadEmployees(page: currentPage.value + 1);
     }
   }
@@ -384,6 +378,13 @@ class EmployeeController extends GetxController {
   void filterByStatus(String status) {
     selectedStatus.value = status;
     loadEmployees();
+  }
+
+  /// Charge les employés pour l’onglet [index] (0=Actifs, 1=Inactifs, 2=En congé, 3=Terminés). Cache-first.
+  void loadByStatus(int index) {
+    const statuses = ['active', 'inactive', 'on_leave', 'terminated'];
+    selectedStatus.value = statuses[index];
+    loadEmployees(forceRefresh: false);
   }
 
   // Trier les employés
@@ -607,13 +608,13 @@ class EmployeeController extends GetxController {
                 : null,
       );
 
-      // Mise à jour optimiste : ajouter l'employé créé à la liste immédiatement
+      // Mise à jour optimiste : ajouter l'employé créé à la liste et persister le cache Hive
       try {
         if (result['data'] != null) {
           final createdEmployee = Employee.fromJson(result['data']);
-          // Vérifier si l'employé n'existe pas déjà dans la liste
           if (!employees.any((e) => e.id == createdEmployee.id)) {
-            employees.add(createdEmployee);
+            employees.insert(0, createdEmployee);
+            EmployeeService.saveCachedEmployees(employees.toList());
           }
         }
       } catch (e) {
@@ -622,7 +623,6 @@ class EmployeeController extends GetxController {
         );
       }
 
-      // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Get.snackbar(
           'Succès',
@@ -635,18 +635,8 @@ class EmployeeController extends GetxController {
       });
 
       clearForm();
-
-      // Recharger en arrière-plan pour synchroniser avec le serveur
-      Future.microtask(() async {
-        try {
-          await loadEmployees(loadAll: true);
-        } catch (e) {
-          // Ignorer les erreurs de rechargement en arrière-plan
-          print(
-            '⚠️ [EMPLOYEE_CONTROLLER] Erreur lors du rechargement en arrière-plan: $e',
-          );
-        }
-      });
+      CacheHelper.clearByPrefix('employees_');
+      // Pas de loadEmployees(forceRefresh: true) pour ne pas écraser l'insertion
 
       await loadEmployeeStats();
       return true;
@@ -775,7 +765,8 @@ class EmployeeController extends GetxController {
       });
 
       clearForm();
-      await loadEmployees(loadAll: true);
+      CacheHelper.clearByPrefix('employees_');
+      await loadEmployees(loadAll: true, forceRefresh: true);
       await loadEmployeeStats();
       return true;
     } catch (e, stackTrace) {
@@ -813,7 +804,8 @@ class EmployeeController extends GetxController {
       await _employeeService.deleteEmployee(employee.id!);
 
       Get.snackbar('Succès', 'Employé supprimé avec succès');
-      loadEmployees(loadAll: true);
+      CacheHelper.clearByPrefix('employees_');
+      loadEmployees(loadAll: true, forceRefresh: true);
       loadEmployeeStats();
     } catch (e) {
       Get.snackbar('Erreur', 'Erreur lors de la suppression de l\'employé: $e');

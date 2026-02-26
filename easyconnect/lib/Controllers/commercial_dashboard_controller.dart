@@ -157,9 +157,8 @@ class CommercialDashboardController extends BaseDashboardController {
     super.onClose();
   }
 
-  // Méthode pour recharger uniquement les entités en attente (appelée depuis l'extérieur)
+  // Méthode pour recharger uniquement les entités en attente (rafraîchissement silencieux : on ne réinitialise pas les compteurs à 0).
   Future<void> refreshPendingEntities() async {
-    // Vérifier si l'utilisateur est toujours connecté avant de charger
     try {
       if (!Get.isRegistered<AuthController>()) {
         _setupTimer?.cancel();
@@ -172,19 +171,24 @@ class CommercialDashboardController extends BaseDashboardController {
       final user = authController.userAuth.value;
 
       if (token == null || user == null) {
-        // L'utilisateur s'est déconnecté, arrêter le rafraîchissement
         _setupTimer?.cancel();
         _refreshTimer?.cancel();
         return;
       }
 
-      await _loadPendingEntities();
-      await _loadValidatedEntities();
-      await _loadStatistics();
+      // Indiquer le chargement sans toucher aux valeurs affichées (pattern rafraîchissement silencieux)
+      isLoading.value = true;
+      try {
+        await _loadPendingEntities();
+        await _loadValidatedEntities();
+        await _loadStatistics();
+      } finally {
+        isLoading.value = false;
+      }
     } catch (e) {
-      // Si le contrôleur n'existe plus, arrêter les timers
       _setupTimer?.cancel();
       _refreshTimer?.cancel();
+      isLoading.value = false;
     }
   }
 
@@ -417,12 +421,7 @@ class CommercialDashboardController extends BaseDashboardController {
 
       await _loadPendingTasks();
     } catch (e) {
-      pendingClients.value = 0;
-      pendingDevis.value = 0;
-      pendingBordereaux.value = 0;
-      pendingBonCommandes.value = 0;
-      pendingBonCommandesFournisseur.value = 0;
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser : garder les anciennes valeurs (rafraîchissement silencieux)
     }
   }
 
@@ -437,11 +436,9 @@ class CommercialDashboardController extends BaseDashboardController {
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
         final count = pagination['total'] as int? ?? 0;
         pendingTasks.value = count;
-      } else {
-        pendingTasks.value = 0;
       }
     } catch (e) {
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser : garder l'ancienne valeur
     }
   }
 
@@ -473,10 +470,7 @@ class CommercialDashboardController extends BaseDashboardController {
       validatedBonCommandes.value =
           bonCommandes.length - pendingBonCommandes.value;
     } catch (e) {
-      validatedClients.value = 0;
-      validatedDevis.value = 0;
-      validatedBordereaux.value = 0;
-      validatedBonCommandes.value = 0;
+      // Ne pas réinitialiser : garder les anciennes valeurs
     }
   }
 
@@ -497,9 +491,7 @@ class CommercialDashboardController extends BaseDashboardController {
           .where((b) => b.status == 2)
           .fold(0.0, (sum, b) => sum + b.montantTTC);
     } catch (e) {
-      totalRevenue.value = 0.0;
-      pendingDevisAmount.value = 0.0;
-      paidBordereauxAmount.value = 0.0;
+      // Ne pas réinitialiser : garder les anciennes valeurs
     }
   }
 }

@@ -21,6 +21,7 @@ class SalaryController extends GetxController {
   final RxList<SalaryComponent> salaryComponents = <SalaryComponent>[].obs;
   final RxList<Map<String, dynamic>> employees = <Map<String, dynamic>>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final Rx<SalaryStats?> salaryStats = Rx<SalaryStats?>(null);
 
   // Variables pour le formulaire
@@ -38,6 +39,7 @@ class SalaryController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Contrôleurs de formulaire
   final TextEditingController employeeSearchController =
@@ -70,6 +72,7 @@ class SalaryController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     employeeSearchController.dispose();
     baseSalaryController.dispose();
     bonusController.dispose();
@@ -85,15 +88,29 @@ class SalaryController extends GetxController {
           statusFilter ??
           (selectedStatus.value == 'all' ? null : selectedStatus.value);
 
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
-      final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
-      if (cachedSalaries != null && cachedSalaries.isNotEmpty && page == 1) {
-        allSalaries.assignAll(cachedSalaries);
-        applyFilters();
-        isLoading.value = false; // Permettre l'affichage immédiat
-      } else {
+
+      if (page == 1) {
+        final hiveList = SalaryService.getCachedSalaires();
+        if (hiveList.isNotEmpty) {
+          allSalaries.assignAll(hiveList);
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshSalariesFromApi(cacheKey));
+          return;
+        }
+        final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
+        if (cachedSalaries != null && cachedSalaries.isNotEmpty) {
+          allSalaries.assignAll(cachedSalaries);
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshSalariesFromApi(cacheKey));
+          return;
+        }
+        allSalaries.value = [];
         isLoading.value = true;
+      } else if (page > 1) {
+        isLoadingMore.value = true;
       }
 
       try {
@@ -208,6 +225,63 @@ class SalaryController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Chargement de la page suivante au scroll.
+  /// Rafraîchit les salaires depuis l'API (page 1) et met à jour la liste/cache si le filtre est inchangé.
+  Future<void> _refreshSalariesFromApi(String cacheKey) async {
+    try {
+      if (_currentStatusFilter !=
+          (selectedStatus.value == 'all' ? null : selectedStatus.value))
+        return;
+      final paginatedResponse = await _salaryService.getSalariesPaginated(
+        status: _currentStatusFilter,
+        month: selectedMonth.value != 'all' ? selectedMonth.value : null,
+        year: selectedYear.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      if (_currentStatusFilter !=
+          (selectedStatus.value == 'all' ? null : selectedStatus.value))
+        return;
+      allSalaries.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      applyFilters();
+      CacheHelper.set(cacheKey, paginatedResponse.data);
+      loadSalaryStats().catchError((_) {});
+    } catch (_) {}
+  }
+
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadSalaries(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value + 1,
+      );
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadSalaries(
+        statusFilter: _currentStatusFilter,
+        page: currentPage.value - 1,
+      );
     }
   }
 

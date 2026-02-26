@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/notification_model.dart';
+import 'package:easyconnect/utils/encoding_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 
 /// Service de notifications amélioré avec sons et notifications locales
@@ -418,8 +419,8 @@ class NotificationServiceEnhanced {
     try {
       await _localNotifications.show(
         notification.id.hashCode,
-        notification.title,
-        notification.message,
+        fixUtf8Mojibake(notification.title),
+        fixUtf8Mojibake(notification.message),
         details,
         payload: payload,
       );
@@ -453,8 +454,8 @@ class NotificationServiceEnhanced {
   /// Afficher un snackbar
   Future<void> _showSnackbar(AppNotification notification) async {
     Get.snackbar(
-      notification.title,
-      notification.message,
+      fixUtf8Mojibake(notification.title),
+      fixUtf8Mojibake(notification.message),
       duration: const Duration(seconds: 4),
       backgroundColor: _getSnackbarColorFromString(notification.type),
       colorText: Colors.white,

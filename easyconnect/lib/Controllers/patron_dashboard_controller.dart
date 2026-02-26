@@ -320,41 +320,13 @@ class PatronDashboardController extends BaseDashboardController {
 
   @override
   Future<void> loadData() async {
-    if (isLoading.value) {
-      return;
-    }
-    // Ne pas bloquer l'UI - charger en arrière-plan
-    isLoading.value = false; // Permettre l'affichage immédiat
+    if (isLoading.value) return;
 
+    isLoading.value = true;
     try {
-      // OPTIMISATION : Limiter le nombre de requêtes simultanées pour éviter la surcharge
-      // Charger les données prioritaires d'abord (clients, devis, bordereaux)
-      _loadPriorityData().catchError((e) {
-        AppLogger.error(
-          'Erreur lors du chargement des données prioritaires: $e',
-          tag: 'PATRON_DASHBOARD',
-        );
-      });
-
-      // Charger les autres données en arrière-plan après un court délai
-      Future.delayed(const Duration(milliseconds: 500), () {
-        _loadPendingValidations().catchError((e) {
-          AppLogger.error(
-            'Erreur lors du chargement des validations: $e',
-            tag: 'PATRON_DASHBOARD',
-          );
-        });
-      });
-
-      // Charger les métriques de performance (non-bloquant)
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        _loadPerformanceMetrics().catchError((e) {
-          AppLogger.error(
-            'Erreur lors du chargement des métriques: $e',
-            tag: 'PATRON_DASHBOARD',
-          );
-        });
-      });
+      await _loadPriorityData();
+      await _loadPendingValidations();
+      await _loadPerformanceMetrics();
 
       // Simuler le chargement des données des graphiques
       revenueData.value = [
@@ -411,8 +383,9 @@ class PatronDashboardController extends BaseDashboardController {
           duration: const Duration(seconds: 5),
         );
       }
+    } finally {
+      isLoading.value = false;
     }
-    // Ne pas mettre isLoading à false ici car on charge en arrière-plan
   }
 
   /// Charger les données prioritaires (clients, devis, bordereaux) en premier
@@ -498,10 +471,7 @@ class PatronDashboardController extends BaseDashboardController {
         _loadValidatedClients(),
       ], eagerError: false);
     } catch (e) {
-      validatedClients.value = 0;
-      totalEmployees.value = 0;
-      totalSuppliers.value = 0;
-      totalRevenue.value = 0.0;
+      // Ne pas réinitialiser : garder les anciennes valeurs
     }
   }
 
@@ -521,7 +491,7 @@ class PatronDashboardController extends BaseDashboardController {
       totalRevenue.value = revenue;
       CacheHelper.set('dashboard_patron_totalRevenue', revenue);
     } catch (e) {
-      totalRevenue.value = 0.0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -530,7 +500,7 @@ class PatronDashboardController extends BaseDashboardController {
       final employees = await _employeeService.getEmployees();
       totalEmployees.value = employees.length;
     } catch (e) {
-      totalEmployees.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -539,7 +509,7 @@ class PatronDashboardController extends BaseDashboardController {
       final suppliers = await _supplierService.getSuppliers();
       totalSuppliers.value = suppliers.length;
     } catch (e) {
-      totalSuppliers.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -562,131 +532,94 @@ class PatronDashboardController extends BaseDashboardController {
         validatedClients.value = count;
         CacheHelper.set('dashboard_patron_validatedClients', count);
       } catch (fallbackError) {
-        validatedClients.value = 0;
+        // Ne pas réinitialiser
       }
     }
   }
 
   // Méthodes de chargement individuelles pour chaque entité
+  // Convention statuts "en attente" :
+  // - Numérique : Client 0, Devis (app 1 → BDD 0), Bordereau 1, Bon commande 1
+  // - Chaînes / getters : Facture (draft, en_attente, pending), Paiement/Dépense/Salaire/Pointage/Intervention (pending),
+  //   Reporting (submitted), Taxe/Fournisseur/Stock (isPending), Recrutement (draft, published), Contrat (pending, draft),
+  //   Congé (pending, submitted), Tâche (pending)
   Future<void> _loadPendingClients() async {
     try {
-      // OPTIMISATION : Utiliser la pagination avec filtre status=0 au lieu de charger tous les clients
-      final paginatedResponse = await _clientService.getClientsPaginated(
-        status: 0, // En attente
-        page: 1,
-        perPage: 1, // On veut juste le total, pas les données
-      );
-      final count = paginatedResponse.meta.total;
-      pendingClients.value = count;
-      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
-      CacheHelper.set('dashboard_patron_pendingClients', count);
+      final clients = await _clientService.getClients(
+        status: 0,
+      ); // 0 = en attente (BDD)
+      pendingClients.value = clients.length;
+      CacheHelper.set('dashboard_patron_pendingClients', clients.length);
     } catch (e) {
-      // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
-      try {
-        final clients = await _clientService.getClients(status: 0);
-        final count = clients.length;
-        pendingClients.value = count;
-        CacheHelper.set('dashboard_patron_pendingClients', count);
-      } catch (fallbackError) {
-        pendingClients.value = 0;
-      }
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingDevis() async {
     try {
-      // OPTIMISATION : Utiliser la pagination avec filtre status=1 au lieu de charger tous les devis
-      // Cela réduit drastiquement le temps de chargement
-      final paginatedResponse = await _devisService.getDevisPaginated(
-        status: 1, // En attente
-        page: 1,
-        perPage: 1, // On veut juste le total, pas les données
-      );
-      final count = paginatedResponse.meta.total;
-      // Mettre à jour l'observable - cela déclenchera automatiquement la mise à jour de l'UI
+      // Même approche que bordereaux : liste filtrée puis comptage (fiable)
+      final devis = await _devisService.getDevis(
+        status: 0,
+      ); // 0 = en attente (app)
+      final count = devis.length;
       pendingDevis.value = count;
-      // Sauvegarder dans le cache pour un affichage instantané la prochaine fois
       CacheHelper.set('dashboard_patron_pendingDevis', count);
     } catch (e) {
-      // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
-      try {
-        final devis = await _devisService.getDevis(status: 1);
-        final count = devis.length;
-        // Mettre à jour l'observable - cela déclenchera automatiquement la mise à jour de l'UI
-        pendingDevis.value = count;
-        CacheHelper.set('dashboard_patron_pendingDevis', count);
-      } catch (fallbackError) {
-        pendingDevis.value = 0;
-      }
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingBordereaux() async {
     try {
-      final bordereaux = await _bordereauService.getBordereaux();
-      final count =
-          bordereaux
-              .where(
-                (bordereau) => bordereau.status == 1, // 1 = en attente
-              )
-              .length;
-      pendingBordereaux.value = count;
-      CacheHelper.set('dashboard_patron_pendingBordereaux', count);
+      final bordereaux = await _bordereauService.getBordereaux(
+        status: 1,
+      ); // 1 = en attente
+      pendingBordereaux.value = bordereaux.length;
+      CacheHelper.set('dashboard_patron_pendingBordereaux', bordereaux.length);
     } catch (e) {
-      pendingBordereaux.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingBonCommandes() async {
     try {
-      final bonCommandes = await _bonCommandeService.getBonCommandes();
-      final count =
-          bonCommandes
-              .where(
-                (bon) => bon.status == 1, // 1 = en attente
-              )
-              .length;
-      pendingBonCommandes.value = count;
-      CacheHelper.set('dashboard_patron_pendingBonCommandes', count);
+      final bonCommandes = await _bonCommandeService.getBonCommandes(
+        status: 1,
+      ); // 1 = en attente
+      pendingBonCommandes.value = bonCommandes.length;
+      CacheHelper.set(
+        'dashboard_patron_pendingBonCommandes',
+        bonCommandes.length,
+      );
     } catch (e) {
-      pendingBonCommandes.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingFactures() async {
     try {
-      // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<InvoiceService>()) {
-        pendingFactures.value = 0;
-        return;
-      }
-
+      if (!Get.isRegistered<InvoiceService>()) return;
       final factures = await _invoiceService.getAllInvoices();
-      final statusLower = (String status) => status.toLowerCase().trim();
-      final count =
-          factures.where(
-            (facture) {
-              final status = statusLower(facture.status);
-              return status == 'draft' ||
-                  status == 'en_attente' ||
-                  status == 'pending' ||
-                  status == 'en attente';
-            }, // draft, en_attente, pending ou en attente = en attente
-          ).length;
+      final count = factures.where((f) => _isFactureEnAttente(f.status)).length;
       pendingFactures.value = count;
       CacheHelper.set('dashboard_patron_pendingFactures', count);
-    } catch (e, stackTrace) {
+    } catch (e) {
       pendingFactures.value = 0;
     }
+  }
+
+  static bool _isFactureEnAttente(String status) {
+    final s = status.toLowerCase().trim();
+    return s == 'draft' ||
+        s == 'en_attente' ||
+        s == 'pending' ||
+        s == 'en attente';
   }
 
   Future<void> _loadPendingPaiements() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<PaymentService>()) {
-        pendingPaiements.value = 0;
-        return;
-      }
+      if (!Get.isRegistered<PaymentService>()) return;
 
       final paiements = await _paymentService.getAllPayments();
       // Utiliser la propriété isPending du modèle qui gère tous les cas (pending, submitted, draft)
@@ -694,7 +627,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingPaiements.value = count;
       CacheHelper.set('dashboard_patron_pendingPaiements', count);
     } catch (e, stackTrace) {
-      pendingPaiements.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -706,7 +639,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingDepenses.value = count;
       CacheHelper.set('dashboard_patron_pendingDepenses', count);
     } catch (e) {
-      pendingDepenses.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -718,7 +651,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingSalaires.value = count;
       CacheHelper.set('dashboard_patron_pendingSalaires', count);
     } catch (e) {
-      pendingSalaires.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -730,7 +663,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingReporting.value = count;
       CacheHelper.set('dashboard_patron_pendingReporting', count);
     } catch (e) {
-      pendingReporting.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -744,7 +677,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingPointages.value = count;
       CacheHelper.set('dashboard_patron_pendingPointages', count);
     } catch (e) {
-      pendingPointages.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -761,17 +694,14 @@ class PatronDashboardController extends BaseDashboardController {
       pendingInterventions.value = count;
       CacheHelper.set('dashboard_patron_pendingInterventions', count);
     } catch (e) {
-      pendingInterventions.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingTaxes() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<TaxService>()) {
-        pendingTaxes.value = 0;
-        return;
-      }
+      if (!Get.isRegistered<TaxService>()) return;
 
       final taxes = await _taxService.getTaxes();
       // Utiliser la propriété isPending du modèle qui gère tous les cas
@@ -779,17 +709,14 @@ class PatronDashboardController extends BaseDashboardController {
       pendingTaxes.value = count;
       CacheHelper.set('dashboard_patron_pendingTaxes', count);
     } catch (e, stackTrace) {
-      pendingTaxes.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingRecruitments() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<RecruitmentService>()) {
-        pendingRecruitments.value = 0;
-        return;
-      }
+      if (!Get.isRegistered<RecruitmentService>()) return;
 
       final recruitments =
           await _recruitmentService.getAllRecruitmentRequests();
@@ -803,7 +730,7 @@ class PatronDashboardController extends BaseDashboardController {
               )
               .length;
     } catch (e, stackTrace) {
-      pendingRecruitments.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -813,17 +740,14 @@ class PatronDashboardController extends BaseDashboardController {
       pendingSuppliers.value =
           suppliers.where((supplier) => supplier.statut == 'pending').length;
     } catch (e) {
-      pendingSuppliers.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingContracts() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<ContractService>()) {
-        pendingContracts.value = 0;
-        return;
-      }
+      if (!Get.isRegistered<ContractService>()) return;
 
       final contracts = await _contractService.getAllContracts();
       pendingContracts.value =
@@ -835,17 +759,14 @@ class PatronDashboardController extends BaseDashboardController {
               )
               .length;
     } catch (e, stackTrace) {
-      pendingContracts.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingLeaves() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<LeaveService>()) {
-        pendingLeaves.value = 0;
-        return;
-      }
+      if (!Get.isRegistered<LeaveService>()) return;
 
       final leaves = await _leaveService.getAllLeaveRequests();
       pendingLeaves.value =
@@ -857,7 +778,7 @@ class PatronDashboardController extends BaseDashboardController {
               )
               .length;
     } catch (e, stackTrace) {
-      pendingLeaves.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -867,7 +788,7 @@ class PatronDashboardController extends BaseDashboardController {
       pendingStocks.value =
           stocks.where((stock) => stock.status == 'pending').length;
     } catch (e) {
-      pendingStocks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
@@ -879,30 +800,19 @@ class PatronDashboardController extends BaseDashboardController {
         final count = list.length;
         pendingRegistrations.value = count;
         CacheHelper.set('dashboard_patron_pendingRegistrations', count);
-      } else {
-        pendingRegistrations.value = 0;
       }
     } catch (e) {
-      pendingRegistrations.value = 0;
+      // Ne pas réinitialiser
     }
   }
 
   Future<void> _loadPendingTasks() async {
     try {
-      final result = await _taskService.getTasks(
-        status: 'pending',
-        page: 1,
-        perPage: 1,
-      );
-      if (result['success'] == true) {
-        final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
-        final count = pagination['total'] as int? ?? 0;
-        pendingTasks.value = count;
-      } else {
-        pendingTasks.value = 0;
-      }
+      // Même approche que bordereaux : liste filtrée puis comptage (fiable)
+      final tasks = await _taskService.getTasksList(status: 'pending');
+      pendingTasks.value = tasks.length;
     } catch (e) {
-      pendingTasks.value = 0;
+      // Ne pas réinitialiser
     }
   }
 

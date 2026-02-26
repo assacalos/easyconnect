@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class ReportingService extends GetxService {
   static ReportingService get to => Get.find();
@@ -291,43 +292,31 @@ class ReportingService extends GetxService {
     required int perPage,
     String? search,
   }) async {
-    String url = '${AppConfig.baseUrl}/user-reportings';
-    List<String> params = [];
-
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'per_page': perPage.toString(),
+    };
     if (startDate != null) {
-      params.add('start_date=${startDate.toIso8601String()}');
+      queryParams['start_date'] = startDate.toIso8601String();
     }
     if (endDate != null) {
-      params.add('end_date=${endDate.toIso8601String()}');
+      queryParams['end_date'] = endDate.toIso8601String();
     }
-    if (userRole != null && userRole.isNotEmpty) {
-      params.add('user_role=$userRole');
-    }
-    if (userId != null) {
-      params.add('user_id=$userId');
-    }
-    if (search != null && search.isNotEmpty) {
-      params.add('search=$search');
-    }
-    params.add('page=$page');
-    params.add('per_page=$perPage');
+    if (userRole != null && userRole.isNotEmpty) queryParams['user_role'] = userRole;
+    if (userId != null) queryParams['user_id'] = userId.toString();
+    if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-    if (params.isNotEmpty) {
-      url += '?${params.join('&')}';
-    }
-
-    AppLogger.httpRequest('GET', url, tag: 'REPORTING_SERVICE');
+    final uri = Uri.parse('${AppConfig.baseUrl}/user-reportings').replace(
+      queryParameters: queryParams,
+    );
+    AppLogger.httpRequest('GET', uri.toString(), tag: 'REPORTING_SERVICE');
 
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.get(Uri.parse(url), headers: ApiService.headers()),
+      operation: () => http.get(uri, headers: ApiService.headers()),
       maxRetries: AppConfig.defaultMaxRetries,
     );
 
-    AppLogger.httpResponse(
-      response.statusCode,
-      url,
-      tag: 'REPORTING_SERVICE',
-    );
+    AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'REPORTING_SERVICE');
     await AuthErrorHandler.handleHttpResponse(response);
 
     if (response.statusCode != 200) {
@@ -347,86 +336,42 @@ class ReportingService extends GetxService {
       rethrow;
     }
 
-    return PaginationHelper.parseResponse<ReportingModel>(
+    final result = PaginationHelper.parseResponseSafe<ReportingModel>(
       json: data,
-      fromJsonT: (json) => ReportingModel.fromJson(json),
+      fromJsonT: (json) {
+        try {
+          return ReportingModel.fromJson(json);
+        } catch (_) {
+          return null;
+        }
+      },
     );
+    if (page == 1 && result.data.isNotEmpty) {
+      _saveReportingToHive(result.data);
+    }
+    return result;
   }
 
-  // Récupérer tous les rapports (pour le patron)
+  /// Tous les rapports : délègue à getReportsPaginated (page 1, perPage 500).
   Future<List<ReportingModel>> getAllReports({
     DateTime? startDate,
     DateTime? endDate,
     String? userRole,
+    int? userId,
   }) async {
     try {
-      String url = '$baseUrl/user-reportings-list';
-      List<String> params = [];
-
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (userRole != null) {
-        params.add('user_role=$userRole');
-      }
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
+      final res = await getReportsPaginated(
+        startDate: startDate,
+        endDate: endDate,
+        userRole: userRole,
+        userId: userId,
+        page: 1,
+        perPage: 500,
       );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        List<dynamic> reportsData;
-
-        // Gérer différents formats de réponse
-        if (data is List) {
-          // La réponse est directement une liste
-          reportsData = data;
-        } else if (data['data'] != null) {
-          // La réponse contient une clé 'data'
-          if (data['data'] is List) {
-            reportsData = data['data'];
-          } else if (data['data']['data'] != null &&
-              data['data']['data'] is List) {
-            // Cas de pagination Laravel: data.data.data
-            reportsData = data['data']['data'];
-          } else {
-            reportsData = [data['data']];
-          }
-        } else {
-          return [];
-        }
-
-        if (reportsData.isNotEmpty) {}
-
-        final List<ReportingModel> reportsList =
-            reportsData
-                .map((json) {
-                  try {
-                    return ReportingModel.fromJson(json);
-                  } catch (e) {
-                    return null;
-                  }
-                })
-                .where((report) => report != null)
-                .cast<ReportingModel>()
-                .toList();
-
-        return reportsList;
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération des rapports: ${response.statusCode} - ${response.body}',
-        );
+      if (res.data.isNotEmpty) {
+        _saveReportingToHive(res.data);
       }
+      return res.data;
     } catch (e) {
       rethrow;
     }
@@ -487,17 +432,47 @@ class ReportingService extends GetxService {
     }
   }
 
-  // Mettre à jour un rapport
+  // Mettre à jour un rapport (champs alignés avec le backend UserReportingController::update)
   Future<Map<String, dynamic>> updateReport({
     required int reportId,
-    required Map<String, dynamic> metrics,
-    String? comments,
+    String? nature,
+    String? nomSociete,
+    String? contactSociete,
+    String? nomPersonne,
+    String? contactPersonne,
+    String? moyenContact,
+    String? produitDemarche,
+    String? commentaire,
+    String? typeRelance,
+    DateTime? relanceDateHeure,
   }) async {
     try {
+      // Backend attend type_relance: telephonique, mail, rdv (sans préfixe relance_)
+      String? typeRelanceSent = typeRelance;
+      if (typeRelance != null && typeRelance.isNotEmpty) {
+        typeRelanceSent = typeRelance
+            .replaceFirst('relance_telephonique', 'telephonique')
+            .replaceFirst('relance_mail', 'mail')
+            .replaceFirst('relance_rdv', 'rdv');
+      }
+      final body = <String, dynamic>{
+        if (nature != null) 'nature': nature,
+        if (nomSociete != null) 'nom_societe': nomSociete,
+        if (contactSociete != null) 'contact_societe': contactSociete,
+        if (nomPersonne != null) 'nom_personne': nomPersonne,
+        if (contactPersonne != null) 'contact_personne': contactPersonne,
+        if (moyenContact != null) 'moyen_contact': moyenContact,
+        if (produitDemarche != null) 'produit_demarche': produitDemarche,
+        if (commentaire != null) 'commentaire': commentaire,
+        if (typeRelanceSent != null && typeRelanceSent.isNotEmpty)
+          'type_relance': typeRelanceSent,
+        if (relanceDateHeure != null)
+          'relance_date_heure': relanceDateHeure.toIso8601String(),
+      };
       final response = await http.put(
         Uri.parse('$baseUrl/user-reportings-update/$reportId'),
         headers: ApiService.headers(),
-        body: jsonEncode({'metrics': metrics, 'comments': comments}),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
@@ -710,6 +685,30 @@ class ReportingService extends GetxService {
       }
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static void _saveReportingToHive(List<ReportingModel> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyReporting,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Persiste la liste en cache Hive (appelé après création ou refresh API).
+  static void saveCachedReporting(List<ReportingModel> list) {
+    _saveReportingToHive(list);
+  }
+
+  /// Cache Hive : liste des reportings pour affichage instantané.
+  static List<ReportingModel> getCachedReporting() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyReporting);
+      return raw.map((e) => ReportingModel.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

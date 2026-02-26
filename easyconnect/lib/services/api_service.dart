@@ -449,12 +449,12 @@ class ApiService {
         SessionService.updateLastActivity();
       }
 
-      // 4. Pour les succès (2xx), décoder le JSON
+      // 4. Pour les succès (2xx), décoder le JSON en UTF-8 (évite Ã© au lieu de é)
       Map<String, dynamic> body = {};
 
-      if (res.body.isNotEmpty) {
+      if (res.bodyBytes.isNotEmpty) {
         try {
-          body = jsonDecode(res.body);
+          body = jsonDecode(utf8.decode(res.bodyBytes));
         } catch (e) {
           // Si le décodage échoue même pour un succès, retourner une erreur
           return {
@@ -462,9 +462,9 @@ class ApiService {
             "message": "Format de réponse invalide du serveur (JSON invalide)",
             "statusCode": statusCode,
             "rawBody":
-                res.body.length > 200
-                    ? "${res.body.substring(0, 200)}..."
-                    : res.body,
+                res.bodyBytes.length > 200
+                    ? "${utf8.decode(res.bodyBytes).substring(0, 200)}..."
+                    : utf8.decode(res.bodyBytes),
           };
         }
       }
@@ -521,18 +521,25 @@ class ApiService {
     String errorMessage = _getDefaultErrorMessage(statusCode);
     Map<String, dynamic>? errors;
 
-    // Essayer de décoder le JSON seulement si le body n'est pas vide
-    // et semble être du JSON (commence par { ou [)
-    if (res.body.isNotEmpty) {
-      final trimmedBody = res.body.trim();
-      final isLikelyJson =
-          trimmedBody.startsWith('{') ||
-          trimmedBody.startsWith('[') ||
-          trimmedBody.startsWith('"');
+    if (res.bodyBytes.isEmpty) {
+      return {
+        "success": false,
+        "message": errorMessage,
+        "errors": errors,
+        "statusCode": statusCode,
+      };
+    }
 
-      if (isLikelyJson) {
-        try {
-          final body = jsonDecode(res.body);
+    final bodyStr = utf8.decode(res.bodyBytes);
+    final trimmedBody = bodyStr.trim();
+    final isLikelyJson =
+        trimmedBody.startsWith('{') ||
+        trimmedBody.startsWith('[') ||
+        trimmedBody.startsWith('"');
+
+    if (isLikelyJson) {
+      try {
+        final body = jsonDecode(bodyStr);
 
           // Format standardisé
           if (body is Map && body.containsKey('success')) {
@@ -568,7 +575,6 @@ class ApiService {
         // Utiliser le message d'erreur par défaut basé sur le status code
         errorMessage = _getDefaultErrorMessage(statusCode);
       }
-    }
 
     return {
       "success": false,

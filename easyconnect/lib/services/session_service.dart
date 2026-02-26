@@ -27,6 +27,7 @@ class SessionService {
   static const String _tokenKey = 'token';
   static const String _refreshTokenKey = 'refreshToken';
   static const String _userKey = 'user';
+  static const String _userSecureKey = 'user_secure'; // backup pour persistance
   static const String _userIdKey = 'userId';
   static const String _userRoleKey = 'userRole';
   static const String _tokenExpiryKey = 'tokenExpiry';
@@ -42,22 +43,47 @@ class SessionService {
   static bool _isRefreshing = false;
 
   /// Initialise le service (appelé au démarrage de l'app)
+  /// Récupère le token depuis GetStorage et SecureStorage ; en cas d'erreur, ne fait jamais de clear().
   static Future<void> initialize() async {
-    // Migrer les anciens tokens depuis GetStorage vers SecureStorage si nécessaire
-    await _migrateTokensIfNeeded();
+    try {
+      // Migrer / synchroniser token et user entre GetStorage et SecureStorage
+      await _migrateTokensIfNeeded();
 
-    // Initialiser l'état de l'application comme étant au premier plan
-    _appLifecycleState = AppLifecycleState.resumed;
+      // S'assurer que GetStorage a bien le token pour les appels sync (getTokenSync / isAuthenticated)
+      try {
+        final secureToken = await _secureStorage.read(key: _tokenKey);
+        if (secureToken != null && secureToken.isNotEmpty) {
+          _storage.write(_tokenKey, secureToken);
+          AppLogger.debug(
+            'Token synchronisé vers GetStorage (démarrage)',
+            tag: 'SESSION_SERVICE',
+          );
+        }
+      } catch (e) {
+        AppLogger.warning(
+          'Lecture token SecureStorage (sync GetStorage): $e — pas de clear',
+          tag: 'SESSION_SERVICE',
+        );
+      }
 
-    // Démarrer les vérifications périodiques si l'utilisateur est connecté
-    if (isAuthenticated()) {
-      startPeriodicValidation();
-      startActivityTracking();
-      updateLastActivity();
+      _appLifecycleState = AppLifecycleState.resumed;
+
+      // Vérification asynchrone après que la synchro token → GetStorage soit terminée
+      if (await isAuthenticated()) {
+        startPeriodicValidation();
+        startActivityTracking();
+        updateLastActivity();
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Erreur initialize SessionService: $e — session non effacée',
+        tag: 'SESSION_SERVICE',
+      );
+      // Ne jamais faire clearSession() ici : une erreur de lecture ne doit pas supprimer une session valide
     }
   }
 
-  /// Migre les tokens depuis GetStorage vers SecureStorage (rétrocompatibilité)
+  /// Migre et synchronise token + user entre GetStorage et SecureStorage (connexion permanente)
   static Future<void> _migrateTokensIfNeeded() async {
     try {
       final oldToken = _storage.read<String?>(_tokenKey);
@@ -70,9 +96,38 @@ class SessionService {
           tag: 'SESSION_SERVICE',
         );
       }
+      if (secureToken != null &&
+          secureToken.isNotEmpty &&
+          (oldToken == null || oldToken.isEmpty)) {
+        _storage.write(_tokenKey, secureToken);
+        AppLogger.info(
+          'Token resynchronisé vers GetStorage (persistance connexion)',
+          tag: 'SESSION_SERVICE',
+        );
+      }
+
+      // User : au redémarrage, restaurer depuis SecureStorage si GetStorage a perdu l'utilisateur
+      final storedUser = _storage.read<Map<String, dynamic>>(_userKey);
+      if (storedUser == null || storedUser.isEmpty) {
+        final secureUserJson = await _secureStorage.read(key: _userSecureKey);
+        if (secureUserJson != null && secureUserJson.isNotEmpty) {
+          try {
+            final userMap = jsonDecode(secureUserJson) as Map<String, dynamic>;
+            _storage.write(_userKey, userMap);
+            if (userMap['id'] != null)
+              _storage.write(_userIdKey, userMap['id']);
+            if (userMap['role'] != null)
+              _storage.write(_userRoleKey, userMap['role']);
+            AppLogger.info(
+              'Utilisateur resynchronisé depuis SecureStorage (connexion permanente)',
+              tag: 'SESSION_SERVICE',
+            );
+          } catch (_) {}
+        }
+      }
     } catch (e) {
       AppLogger.error(
-        'Erreur lors de la migration du token: $e',
+        'Erreur lors de la migration session: $e',
         tag: 'SESSION_SERVICE',
       );
     }
@@ -119,27 +174,34 @@ class SessionService {
     return _storage.read<String?>(_tokenKey);
   }
 
-  /// Vérifie si l'utilisateur est authentifié
-  /// Les tokens n'expirent jamais côté frontend (seul le backend peut invalider un token)
-  /// Ne tente pas de rafraîchir automatiquement ici pour éviter les boucles
-  static bool isAuthenticated({bool ignoreLoginInProgress = false}) {
-    // Si une connexion est en cours et qu'on ne doit pas l'ignorer, considérer comme authentifié
+  /// Alias pour la redirection (ex. splash). À appeler avec await.
+  static Future<bool> isLoggedIn() async => isAuthenticated();
+
+  /// Vérifie si l'utilisateur est authentifié : uniquement la présence du token (pas de vérification user).
+  static Future<bool> isAuthenticated({bool ignoreLoginInProgress = false}) async {
     if (!ignoreLoginInProgress && isLoginInProgress()) {
       return true;
     }
 
-    final token = getTokenSync();
-    final user = _storage.read(_userKey);
-
-    if (token == null || token.isEmpty || user == null) {
-      return false;
+    try {
+      // Lire d'abord depuis SecureStorage (async) pour ne pas rater le token au démarrage
+      var token = await _secureStorage.read(key: _tokenKey);
+      if (token != null && token.isNotEmpty) {
+        _storage.write(_tokenKey, token);
+        return true;
+      }
+      // Fallback GetStorage
+      token = _storage.read<String?>(_tokenKey);
+      if (token != null && token.isNotEmpty) return true;
+    } catch (e) {
+      AppLogger.warning(
+        'Lecture token (isAuthenticated): $e — considéré non connecté',
+        tag: 'SESSION_SERVICE',
+      );
+      final syncToken = _storage.read<String?>(_tokenKey);
+      if (syncToken != null && syncToken.isNotEmpty) return true;
     }
-
-    // ⚠️ EXPIRATION DÉSACTIVÉE : Les tokens n'expirent jamais côté frontend
-    // Si le backend invalide un token, il retournera une erreur 401
-    // qui sera gérée par AuthErrorHandler
-
-    return true;
+    return false;
   }
 
   /// Récupère l'ID de l'utilisateur
@@ -188,13 +250,14 @@ class SessionService {
     try {
       await _secureStorage.delete(key: _tokenKey);
       await _secureStorage.delete(key: _refreshTokenKey);
+      await _secureStorage.delete(key: _userSecureKey);
       await _storage.remove(_userKey);
       await _storage.remove(_userIdKey);
       await _storage.remove(_userRoleKey);
       await _storage.remove(_tokenExpiryKey);
       await _storage.remove(_loginInProgressKey);
       await _storage.remove(_lastActivityKey);
-      await _storage.remove(_tokenKey); // Ancien token dans GetStorage
+      await _storage.remove(_tokenKey);
       _isLoginInProgress = false;
       stopPeriodicValidation();
       stopActivityTracking();
@@ -235,14 +298,18 @@ class SessionService {
     }
   }
 
-  /// Sauvegarde les informations utilisateur
+  /// Sauvegarde les informations utilisateur (GetStorage + SecureStorage pour persistance au redémarrage)
   static Future<void> saveUser(Map<String, dynamic> user) async {
-    await _storage.write(_userKey, user);
-    if (user['id'] != null) {
-      await _storage.write(_userIdKey, user['id']);
-    }
-    if (user['role'] != null) {
-      await _storage.write(_userRoleKey, user['role']);
+    _storage.write(_userKey, user);
+    if (user['id'] != null) _storage.write(_userIdKey, user['id']);
+    if (user['role'] != null) _storage.write(_userRoleKey, user['role']);
+    try {
+      await _secureStorage.write(key: _userSecureKey, value: jsonEncode(user));
+    } catch (e) {
+      AppLogger.warning(
+        'Sauvegarde user dans SecureStorage ignorée: $e',
+        tag: 'SESSION_SERVICE',
+      );
     }
   }
 
@@ -269,26 +336,12 @@ class SessionService {
     return remaining > 0 ? remaining : 0;
   }
 
-  /// Vérifie si la session est valide (token présent et utilisateur présent)
-  /// Utile pour le middleware pour éviter les redirections pendant la connexion
-  /// Les tokens n'expirent jamais côté frontend
+  /// Vérifie si la session est valide (token présent suffit ; user optionnel).
+  /// Version synchrone pour le middleware ; pour la route initiale, préférer isAuthenticated() async.
   static bool isValidSession({bool allowLoginInProgress = true}) {
-    // Si une connexion est en cours et qu'on l'autorise, considérer comme valide
-    if (allowLoginInProgress && isLoginInProgress()) {
-      return true;
-    }
-
+    if (allowLoginInProgress && isLoginInProgress()) return true;
     final token = getTokenSync();
-    final user = _storage.read(_userKey);
-
-    if (token == null || token.isEmpty || user == null) {
-      return false;
-    }
-
-    // ⚠️ EXPIRATION DÉSACTIVÉE : Les tokens n'expirent jamais côté frontend
-    // La validation est gérée par le backend (erreurs 401)
-
-    return true;
+    return token != null && token.isNotEmpty;
   }
 
   /// Rafraîchit le token automatiquement
@@ -462,17 +515,10 @@ class SessionService {
         _appLifecycleState == AppLifecycleState.detached;
   }
 
-  /// Vérifie si l'utilisateur est inactif
-  /// [timeoutMinutes] : Durée d'inactivité avant déconnexion (par défaut 2 heures)
+  /// Vérifie si l'utilisateur est inactif.
+  /// DÉSACTIVÉ : ne renvoie jamais true (pas de déconnexion pour inactivité).
   static bool isInactive({int timeoutMinutes = 120}) {
-    final lastActivity = _storage.read<int?>(_lastActivityKey);
-    if (lastActivity == null) {
-      updateLastActivity();
-      return false;
-    }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final inactiveSeconds = (now - lastActivity) ~/ 1000;
-    return inactiveSeconds > (timeoutMinutes * 60);
+    return false;
   }
 
   /// Démarre le suivi de l'activité

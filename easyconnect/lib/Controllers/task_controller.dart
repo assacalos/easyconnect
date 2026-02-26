@@ -21,17 +21,49 @@ class TaskController extends GetxController {
   int currentPage = 1;
   int lastPage = 1;
   int totalItems = 0;
+  bool _isRefreshingFromApi = false;
 
   bool get canAssignTasks =>
       _authController.userAuth.value?.role == Roles.ADMIN ||
       _authController.userAuth.value?.role == Roles.PATRON;
+
+  final loadError = false.obs;
 
   @override
   void onInit() {
     super.onInit();
   }
 
-  Future<void> loadTasks({int page = 1, bool append = false}) async {
+  @override
+  void onReady() {
+    super.onReady();
+    loadError.value = false;
+    isLoading.value = true;
+    // Premier chargement déclenché par la page (TaskListPage) après le premier frame
+    // pour éviter échec systématique au premier affichage.
+  }
+
+  Future<void> loadTasks({
+    int page = 1,
+    bool append = false,
+    bool isRetry = false,
+  }) async {
+    if (page == 1) loadError.value = false;
+
+    // 1) Remplir immédiatement depuis Hive (page 1 uniquement)
+    if (page == 1 && !append) {
+      final hiveList = TaskService.getCachedTaches();
+      if (hiveList.isNotEmpty) {
+        tasks.value = hiveList;
+        isLoading.value = false;
+      }
+      // Lancer l'API en arrière-plan pour la page 1
+      Future.microtask(
+        () => _refreshTasksFromApi(append: append, isRetry: isRetry),
+      );
+      return;
+    }
+
     try {
       isLoading.value = true;
       final result = await _taskService.getTasks(
@@ -43,6 +75,7 @@ class TaskController extends GetxController {
       if (result['success'] == true) {
         final list = result['data'] as List<TaskModel>? ?? [];
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
+        loadError.value = false;
         if (append) {
           tasks.addAll(list);
         } else {
@@ -53,9 +86,57 @@ class TaskController extends GetxController {
         totalItems = pagination['total'] as int? ?? 0;
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger les tâches: $e');
+      if (page == 1 && !isRetry) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        return loadTasks(page: page, append: append, isRetry: true);
+      }
+      if (page == 1) loadError.value = true;
+      // Ne pas effacer les données déjà affichées (Hive)
+      if (tasks.isEmpty) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        Get.snackbar('Erreur', 'Impossible de charger les tâches: $msg');
+      }
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  Future<void> _refreshTasksFromApi({
+    bool append = false,
+    bool isRetry = false,
+  }) async {
+    if (_isRefreshingFromApi) return;
+    _isRefreshingFromApi = true;
+    try {
+      isLoading.value = true;
+      final result = await _taskService.getTasks(
+        page: 1,
+        perPage: 20,
+        assignedTo: selectedAssignedTo.value,
+        status: selectedStatus.value,
+      );
+      if (result['success'] == true) {
+        final list = result['data'] as List<TaskModel>? ?? [];
+        final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
+        loadError.value = false;
+        tasks.value = list;
+        currentPage = pagination['current_page'] as int? ?? 1;
+        lastPage = pagination['last_page'] as int? ?? 1;
+        totalItems = pagination['total'] as int? ?? 0;
+      }
+    } catch (e) {
+      if (!isRetry) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        return _refreshTasksFromApi(append: append, isRetry: true);
+      }
+      loadError.value = true;
+      if (tasks.isEmpty) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        Get.snackbar('Erreur', 'Impossible de charger les tâches: $msg');
+      }
+    } finally {
+      isLoading.value = false;
+      _isRefreshingFromApi = false;
     }
   }
 

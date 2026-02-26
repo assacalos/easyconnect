@@ -6,6 +6,7 @@ import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 /// Service API pour récupérer les notifications depuis le backend
 class NotificationApiService {
@@ -96,6 +97,7 @@ class NotificationApiService {
             tag: 'NOTIFICATION_API_SERVICE',
           );
 
+          _saveNotificationsToHive(notifications);
           return notifications;
         } else {
           AppLogger.warning(
@@ -340,6 +342,25 @@ class NotificationApiService {
         stackTrace: stackTrace,
       );
       return false;
+    }
+  }
+
+  static void _saveNotificationsToHive(List<AppNotification> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyNotifications,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des notifications pour affichage instantané.
+  static List<AppNotification> getCachedNotifications() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyNotifications);
+      return raw.map((e) => AppNotification.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

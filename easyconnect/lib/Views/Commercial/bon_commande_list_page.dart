@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/utils/roles.dart';
@@ -19,13 +20,15 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
   @override
   void initState() {
     super.initState();
+    // Filtre initial = Tous (onglet 0)
+    controller.selectedStatus.value = null;
     if (!_hasLoaded) {
       _hasLoaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Ne charger que si les données ne sont pas déjà chargées
-        if (controller.bonCommandes.isEmpty && !controller.isLoading.value) {
-          controller.loadBonCommandes();
-        }
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+        // Afficher le cache (Hive/mémoire) d'abord puis rafraîchir en arrière-plan (évite erreur et longue attente au premier lancement)
+        controller.loadBonCommandes(forceRefresh: false);
       });
     }
   }
@@ -36,6 +39,11 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       appBar: AppBar(
         title: const Text('Bons de commande'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => controller.loadBonCommandes(forceRefresh: true),
+            tooltip: 'Actualiser',
+          ),
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterDialog(context),
@@ -91,7 +99,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
                   const Icon(Icons.pending, size: 16),
                   const SizedBox(width: 4),
                   Text(
-                    'En attente (${controller.bonCommandes.where((bc) => bc.status == 1).length})',
+                    'En attente (${controller.bonCommandes.where((bc) => bc.status == 0 || bc.status == 1).length})',
                   ),
                 ],
               ),
@@ -140,15 +148,21 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
 
   Widget _buildBonCommandeList() {
     return Obx(() {
+      // Forcer la dépendance au filtre d'onglet (comme bon de commande fournisseur)
+      final _ = controller.selectedStatus.value;
       final filteredBonCommandes = controller.getFilteredBonCommandes();
 
       if (filteredBonCommandes.isEmpty) {
         return const Center(child: Text('Aucun bon de commande trouvé'));
       }
 
-      return ListView.builder(
-        itemCount: filteredBonCommandes.length,
+      return PaginatedListView(
+        scrollController: controller.scrollController,
+        onLoadMore: controller.loadMore,
+        hasNextPage: controller.hasNextPage.value,
+        isLoadingMore: controller.isLoadingMore.value,
         padding: const EdgeInsets.all(8),
+        itemCount: filteredBonCommandes.length,
         itemBuilder: (context, index) {
           final bonCommande = filteredBonCommandes[index];
           return _buildBonCommandeCard(bonCommande);
@@ -217,7 +231,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
     final userRole = Get.put(BonCommandeController()).userId;
 
     if (userRole == Roles.COMMERCIAL) {
-      if (bonCommande.status == 0) {
+      if (bonCommande.status == 0 || bonCommande.status == 1) {
         return PopupMenuButton(
           itemBuilder:
               (context) => [
@@ -262,7 +276,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       }
     }
 
-    if (userRole == Roles.PATRON && bonCommande.status == 1) {
+    if (userRole == Roles.PATRON && (bonCommande.status == 0 || bonCommande.status == 1)) {
       return PopupMenuButton(
         itemBuilder:
             (context) => [
@@ -336,6 +350,8 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
   }
 
   void _showSubmitConfirmation(BonCommande bonCommande) {
+    final id = bonCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous soumettre ce bon de commande pour validation ?',
@@ -344,12 +360,14 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.submitBonCommande(bonCommande.id!);
+        controller.submitBonCommande(id);
       },
     );
   }
 
   void _showDeleteConfirmation(BonCommande bonCommande) {
+    final id = bonCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous supprimer ce bon de commande ?',
@@ -358,12 +376,14 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.deleteBonCommande(bonCommande.id!);
+        controller.deleteBonCommande(id);
       },
     );
   }
 
   void _showApproveConfirmation(BonCommande bonCommande) {
+    final id = bonCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous valider ce bon de commande ?',
@@ -372,12 +392,14 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.approveBonCommande(bonCommande.id!);
+        controller.approveBonCommande(id);
       },
     );
   }
 
   void _showRejectDialog(BonCommande bonCommande) {
+    final id = bonCommande.id;
+    if (id == null) return;
     final commentController = TextEditingController();
 
     Get.defaultDialog(
@@ -399,7 +421,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () {
-        if (commentController.text.isEmpty) {
+        if (commentController.text.trim().isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -408,12 +430,14 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
           return;
         }
         Get.back();
-        controller.rejectBonCommande(bonCommande.id!, commentController.text);
+        controller.rejectBonCommande(id, commentController.text.trim());
       },
     );
   }
 
   void _showDeliveryConfirmation(BonCommande bonCommande) {
+    final id = bonCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation de livraison',
       middleText: 'Confirmez-vous la livraison de ce bon de commande ?',
@@ -422,7 +446,7 @@ class _BonCommandeListPageState extends State<BonCommandeListPage> {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.markAsDelivered(bonCommande.id!);
+        controller.markAsDelivered(id);
       },
     );
   }

@@ -14,14 +14,6 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-    afterEvaluate {
-        if (project.plugins.hasPlugin("com.android.library")) {
-            val android = project.extensions.getByName("android")
-            // Forcer compileSdk 34 pour éviter "resource android:attr/lStar not found" (API 31+)
-            val setCompileSdk = android.javaClass.methods.find { it.name == "setCompileSdkVersion" }
-            setCompileSdk?.invoke(android, 34)
-        }
-    }
 }
 
 tasks.register<Delete>("clean") {

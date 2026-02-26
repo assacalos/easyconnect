@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/models/user_model.dart';
 import 'package:easyconnect/routes/app_routes.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/services/websocket_service.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -21,75 +24,88 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeApp() async {
-    // Attendre un délai minimum pour l'affichage du splash
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(milliseconds: 350));
+
+    if (!mounted) return;
 
     try {
-      // Récupérer le contrôleur d'authentification
+      final loggedIn = await SessionService.isLoggedIn();
+      AppLogger.info(
+        'Splash: SessionService.isLoggedIn = $loggedIn',
+        tag: 'SPLASH',
+      );
+
       final authController = Get.find<AuthController>();
+      var userRole = authController.userAuth.value?.role ?? SessionService.getUserRole();
 
-      // Attendre un peu pour s'assurer que l'initialisation est terminée
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Redirection instantanée si token + rôle en cache (connexion permanente)
+      if (loggedIn && userRole != null) {
+        final initialRoute = AppRoutes.getInitialRoute(userRole);
+        Get.offAllNamed(initialRoute);
+        _runBackgroundInit(authController);
+        return;
+      }
 
-      // Vérifier si l'utilisateur est déjà connecté (persistance de session)
-      final userRole = authController.userAuth.value?.role;
+      // Pas de token → écran d'accueil
+      if (!loggedIn) {
+        Get.offAllNamed('/welcome');
+        return;
+      }
+
+      // Token présent mais pas de rôle en cache : tenter de récupérer l'utilisateur (sans déconnecter en cas d'échec)
+      try {
+        final result = await ApiService.getUser().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => <String, dynamic>{'success': false},
+        );
+        if (result['success'] == true && result['data'] != null) {
+          final userData = Map<String, dynamic>.from(result['data'] as Map);
+          await SessionService.saveUser(userData);
+          authController.userAuth.value = UserModel.fromJson(userData);
+          userRole = authController.userAuth.value?.role ?? SessionService.getUserRole();
+        }
+      } catch (_) {}
+      // Ne jamais faire clearSession() ici : timeout ou erreur réseau → accès avec données de cache
+      userRole ??= SessionService.getUserRole();
 
       if (userRole != null) {
-        // Utilisateur connecté - initialiser les services de notifications
-        
-        // 1. S'assurer que le service push est initialisé puis enregistrer le token FCM
-        try {
-          final pushService = PushNotificationService();
-          await pushService.initialize();
-          await pushService.registerTokenAfterLogin();
-          AppLogger.info(
-            'Token FCM enregistré au démarrage (utilisateur déjà connecté)',
-            tag: 'SPLASH',
-          );
-          // Retry différé : si le premier envoi a échoué (réseau, token pas prêt), réessayer après 3 s
-          Future.delayed(const Duration(seconds: 3), () async {
-            try {
-              await pushService.registerTokenAfterLogin();
-              AppLogger.info(
-                'Token FCM (retry) enregistré au démarrage',
-                tag: 'SPLASH',
-              );
-            } catch (_) {}
-          });
-        } catch (e) {
-          AppLogger.error(
-            'Erreur lors de l\'enregistrement du token FCM au démarrage: $e',
-            tag: 'SPLASH',
-          );
-        }
-
-        // 2. Initialiser WebSocket pour les notifications en temps réel
-        try {
-          await WebSocketService.instance.initialize();
-          AppLogger.info(
-            'WebSocket initialisé au démarrage',
-            tag: 'SPLASH',
-          );
-        } catch (e) {
-          AppLogger.error(
-            'Erreur lors de l\'initialisation WebSocket au démarrage: $e',
-            tag: 'SPLASH',
-          );
-        }
-
-        // Utilisateur connecté, rediriger vers son dashboard
-        final initialRoute = AppRoutes.getInitialRoute(userRole);
-        // Attendre un peu avant la redirection
-        await Future.delayed(const Duration(milliseconds: 500));
-        Get.offAllNamed(initialRoute);
+        Get.offAllNamed(AppRoutes.getInitialRoute(userRole));
+        _runBackgroundInit(authController);
       } else {
-        // Aucun utilisateur connecté, aller au login
-        Get.offAllNamed('/login');
+        Get.offAllNamed('/welcome');
       }
     } catch (e) {
-      // En cas d'erreur, rediriger vers la page de connexion
-      Get.offAllNamed('/login');
+      AppLogger.warning('Splash: erreur redirection: $e', tag: 'SPLASH');
+      Get.offAllNamed('/welcome');
     }
+  }
+
+  /// Tâches post-redirection : FCM, WebSocket (non bloquant). Pas de déconnexion ici : un 401 sera géré par l'Interceptor global.
+  void _runBackgroundInit(AuthController authController) {
+    Future(() async {
+      try {
+        final result = await ApiService.getUser().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => <String, dynamic>{'timeout': true},
+        );
+        if (result['timeout'] == true) return;
+        if (result['success'] == true && result['data'] != null) {
+          await SessionService.saveUser(Map<String, dynamic>.from(result['data'] as Map));
+          authController.userAuth.value = UserModel.fromJson(result['data'] as Map<String, dynamic>);
+        }
+        // En cas de 401 : ne pas faire clearSession ici ; l'Interceptor global déconnectera au prochain appel API
+      } catch (_) {}
+
+      try {
+        final pushService = PushNotificationService();
+        await pushService.initialize();
+        await pushService.registerTokenAfterLogin();
+      } catch (_) {}
+
+      try {
+        await WebSocketService.instance.initialize();
+      } catch (_) {}
+    });
   }
 
   @override

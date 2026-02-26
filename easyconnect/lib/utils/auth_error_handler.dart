@@ -77,9 +77,19 @@ class AuthErrorHandler {
           tag: 'AUTH_ERROR_HANDLER',
         );
 
-        // Afficher un message seulement si demandé explicitement ou en mode debug
-        // En production, ne pas afficher de message pour éviter les interruptions
-        final shouldShowMessage = showMessage ?? kDebugMode;
+        // Ne pas afficher "Session expirée" ni rediriger si l'utilisateur est sur une page
+        // publique (accueil, connexion, inscription) — un ancien token peut provoquer des 401
+        final route = Get.currentRoute;
+        final isOnAuthPage = route == '/welcome' ||
+            route == '/login' ||
+            route == '/register' ||
+            route.contains('welcome') ||
+            route.contains('login') ||
+            route.contains('register');
+        final isOnSplash = route == '/splash' || route.contains('splash');
+        final shouldShowMessage = isOnAuthPage
+            ? false
+            : (showMessage ?? kDebugMode);
 
         if (shouldShowMessage) {
           Get.snackbar(
@@ -96,8 +106,14 @@ class AuthErrorHandler {
           await Future.delayed(const Duration(milliseconds: 500));
         }
 
-        // Déconnecter l'utilisateur silencieusement
-        await authController.logout(silent: !shouldShowMessage);
+        // Déconnexion : pas de redirection si déjà sur welcome/login ; depuis splash → welcome
+        final String? redirectTo = isOnAuthPage
+            ? null
+            : (isOnSplash ? '/welcome' : '/login');
+        await authController.logout(
+          silent: !shouldShowMessage,
+          redirectTo: redirectTo,
+        );
       }
     } catch (e, stackTrace) {
       AppLogger.error(

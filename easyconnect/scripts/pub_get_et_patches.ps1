@@ -1,10 +1,10 @@
 # Script: pub_get_et_patches.ps1
 # 1. Execute "flutter pub get"
-# 2. Applique le correctif namespace sur flutter_app_badger (compatible Android Gradle Plugin recent)
+# 2. Applique le correctif namespace + compileSdkVersion 35 sur flutter_app_badger (AGP + lStar)
 # Utilisez ce script a la place de "flutter pub get" pour que le correctif soit toujours applique.
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 
 Write-Host "Execution de: flutter pub get" -ForegroundColor Cyan
@@ -33,12 +33,23 @@ if (-not (Test-Path $BuildGradle)) {
 
 $Content = Get-Content $BuildGradle -Raw
 $NamespaceLine = "namespace 'fr.g123k.flutterappbadge.flutterappbadger'"
-if ($Content -match [regex]::Escape($NamespaceLine)) {
-    Write-Host "Correctif flutter_app_badger deja applique." -ForegroundColor Green
-    exit 0
+$Modified = $false
+
+# Inserer la ligne namespace apres "android {" si pas deja presente
+if ($Content -notmatch [regex]::Escape($NamespaceLine)) {
+    $Content = $Content -replace "(android \{\r?\n)(\s+compileSdkVersion)", "`$1    $NamespaceLine`r`n`$2"
+    $Modified = $true
 }
 
-# Inserer la ligne namespace apres "android {"
-$Content = $Content -replace "(android \{\r?\n)(\s+compileSdkVersion)", "`$1    $NamespaceLine`r`n`$2"
-Set-Content -Path $BuildGradle -Value $Content.TrimEnd() -NoNewline
-Write-Host "Correctif flutter_app_badger (namespace) applique avec succes." -ForegroundColor Green
+# Forcer compileSdkVersion 35 pour eviter "resource android:attr/lStar not found"
+if ($Content -notmatch "compileSdkVersion\s+35\b") {
+    $Content = $Content -replace "compileSdkVersion\s+\d+", "compileSdkVersion 35"
+    $Modified = $true
+}
+
+if ($Modified) {
+    Set-Content -Path $BuildGradle -Value $Content.TrimEnd() -NoNewline
+    Write-Host "Correctif flutter_app_badger (namespace + compileSdk 35) applique avec succes." -ForegroundColor Green
+} else {
+    Write-Host "Correctif flutter_app_badger deja applique." -ForegroundColor Green
+}

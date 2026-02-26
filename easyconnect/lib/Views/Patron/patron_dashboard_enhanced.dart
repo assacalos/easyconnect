@@ -9,6 +9,7 @@ import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
   const PatronDashboardEnhanced({super.key});
@@ -33,6 +34,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
     FavoriteItem(id: 'validation_devis', label: 'Validation Devis', icon: Icons.assignment, route: '/devis/validation'),
     FavoriteItem(id: 'validation_factures', label: 'Validation Factures', icon: Icons.receipt, route: '/factures/validation'),
     FavoriteItem(id: 'validation_pointages', label: 'Validation Pointages', icon: Icons.camera_alt, route: '/attendance-validation'),
+    FavoriteItem(id: 'presence_summary', label: 'Présences par employé', icon: Icons.calendar_view_month, route: '/pointage/presence-summary'),
     FavoriteItem(id: 'validation_bon_commandes_fournisseur', label: 'Validation Bons Fournisseur', icon: Icons.inventory_2, route: '/bons-de-commande-fournisseur/validation'),
     FavoriteItem(id: 'tasks', label: 'Tâches', icon: Icons.task_alt, route: '/tasks'),
   ];
@@ -158,6 +160,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
       _QuickAction('Devis', Icons.description, '/devis/validation', const Color(0xFF10B981)),
       _QuickAction('Factures', Icons.receipt, '/factures/validation', const Color(0xFFDC2626)),
       _QuickAction('Pointages', Icons.access_time, '/pointage/validation', const Color(0xFFF59E0B)),
+      _QuickAction('Présences', Icons.calendar_view_month, '/pointage/presence-summary', const Color(0xFF059669)),
       _QuickAction('Tâches', Icons.task_alt, '/tasks', const Color(0xFF7C3AED)),
     ];
     final screenWidth = MediaQuery.of(context).size.width;
@@ -346,24 +349,32 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
     required Color badgeColor,
   }) {
     final badge = countRx != null
-        ? Obx(() {
-            final c = countRx.value;
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: badgeColor.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: badgeColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Obx(() {
+              final c = countRx.value;
+              final loading = controller.isLoading.value;
+              final textWidget = Text(
                 c.toString(),
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: badgeColor,
                 ),
-              ),
-            );
-          })
+              );
+              return loading
+                  ? Shimmer(
+                      baseColor: badgeColor.withOpacity(0.25),
+                      highlightColor: badgeColor.withOpacity(0.5),
+                      child: textWidget,
+                    )
+                  : textWidget;
+            }),
+          )
         : Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -452,39 +463,8 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
 
   @override
   List<Widget> buildDrawerItems(BuildContext context) {
+    // Les validations ne sont plus dans le menu : le patron y accède via le dashboard (section « Validations en attente »).
     return [
-      const Divider(color: Colors.white54),
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Text(
-          'VALIDATIONS',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-            color: Colors.white70,
-          ),
-        ),
-      ),
-      _drawerItem(context, Icons.person_add, 'Validation Inscriptions', '/patron/registrations/validation'),
-      _drawerItem(context, Icons.people, 'Validation Clients', '/clients/validation'),
-      _drawerItem(context, Icons.assignment, 'Validation Devis', '/devis/validation'),
-      _drawerItem(context, Icons.assignment_turned_in, 'Validation Bordereaux', '/bordereaux/validation'),
-      _drawerItem(context, Icons.receipt, 'Validation Factures', '/factures/validation'),
-      _drawerItem(context, Icons.payment, 'Validation Paiements', '/paiements/validation'),
-      _drawerItem(context, Icons.shopping_cart, 'Validation Bons de Commande', '/bon-commandes/validation'),
-      _drawerItem(context, Icons.money_off, 'Validation Dépenses', '/depenses/validation'),
-      _drawerItem(context, Icons.account_balance_wallet, 'Validation Salaires', '/salaires/validation'),
-      _drawerItem(context, Icons.analytics, 'Validation Reporting', '/reporting/validation'),
-      _drawerItem(context, Icons.build, 'Validation Interventions', '/interventions/validation'),
-      _drawerItem(context, Icons.account_balance, 'Validation Taxes', '/taxes/validation'),
-      _drawerItem(context, Icons.business, 'Validation Fournisseurs', '/suppliers/validation'),
-      _drawerItem(context, Icons.inventory, 'Validation Stock', '/stock/validation'),
-      _drawerItem(context, Icons.access_time, 'Validation Pointage', '/pointage/validation'),
-      _drawerItem(context, Icons.work, 'Validation Recrutements', '/recrutement/validation'),
-      _drawerItem(context, Icons.description, 'Validation Contrats', '/contrats/validation'),
-      _drawerItem(context, Icons.event_busy, 'Validation Congés', '/conges/validation'),
-      _drawerItem(context, Icons.people_outline, 'Validation Employés', '/employees/validation'),
-      _drawerItem(context, Icons.inventory_2, 'Validation Bons Fournisseur', '/bons-de-commande-fournisseur/validation'),
       const Divider(color: Colors.white54),
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -501,6 +481,7 @@ class PatronDashboardEnhanced extends BaseDashboard<PatronDashboardController> {
       _drawerItem(context, Icons.euro, 'Finances', '/patron/finances'),
       _drawerItem(context, Icons.book, 'Journal des comptes', '/journal'),
       _drawerItem(context, Icons.analytics, 'Rapports', '/patron/reports'),
+      _drawerItem(context, Icons.notifications_active, 'Besoins / Rappels techniciens', '/besoins'),
       Obx(() {
         final userRole = Get.find<AuthController>().userAuth.value?.role;
         if (userRole == 1) {

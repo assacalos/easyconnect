@@ -9,6 +9,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class ExpenseService {
   final storage = GetStorage();
@@ -69,10 +70,12 @@ class ExpenseService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Expense>(
+        final result = PaginationHelper.parseResponse<Expense>(
           json: data,
           fromJsonT: (json) => Expense.fromJson(json),
         );
+        if (page == 1) _saveDepensesToHive(result.data, status, category);
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des dépenses: ${response.statusCode}',
@@ -158,6 +161,7 @@ class ExpenseService {
               // Continuer avec les autres dépenses
             }
           }
+          _saveDepensesToHive(parsedExpenses, status, category);
           return parsedExpenses;
         } catch (e) {
           throw Exception(
@@ -204,15 +208,21 @@ class ExpenseService {
       final token = storage.read('token');
       final jsonBody = json.encode(expenseData);
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/expenses-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonBody,
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/expenses-create'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonBody,
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseBody = json.decode(response.body);
         return Expense.fromJson(responseBody['data'] ?? responseBody);
@@ -232,15 +242,21 @@ class ExpenseService {
   ) async {
     try {
       final token = storage.read('token');
-      final response = await http.put(
-        Uri.parse('$baseUrl/expenses-update/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(expenseData),
-      );
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/expenses-update/$id'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode(expenseData),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
         return Expense.fromJson(responseBody['data'] ?? responseBody);
@@ -438,6 +454,32 @@ class ExpenseService {
       );
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static void _saveDepensesToHive(List<Expense> list, [String? status, String? category]) {
+    try {
+      final key = '${HiveStorageService.keyDepenses}_${status ?? 'all'}_${category ?? 'all'}';
+      HiveStorageService.saveEntityList(
+        key,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive (sync) : affichage instantané Cache-First.
+  static List<Expense> getCachedDepenses([String? status, String? category]) {
+    try {
+      final key = '${HiveStorageService.keyDepenses}_${status ?? 'all'}_${category ?? 'all'}';
+      final raw = HiveStorageService.getEntityList(key);
+      if (raw.isNotEmpty) {
+        return raw.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      if (status != null || category != null) return [];
+      final fallback = HiveStorageService.getEntityList(HiveStorageService.keyDepenses);
+      return fallback.map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

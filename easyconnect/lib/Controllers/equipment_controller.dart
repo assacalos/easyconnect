@@ -62,11 +62,8 @@ class EquipmentController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadEquipments();
-    loadEquipmentStats();
-    loadEquipmentCategories();
-    loadEquipmentsNeedingMaintenance();
-    loadEquipmentsWithExpiredWarranty();
+    // Chargement différé : les données sont chargées par la page (equipment_list)
+    // au premier affichage pour éviter une avalanche d'appels API au binding.
   }
 
   @override
@@ -86,106 +83,61 @@ class EquipmentController extends GetxController {
     super.onClose();
   }
 
-  // Charger tous les équipements (sans filtre pour permettre le filtrage côté client)
+  bool _isLoadingEquipmentsInProgress = false;
+
+  /// Charge les équipements : Hive d'abord (affichage immédiat), puis API dans la même méthode.
   Future<void> loadEquipments({int page = 1}) async {
-    print('🚀 [EQUIPMENT_CONTROLLER] ===== loadEquipments APPELÉ ===== page: $page');
-    print('🚀 [EQUIPMENT_CONTROLLER] Liste actuelle: ${equipments.length} équipements');
-    try {
+    if (_isLoadingEquipmentsInProgress) return;
+    _isLoadingEquipmentsInProgress = true;
+    if (page == 1) {
       isLoading.value = true;
-      print('🚀 [EQUIPMENT_CONTROLLER] isLoading mis à true');
-      try {
-        // Utiliser directement la méthode non-paginée qui fonctionne
-        final loadedEquipments = await _equipmentService.getEquipments(
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-          category: selectedCategory.value != 'all' ? selectedCategory.value : null,
-          condition: selectedCondition.value != 'all' ? selectedCondition.value : null,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
-        );
-
-        // Mettre à jour les métadonnées de pagination (simulées)
-        totalPages.value = 1;
-        totalItems.value = loadedEquipments.length;
-        hasNextPage.value = false;
-        hasPreviousPage.value = false;
-        currentPage.value = 1;
-
-        // Mettre à jour la liste
-        if (page == 1) {
-          print('✅ [EQUIPMENT_CONTROLLER] Assignation de ${loadedEquipments.length} équipements à la liste');
-          equipments.value = loadedEquipments;
-          print('✅ [EQUIPMENT_CONTROLLER] Liste mise à jour: ${equipments.length} équipements');
-          if (equipments.isNotEmpty) {
-            print('✅ [EQUIPMENT_CONTROLLER] Premier équipement: "${equipments.first.name}", status="${equipments.first.status}"');
-          }
-        } else {
-          equipments.addAll(loadedEquipments);
-        }
-      } catch (e, stackTrace) {
-        print('⚠️ [EQUIPMENT_CONTROLLER] Erreur dans la méthode paginée, utilisation du fallback: $e');
-        print('⚠️ [EQUIPMENT_CONTROLLER] Stack trace: $stackTrace');
-        
-        // En cas d'erreur, essayer la méthode non-paginée en fallback
-        try {
-          print('🔄 [EQUIPMENT_CONTROLLER] Appel de getEquipments (fallback)...');
-          final loadedEquipments = await _equipmentService.getEquipments();
-          print('🔄 [EQUIPMENT_CONTROLLER] Fallback: ${loadedEquipments.length} équipements chargés');
-          
-          if (loadedEquipments.isNotEmpty) {
-            final allStatuses = loadedEquipments.map((e) => e.status).toSet();
-            print('🔄 [EQUIPMENT_CONTROLLER] Fallback: Tous les statuts: $allStatuses');
-            for (var eq in loadedEquipments) {
-              print('🔄 [EQUIPMENT_CONTROLLER] Fallback: Équipement "${eq.name}": status="${eq.status}"');
-            }
-          }
-          
-          if (page == 1) {
-            print('🔄 [EQUIPMENT_CONTROLLER] Fallback: AVANT assignation: ${equipments.length} équipements');
-            equipments.value = loadedEquipments;
-            print('🔄 [EQUIPMENT_CONTROLLER] Fallback: APRÈS assignation: ${equipments.length} équipements');
-            
-            if (equipments.isNotEmpty) {
-              for (var eq in equipments) {
-                print('🔄 [EQUIPMENT_CONTROLLER] Fallback: Équipement dans liste observable: "${eq.name}", status="${eq.status}"');
-              }
-            } else {
-              print('⚠️ [EQUIPMENT_CONTROLLER] Fallback: ATTENTION: La liste est vide après assignation!');
-            }
-          } else {
-            equipments.addAll(loadedEquipments);
-            print('🔄 [EQUIPMENT_CONTROLLER] Fallback: Équipements ajoutés (page $page): ${equipments.length} équipements au total');
-          }
-        } catch (fallbackError, fallbackStackTrace) {
-          print('❌ [EQUIPMENT_CONTROLLER] Erreur dans le fallback: $fallbackError');
-          print('❌ [EQUIPMENT_CONTROLLER] Stack trace fallback: $fallbackStackTrace');
-          rethrow;
-        }
+      final cached = EquipmentService.getCachedEquipments();
+      if (cached.isNotEmpty) {
+        equipments.assignAll(cached);
+        isLoading.value = false;
+      } else {
+        equipments.value = [];
       }
+    }
+    try {
+      final loadedEquipments = await _equipmentService.getEquipments(
+        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+        category:
+            selectedCategory.value != 'all' ? selectedCategory.value : null,
+        condition:
+            selectedCondition.value != 'all' ? selectedCondition.value : null,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+      );
+      if (page == 1) {
+        equipments.assignAll(loadedEquipments);
+        EquipmentService.saveEquipmentsToHive(loadedEquipments);
+      } else {
+        equipments.addAll(loadedEquipments);
+      }
+      totalPages.value = 1;
+      totalItems.value = loadedEquipments.length;
+      hasNextPage.value = false;
+      hasPreviousPage.value = false;
+      currentPage.value = 1;
     } catch (e) {
-      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
-      final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('session expirée') &&
-          !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        if (equipments.isEmpty) {
-          // Vérifier une dernière fois le cache avant d'afficher l'erreur
-          final cacheKey = 'equipments_all';
-          final cachedEquipments = CacheHelper.get<List<Equipment>>(cacheKey);
-          if (cachedEquipments == null || cachedEquipments.isEmpty) {
+      if (equipments.isEmpty) {
+        final fallback = EquipmentService.getCachedEquipments();
+        if (fallback.isNotEmpty) {
+          equipments.assignAll(fallback);
+        } else {
+          final err = e.toString().toLowerCase();
+          if (!err.contains('401') && !err.contains('unauthorized')) {
             Get.snackbar(
               'Erreur',
-              'Impossible de charger les équipements: ${e.toString()}',
+              'Impossible de charger les équipements',
               snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 5),
             );
-          } else {
-            // Charger les données du cache si disponibles
-            equipments.assignAll(cachedEquipments);
           }
         }
       }
     } finally {
       isLoading.value = false;
+      _isLoadingEquipmentsInProgress = false;
     }
   }
 
@@ -279,12 +231,14 @@ class EquipmentController extends GetxController {
 
       print('🔵 [EQUIPMENT] Début de createEquipment');
       print('📤 [EQUIPMENT] Appel du service pour créer: ${equipment.name}');
-      
+
       final createdEquipment = await _equipmentService.createEquipment(
         equipment,
       );
 
-      print('📥 [EQUIPMENT] Réponse du service reçue - ID: ${createdEquipment.id}, Nom: ${createdEquipment.name}, Status: ${createdEquipment.status}');
+      print(
+        '📥 [EQUIPMENT] Réponse du service reçue - ID: ${createdEquipment.id}, Nom: ${createdEquipment.name}, Status: ${createdEquipment.status}',
+      );
 
       // Vérifier que la création a vraiment réussi (l'entité a un ID)
       if (createdEquipment.id == null) {
@@ -295,9 +249,11 @@ class EquipmentController extends GetxController {
       }
 
       // S'assurer que le statut est correct (si le backend retourne "pending", le changer en "active")
-      if (createdEquipment.status.toLowerCase() == 'pending' || 
+      if (createdEquipment.status.toLowerCase() == 'pending' ||
           createdEquipment.status.toLowerCase() == 'en_attente') {
-        print('⚠️ [EQUIPMENT] Statut "pending" détecté, changement en "active"');
+        print(
+          '⚠️ [EQUIPMENT] Statut "pending" détecté, changement en "active"',
+        );
         final correctedEquipment = Equipment(
           id: createdEquipment.id,
           name: createdEquipment.name,
@@ -325,19 +281,25 @@ class EquipmentController extends GetxController {
           createdBy: createdEquipment.createdBy,
           updatedBy: createdEquipment.updatedBy,
         );
-        print('✅ [EQUIPMENT] Équipement créé avec succès: ID ${correctedEquipment.id}, Status corrigé: ${correctedEquipment.status}');
-        
+        print(
+          '✅ [EQUIPMENT] Équipement créé avec succès: ID ${correctedEquipment.id}, Status corrigé: ${correctedEquipment.status}',
+        );
+
         // Utiliser l'équipement corrigé
         final equipmentToAdd = correctedEquipment;
-        
+
         // Invalider le cache
         CacheHelper.clearByPrefix('equipments_');
 
         // Ajouter l'équipement à la liste localement (mise à jour optimiste)
-        print('📋 [EQUIPMENT] Ajout de l\'équipement à la liste (avant: ${equipments.length} éléments)');
+        print(
+          '📋 [EQUIPMENT] Ajout de l\'équipement à la liste (avant: ${equipments.length} éléments)',
+        );
         equipments.insert(0, equipmentToAdd);
-        print('📋 [EQUIPMENT] Équipement ajouté à la liste (après: ${equipments.length} éléments), Status: ${equipmentToAdd.status}');
-        
+        print(
+          '📋 [EQUIPMENT] Équipement ajouté à la liste (après: ${equipments.length} éléments), Status: ${equipmentToAdd.status}',
+        );
+
         // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
         print('⏸️ [EQUIPMENT] Arrêt du loader');
         isLoading.value = false;
@@ -385,23 +347,33 @@ class EquipmentController extends GetxController {
             print('🔄 [EQUIPMENT] Rechargement de la liste en arrière-plan...');
             await loadEquipments();
             await loadEquipmentStats();
-            
+
             // Vérifier que l'équipement créé est toujours dans la liste après rechargement
             if (equipmentToAdd.id != null) {
-              final equipmentExists = equipments.any((e) => e.id == equipmentToAdd.id);
-              print('🔍 [EQUIPMENT] Équipement ID ${equipmentToAdd.id} existe dans la liste: $equipmentExists');
+              final equipmentExists = equipments.any(
+                (e) => e.id == equipmentToAdd.id,
+              );
+              print(
+                '🔍 [EQUIPMENT] Équipement ID ${equipmentToAdd.id} existe dans la liste: $equipmentExists',
+              );
               if (!equipmentExists) {
                 // Si l'équipement n'est pas dans la liste après rechargement, le rajouter
-                print('⚠️ [EQUIPMENT] Équipement créé non trouvé après rechargement, réajout à la liste');
+                print(
+                  '⚠️ [EQUIPMENT] Équipement créé non trouvé après rechargement, réajout à la liste',
+                );
                 equipments.insert(0, equipmentToAdd);
-                print('✅ [EQUIPMENT] Équipement réajouté - Liste contient maintenant ${equipments.length} éléments');
+                print(
+                  '✅ [EQUIPMENT] Équipement réajouté - Liste contient maintenant ${equipments.length} éléments',
+                );
               }
             }
-            
+
             print('✅ [EQUIPMENT] Liste rechargée avec succès');
           } catch (e) {
             print('⚠️ [EQUIPMENT] Erreur lors du rechargement (ignorée): $e');
-            print('⚠️ [EQUIPMENT] Liste actuelle contient ${equipments.length} éléments');
+            print(
+              '⚠️ [EQUIPMENT] Liste actuelle contient ${equipments.length} éléments',
+            );
           }
         });
 
@@ -409,27 +381,25 @@ class EquipmentController extends GetxController {
         return true;
       }
 
-      print('✅ [EQUIPMENT] Équipement créé avec succès: ID ${createdEquipment.id}, Status: ${createdEquipment.status}');
+      print(
+        '✅ [EQUIPMENT] Équipement créé avec succès: ID ${createdEquipment.id}, Status: ${createdEquipment.status}',
+      );
 
-      // Invalider le cache
       CacheHelper.clearByPrefix('equipments_');
 
-      // Ajouter l'équipement à la liste localement (mise à jour optimiste)
-      print('📋 [EQUIPMENT] Ajout de l\'équipement à la liste (avant: ${equipments.length} éléments)');
-      print('📋 [EQUIPMENT] Statut de l\'équipement à ajouter: "${createdEquipment.status}"');
-      equipments.insert(0, createdEquipment);
-      print('📋 [EQUIPMENT] Équipement ajouté à la liste (après: ${equipments.length} éléments), Status: ${createdEquipment.status}');
+      // Insertion locale uniquement si le filtre actuel affiche ce statut (ou "tous")
+      final currentFilter = selectedStatus.value;
+      final shouldInsert =
+          currentFilter == 'all' || currentFilter == createdEquipment.status;
+      if (shouldInsert) {
+        equipments.insert(0, createdEquipment);
+        EquipmentService.saveEquipmentsToHive(equipments.toList());
+      }
 
-      // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
-      print('⏸️ [EQUIPMENT] Arrêt du loader');
       isLoading.value = false;
-
-      // Rafraîchir le dashboard technicien en arrière-plan
       Future.microtask(() {
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
       });
-
-      // Notifier le patron de la soumission en arrière-plan
       if (createdEquipment.id != null) {
         Future.microtask(() {
           NotificationHelper.notifySubmission(
@@ -446,59 +416,22 @@ class EquipmentController extends GetxController {
           );
         });
       }
-
-      // Effacer le formulaire avant d'afficher le message de succès
-      print('🧹 [EQUIPMENT] Effacement du formulaire');
       clearForm();
-
-      // Afficher le message de succès
-      print('✅ [EQUIPMENT] Affichage du message de succès');
       Get.snackbar(
         'Succès',
         'Équipement créé avec succès',
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 2),
       );
-
-      // Recharger la liste en arrière-plan après un court délai pour synchroniser avec le serveur
-      // L'équipement est déjà dans la liste, donc il restera visible même si le rechargement échoue
-      Future.microtask(() async {
-        await Future.delayed(const Duration(milliseconds: 300));
-        try {
-          print('🔄 [EQUIPMENT] Rechargement de la liste en arrière-plan...');
-          await loadEquipments();
-          await loadEquipmentStats();
-          
-          // Vérifier que l'équipement créé est toujours dans la liste après rechargement
-          if (createdEquipment.id != null) {
-            final equipmentExists = equipments.any((e) => e.id == createdEquipment.id);
-            print('🔍 [EQUIPMENT] Équipement ID ${createdEquipment.id} existe dans la liste: $equipmentExists');
-            if (!equipmentExists) {
-              // Si l'équipement n'est pas dans la liste après rechargement, le rajouter
-              print('⚠️ [EQUIPMENT] Équipement créé non trouvé après rechargement, réajout à la liste');
-              equipments.insert(0, createdEquipment);
-              print('✅ [EQUIPMENT] Équipement réajouté - Liste contient maintenant ${equipments.length} éléments');
-            }
-          }
-          
-          print('✅ [EQUIPMENT] Liste rechargée avec succès');
-        } catch (e) {
-          // Si le rechargement échoue, l'équipement reste dans la liste grâce à la mise à jour optimiste
-          print('⚠️ [EQUIPMENT] Erreur lors du rechargement (ignorée): $e');
-          print('⚠️ [EQUIPMENT] Liste actuelle contient ${equipments.length} éléments');
-          // Ne pas afficher d'erreur car l'équipement a été créé avec succès et est déjà dans la liste
-        }
-      });
-
-      print('✅ [EQUIPMENT] Retour de createEquipment: true (SUCCÈS)');
+      // Pas de loadEquipments() pour ne pas écraser l'insertion
       return true;
     } catch (e, stackTrace) {
       print('❌ [EQUIPMENT] ERREUR CAPTURÉE dans createEquipment: $e');
       print('❌ [EQUIPMENT] Stack trace: $stackTrace');
-      
+
       // S'assurer que le loader est arrêté en cas d'erreur
       isLoading.value = false;
-      
+
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);

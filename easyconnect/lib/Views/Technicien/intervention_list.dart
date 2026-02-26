@@ -6,6 +6,7 @@ import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
@@ -142,7 +143,11 @@ class InterventionList extends StatelessWidget {
         );
       }
 
-      return ListView.builder(
+      return PaginatedListView(
+        scrollController: controller.scrollController,
+        onLoadMore: controller.loadMore,
+        hasNextPage: controller.hasNextPage.value,
+        isLoadingMore: controller.isLoadingMore.value,
         padding: const EdgeInsets.all(12),
         itemCount: interventions.length,
         itemBuilder: (context, index) {

@@ -30,6 +30,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final role = authController.userAuth.value?.role;
     final canAssign = role == Roles.ADMIN || role == Roles.PATRON;
     final isAssignee = taskController.currentTask.value?.assignedTo == userId;
+    // Patron/Admin peuvent aussi valider (changer le statut) des tâches qu'ils ont assignées
+    final canChangeStatus = isAssignee || canAssign;
 
     return Scaffold(
       appBar: AppBar(
@@ -97,10 +99,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               if (task.dueDate != null) _infoRow(Icons.calendar_today, 'Date limite', task.dueDate!),
               _infoRow(Icons.access_time, 'Créée le', task.createdAt),
               if (task.completedAt != null) _infoRow(Icons.check_circle, 'Terminée le', task.completedAt!),
-              if (isAssignee && !task.isCompleted && !task.isCancelled) ...[
+              if (canChangeStatus && !task.isCompleted && !task.isCancelled) ...[
                 const SizedBox(height: 24),
                 const Divider(),
-                const Text('Changer le statut', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  canAssign && !isAssignee ? 'Valider la tâche' : 'Changer le statut',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [

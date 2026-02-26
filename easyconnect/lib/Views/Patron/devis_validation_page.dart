@@ -48,24 +48,10 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     }
   }
 
+  /// Charge toujours tous les devis ; le filtrage par onglet se fait côté client.
+  /// Évite l'incohérence (ex. 2 en attente dans "Tous" et 1 dans "En attente").
   Future<void> _loadDevis({bool forceRefresh = false}) async {
-    int? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 1;
-        break;
-      case 2: // Validés
-        status = 2;
-        break;
-      case 3: // Rejetés
-        status = 3;
-        break;
-    }
-
-    await controller.loadDevis(status: status, forceRefresh: forceRefresh);
+    await controller.loadDevis(status: null, forceRefresh: forceRefresh);
   }
 
   @override
@@ -143,11 +129,29 @@ class _DevisValidationPageState extends State<DevisValidationPage>
   }
 
   Widget _buildDevisList() {
-    // Filtrer les devis selon la recherche
+    // Filtrer par onglet (même source que "Tous" → comptes cohérents)
+    int? statusFilter;
+    switch (_tabController.index) {
+      case 1: // En attente
+        statusFilter = 1;
+        break;
+      case 2: // Validés
+        statusFilter = 2;
+        break;
+      case 3: // Rejetés
+        statusFilter = 3;
+        break;
+      default: // 0 = Tous
+        break;
+    }
+    var list = statusFilter != null
+        ? controller.devis.where((d) => d.status == statusFilter).toList()
+        : controller.devis.toList();
+    // Puis filtrer par recherche
     final filteredDevis =
         _searchQuery.isEmpty
-            ? controller.devis
-            : controller.devis
+            ? list
+            : list
                 .where(
                   (devis) => devis.reference.toLowerCase().contains(
                     _searchQuery.toLowerCase(),

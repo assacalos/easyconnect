@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/services/pdf_service.dart';
 import 'package:easyconnect/utils/error_helper.dart';
+import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/app_config.dart';
 
 class BonCommandeController extends GetxController
     with GetSingleTickerProviderStateMixin {
@@ -24,9 +27,11 @@ class BonCommandeController extends GetxController
   final selectedClient = Rxn<Client>();
   final availableClients = <Client>[].obs;
   final isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final isLoadingClients = false.obs;
   final currentBonCommande = Rxn<BonCommande>();
-  int? _currentStatus; // Mémoriser le statut actuellement chargé
+  int? _currentStatus;
+  bool _isLoadingInProgress = false;
 
   // Fichiers scannés (liste de chemins locaux)
   final selectedFiles = <Map<String, dynamic>>[].obs;
@@ -43,6 +48,8 @@ class BonCommandeController extends GetxController
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
   final RxString searchQuery = ''.obs;
+  final ScrollController scrollController = ScrollController();
+  Timer? _searchDebounceTimer;
 
   // Statistiques
   final totalBonCommandes = 0.obs;
@@ -55,18 +62,17 @@ class BonCommandeController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    // Ne pas charger automatiquement - laisser les pages décider quand charger
     userId = int.parse(
       Get.find<AuthController>().userAuth.value!.id.toString(),
     );
     tabController = TabController(length: 5, vsync: this);
     tabController.addListener(_onTabChanged);
-    // Ne pas charger automatiquement - laisser les pages décider quand charger
-    // Cela évite les erreurs et ralentissements inutiles
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   loadBonCommandes();
-    //   loadStats();
-    // });
+    ever(searchQuery, (_) {
+      _searchDebounceTimer?.cancel();
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        loadBonCommandes(status: _currentStatus, forceRefresh: true);
+      });
+    });
   }
 
   // Sélectionner des fichiers (scan ou sélection)
@@ -251,24 +257,30 @@ class BonCommandeController extends GetxController
 
   @override
   void onClose() {
+    _searchDebounceTimer?.cancel();
+    scrollController.dispose();
     tabController.dispose();
     super.onClose();
   }
 
   void _onTabChanged() {
-    if (tabController.indexIsChanging) {
-      selectedStatus.value =
-          tabController.index == 0 ? null : tabController.index;
-    }
+    // Toujours synchroniser le filtre avec l'onglet affiché (comme bon de commande fournisseur)
+    final index = tabController.index;
+    selectedStatus.value = index == 0 ? null : index;
   }
 
-  // Obtenir les bons de commande filtrés selon l'onglet sélectionné
+  /// Retourne les bons de commande filtrés selon l'onglet (0 = Tous, 1 = En attente, 2 = Validés, 3 = Rejetés, 4 = Livrés).
+  /// En attente : statuts 0 et 1 sont considérés comme "en attente".
   List<BonCommande> getFilteredBonCommandes() {
-    if (selectedStatus.value == null) {
-      return bonCommandes;
+    final status = selectedStatus.value;
+    if (status == null) return bonCommandes;
+    if (status == 1) {
+      return bonCommandes
+          .where((bc) => bc.status == 0 || bc.status == 1)
+          .toList();
     }
     return bonCommandes
-        .where((bonCommande) => bonCommande.status == selectedStatus.value)
+        .where((bonCommande) => bonCommande.status == status)
         .toList();
   }
 
@@ -277,128 +289,103 @@ class BonCommandeController extends GetxController
     bool forceRefresh = false,
     int page = 1,
   }) async {
-    try {
-      _currentStatus = status; // Mémoriser le statut actuel
+    if (_isLoadingInProgress) {
+      AppLogger.debug('Chargement déjà en cours, ignore', tag: 'BON_COMMANDE_CONTROLLER');
+      return;
+    }
+    if (!forceRefresh &&
+        bonCommandes.isNotEmpty &&
+        _currentStatus == status &&
+        currentPage.value == page &&
+        page == 1) {
+      AppLogger.debug('Données déjà chargées', tag: 'BON_COMMANDE_CONTROLLER');
+      return;
+    }
+    _isLoadingInProgress = true;
+    _currentStatus = status;
+    final entityKey = 'bon_commandes_${status ?? 'all'}';
 
-      // Si on ne force pas le rafraîchissement et que les données sont déjà chargées, ne rien faire
-      // MAIS seulement si on a vraiment des données (pas si la liste est vide)
-      // ET seulement si c'est la même page
-      if (!forceRefresh &&
-          bonCommandes.isNotEmpty &&
-          _currentStatus == status &&
-          currentPage.value == page &&
-          page == 1) {
+    if (page == 1) {
+      isLoading.value = true;
+      final cachedData = BonCommandeService.getCachedBonCommandes(status);
+      if (cachedData.isNotEmpty) {
+        bonCommandes.assignAll(cachedData);
+        isLoading.value = false;
+        AppLogger.debug(
+          '[Hive] statut=$status, ${cachedData.length} bon(s) → affichage instantané',
+          tag: 'BON_COMMANDE_CONTROLLER',
+        );
+      } else {
+        bonCommandes.value = [];
+      }
+    } else {
+      isLoadingMore.value = true;
+    }
+
+    try {
+      final response = await _bonCommandeService.getBonCommandesPaginated(
+        status: status,
+        page: page,
+        perPage: perPage.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+      );
+
+      if (_currentStatus != status) {
+        AppLogger.debug('[API] onglet changé, mise à jour ignorée', tag: 'BON_COMMANDE_CONTROLLER');
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
-      final cacheKey = 'bon_commandes_${status ?? 'all'}';
-      final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(cacheKey);
-      if (cachedBonCommandes != null &&
-          cachedBonCommandes.isNotEmpty &&
-          !forceRefresh &&
-          page == 1) {
-        bonCommandes.value = cachedBonCommandes;
-        isLoading.value = false; // Permettre l'affichage immédiat
+      if (page == 1) {
+        bonCommandes.assignAll(response.data);
+        CacheHelper.set(entityKey, response.data);
+        BonCommandeService.saveCachedBonCommandes(response.data, status);
+        currentPage.value = 1;
+        AppLogger.debug(
+          '[API] page 1 → ${response.data.length} bon(s), Hive mis à jour',
+          tag: 'BON_COMMANDE_CONTROLLER',
+        );
       } else {
-        isLoading.value = true;
+        bonCommandes.addAll(response.data);
       }
 
-      try {
-        // Utiliser la méthode paginée
-        final paginatedResponse = await _bonCommandeService
-            .getBonCommandesPaginated(
-              status: status,
-              page: page,
-              perPage: perPage.value,
-              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
-            );
-
-        // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
-
-        // Mettre à jour la liste
-        if (page == 1) {
-          bonCommandes.value = paginatedResponse.data;
-        } else {
-          bonCommandes.addAll(paginatedResponse.data);
-        }
-
-        // Sauvegarder dans le cache (seulement pour la page 1)
-        if (page == 1) {
-          CacheHelper.set(cacheKey, paginatedResponse.data);
-        }
-      } catch (e) {
-        try {
-          final loadedBonCommandes = await _bonCommandeService.getBonCommandes(
-            status: status,
-          );
-          if (page == 1) {
-            bonCommandes.value = loadedBonCommandes;
-          } else {
-            bonCommandes.addAll(loadedBonCommandes);
-          }
-          if (page == 1) {
-            CacheHelper.set(cacheKey, loadedBonCommandes);
-          }
-        } catch (fallbackError) {
-          // Si le fallback échoue aussi, vérifier le cache
-          if (cachedBonCommandes == null ||
-              cachedBonCommandes.isEmpty ||
-              page > 1) {
-            if (bonCommandes.isEmpty) {
-              final cacheKey = 'bon_commandes_${status ?? 'all'}';
-              final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(
-                cacheKey,
-              );
-              if (cachedBonCommandes != null && cachedBonCommandes.isNotEmpty) {
-                bonCommandes.value = cachedBonCommandes;
-                return; // Ne pas afficher d'erreur si on a du cache
-              }
-            }
-            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
-          }
-        }
-      }
+      totalPages.value = response.meta.lastPage;
+      totalItems.value = response.meta.total;
+      hasNextPage.value = response.hasNextPage;
+      hasPreviousPage.value = response.hasPreviousPage;
+      if (page > 1) currentPage.value = response.meta.currentPage;
     } catch (e) {
-      // Ne pas afficher d'erreur si c'est une erreur d'authentification
-      // (elle est déjà gérée par AuthErrorHandler)
-      final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('session expirée') &&
-          !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-        if (bonCommandes.isEmpty) {
-          // Vérifier une dernière fois le cache avant d'afficher l'erreur
-          final cacheKey = 'bon_commandes_${status ?? 'all'}';
-          final cachedBonCommandes = CacheHelper.get<List<BonCommande>>(
-            cacheKey,
+      AppLogger.error('Erreur API Bons de commande: $e', tag: 'BON_COMMANDE_CONTROLLER');
+      if (bonCommandes.isEmpty) {
+        final fallback = BonCommandeService.getCachedBonCommandes(status);
+        if (fallback.isNotEmpty) {
+          bonCommandes.assignAll(fallback);
+        } else {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les bons de commande',
+            snackPosition: SnackPosition.BOTTOM,
+            duration: const Duration(seconds: 4),
           );
-          if (cachedBonCommandes == null || cachedBonCommandes.isEmpty) {
-            Get.snackbar(
-              'Erreur',
-              'Impossible de charger les bons de commande: ${e.toString()}',
-              snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 4),
-            );
-          } else {
-            // Charger les données du cache si disponibles
-            bonCommandes.value = cachedBonCommandes;
-          }
         }
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+      _isLoadingInProgress = false;
+    }
+  }
+
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadBonCommandes(status: _currentStatus, page: currentPage.value + 1);
     }
   }
@@ -425,6 +412,7 @@ class BonCommandeController extends GetxController
   }
 
   Future<bool> createBonCommande() async {
+    if (isLoading.value) return false;
     try {
       // Vérifications
       if (selectedClient.value == null) {
@@ -460,14 +448,21 @@ class BonCommandeController extends GetxController
         newBonCommande,
       );
 
-      // Invalider le cache
       CacheHelper.clearByPrefix('bon_commandes_');
 
-      // Ajouter le bon de commande à la liste localement (mise à jour optimiste)
-      if (createdBonCommande.id != null) {
-        bonCommandes.add(createdBonCommande);
+      // Insertion locale uniquement si le statut correspond à l'onglet actuel. Nouveau bon = statut 1 (en attente).
+      const newBonStatus = 1;
+      final shouldInsert = _currentStatus == null || _currentStatus == newBonStatus;
+      if (shouldInsert) {
+        bonCommandes.insert(0, createdBonCommande);
+        BonCommandeService.saveCachedBonCommandes(bonCommandes.toList(), _currentStatus);
+        AppLogger.debug(
+          '[Création bon commande] insertion locale + mise à jour Hive (statut=$_currentStatus)',
+          tag: 'BON_COMMANDE_CONTROLLER',
+        );
+      }
 
-        // Notifier le patron de la soumission
+      if (createdBonCommande.id != null) {
         NotificationHelper.notifySubmission(
           entityType: 'bon_commande',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -482,10 +477,8 @@ class BonCommandeController extends GetxController
         );
       }
 
-      // Rafraîchir les compteurs du dashboard patron
       DashboardRefreshHelper.refreshPatronCounter('bon_commande');
 
-      // Si la création réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Bon de commande créé avec succès',
@@ -495,16 +488,8 @@ class BonCommandeController extends GetxController
         duration: const Duration(seconds: 3),
       );
 
-      // Effacer le formulaire
       clearForm();
-
-      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
-      try {
-        await loadBonCommandes();
-      } catch (e) {
-        // Si le rechargement échoue, on ne fait rien car le bon de commande a été créé avec succès
-        // L'utilisateur peut recharger manuellement si nécessaire
-      }
+      // Pas de loadBonCommandes() pour ne pas écraser l'insertion locale
 
       return true;
     } catch (e) {
@@ -522,6 +507,7 @@ class BonCommandeController extends GetxController
   }
 
   Future<bool> updateBonCommande(int bonCommandeId) async {
+    if (isLoading.value) return false;
     try {
       isLoading.value = true;
       final bonCommandeToUpdate = bonCommandes.firstWhere(
@@ -913,20 +899,32 @@ class BonCommandeController extends GetxController
     }
   }
 
-  // Chargement des clients validés
+  // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
+    isLoadingClients.value = true;
+    final cached = ClientService.getCachedClients(1);
+    if (cached.isNotEmpty) {
+      availableClients.assignAll(cached);
+      isLoadingClients.value = false;
+    } else {
+      availableClients.value = [];
+    }
     try {
-      isLoadingClients.value = true;
-      final clients = await _clientService.getClients(
-        status: 1,
-      ); // Status 1 = Validé
-      availableClients.value = clients;
+      final clients = await _clientService.getClients(status: 1);
+      availableClients.assignAll(clients);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les clients validés',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (availableClients.isEmpty) {
+        final fallback = ClientService.getCachedClients(1);
+        if (fallback.isNotEmpty) {
+          availableClients.assignAll(fallback);
+        } else {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les clients validés',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
     } finally {
       isLoadingClients.value = false;
     }
@@ -969,8 +967,8 @@ class BonCommandeController extends GetxController
         orElse: () => throw Exception('Bon de commande introuvable'),
       );
 
-      // Charger les données nécessaires
-      final clients = await _clientService.getClients();
+      // Charger les données nécessaires (timeout long : génération PDF)
+      final clients = await _clientService.getClients(timeout: AppConfig.extraLongTimeout);
       final client = clients.firstWhere(
         (c) => c.id == bonCommande.clientId,
         orElse:

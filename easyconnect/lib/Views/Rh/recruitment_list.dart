@@ -13,13 +13,15 @@ class RecruitmentList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final RecruitmentController controller = Get.put(RecruitmentController());
+    final RecruitmentController controller = Get.find<RecruitmentController>();
 
-    // Charger les recrutements au chargement de la page
+    // Chargement différé au premier affichage (évite la charge au binding)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // S'assurer de charger tous les recrutements (sans filtre de statut)
       controller.selectedStatus.value = 'all';
+      controller.loadDepartments();
+      controller.loadPositions();
       controller.loadRecruitmentRequests();
+      controller.loadRecruitmentStats();
     });
 
     return DefaultTabController(
@@ -57,12 +59,16 @@ class RecruitmentList extends StatelessWidget {
                 _buildRecruitmentList('rejected', controller), // Rejetés
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite
+            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
             if (controller.canManageRecruitment.value)
-              UniformAddButton(
-                onPressed: () => Get.to(() => const RecruitmentForm()),
-                label: 'Nouvelle Demande',
-                icon: Icons.work,
+              Positioned(
+                bottom: 80,
+                right: 16,
+                child: UniformAddButton(
+                  onPressed: () => Get.to(() => const RecruitmentForm()),
+                  label: 'Nouvelle Demande',
+                  icon: Icons.work,
+                ),
               ),
           ],
         ),
@@ -104,40 +110,58 @@ class RecruitmentList extends StatelessWidget {
       }
 
       if (recruitmentList.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == 'pending'
-                    ? Icons.pending
-                    : status == 'approved'
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                size: 64,
-                color: Colors.grey.shade400,
+        return RefreshIndicator(
+          onRefresh: () async {
+            controller.selectedStatus.value = 'all';
+            await controller.loadRecruitmentRequests();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      status == 'pending'
+                          ? Icons.pending
+                          : status == 'approved'
+                          ? Icons.check_circle
+                          : Icons.cancel,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      status == 'pending'
+                          ? 'Aucun recrutement en attente'
+                          : status == 'approved'
+                          ? 'Aucun recrutement validé'
+                          : 'Aucun recrutement rejeté',
+                      style: const TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                status == 'pending'
-                    ? 'Aucun recrutement en attente'
-                    : status == 'approved'
-                    ? 'Aucun recrutement validé'
-                    : 'Aucun recrutement rejeté',
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
+            ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: recruitmentList.length,
-        itemBuilder: (context, index) {
-          final request = recruitmentList[index];
-          return _buildRecruitmentCard(request, controller);
+      return RefreshIndicator(
+        onRefresh: () async {
+          controller.selectedStatus.value = 'all';
+          await controller.loadRecruitmentRequests();
         },
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: recruitmentList.length,
+          itemBuilder: (context, index) {
+            final request = recruitmentList[index];
+            return _buildRecruitmentCard(request, controller);
+          },
+        ),
       );
     });
   }

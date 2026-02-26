@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
+import 'package:easyconnect/Views/Components/reporting_form.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:intl/intl.dart';
@@ -44,6 +45,13 @@ class _ReportingDetailState extends State<ReportingDetail> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
+          // Modifier : autorisé pour soumis (backend n'autorise que submitted)
+          if (reporting.status == 'submitted')
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () => Get.to(() => ReportingForm(reporting: reporting)),
+              tooltip: 'Modifier',
+            ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: () => _shareReporting(),

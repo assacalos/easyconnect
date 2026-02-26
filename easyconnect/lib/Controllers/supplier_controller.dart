@@ -67,28 +67,35 @@ class SupplierController extends GetxController {
   Future<void> loadSuppliers() async {
     const cacheKey = 'suppliers_all';
     try {
-      // Afficher immédiatement les données du cache si disponibles
+      final hiveList = SupplierService.getCachedFournisseurs();
+      if (hiveList.isNotEmpty) {
+        allSuppliers.assignAll(hiveList);
+        applyFilters();
+        isLoading.value = false;
+        Future.microtask(() => _refreshSuppliersFromApi());
+        return;
+      }
       final cachedSuppliers = CacheHelper.get<List<Supplier>>(cacheKey);
       if (cachedSuppliers != null && cachedSuppliers.isNotEmpty) {
         allSuppliers.assignAll(cachedSuppliers);
         applyFilters();
+        isLoading.value = false;
+        Future.microtask(() => _refreshSuppliersFromApi());
+        return;
       }
-
       isLoading.value = true;
 
-      // Charger tous les fournisseurs sans filtre côté serveur
       final loadedSuppliers = await _supplierService.getSuppliers(
-        status: null, // Toujours charger tous les fournisseurs
-        search: null, // Pas de recherche côté serveur
+        status: null,
+        search: null,
       );
 
-      // Stocker tous les fournisseurs
       allSuppliers.assignAll(loadedSuppliers);
-
-      // Sauvegarder dans le cache (durée 15 min)
-      CacheHelper.set(cacheKey, loadedSuppliers, duration: AppConfig.mediumCacheDuration);
-
-      // Appliquer les filtres côté client
+      CacheHelper.set(
+        cacheKey,
+        loadedSuppliers,
+        duration: AppConfig.mediumCacheDuration,
+      );
       applyFilters();
     } catch (e) {
       // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
@@ -117,6 +124,24 @@ class SupplierController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Rafraîchit les fournisseurs depuis l'API et met à jour la liste/cache.
+  Future<void> _refreshSuppliersFromApi() async {
+    try {
+      const cacheKey = 'suppliers_all';
+      final loadedSuppliers = await _supplierService.getSuppliers(
+        status: null,
+        search: null,
+      );
+      allSuppliers.assignAll(loadedSuppliers);
+      CacheHelper.set(
+        cacheKey,
+        loadedSuppliers,
+        duration: AppConfig.mediumCacheDuration,
+      );
+      applyFilters();
+    } catch (_) {}
   }
 
   // Charger les statistiques

@@ -40,6 +40,23 @@ class PaginationHelper {
       );
     }
 
+    // Format 1b: {"success": true, "data": [...], "meta": {...}} (ex: API Devis)
+    if (json.containsKey('success') &&
+        json.containsKey('data') &&
+        json.containsKey('meta') &&
+        json['meta'] is Map) {
+      final dataList = json['data'] is List ? json['data'] as List : [];
+      final metaData = json['meta'] as Map<String, dynamic>;
+
+      return PaginationResponse<T>(
+        data:
+            dataList
+                .map((item) => fromJsonT(item as Map<String, dynamic>))
+                .toList(),
+        meta: PaginationMeta.fromJson(metaData),
+      );
+    }
+
     // Format 2: Réponse paginée Laravel standard {"data": [...], "current_page": 1, ...}
     if (json.containsKey('data') &&
         (json.containsKey('current_page') || json.containsKey('currentPage'))) {
@@ -104,6 +121,102 @@ class PaginationHelper {
           lastPage: 1,
           perPage: parsedData.length,
           total: parsedData.length,
+          path: '',
+        ),
+      );
+    }
+
+    throw Exception('Format de réponse non reconnu pour la pagination');
+  }
+
+  /// Parse une réponse paginée en ignorant les éléments dont le parsing échoue (un objet corrompu ne bloque pas toute la liste).
+  /// [fromJsonT] doit retourner null en cas d'erreur de parsing.
+  static PaginationResponse<T> parseResponseSafe<T>({
+    required Map<String, dynamic> json,
+    required T? Function(Map<String, dynamic>) fromJsonT,
+  }) {
+    List<T> safeParseList(List list) {
+      return list
+          .map((item) =>
+              item is Map<String, dynamic> ? fromJsonT(item) : null)
+          .whereType<T>()
+          .toList();
+    }
+
+    if (json.containsKey('success') &&
+        json.containsKey('data') &&
+        json.containsKey('pagination')) {
+      final dataList = json['data'] is List ? json['data'] as List : [];
+      final paginationData = json['pagination'] as Map<String, dynamic>;
+      return PaginationResponse<T>(
+        data: safeParseList(dataList),
+        meta: PaginationMeta.fromJson(paginationData),
+      );
+    }
+
+    if (json.containsKey('success') &&
+        json.containsKey('data') &&
+        json.containsKey('meta') &&
+        json['meta'] is Map) {
+      final dataList = json['data'] is List ? json['data'] as List : [];
+      final metaData = json['meta'] as Map<String, dynamic>;
+      return PaginationResponse<T>(
+        data: safeParseList(dataList),
+        meta: PaginationMeta.fromJson(metaData),
+      );
+    }
+
+    if (json.containsKey('data') &&
+        (json.containsKey('current_page') || json.containsKey('currentPage'))) {
+      final dataList = json['data'] is List ? json['data'] as List : [];
+      final paginationData =
+          json.containsKey('meta') && json['meta'] is Map
+              ? json['meta'] as Map<String, dynamic>
+              : json;
+      return PaginationResponse<T>(
+        data: safeParseList(dataList),
+        meta: PaginationMeta.fromJson(paginationData),
+      );
+    }
+
+    if (json.containsKey('success') && json['data'] != null) {
+      final data = json['data'];
+      if (data is Map<String, dynamic> &&
+          (data.containsKey('current_page') ||
+              data.containsKey('currentPage'))) {
+        final dataList = data['data'] is List ? data['data'] as List : [];
+        final paginationData =
+            data.containsKey('meta') && data['meta'] is Map
+                ? data['meta'] as Map<String, dynamic>
+                : data;
+        return PaginationResponse<T>(
+          data: safeParseList(dataList),
+          meta: PaginationMeta.fromJson(paginationData),
+        );
+      }
+      if (data is List) {
+        return PaginationResponse<T>(
+          data: safeParseList(data),
+          meta: PaginationMeta(
+            currentPage: 1,
+            lastPage: 1,
+            perPage: 0,
+            total: 0,
+            path: '',
+          ),
+        );
+      }
+    }
+
+    if (json.containsKey('data') && json['data'] is List) {
+      final dataList = json['data'] as List;
+      return PaginationResponse<T>(
+        data: safeParseList(dataList),
+        meta: PaginationMeta(
+          currentPage: 1,
+          lastPage: 1,
+          perPage: 0,
+          total: 0,
           path: '',
         ),
       );

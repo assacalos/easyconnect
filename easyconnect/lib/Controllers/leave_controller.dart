@@ -13,6 +13,7 @@ class LeaveController extends GetxController {
 
   // Variables observables
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxList<LeaveRequest> leaveRequests = <LeaveRequest>[].obs;
   final RxList<LeaveRequest> filteredRequests = <LeaveRequest>[].obs;
   final Rx<LeaveRequest?> selectedRequest = Rx<LeaveRequest?>(null);
@@ -41,6 +42,7 @@ class LeaveController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire de création
   final RxString selectedEmployeeForm = ''.obs;
@@ -60,14 +62,14 @@ class LeaveController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadLeaveTypes();
-    loadEmployees();
-    loadLeaveRequests();
-    loadLeaveStats();
+    // Chargement différé : les données sont chargées par la page (leave_list)
+    // au premier affichage pour éviter une avalanche d'appels API au binding.
   }
 
   @override
+  @override
   void onClose() {
+    scrollController.dispose();
     reasonController.dispose();
     commentsController.dispose();
     rejectionReasonController.dispose();
@@ -165,13 +167,25 @@ class LeaveController extends GetxController {
   // Charger les demandes de congés
   Future<void> loadLeaveRequests({int page = 1}) async {
     try {
-      isLoading.value = true;
-
       final user = _authController.userAuth.value;
       if (user == null) return;
 
+      if (page == 1) {
+        final hiveList = LeaveService.getCachedLeaves();
+        if (hiveList.isNotEmpty) {
+          leaveRequests.value = hiveList;
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshLeavesFromApi());
+          return;
+        }
+        isLoading.value = true;
+      }
+      if (page > 1) {
+        isLoadingMore.value = true;
+      }
+
       try {
-        // Utiliser la méthode paginée
         final paginatedResponse = await _leaveService.getLeaveRequestsPaginated(
           startDate: selectedStartDate.value,
           endDate: selectedEndDate.value,
@@ -239,6 +253,54 @@ class LeaveController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les demandes de congé depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
+  Future<void> _refreshLeavesFromApi() async {
+    try {
+      final user = _authController.userAuth.value;
+      if (user == null) return;
+      final paginatedResponse = await _leaveService.getLeaveRequestsPaginated(
+        startDate: selectedStartDate.value,
+        endDate: selectedEndDate.value,
+        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+        leaveType:
+            selectedLeaveType.value != 'all' ? selectedLeaveType.value : null,
+        employeeId: canViewAllLeaves.value ? null : user.id,
+        page: 1,
+        perPage: perPage.value,
+        search: searchController.text.isNotEmpty ? searchController.text : null,
+      );
+      leaveRequests.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      applyFilters();
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
+    }
+  }
+
+  /// Charger la page suivante
+  void loadNextPage() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadLeaveRequests(page: currentPage.value + 1);
+    }
+  }
+
+  /// Charger la page précédente
+  void loadPreviousPage() {
+    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadLeaveRequests(page: currentPage.value - 1);
     }
   }
 

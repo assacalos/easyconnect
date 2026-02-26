@@ -19,6 +19,7 @@ class InvoiceController extends GetxController {
 
   // Variables observables
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxBool isCreating = false.obs;
   final RxBool isSubmitting = false.obs;
   final RxList<InvoiceModel> invoices = <InvoiceModel>[].obs;
@@ -67,6 +68,7 @@ class InvoiceController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   @override
   void onInit() {
@@ -82,6 +84,7 @@ class InvoiceController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     clientNameController.dispose();
     clientEmailController.dispose();
     clientAddressController.dispose();
@@ -122,18 +125,31 @@ class InvoiceController extends GetxController {
   Future<void> loadInvoices({int page = 1}) async {
     try {
       final user = _authController.userAuth.value;
-      if (user == null) {
-        return;
-      }
+      if (user == null) return;
 
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'invoices_${user.role}_${selectedStatus.value}';
-      final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
-      if (cachedInvoices != null && cachedInvoices.isNotEmpty && page == 1) {
-        invoices.assignAll(cachedInvoices);
-        isLoading.value = false; // Permettre l'affichage immédiat
-      } else {
+      final statusParam = selectedStatus.value != 'all' ? selectedStatus.value : null;
+      final commercialIdParam = (user.role == 1 || user.role == 6) ? null : user.id;
+
+      if (page == 1) {
+        final hiveList = InvoiceService.getCachedFactures(statusParam, commercialIdParam);
+        if (hiveList.isNotEmpty) {
+          invoices.assignAll(hiveList);
+          isLoading.value = false;
+          Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
+          return;
+        }
+        final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
+        if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
+          invoices.assignAll(cachedInvoices);
+          isLoading.value = false;
+          Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
+          return;
+        }
+        invoices.value = [];
         isLoading.value = true;
+      } else if (page > 1) {
+        isLoadingMore.value = true;
       }
 
       try {
@@ -210,19 +226,18 @@ class InvoiceController extends GetxController {
             );
           }
         } catch (fallbackError) {
-          // Si le fallback échoue aussi, vérifier le cache
-          if (cachedInvoices == null || cachedInvoices.isEmpty || page > 1) {
-            if (invoices.isEmpty) {
-              final cacheKey = 'invoices_all';
-              final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(
-                cacheKey,
-              );
-              if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
-                invoices.value = cachedInvoices;
-                return; // Ne pas afficher d'erreur si on a du cache
-              }
+          if (page > 1 || invoices.isEmpty) {
+            final hiveList = InvoiceService.getCachedFactures();
+            if (hiveList.isNotEmpty) {
+              invoices.assignAll(hiveList);
+              return;
             }
-            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
+            final fallbackCache = CacheHelper.get<List<InvoiceModel>>('invoices_all');
+            if (fallbackCache != null && fallbackCache.isNotEmpty) {
+              invoices.value = fallbackCache;
+              return;
+            }
+            rethrow;
           }
         }
       }
@@ -255,6 +270,51 @@ class InvoiceController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les factures depuis l'API (page 1) et met à jour la liste/cache si le filtre est inchangé.
+  Future<void> _refreshInvoicesFromApi(
+    String cacheKey,
+    String? statusParam,
+    int? commercialIdParam,
+  ) async {
+    try {
+      final user = _authController.userAuth.value;
+      if (user == null) return;
+      final currentStatus = selectedStatus.value != 'all' ? selectedStatus.value : null;
+      final currentCommercialId = (user.role == 1 || user.role == 6) ? null : user.id;
+      if (currentStatus != statusParam || currentCommercialId != commercialIdParam) return;
+
+      final paginatedResponse = await _invoiceService.getInvoicesPaginated(
+        startDate: startDate.value,
+        endDate: endDate.value,
+        status: statusParam,
+        commercialId: commercialIdParam,
+        page: 1,
+        perPage: perPage.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+      );
+      final stillSameStatus = (selectedStatus.value != 'all' ? selectedStatus.value : null) == statusParam;
+      final stillSameCommercial = (user.role == 1 || user.role == 6) ? commercialIdParam == null : commercialIdParam == user.id;
+      if (!stillSameStatus || !stillSameCommercial) return;
+
+      invoices.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      CacheHelper.set(cacheKey, paginatedResponse.data);
+      loadInvoiceStats().catchError((_) {});
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll (appelé par la vue).
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
@@ -309,6 +369,7 @@ class InvoiceController extends GetxController {
 
   // Créer une facture
   Future<bool> createInvoice() async {
+    if (isCreating.value) return false;
     bool successReturned = false;
     try {
       isCreating.value = true;
@@ -689,6 +750,46 @@ class InvoiceController extends GetxController {
       );
       isLoading.value = true;
 
+      // Mise à jour optimiste : retirer des pending, mettre à jour statut dans la liste principale
+      final pendingIndex = pendingInvoices.indexWhere((i) => i.id == invoiceId);
+      InvoiceModel? originalInvoice;
+      if (pendingIndex != -1) {
+        originalInvoice = pendingInvoices[pendingIndex];
+        pendingInvoices.removeAt(pendingIndex);
+      }
+      final mainIndex = invoices.indexWhere((i) => i.id == invoiceId);
+      if (mainIndex != -1) {
+        final original = invoices[mainIndex];
+        originalInvoice ??= original;
+        final updatedInvoice = InvoiceModel(
+          id: original.id,
+          invoiceNumber: original.invoiceNumber,
+          clientId: original.clientId,
+          clientName: original.clientName,
+          clientEmail: original.clientEmail,
+          clientAddress: original.clientAddress,
+          commercialId: original.commercialId,
+          commercialName: original.commercialName,
+          invoiceDate: original.invoiceDate,
+          dueDate: original.dueDate,
+          subtotal: original.subtotal,
+          taxRate: original.taxRate,
+          taxAmount: original.taxAmount,
+          totalAmount: original.totalAmount,
+          currency: original.currency,
+          status: 'rejetee',
+          items: original.items,
+          notes: original.notes,
+          terms: original.terms,
+          paymentInfo: original.paymentInfo,
+          createdAt: original.createdAt,
+          updatedAt: DateTime.now(),
+          sentAt: original.sentAt,
+          paidAt: original.paidAt,
+        );
+        invoices[mainIndex] = updatedInvoice;
+      }
+
       final result = await _invoiceService.rejectInvoice(
         invoiceId: invoiceId,
         reason: reason,
@@ -702,8 +803,7 @@ class InvoiceController extends GetxController {
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
-        // Notifier de manière asynchrone (non-bloquant)
-        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId);
+        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId) ?? originalInvoice;
         if (invoice != null) {
           NotificationHelper.notifyRejection(
             entityType: 'facture',
@@ -720,8 +820,9 @@ class InvoiceController extends GetxController {
             entity: invoice,
           );
         }
-        await loadInvoices();
-        await loadPendingInvoices();
+        // Sync en arrière-plan sans bloquer l'UI
+        loadInvoices().catchError((_) {});
+        loadPendingInvoices().catchError((_) {});
       } else {
         Get.snackbar(
           'Erreur',
@@ -907,20 +1008,32 @@ class InvoiceController extends GetxController {
     return user?.role == 3; // Comptable
   }
 
-  // Chargement des clients validés
+  // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
+    isLoadingClients.value = true;
+    final cached = ClientService.getCachedClients(1);
+    if (cached.isNotEmpty) {
+      availableClients.assignAll(cached);
+      isLoadingClients.value = false;
+    } else {
+      availableClients.value = [];
+    }
     try {
-      isLoadingClients.value = true;
-      final clients = await _clientService.getClients(
-        status: 1,
-      ); // Status 1 = Validé
-      availableClients.value = clients;
+      final clients = await _clientService.getClients(status: 1);
+      availableClients.assignAll(clients);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les clients validés',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (availableClients.isEmpty) {
+        final fallback = ClientService.getCachedClients(1);
+        if (fallback.isNotEmpty) {
+          availableClients.assignAll(fallback);
+        } else {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les clients validés',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
     } finally {
       isLoadingClients.value = false;
     }

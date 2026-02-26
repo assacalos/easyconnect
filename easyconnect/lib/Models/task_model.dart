@@ -95,6 +95,26 @@ class TaskModel {
     return null;
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'titre': titre,
+      'description': description,
+      'assigned_to': assignedTo,
+      'assigned_by': assignedBy,
+      'status': status,
+      'status_libelle': statusLibelle,
+      'priority': priority,
+      'priority_libelle': priorityLibelle,
+      'due_date': dueDate,
+      'completed_at': completedAt,
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+      'assigned_to_user': assignedToUser,
+      'assigned_by_user': assignedByUser,
+    };
+  }
+
   String get assigneeName {
     if (assignedToUser == null) return 'Utilisateur #$assignedTo';
     final prenom = assignedToUser!['prenom'] ?? '';

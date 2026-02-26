@@ -1,11 +1,11 @@
 import 'package:easyconnect/Views/Components/data_chart.dart';
+import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/Views/Components/interactive_chart.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
@@ -117,7 +117,7 @@ abstract class BaseDashboard<T extends BaseDashboardController>
         const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Accueil'),
         const BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Rechercher'),
         BottomNavigationBarItem(
-          icon: _buildNotificationIconWithBadge(),
+          icon: const NotificationBadgeIcon(),
           label: 'Notifications',
         ),
         // BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chat'),
@@ -158,33 +158,6 @@ abstract class BaseDashboard<T extends BaseDashboardController>
   }
 
   Widget? buildFloatingActionButton() => null;
-
-  /// Construire l'icône de notifications avec badge
-  Widget _buildNotificationIconWithBadge() {
-    try {
-      final notificationController = Get.find<NotificationController>();
-      return Obx(() {
-        final count = notificationController.unreadCount.value;
-        if (count > 0) {
-          return Badge(
-            label: Text(
-              count > 99 ? '99+' : '$count',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            child: const Icon(Icons.notifications),
-          );
-        }
-        return const Icon(Icons.notifications);
-      });
-    } catch (e) {
-      // Si le controller n'est pas disponible, retourner l'icône sans badge
-      return const Icon(Icons.notifications);
-    }
-  }
 
   Widget buildDrawer(BuildContext context) {
     return Drawer(

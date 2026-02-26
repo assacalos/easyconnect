@@ -450,9 +450,7 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
                         ? null
                         : commentsController.text.trim(),
               );
-              // Recharger la liste après validation pour voir le changement
-              await Future.delayed(const Duration(milliseconds: 800));
-              _loadSuppliers();
+              _loadSuppliers().catchError((_) {});
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,

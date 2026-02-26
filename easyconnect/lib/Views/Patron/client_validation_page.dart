@@ -44,6 +44,9 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   }
 
   void _onTabChanged() {
+    // Refaire l’affichage pour appliquer le filtre selon l’onglet
+    if (mounted) setState(() {});
+
     // Ne pas recharger si on est déjà en train de charger
     if (_isLoading) return;
 
@@ -195,11 +198,15 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   }
 
   Widget _buildClientList() {
-    // Filtrer les clients selon la recherche
+    // Filtrer par onglet (0=en attente, 1=validé, 2=rejeté) puis par recherche
+    final statusForTab = _getStatusForTab(_tabController.index);
+    var list = statusForTab == null
+        ? controller.clients
+        : controller.clients.where((c) => c.status == statusForTab).toList();
     final filteredClients =
         _searchQuery.isEmpty
-            ? controller.clients
-            : controller.clients.where((client) {
+            ? list
+            : list.where((client) {
               final queryLower = _searchQuery.toLowerCase();
               final nomEntreprise = (client.nomEntreprise ?? '').toLowerCase();
               final nom = (client.nom ?? '').toLowerCase();
@@ -504,17 +511,14 @@ class _ClientValidationPageState extends State<ClientValidationPage>
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () async {
+        final id = client.id;
+        if (id == null) return;
         Get.back();
         try {
-          await controller.approveClient(client.id!);
-          // Recharger les données après validation (de manière asynchrone pour ne pas bloquer)
-          _loadAllClients().catchError((e) {
-            print(
-              '⚠️ [CLIENT_VALIDATION] Erreur lors du rechargement après validation: $e',
-            );
-          });
+          await controller.approveClient(id);
+          _loadAllClients().catchError((_) {});
         } catch (e) {
-          print('❌ [CLIENT_VALIDATION] Erreur lors de la validation: $e');
+          rethrow;
         }
       },
     );
@@ -542,7 +546,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () async {
-        if (commentController.text.isEmpty) {
+        if (commentController.text.trim().isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -550,17 +554,14 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           );
           return;
         }
+        final id = client.id;
+        if (id == null) return;
         Get.back();
         try {
-          await controller.rejectClient(client.id!, commentController.text);
-          // Recharger les données après rejet (de manière asynchrone pour ne pas bloquer)
-          _loadAllClients().catchError((e) {
-            print(
-              '⚠️ [CLIENT_VALIDATION] Erreur lors du rechargement après rejet: $e',
-            );
-          });
+          await controller.rejectClient(id, commentController.text.trim());
+          _loadAllClients().catchError((_) {});
         } catch (e) {
-          print('❌ [CLIENT_VALIDATION] Erreur lors du rejet: $e');
+          rethrow;
         }
       },
     );

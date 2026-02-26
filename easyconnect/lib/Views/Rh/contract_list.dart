@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/Views/Rh/contract_form.dart';
 import 'package:easyconnect/Views/Rh/contract_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -13,13 +14,16 @@ class ContractList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ContractController controller = Get.put(ContractController());
+    final ContractController controller = Get.find<ContractController>();
 
-    // Charger les contrats au chargement de la page
+    // Chargement différé au premier affichage (évite la charge au binding)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // S'assurer de charger tous les contrats (sans filtre de statut)
       controller.selectedStatus.value = 'all';
       controller.loadContracts();
+      controller.loadEmployees();
+      controller.loadDepartments();
+      controller.loadContractTemplates();
+      controller.loadContractStats();
     });
 
     return DefaultTabController(
@@ -61,12 +65,16 @@ class ContractList extends StatelessWidget {
                 _buildContractList('cancelled', controller), // Annulés
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite
+            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
             if (controller.canManageContracts.value)
-              UniformAddButton(
-                onPressed: () => Get.to(() => const ContractForm()),
-                label: 'Nouveau Contrat',
-                icon: Icons.description,
+              Positioned(
+                bottom: 80,
+                right: 16,
+                child: UniformAddButton(
+                  onPressed: () => Get.to(() => const ContractForm()),
+                  label: 'Nouveau Contrat',
+                  icon: Icons.description,
+                ),
               ),
           ],
         ),
@@ -86,48 +94,69 @@ class ContractList extends StatelessWidget {
           controller.contracts.where((c) => c.status == status).toList();
 
       if (contractList.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == 'pending'
-                    ? Icons.pending
-                    : status == 'active'
-                    ? Icons.check_circle
-                    : status == 'expired'
-                    ? Icons.event_busy
-                    : status == 'terminated'
-                    ? Icons.block
-                    : Icons.cancel,
-                size: 64,
-                color: Colors.grey.shade400,
+        return RefreshIndicator(
+          onRefresh: () async {
+            controller.selectedStatus.value = 'all';
+            await controller.loadContracts();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      status == 'pending'
+                          ? Icons.pending
+                          : status == 'active'
+                          ? Icons.check_circle
+                          : status == 'expired'
+                          ? Icons.event_busy
+                          : status == 'terminated'
+                          ? Icons.block
+                          : Icons.cancel,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      status == 'pending'
+                          ? 'Aucun contrat en attente'
+                          : status == 'active'
+                          ? 'Aucun contrat actif'
+                          : status == 'expired'
+                          ? 'Aucun contrat expiré'
+                          : status == 'terminated'
+                          ? 'Aucun contrat résilié'
+                          : 'Aucun contrat annulé',
+                      style: const TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                status == 'pending'
-                    ? 'Aucun contrat en attente'
-                    : status == 'active'
-                    ? 'Aucun contrat actif'
-                    : status == 'expired'
-                    ? 'Aucun contrat expiré'
-                    : status == 'terminated'
-                    ? 'Aucun contrat résilié'
-                    : 'Aucun contrat annulé',
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
+            ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: contractList.length,
-        itemBuilder: (context, index) {
-          final contract = contractList[index];
-          return _buildContractCard(contract, controller);
+      return RefreshIndicator(
+        onRefresh: () async {
+          controller.selectedStatus.value = 'all';
+          await controller.loadContracts();
         },
+        child: PaginatedListView(
+          scrollController: controller.scrollController,
+          onLoadMore: controller.loadMore,
+          hasNextPage: controller.hasNextPage.value,
+          isLoadingMore: controller.isLoadingMore.value,
+          itemCount: contractList.length,
+          itemBuilder: (context, index) {
+            final contract = contractList[index];
+            return _buildContractCard(contract, controller);
+          },
+        ),
       );
     });
   }

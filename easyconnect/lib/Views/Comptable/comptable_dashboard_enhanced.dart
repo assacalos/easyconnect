@@ -9,6 +9,7 @@ import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/dashboard_filters.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class ComptableDashboardEnhanced
     extends BaseDashboard<ComptableDashboardController> {
@@ -413,24 +414,32 @@ class ComptableDashboardEnhanced
                     ),
                     child: Icon(icon, size: 22, color: color),
                   ),
-                  Obx(() {
-                    final c = count();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Obx(() {
+                      final c = count();
+                      final loading = controller.isLoading.value;
+                      final textWidget = Text(
                         c.toString(),
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: badgeColor,
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                      return loading
+                          ? Shimmer(
+                              baseColor: badgeColor.withOpacity(0.25),
+                              highlightColor: badgeColor.withOpacity(0.5),
+                              child: textWidget,
+                            )
+                          : textWidget;
+                    }),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),

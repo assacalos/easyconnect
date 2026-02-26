@@ -7,6 +7,8 @@ import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class SupplierService extends GetxService {
   static SupplierService get to => Get.find();
@@ -75,6 +77,7 @@ class SupplierService extends GetxService {
           try {
             final suppliers =
                 data.map((json) => Supplier.fromJson(json)).toList();
+            _saveFournisseursToHive(suppliers);
             return suppliers;
           } catch (e) {
             return [];
@@ -135,15 +138,21 @@ class SupplierService extends GetxService {
 
     final token = storage.read('token');
     final supplierData = supplier.toJson();
-    final response = await http.post(
-      Uri.parse('$baseUrl/fournisseurs-create'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode(supplierData),
-    );
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/fournisseurs-create'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode(supplierData),
+        )
+        .timeout(
+          AppConfig.defaultTimeout,
+          onTimeout: () =>
+              throw Exception('Timeout: le serveur ne répond pas'),
+        );
     if (response.statusCode == 201 || response.statusCode == 200) {
       final responseData = json.decode(response.body);
       return Supplier.fromJson(responseData['data'] ?? responseData);
@@ -159,15 +168,21 @@ class SupplierService extends GetxService {
   // Mettre à jour un fournisseur
   Future<Supplier> updateSupplier(Supplier supplier) async {
     final token = storage.read('token');
-    final response = await http.put(
-      Uri.parse('$baseUrl/fournisseurs-update/${supplier.id}'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: json.encode(supplier.toJson()),
-    );
+    final response = await http
+        .put(
+          Uri.parse('$baseUrl/fournisseurs-update/${supplier.id}'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: json.encode(supplier.toJson()),
+        )
+        .timeout(
+          AppConfig.defaultTimeout,
+          onTimeout: () =>
+              throw Exception('Timeout: le serveur ne répond pas'),
+        );
 
     if (response.statusCode == 200) {
       final responseData = json.decode(response.body);
@@ -480,5 +495,24 @@ class SupplierService extends GetxService {
     );
 
     return response.statusCode == 200;
+  }
+
+  static void _saveFournisseursToHive(List<Supplier> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyFournisseurs,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des fournisseurs pour affichage instantané.
+  static List<Supplier> getCachedFournisseurs() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyFournisseurs);
+      return raw.map((e) => Supplier.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
   }
 }

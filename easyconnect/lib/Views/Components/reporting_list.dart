@@ -1,6 +1,7 @@
 import 'package:easyconnect/Views/Components/reporting_form.dart';
 import 'package:easyconnect/Views/Components/reporting_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
@@ -20,26 +21,22 @@ class _ReportingListState extends State<ReportingList> {
   @override
   void initState() {
     super.initState();
-    print('🚀 [REPORTING_LIST] ===== initState APPELÉ =====');
-    // Charger les reportings au démarrage de la page
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final reportingController = Get.find<ReportingController>();
-      print('🚀 [REPORTING_LIST] Appel de loadReports depuis initState...');
-      reportingController.loadReports();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        try {
+          Get.find<ReportingController>().loadReports(forceRefresh: false);
+        } catch (_) {}
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    print('🚀 [REPORTING_LIST] ===== build APPELÉ =====');
     final reportingController = Get.find<ReportingController>();
     final authController = Get.find<AuthController>();
     final userRole = authController.userAuth.value?.role;
     final userId = authController.userAuth.value?.id;
-    
-    print('🔍 [REPORTING_LIST] userRole: $userRole, userId: $userId');
-    print('🔍 [REPORTING_LIST] isLoading: ${reportingController.isLoading.value}');
-    print('🔍 [REPORTING_LIST] Nombre de reportings dans controller: ${reportingController.reports.length}');
 
     return Scaffold(
       appBar: AppBar(
@@ -57,25 +54,11 @@ class _ReportingListState extends State<ReportingList> {
       body: Stack(
         children: [
           Obx(() {
-            print('🔄 [REPORTING_LIST] ===== Obx REBUILD =====');
-            print('🔄 [REPORTING_LIST] isLoading: ${reportingController.isLoading.value}');
-            print('🔄 [REPORTING_LIST] Nombre de reportings: ${reportingController.reports.length}');
-            
-            if (reportingController.reports.isNotEmpty) {
-              print('🔍 [REPORTING_LIST] Détails des reportings:');
-              for (var i = 0; i < reportingController.reports.length; i++) {
-                final report = reportingController.reports[i];
-                print('🔍 [REPORTING_LIST] Reporting $i: id=${report.id}, userId=${report.userId}, userRole=${report.userRole}, status=${report.status}');
-              }
-            }
-            
             if (reportingController.isLoading.value) {
-              print('⏳ [REPORTING_LIST] Affichage du skeleton loader');
               return const SkeletonSearchResults(itemCount: 6);
             }
 
             if (reportingController.reports.isEmpty) {
-              print('⚠️ [REPORTING_LIST] La liste de reportings est vide');
               return const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -96,35 +79,14 @@ class _ReportingListState extends State<ReportingList> {
               );
             }
 
-            // Filtrer une dernière fois côté client pour garantir la sécurité
-            // (sauf pour ADMIN et PATRON qui peuvent voir tous les reportings)
-            print('🔍 [REPORTING_LIST] AVANT filtrage: ${reportingController.reports.length} reportings');
-            print('🔍 [REPORTING_LIST] userRole=$userRole, userId=$userId');
-            print('🔍 [REPORTING_LIST] Roles.ADMIN=${Roles.ADMIN}, Roles.PATRON=${Roles.PATRON}');
-            print('🔍 [REPORTING_LIST] Est ADMIN ou PATRON: ${userRole == Roles.ADMIN || userRole == Roles.PATRON}');
-            
+            // Filtrer côté client pour garantir la sécurité (sauf ADMIN et PATRON qui voient tout)
             final filteredReports = (userRole == Roles.ADMIN || userRole == Roles.PATRON)
                 ? reportingController.reports
                 : reportingController.reports
-                    .where((report) {
-                      final matches = report.userId == userId;
-                      print('🔍 [REPORTING_LIST] Filtrage - report.userId=${report.userId}, userId=$userId, matches=$matches, userRole=${report.userRole}');
-                      return matches;
-                    })
+                    .where((report) => report.userId == userId)
                     .toList();
 
-            print('🔍 [REPORTING_LIST] APRÈS filtrage: ${filteredReports.length} reportings');
-            
-            if (filteredReports.isNotEmpty) {
-              print('✅ [REPORTING_LIST] Reportings qui passent le filtre:');
-              for (var i = 0; i < filteredReports.length; i++) {
-                final report = filteredReports[i];
-                print('✅ [REPORTING_LIST] Reporting $i: id=${report.id}, userId=${report.userId}, userRole=${report.userRole}');
-              }
-            }
-
             if (filteredReports.isEmpty) {
-              print('⚠️ [REPORTING_LIST] Aucun reporting ne passe le filtre');
               return const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -145,27 +107,33 @@ class _ReportingListState extends State<ReportingList> {
               );
             }
 
-            print('✅ [REPORTING_LIST] Affichage de ${filteredReports.length} reportings dans ListView');
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
+            return PaginatedListView(
+              scrollController: reportingController.scrollController,
+              onLoadMore: reportingController.loadMore,
+              hasNextPage: reportingController.hasNextPage.value,
+              isLoadingMore: reportingController.isLoadingMore.value,
               itemCount: filteredReports.length,
               itemBuilder: (context, index) {
                 final report = filteredReports[index];
-                print('📝 [REPORTING_LIST] Construction de la carte pour le reporting $index: id=${report.id}, userRole=${report.userRole}');
                 return _buildReportCard(
                   context,
                   report,
                   reportingController,
                   userRole,
+                  userId,
                 );
               },
             );
           }),
-          // Bouton d'ajout uniforme en bas à droite
-          UniformAddButton(
-            onPressed: () => Get.to(() => const ReportingForm()),
-            label: 'Nouveau Rapport',
-            icon: Icons.assessment,
+          // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: UniformAddButton(
+              onPressed: () => Get.to(() => const ReportingForm()),
+              label: 'Nouveau Rapport',
+              icon: Icons.assessment,
+            ),
           ),
         ],
       ),
@@ -177,6 +145,7 @@ class _ReportingListState extends State<ReportingList> {
     ReportingModel report,
     ReportingController controller,
     int? userRole,
+    int? userId,
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -262,7 +231,22 @@ class _ReportingListState extends State<ReportingList> {
                   ),
                   const SizedBox(width: 8),
                 ],
-
+                // Modifier : autorisé pour soumis (submitted) ; backend n'autorise que submitted
+                if (report.status == 'submitted' &&
+                    (report.userId == userId || userRole == Roles.ADMIN || userRole == Roles.PATRON)) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Get.to(() => ReportingForm(reporting: report)),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Modifier'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepPurple,
+                        side: const BorderSide(color: Colors.deepPurple),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed:

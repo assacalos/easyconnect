@@ -122,6 +122,7 @@ class PdfService {
                 (devis['reference'] ?? 'N/A').toString(),
                 titre: devis['titre']?.toString(),
                 compact: true,
+                logoSizeOverride: 140.0,
               ),
               pw.SizedBox(height: 12),
               _buildClientInfo(client, compact: true),
@@ -134,7 +135,7 @@ class PdfService {
               pw.SizedBox(height: 12),
               _buildPaymentConditions(devis, compact: true),
               pw.SizedBox(height: 20),
-              _buildSignature(compact: true),
+              _buildSignature(compact: true, signatureSizeOverride: 210.0),
             ];
           },
           // Footer uniquement sur la dernière page (sans signature)
@@ -378,14 +379,16 @@ class PdfService {
   }
 
   // Construire l'en-tête du document
+  /// [logoSizeOverride] : si fourni, utilise cette taille pour le logo (ex: aligner devis sur bordereau).
   pw.Widget _buildHeader(
     String documentType,
     String reference, {
     String? titre,
     bool compact = false,
+    double? logoSizeOverride,
   }) {
     final padding = compact ? 12.0 : 20.0;
-    final logoSize = compact ? 52.0 : 100.0;
+    final logoSize = logoSizeOverride ?? (compact ? 72.0 : 140.0);
     final titleSpacing = compact ? 6.0 : 10.0;
     final refFontSize = compact ? 14.0 : 18.0;
     final dateFontSize = compact ? 10.0 : 12.0;
@@ -1166,12 +1169,13 @@ class PdfService {
   }
 
   // Construire la signature (séparée du footer)
-  pw.Widget _buildSignature({bool compact = false}) {
+  /// [signatureSizeOverride] : si fourni, utilise cette taille (ex: aligner devis sur bordereau).
+  pw.Widget _buildSignature({bool compact = false, double? signatureSizeOverride}) {
     if (_signatureImage == null) {
       return pw.SizedBox.shrink();
     }
 
-    final size = compact ? 90.0 : 150.0;
+    final size = signatureSizeOverride ?? (compact ? 120.0 : 210.0);
     final topPadding = compact ? 12.0 : 20.0;
     return pw.Container(
       padding: pw.EdgeInsets.only(top: topPadding),

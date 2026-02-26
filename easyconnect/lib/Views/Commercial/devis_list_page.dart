@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/responsive_widgets.dart';
 import 'package:easyconnect/utils/responsive_helper.dart';
@@ -17,15 +18,9 @@ class DevisListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Charger les données au démarrage de la page
+    // Charger les données au démarrage : afficher le cache d'abord puis rafraîchir en arrière-plan (évite erreur et longue attente)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
-      // Forcer le chargement si la liste est vide
-      if (controller.devis.isEmpty) {
-        controller.loadDevis(forceRefresh: true);
-      } else {
-        controller.loadDevis();
-      }
+      controller.loadDevis(forceRefresh: false);
     });
 
     return DefaultTabController(
@@ -34,6 +29,11 @@ class DevisListPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('Devis'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => controller.loadDevis(forceRefresh: true),
+              tooltip: 'Actualiser',
+            ),
             IconButton(
               icon: const Icon(Icons.bug_report),
               onPressed: () => controller.debugDevis(),
@@ -58,11 +58,15 @@ class DevisListPage extends StatelessWidget {
                 _buildDevisList(context, 3), // Rejetés
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite
-            UniformAddButton(
-              onPressed: () => Get.toNamed('/devis/new'),
-              label: 'Nouveau Devis',
-              icon: Icons.description,
+            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
+            Positioned(
+              bottom: 80,
+              right: 16,
+              child: UniformAddButton(
+                onPressed: () => Get.toNamed('/devis/new'),
+                label: 'Nouveau Devis',
+                icon: Icons.description,
+              ),
             ),
           ],
         ),
@@ -77,6 +81,7 @@ class DevisListPage extends StatelessWidget {
     final filterClientId = clientId ?? args?['clientId'] as int?;
 
     return Obx(() {
+      // Skeleton dès que loading (y compris au changement d'onglet : liste vidée + isLoading = true)
       if (controller.isLoading.value) {
         return const SkeletonSearchResults(itemCount: 6);
       }
@@ -137,7 +142,7 @@ class DevisListPage extends StatelessWidget {
     });
   }
 
-  Widget _buildDevisCard(BuildContext context, devis, int status) {
+  Widget _buildDevisCard(BuildContext context, Devis devis, int status) {
     return Card(
       margin: EdgeInsets.symmetric(
         vertical: ResponsiveHelper.getSpacing(
@@ -162,16 +167,46 @@ class DevisListPage extends StatelessWidget {
             ),
           ),
         ),
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: ResponsiveText(
-                devis.reference,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+            // Nom de l'entreprise en grand pour reconnaissance rapide
+            ResponsiveText(
+              devis.clientNomEntreprise?.isNotEmpty == true
+                  ? devis.clientNomEntreprise!
+                  : 'Client #${devis.clientId}',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: ResponsiveHelper.getFontSize(
+                  context,
+                  mobile: 17.0,
+                  tablet: 18.0,
+                  desktop: 20.0,
+                ),
+                color: Colors.grey.shade900,
               ),
             ),
-            ResponsiveSpacing(width: 8),
-            Container(
+            ResponsiveSpacing(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: ResponsiveText(
+                    devis.reference,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: ResponsiveHelper.getFontSize(
+                        context,
+                        mobile: 13.0,
+                        tablet: 14.0,
+                        desktop: 15.0,
+                      ),
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                ResponsiveSpacing(width: 8),
+                Container(
               padding: EdgeInsets.symmetric(
                 horizontal: ResponsiveHelper.getSpacing(
                   context,
@@ -204,6 +239,8 @@ class DevisListPage extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
+            ),
+              ],
             ),
           ],
         ),
@@ -626,7 +663,8 @@ class DevisListPage extends StatelessWidget {
                             label: const Text('Détails'),
                           ),
                         ),
-                        if (status == 2 || status == 3) ...[
+                        // Modifier : autorisé en attente (1), validé (2) et rejeté (3)
+                        if (status == 1 || status == 2 || status == 3) ...[
                           Expanded(
                             child: TextButton.icon(
                               onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),

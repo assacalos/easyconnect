@@ -376,6 +376,8 @@ class _BonDeCommandeFournisseurListPageState
   }
 
   void _showDeleteConfirmation(BonDeCommande bonDeCommande) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous supprimer ce bon de commande ?',
@@ -384,12 +386,14 @@ class _BonDeCommandeFournisseurListPageState
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.deleteBonDeCommande(bonDeCommande.id!);
+        controller.deleteBonDeCommande(id);
       },
     );
   }
 
   void _showApproveConfirmation(BonDeCommande bonDeCommande) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous valider ce bon de commande ?',
@@ -398,12 +402,14 @@ class _BonDeCommandeFournisseurListPageState
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.approveBonDeCommande(bonDeCommande.id!);
+        controller.approveBonDeCommande(id);
       },
     );
   }
 
   void _showRejectDialog(BonDeCommande bonDeCommande) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
     final commentController = TextEditingController();
 
     Get.defaultDialog(
@@ -425,7 +431,7 @@ class _BonDeCommandeFournisseurListPageState
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () {
-        if (commentController.text.isEmpty) {
+        if (commentController.text.trim().isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -434,10 +440,7 @@ class _BonDeCommandeFournisseurListPageState
           return;
         }
         Get.back();
-        controller.rejectBonDeCommande(
-          bonDeCommande.id!,
-          commentController.text,
-        );
+        controller.rejectBonDeCommande(id, commentController.text.trim());
       },
     );
   }

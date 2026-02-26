@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Composant de bouton d'ajout uniforme positionné en bas à droite
+/// Composant de bouton d'ajout uniforme pour Scaffold.floatingActionButton.
+/// Ne pas utiliser Positioned : le Scaffold positionne déjà le FAB.
 class UniformAddButton extends StatelessWidget {
   final VoidCallback onPressed;
   final String label;
@@ -19,17 +20,13 @@ class UniformAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      bottom: 80,
-      right: 16,
-      child: FloatingActionButton.extended(
-        onPressed: onPressed,
-        backgroundColor: backgroundColor ?? Colors.green,
-        foregroundColor: foregroundColor ?? Colors.white,
-        icon: Icon(icon),
-        label: Text(label),
-        elevation: 4,
-      ),
+    return FloatingActionButton.extended(
+      onPressed: onPressed,
+      backgroundColor: backgroundColor ?? Colors.green,
+      foregroundColor: foregroundColor ?? Colors.white,
+      icon: Icon(icon),
+      label: Text(label),
+      elevation: 4,
     );
   }
 }

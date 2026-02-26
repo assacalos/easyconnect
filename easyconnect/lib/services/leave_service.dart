@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class LeaveService extends GetxService {
   static LeaveService get to => Get.find();
@@ -25,19 +26,25 @@ class LeaveService extends GetxService {
     List<String>? attachmentPaths,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/leave-requests'),
-        headers: ApiService.headers(),
-        body: jsonEncode({
-          'employee_id': employeeId,
-          'leave_type': leaveType,
-          'start_date': startDate.toIso8601String(),
-          'end_date': endDate.toIso8601String(),
-          'reason': reason,
-          'comments': comments,
-          'attachment_paths': attachmentPaths ?? [],
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/leave-requests'),
+            headers: ApiService.headers(),
+            body: jsonEncode({
+              'employee_id': employeeId,
+              'leave_type': leaveType,
+              'start_date': startDate.toIso8601String(),
+              'end_date': endDate.toIso8601String(),
+              'reason': reason,
+              'comments': comments,
+              'attachment_paths': attachmentPaths ?? [],
+            }),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 201) {
         return jsonDecode(response.body);
@@ -76,10 +83,13 @@ class LeaveService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(Uri.parse(url), headers: ApiService.headers())
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -150,10 +160,14 @@ class LeaveService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<LeaveRequest>(
+        final result = PaginationHelper.parseResponse<LeaveRequest>(
           json: data,
           fromJsonT: (json) => LeaveRequest.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveLeavesToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des demandes de congé: ${response.statusCode}',
@@ -200,16 +214,21 @@ class LeaveService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(Uri.parse(url), headers: ApiService.headers())
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['data'] as List)
+        final list = (data['data'] as List)
             .map((json) => LeaveRequest.fromJson(json))
             .toList();
+        _saveLeavesToHive(list);
+        return list;
       } else {
         throw Exception(
           'Erreur lors de la récupération des demandes: ${response.statusCode}',
@@ -223,10 +242,16 @@ class LeaveService extends GetxService {
   // Récupérer une demande de congé par ID
   Future<LeaveRequest> getLeaveRequest(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/leave-requests/$id'),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/leave-requests/$id'),
+            headers: ApiService.headers(),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -406,10 +431,13 @@ class LeaveService extends GetxService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
-        Uri.parse(url),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(Uri.parse(url), headers: ApiService.headers())
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -427,10 +455,16 @@ class LeaveService extends GetxService {
   // Récupérer les types de congés disponibles
   Future<List<LeaveType>> getLeaveTypes() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/leave-types'),
-        headers: ApiService.headers(),
-      );
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/leave-types'),
+            headers: ApiService.headers(),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -504,6 +538,25 @@ class LeaveService extends GetxService {
       }
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static void _saveLeavesToHive(List<LeaveRequest> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyLeaves,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des demandes de congé pour affichage instantané.
+  static List<LeaveRequest> getCachedLeaves() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyLeaves);
+      return raw.map((e) => LeaveRequest.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

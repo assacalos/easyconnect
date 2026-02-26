@@ -35,28 +35,27 @@ class _ClientSelectionDialogState extends State<ClientSelectionDialog> {
   }
 
   Future<void> _loadClients() async {
-    try {
-      _isLoading.value = true;
-
-      // Réinitialiser la liste pour éviter les problèmes de colonnes
+    _isLoading.value = true;
+    // Afficher tout de suite les clients validés en cache (évite liste vide)
+    final cached = ClientService.getCachedClients(1);
+    if (cached.isNotEmpty) {
+      _clients.value = List.from(cached);
+      _isLoading.value = false;
+    } else {
       _clients.value = [];
-
-      final clients = await _clientService.getClients(
-        status: 1,
-      ); // Status 1 = Validé
-
+    }
+    try {
+      final clients = await _clientService.getClients(status: 1);
       _clients.value = clients;
-
-      // Vérifier si des clients ont été chargés
-      if (clients.isEmpty) {
-        // Ne pas afficher de snackbar automatiquement pour éviter le spam
-        // L'utilisateur verra le message dans le dialog
-      }
     } catch (e) {
-      // Ne pas afficher de snackbar dans le dialog pour éviter les messages d'erreur répétés
-      // L'erreur sera affichée dans le dialog lui-même
-      print('⚠️ [CLIENT_SELECTION_DIALOG] Erreur lors du chargement: $e');
-      _clients.value = []; // S'assurer que la liste est vide en cas d'erreur
+      if (_clients.isEmpty) {
+        final fallback = ClientService.getCachedClients(1);
+        if (fallback.isNotEmpty) {
+          _clients.value = List.from(fallback);
+        } else {
+          _clients.value = [];
+        }
+      }
     } finally {
       _isLoading.value = false;
     }

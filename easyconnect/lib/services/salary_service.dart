@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class SalaryService {
   final storage = GetStorage();
@@ -27,7 +28,7 @@ class SalaryService {
               'Authorization': 'Bearer $token',
             },
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(AppConfig.extraLongTimeout);
 
       return response.statusCode == 200;
     } catch (e) {
@@ -94,10 +95,14 @@ class SalaryService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Salary>(
+        final result = PaginationHelper.parseResponse<Salary>(
           json: data,
           fromJsonT: (json) => Salary.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveSalairesToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des salaires: ${response.statusCode}',
@@ -180,9 +185,9 @@ class SalaryService {
           }
 
           try {
-            return data.map((json) {
-              return Salary.fromJson(json);
-            }).toList();
+            final list = data.map((json) => Salary.fromJson(json)).toList();
+            _saveSalairesToHive(list);
+            return list;
           } catch (e) {
             throw Exception('Erreur de format des données: $e');
           }
@@ -225,9 +230,9 @@ class SalaryService {
           }
 
           try {
-            return data.map((json) {
-              return Salary.fromJson(json);
-            }).toList();
+            final list = data.map((json) => Salary.fromJson(json)).toList();
+            _saveSalairesToHive(list);
+            return list;
           } catch (e) {
             rethrow;
           }
@@ -914,6 +919,25 @@ class SalaryService {
       return response.statusCode == 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  static void _saveSalairesToHive(List<Salary> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keySalaires,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des salaires pour affichage instantané.
+  static List<Salary> getCachedSalaires() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keySalaires);
+      return raw.map((e) => Salary.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

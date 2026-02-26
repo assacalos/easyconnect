@@ -17,6 +17,7 @@ class BonCommande {
 
   String get statusText {
     switch (status) {
+      case 0:
       case 1:
         return 'En attente';
       case 2:

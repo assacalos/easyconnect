@@ -457,11 +457,12 @@ class EquipmentForm extends StatelessWidget {
               const SizedBox(height: 32),
 
               // Boutons d'action uniformes
-              UniformFormButtons(
+              Obx(() => UniformFormButtons(
                 onCancel: () => Get.back(),
                 onSubmit: () => _saveEquipment(controller),
                 submitText: 'Soumettre',
-              ),
+                isLoading: controller.isLoading.value,
+              )),
             ],
           ),
         ),

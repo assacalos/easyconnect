@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class InvoiceService extends GetxService {
   static InvoiceService get to => Get.find();
@@ -69,11 +70,17 @@ class InvoiceService extends GetxService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
-              Uri.parse(url),
-              headers: ApiService.headers(),
-              body: jsonEncode(requestData),
-            ),
+            () => http
+                .post(
+                  Uri.parse(url),
+                  headers: ApiService.headers(),
+                  body: jsonEncode(requestData),
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout: () =>
+                      throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -291,7 +298,7 @@ class InvoiceService extends GetxService {
     }
   }
 
-  /// Récupérer les factures avec pagination côté serveur
+  /// Point d'entrée unique pour la lecture : factures avec pagination.
   Future<PaginationResponse<InvoiceModel>> getInvoicesPaginated({
     DateTime? startDate,
     DateTime? endDate,
@@ -303,52 +310,45 @@ class InvoiceService extends GetxService {
     String? search,
   }) async {
     try {
-      String url = '${AppConfig.baseUrl}/factures';
-      List<String> params = [];
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
+      if (startDate != null) queryParams['start_date'] = startDate.toIso8601String();
+      if (endDate != null) queryParams['end_date'] = endDate.toIso8601String();
+      if (status != null) queryParams['status'] = status;
+      if (commercialId != null) queryParams['commercial_id'] = commercialId.toString();
+      if (clientId != null) queryParams['client_id'] = clientId.toString();
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (status != null) {
-        params.add('status=$status');
-      }
-      if (commercialId != null) {
-        params.add('commercial_id=$commercialId');
-      }
-      if (clientId != null) {
-        params.add('client_id=$clientId');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
+      final uri = Uri.parse('${AppConfig.baseUrl}/factures-list').replace(
+        queryParameters: queryParams,
+      );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'INVOICE_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => http.get(uri, headers: ApiService.headers()),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
-      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'INVOICE_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<InvoiceModel>(
+        final result = PaginationHelper.parseResponseSafe<InvoiceModel>(
           json: data,
-          fromJsonT: (json) => InvoiceModel.fromJson(json),
+          fromJsonT: (json) {
+            try {
+              return InvoiceModel.fromJson(json);
+            } catch (_) {
+              return null;
+            }
+          },
         );
+        if (page == 1) _saveFacturesToHive(result.data, status, commercialId);
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des factures: ${response.statusCode}',
@@ -363,7 +363,7 @@ class InvoiceService extends GetxService {
     }
   }
 
-  // Récupérer toutes les factures (pour le patron)
+  /// Récupère la première page (délégation vers getInvoicesPaginated pour compatibilité).
   Future<List<InvoiceModel>> getAllInvoices({
     DateTime? startDate,
     DateTime? endDate,
@@ -371,106 +371,17 @@ class InvoiceService extends GetxService {
     int? commercialId,
     int? clientId,
   }) async {
-    try {
-      // OPTIMISATION : Vérifier le cache d'abord
-      final cacheKey =
-          'invoices_${startDate?.toIso8601String() ?? 'all'}_${endDate?.toIso8601String() ?? 'all'}_${status ?? 'all'}_${commercialId ?? 'all'}_${clientId ?? 'all'}';
-      final cached = CacheHelper.get<List<InvoiceModel>>(cacheKey);
-      if (cached != null) {
-        AppLogger.debug('Using cached invoices', tag: 'INVOICE_SERVICE');
-        return cached;
-      }
-
-      String url = '${AppConfig.baseUrl}/factures-list';
-      List<String> params = [];
-
-      if (startDate != null) {
-        params.add('start_date=${startDate.toIso8601String()}');
-      }
-      if (endDate != null) {
-        params.add('end_date=${endDate.toIso8601String()}');
-      }
-      if (status != null) {
-        params.add('status=$status');
-      }
-      if (commercialId != null) {
-        params.add('commercial_id=$commercialId');
-      }
-      if (clientId != null) {
-        params.add('client_id=$clientId');
-      }
-
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
-
-      final response = await RetryHelper.retryNetwork(
-        operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
-        maxRetries: AppConfig.defaultMaxRetries,
-      );
-
-      AppLogger.httpResponse(response.statusCode, url, tag: 'INVOICE_SERVICE');
-
-      // Gérer les erreurs d'authentification
-      await AuthErrorHandler.handleHttpResponse(response);
-
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-        List<dynamic> invoiceList = [];
-
-        // Gérer différents formats de réponse
-        if (responseData is List) {
-          invoiceList = responseData;
-        } else if (responseData['data'] != null) {
-          if (responseData['data'] is List) {
-            invoiceList = responseData['data'];
-          } else if (responseData['data']['data'] != null &&
-              responseData['data']['data'] is List) {
-            invoiceList = responseData['data']['data'];
-          }
-        } else if (responseData['factures'] != null &&
-            responseData['factures'] is List) {
-          invoiceList = responseData['factures'];
-        } else if (responseData['success'] == true &&
-            responseData['data'] != null) {
-          if (responseData['data'] is List) {
-            invoiceList = responseData['data'];
-          }
-        }
-
-        if (invoiceList.isEmpty) {
-          return [];
-        }
-
-        final invoices = <InvoiceModel>[];
-        for (var json in invoiceList) {
-          try {
-            final invoice = InvoiceModel.fromJson(json);
-            invoices.add(invoice);
-          } catch (e) {
-            // Ignorer les erreurs de parsing individuelles
-          }
-        }
-
-        // Mettre en cache pour 5 minutes
-        CacheHelper.set(
-          cacheKey,
-          invoices,
-          duration: AppConfig.defaultCacheDuration,
-        );
-
-        return invoices;
-      } else {
-        throw Exception(
-          'Erreur lors de la récupération des factures: ${response.statusCode}',
-        );
-      }
-    } catch (e) {
-      throw Exception('Erreur lors de la récupération des factures: $e');
-    }
+    final res = await getInvoicesPaginated(
+      startDate: startDate,
+      endDate: endDate,
+      status: status,
+      commercialId: commercialId,
+      clientId: clientId,
+      page: 1,
+      perPage: 500,
+      search: null,
+    );
+    return res.data;
   }
 
   // Récupérer une facture par ID
@@ -512,11 +423,17 @@ class InvoiceService extends GetxService {
     required Map<String, dynamic> data,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
-        headers: ApiService.headers(),
-        body: jsonEncode(data),
-      );
+      final response = await http
+          .put(
+            Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
+            headers: ApiService.headers(),
+            body: jsonEncode(data),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         final result = ApiService.parseResponse(response);
@@ -990,5 +907,30 @@ class InvoiceService extends GetxService {
                   : word[0].toUpperCase() + word.substring(1).toLowerCase(),
         )
         .join(' ');
+  }
+
+  static void _saveFacturesToHive(List<InvoiceModel> list, [String? status, int? commercialId]) {
+    try {
+      final key = '${HiveStorageService.keyFactures}_${status ?? 'all'}_${commercialId ?? 'all'}';
+      HiveStorageService.saveEntityList(
+        key,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive (sync) : affichage instantané Cache-First.
+  static List<InvoiceModel> getCachedFactures([String? status, int? commercialId]) {
+    try {
+      final key = '${HiveStorageService.keyFactures}_${status ?? 'all'}_${commercialId ?? 'all'}';
+      final raw = HiveStorageService.getEntityList(key);
+      if (raw.isNotEmpty) {
+        return raw.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      final fallback = HiveStorageService.getEntityList(HiveStorageService.keyFactures);
+      return fallback.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
+    }
   }
 }

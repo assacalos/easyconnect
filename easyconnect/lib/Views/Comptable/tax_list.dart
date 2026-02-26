@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/tax_controller.dart';
 import 'package:easyconnect/Models/tax_model.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -197,7 +198,11 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
               }
               return _filteredTaxes.isEmpty
                   ? const Center(child: Text('Aucune taxe trouvée'))
-                  : ListView.builder(
+                  : PaginatedListView(
+                    scrollController: controller.scrollController,
+                    onLoadMore: controller.loadMore,
+                    hasNextPage: controller.hasNextPage.value,
+                    isLoadingMore: controller.isLoadingMore.value,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _filteredTaxes.length,
                     itemBuilder: (context, index) {

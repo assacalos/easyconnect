@@ -50,9 +50,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
     // a commencé à remplir des données. clearForm() sera appelé uniquement après
     // un succès confirmé.
 
-    // Charger les clients au démarrage et initialiser la référence
+    // Charger les clients validés dès l'entrée (cache puis API), comme sur le formulaire bordereau
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.searchClients('');
+      controller.loadValidatedClients();
       if (!widget.isEditing) {
         controller.initializeGeneratedReference();
       }
@@ -318,8 +318,8 @@ class _DevisFormPageState extends State<DevisFormPage> {
                       title: Text(item.designation),
                       subtitle: Text(
                         (item.reference != null && item.reference!.isNotEmpty
-                            ? '${item.reference!} • '
-                            : '') +
+                                ? '${item.reference!} • '
+                                : '') +
                             '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
                       ),
                       trailing: Row(
@@ -492,6 +492,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
   }
 
   void _showClientSearchDialog() {
+    if (controller.clients.isEmpty) {
+      controller.loadValidatedClients();
+    }
     final searchController = TextEditingController();
     Get.dialog(
       AlertDialog(
@@ -512,7 +515,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
               height: 300,
               width: double.maxFinite,
               child: Obx(() {
-                if (controller.isLoading.value) {
+                if (controller.isLoadingClients.value) {
                   return const SkeletonSearchResults(itemCount: 4);
                 }
 
@@ -716,20 +719,31 @@ class _DevisFormPageState extends State<DevisFormPage> {
   }
 
   Widget _buildSaveButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _saveDevis,
-        icon: const Icon(Icons.save),
-        label: Text(widget.isEditing ? 'Modifier le devis' : 'Créer le devis'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    return Obx(() {
+      final loading = controller.isLoading.value;
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: loading ? null : _saveDevis,
+          icon: loading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.save),
+          label: Text(
+            loading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le devis' : 'Créer le devis'),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   void _saveDevis() async {
@@ -812,7 +826,6 @@ class _DevisFormPageState extends State<DevisFormPage> {
       if (success) {
         print('✅ [DEVIS FORM] Devis mis à jour avec succès');
         _clearForm();
-        await Future.delayed(const Duration(milliseconds: 500));
         Get.offNamed('/devis');
       } else {
         print('❌ [DEVIS FORM] Échec de la mise à jour');
@@ -824,7 +837,6 @@ class _DevisFormPageState extends State<DevisFormPage> {
         if (success) {
           print('✅ [DEVIS FORM] Devis créé avec succès');
           _clearForm();
-          await Future.delayed(const Duration(milliseconds: 500));
           Get.offNamed('/devis');
         } else {
           print(

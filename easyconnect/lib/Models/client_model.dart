@@ -46,10 +46,12 @@ class Client {
       nomEntreprise: json['nom_entreprise'],
       situationGeographique: json['situation_geographique'],
       numeroContribuable: json['numero_contribuable'],
+      // Backend: 0=en attente, 1=validé, 2=rejeté (ClientController)
       status:
-          json['status'] is String
+          (json['status'] is String
               ? int.tryParse(json['status'])
-              : json['status'],
+              : json['status'] as int?) ??
+          0,
       commentaire: json['commentaire'],
       createdAt: json['created_at'],
       updatedAt: json['updated_at'],

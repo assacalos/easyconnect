@@ -9,7 +9,11 @@ class TaskBinding extends Bindings {
     if (!Get.isRegistered<AuthController>()) {
       Get.put(AuthController(), permanent: true);
     }
-    Get.put(TaskService(), permanent: true);
-    Get.put(TaskController(), permanent: true);
+    if (!Get.isRegistered<TaskService>()) {
+      Get.put(TaskService(), permanent: true);
+    }
+    if (!Get.isRegistered<TaskController>()) {
+      Get.put(TaskController(), permanent: true);
+    }
   }
 }

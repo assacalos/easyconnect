@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/constant.dart';
 
 class RecruitmentService extends GetxService {
@@ -106,6 +107,7 @@ class RecruitmentService extends GetxService {
                 dataList
                     .map((json) => RecruitmentRequest.fromJson(json))
                     .toList();
+            _saveRecruitmentsToHive(requests);
             return requests;
           } catch (e) {
             rethrow;
@@ -669,6 +671,25 @@ class RecruitmentService extends GetxService {
         'Manager Technique',
         'Responsable Comptabilité',
       ];
+    }
+  }
+
+  static void _saveRecruitmentsToHive(List<RecruitmentRequest> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyRecruitments,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des demandes de recrutement pour affichage instantané.
+  static List<RecruitmentRequest> getCachedRecruitments() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyRecruitments);
+      return raw.map((e) => RecruitmentRequest.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

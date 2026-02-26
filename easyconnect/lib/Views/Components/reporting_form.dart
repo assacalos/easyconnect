@@ -2,20 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/reporting_controller.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 
 class ReportingForm extends StatelessWidget {
-  const ReportingForm({super.key});
+  final ReportingModel? reporting;
+
+  const ReportingForm({super.key, this.reporting});
 
   @override
   Widget build(BuildContext context) {
     final reportingController = Get.find<ReportingController>();
     final authController = Get.find<AuthController>();
     final userRole = authController.userAuth.value?.role;
-
+    final reportToEdit = reporting ?? (Get.arguments is ReportingModel ? Get.arguments as ReportingModel : null);
+    if (reportToEdit != null && reportingController.currentReport.value?.id != reportToEdit.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        reportingController.loadReportForEdit(reportToEdit);
+      });
+    }
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nouveau Rapport'),
+        title: Obx(() => Text(
+          reportingController.currentReport.value != null ? 'Modifier le rapport' : 'Nouveau Rapport',
+        )),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
@@ -417,7 +427,13 @@ class ReportingForm extends StatelessWidget {
                       () => ElevatedButton(
                         onPressed: reportingController.isLoading.value
                             ? null
-                            : () => reportingController.createReport(),
+                            : () {
+                                if (reportingController.currentReport.value != null) {
+                                  reportingController.updateReport();
+                                } else {
+                                  reportingController.createReport();
+                                }
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                           foregroundColor: Colors.white,
@@ -426,7 +442,11 @@ class ReportingForm extends StatelessWidget {
                             ? const CircularProgressIndicator(
                                 color: Colors.white,
                               )
-                            : const Text('Créer le Rapport'),
+                            : Text(
+                                reportingController.currentReport.value != null
+                                    ? 'Enregistrer'
+                                    : 'Créer le Rapport',
+                              ),
                       ),
                     ),
                   ),

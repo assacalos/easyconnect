@@ -21,7 +21,8 @@ class TechnicienDashboardEnhanced
   Color get primaryColor => const Color(0xFFC2410C); // Orange 800
 
   @override
-  Future<void> Function()? get onRefresh => () => controller.refreshPendingEntities();
+  Future<void> Function()? get onRefresh =>
+      () => controller.refreshPendingEntities();
 
   @override
   List<Filter> get availableFilters =>
@@ -29,9 +30,30 @@ class TechnicienDashboardEnhanced
 
   @override
   List<FavoriteItem> get favoriteItems => [
-    FavoriteItem(id: 'interventions', label: 'Interventions', icon: Icons.build, route: '/interventions'),
-    FavoriteItem(id: 'equipments', label: 'Équipements', icon: Icons.settings, route: '/equipments'),
-    FavoriteItem(id: 'tasks', label: 'Mes tâches', icon: Icons.task_alt, route: '/tasks'),
+    FavoriteItem(
+      id: 'interventions',
+      label: 'Interventions',
+      icon: Icons.build,
+      route: '/interventions',
+    ),
+    FavoriteItem(
+      id: 'besoins',
+      label: 'Besoins / Rappels patron',
+      icon: Icons.notifications_active,
+      route: '/besoins',
+    ),
+    FavoriteItem(
+      id: 'equipments',
+      label: 'Équipements',
+      icon: Icons.settings,
+      route: '/equipments',
+    ),
+    FavoriteItem(
+      id: 'tasks',
+      label: 'Mes tâches',
+      icon: Icons.task_alt,
+      route: '/tasks',
+    ),
   ];
 
   @override
@@ -41,8 +63,10 @@ class TechnicienDashboardEnhanced
   Map<String, ChartConfig> get charts => {};
 
   static String _formatAmount(double value) {
-    if (value >= 1e6) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
-    if (value >= 1e3) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
+    if (value >= 1e6)
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
+    if (value >= 1e3)
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
     return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
   }
 
@@ -57,15 +81,27 @@ class TechnicienDashboardEnhanced
           const SizedBox(height: 24),
           _buildQuickActions(context),
           const SizedBox(height: 28),
-          _buildSectionLabel('En attente', Icons.schedule, const Color(0xFFEA580C)),
+          _buildSectionLabel(
+            'En attente',
+            Icons.schedule,
+            const Color(0xFFEA580C),
+          ),
           const SizedBox(height: 12),
           _buildPendingSection(context),
           const SizedBox(height: 28),
-          _buildSectionLabel('Terminés', Icons.check_circle_outline, const Color(0xFF059669)),
+          _buildSectionLabel(
+            'Terminés',
+            Icons.check_circle_outline,
+            const Color(0xFF059669),
+          ),
           const SizedBox(height: 12),
           _buildValidatedSection(context),
           const SizedBox(height: 28),
-          _buildSectionLabel('Montants', Icons.trending_up, const Color(0xFF7C3AED)),
+          _buildSectionLabel(
+            'Montants',
+            Icons.trending_up,
+            const Color(0xFF7C3AED),
+          ),
           const SizedBox(height: 12),
           _buildStatisticsSection(context),
         ],
@@ -101,9 +137,17 @@ class TechnicienDashboardEnhanced
   Widget _buildWelcomeCard(BuildContext context) {
     return Obx(() {
       final user = Get.find<AuthController>().userAuth.value;
-      final prenom = user?.prenom?.trim().isNotEmpty == true ? user!.prenom! : 'Technicien';
+      final prenom =
+          user?.prenom?.trim().isNotEmpty == true
+              ? user!.prenom!
+              : 'Technicien';
       final hour = DateTime.now().hour;
-      final greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+      final greeting =
+          hour < 12
+              ? 'Bonjour'
+              : hour < 18
+              ? 'Bon après-midi'
+              : 'Bonsoir';
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -112,10 +156,7 @@ class TechnicienDashboardEnhanced
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFC2410C),
-              const Color(0xFFEA580C),
-            ],
+            colors: [const Color(0xFFC2410C), const Color(0xFFEA580C)],
           ),
           boxShadow: [
             BoxShadow(
@@ -154,8 +195,24 @@ class TechnicienDashboardEnhanced
 
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
-      _QuickAction(label: 'Interventions', icon: Icons.build, route: '/interventions', color: const Color(0xFFEA580C)),
-      _QuickAction(label: 'Équipements', icon: Icons.settings, route: '/equipments', color: const Color(0xFF7C3AED)),
+      _QuickAction(
+        label: 'Interventions',
+        icon: Icons.build,
+        route: '/interventions',
+        color: const Color(0xFFEA580C),
+      ),
+      _QuickAction(
+        label: 'Besoins / Rappels',
+        icon: Icons.notifications_active,
+        route: '/besoins',
+        color: Colors.teal,
+      ),
+      _QuickAction(
+        label: 'Équipements',
+        icon: Icons.settings,
+        route: '/equipments',
+        color: const Color(0xFF7C3AED),
+      ),
     ];
     return SizedBox(
       height: 48,
@@ -171,7 +228,10 @@ class TechnicienDashboardEnhanced
               onTap: () => Get.toNamed(a.route),
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: a.color.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(14),
@@ -202,9 +262,27 @@ class TechnicienDashboardEnhanced
 
   Widget _buildPendingSection(BuildContext context) {
     final items = [
-      _Item('Interventions', () => controller.pendingInterventions.value, Icons.build, const Color(0xFFEA580C), '/interventions'),
-      _Item('Équipements', () => controller.pendingEquipments.value, Icons.settings, const Color(0xFF7C3AED), '/equipments'),
-      _Item('Tâches', () => controller.pendingTasks.value, Icons.task_alt, const Color(0xFF7C3AED), '/tasks'),
+      _Item(
+        'Interventions',
+        () => controller.pendingInterventions.value,
+        Icons.build,
+        const Color(0xFFEA580C),
+        '/interventions',
+      ),
+      _Item(
+        'Équipements',
+        () => controller.pendingEquipments.value,
+        Icons.settings,
+        const Color(0xFF7C3AED),
+        '/equipments',
+      ),
+      _Item(
+        'Tâches',
+        () => controller.pendingTasks.value,
+        Icons.task_alt,
+        const Color(0xFF7C3AED),
+        '/tasks',
+      ),
     ];
     final crossCount = Get.width > 800 ? 2 : 2;
     return GridView.count(
@@ -214,21 +292,40 @@ class TechnicienDashboardEnhanced
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children: items.map((e) => _buildModernCard(
-        title: e.title,
-        count: e.count,
-        icon: e.icon,
-        color: e.color,
-        onTap: () => Get.toNamed(e.route),
-        badgeColor: const Color(0xFFEA580C),
-      )).toList(),
+      children:
+          items
+              .map(
+                (e) => _buildModernCard(
+                  title: e.title,
+                  count: e.count,
+                  icon: e.icon,
+                  color: e.color,
+                  onTap: () => Get.toNamed(e.route),
+                  badgeColor: const Color(0xFFEA580C),
+                ),
+              )
+              .toList(),
     );
   }
 
   Widget _buildValidatedSection(BuildContext context) {
     final items = [
-      _ValidatedItem('Interventions terminées', () => controller.completedInterventions.value, Icons.build, const Color(0xFFEA580C), 'Clôturées', '/interventions?tab=2'),
-      _ValidatedItem('Équipements opérationnels', () => controller.operationalEquipments.value, Icons.settings, const Color(0xFF7C3AED), 'En service', '/equipments?tab=2'),
+      _ValidatedItem(
+        'Interventions terminées',
+        () => controller.completedInterventions.value,
+        Icons.build,
+        const Color(0xFFEA580C),
+        'Clôturées',
+        '/interventions?tab=2',
+      ),
+      _ValidatedItem(
+        'Équipements opérationnels',
+        () => controller.operationalEquipments.value,
+        Icons.settings,
+        const Color(0xFF7C3AED),
+        'En service',
+        '/equipments?tab=2',
+      ),
     ];
     final crossCount = Get.width > 800 ? 2 : 2;
     return GridView.count(
@@ -238,15 +335,20 @@ class TechnicienDashboardEnhanced
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children: items.map((e) => _buildModernCard(
-        title: e.title,
-        count: e.count,
-        icon: e.icon,
-        color: e.color,
-        subtitle: e.subtitle,
-        onTap: () => Get.toNamed(e.route),
-        badgeColor: const Color(0xFF059669),
-      )).toList(),
+      children:
+          items
+              .map(
+                (e) => _buildModernCard(
+                  title: e.title,
+                  count: e.count,
+                  icon: e.icon,
+                  color: e.color,
+                  subtitle: e.subtitle,
+                  onTap: () => Get.toNamed(e.route),
+                  badgeColor: const Color(0xFF059669),
+                ),
+              )
+              .toList(),
     );
   }
 
@@ -280,7 +382,13 @@ class TechnicienDashboardEnhanced
     );
   }
 
-  Widget _buildStatRow(String title, String Function() valueBuilder, IconData icon, Color color, String subtitle) {
+  Widget _buildStatRow(
+    String title,
+    String Function() valueBuilder,
+    IconData icon,
+    Color color,
+    String subtitle,
+  ) {
     return Obx(() {
       final value = valueBuilder();
       return Container(
@@ -392,7 +500,10 @@ class TechnicienDashboardEnhanced
                   Obx(() {
                     final c = count();
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: badgeColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(10),
@@ -446,8 +557,21 @@ class TechnicienDashboardEnhanced
   @override
   List<Widget> buildDrawerItems(BuildContext context) {
     return [
-      _drawerItem(Icons.build, 'Interventions', () => _nav(context, '/interventions')),
-      _drawerItem(Icons.settings, 'Équipements', () => _nav(context, '/equipments')),
+      _drawerItem(
+        Icons.build,
+        'Interventions',
+        () => _nav(context, '/interventions'),
+      ),
+      _drawerItem(
+        Icons.notifications_active,
+        'Besoins / Rappels patron',
+        () => _nav(context, '/besoins'),
+      ),
+      _drawerItem(
+        Icons.settings,
+        'Équipements',
+        () => _nav(context, '/equipments'),
+      ),
       Obx(() {
         final userRole = Get.find<AuthController>().userAuth.value?.role;
         if (userRole == 1) {
@@ -469,7 +593,10 @@ class TechnicienDashboardEnhanced
   Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: Colors.white70, size: 22),
-      title: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 15)),
+      title: Text(
+        label,
+        style: const TextStyle(color: Colors.white70, fontSize: 15),
+      ),
       onTap: onTap,
     );
   }
@@ -483,7 +610,12 @@ class _QuickAction {
   final IconData icon;
   final String route;
   final Color color;
-  _QuickAction({required this.label, required this.icon, required this.route, required this.color});
+  _QuickAction({
+    required this.label,
+    required this.icon,
+    required this.route,
+    required this.color,
+  });
 }
 
 class _Item {
@@ -502,5 +634,12 @@ class _ValidatedItem {
   final Color color;
   final String subtitle;
   final String route;
-  _ValidatedItem(this.title, this.count, this.icon, this.color, this.subtitle, this.route);
+  _ValidatedItem(
+    this.title,
+    this.count,
+    this.icon,
+    this.color,
+    this.subtitle,
+    this.route,
+  );
 }

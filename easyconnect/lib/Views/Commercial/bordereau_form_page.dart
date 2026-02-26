@@ -58,6 +58,11 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
         });
       }
     });
+
+    // Charger les clients validés dès l'entrée dans le formulaire (cache Hive puis API)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadValidatedClients();
+    });
   }
 
   @override
@@ -493,10 +498,14 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   }
 
   Widget _buildSaveButton(GlobalKey<FormState> formKey) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
+    return Obx(() {
+      final loading = controller.isLoading.value;
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: loading
+              ? null
+              : () async {
           if (formKey.currentState!.validate()) {
             // Vérifier qu'un client validé est sélectionné
             if (controller.selectedClient.value == null) {
@@ -608,8 +617,14 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
             }
           }
         },
-        icon: const Icon(Icons.save),
-        label: Text(widget.isEditing ? 'Modifier le bordereau' : 'Enregistrer'),
+        icon: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.save),
+        label: Text(loading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le bordereau' : 'Enregistrer')),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -618,6 +633,7 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
         ),
       ),
     );
+    });
   }
 
   Widget _buildItemCard(BordereauItem item, int index) {

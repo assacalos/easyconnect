@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/Views/Rh/leave_form.dart';
 import 'package:easyconnect/Views/Rh/leave_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -13,11 +14,14 @@ class LeaveList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final LeaveController controller = Get.put(LeaveController());
+    final LeaveController controller = Get.find<LeaveController>();
 
-    // Charger les congés au chargement de la page
+    // Chargement différé au premier affichage (évite la charge au binding)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadLeaveTypes();
+      controller.loadEmployees();
       controller.loadLeaveRequests();
+      controller.loadLeaveStats();
     });
 
     return DefaultTabController(
@@ -52,12 +56,16 @@ class LeaveList extends StatelessWidget {
                 _buildLeaveList('rejected', controller), // Rejetés
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite
+            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
             if (controller.canManageLeaves.value)
-              UniformAddButton(
-                onPressed: () => Get.to(() => const LeaveForm()),
-                label: 'Nouvelle Demande',
-                icon: Icons.event,
+              Positioned(
+                bottom: 80,
+                right: 16,
+                child: UniformAddButton(
+                  onPressed: () => Get.to(() => const LeaveForm()),
+                  label: 'Nouvelle Demande',
+                  icon: Icons.event,
+                ),
               ),
           ],
         ),
@@ -76,40 +84,55 @@ class LeaveList extends StatelessWidget {
           controller.leaveRequests.where((l) => l.status == status).toList();
 
       if (leaveList.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == 'pending'
-                    ? Icons.pending
-                    : status == 'approved'
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                size: 64,
-                color: Colors.grey.shade400,
+        return RefreshIndicator(
+          onRefresh: () => controller.loadLeaveRequests(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      status == 'pending'
+                          ? Icons.pending
+                          : status == 'approved'
+                          ? Icons.check_circle
+                          : Icons.cancel,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      status == 'pending'
+                          ? 'Aucun congé en attente'
+                          : status == 'approved'
+                          ? 'Aucun congé validé'
+                          : 'Aucun congé rejeté',
+                      style: const TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                status == 'pending'
-                    ? 'Aucun congé en attente'
-                    : status == 'approved'
-                    ? 'Aucun congé validé'
-                    : 'Aucun congé rejeté',
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
+            ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: leaveList.length,
-        itemBuilder: (context, index) {
-          final request = leaveList[index];
-          return _buildLeaveCard(request, controller);
-        },
+      return RefreshIndicator(
+        onRefresh: () => controller.loadLeaveRequests(),
+        child: PaginatedListView(
+          scrollController: controller.scrollController,
+          onLoadMore: controller.loadMore,
+          hasNextPage: controller.hasNextPage.value,
+          isLoadingMore: controller.isLoadingMore.value,
+          itemCount: leaveList.length,
+          itemBuilder: (context, index) {
+            final request = leaveList[index];
+            return _buildLeaveCard(request, controller);
+          },
+        ),
       );
     });
   }

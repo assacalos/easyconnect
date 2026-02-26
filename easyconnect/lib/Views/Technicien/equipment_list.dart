@@ -12,7 +12,16 @@ class EquipmentList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final EquipmentController controller = Get.put(EquipmentController());
+    final EquipmentController controller = Get.find<EquipmentController>();
+
+    // Chargement différé au premier affichage (évite la charge au binding)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.loadEquipments();
+      controller.loadEquipmentStats();
+      controller.loadEquipmentCategories();
+      controller.loadEquipmentsNeedingMaintenance();
+      controller.loadEquipmentsWithExpiredWarranty();
+    });
 
     return DefaultTabController(
       length: 5,
@@ -110,60 +119,81 @@ class EquipmentList extends StatelessWidget {
       if (equipments.isEmpty) {
         // Si aucun équipement n'est chargé du tout, afficher un message différent
         if (controller.equipments.isEmpty && !controller.isLoading.value) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.devices_outlined, size: 64, color: Colors.grey[400]),
-                const SizedBox(height: 16),
-                Text(
-                  'Aucun équipement chargé',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+          return RefreshIndicator(
+            onRefresh: () => controller.loadEquipments(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 320,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.devices_outlined, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Aucun équipement chargé',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tirez pour actualiser',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Actualiser'),
+                        onPressed: () => controller.loadEquipments(),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Vérifiez votre connexion et réessayez',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Actualiser'),
-                  onPressed: () => controller.loadEquipments(),
-                ),
-              ],
+              ),
             ),
           );
         }
 
         // Sinon, afficher le message normal pour l'onglet vide
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                _getEmptyMessage(status),
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+        return RefreshIndicator(
+          onRefresh: () => controller.loadEquipments(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      _getEmptyMessage(status),
+                      style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _getEmptySubMessage(status),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                _getEmptySubMessage(status),
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              ),
-            ],
+            ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: equipments.length,
-        itemBuilder: (context, index) {
-          final equipment = equipments[index];
-          return _buildEquipmentCard(equipment, controller);
-        },
+      return RefreshIndicator(
+        onRefresh: () => controller.loadEquipments(),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: equipments.length,
+          itemBuilder: (context, index) {
+            final equipment = equipments[index];
+            return _buildEquipmentCard(equipment, controller);
+          },
+        ),
       );
     });
   }

@@ -4,72 +4,106 @@ import 'package:easyconnect/Controllers/bordereau_controller.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class BordereauListPage extends StatelessWidget {
+class BordereauListPage extends StatefulWidget {
   final int? clientId;
 
-  BordereauListPage({super.key, this.clientId});
-  final BordereauxController controller = Get.put(BordereauxController());
+  const BordereauListPage({super.key, this.clientId});
+
+  @override
+  State<BordereauListPage> createState() => _BordereauListPageState();
+}
+
+class _BordereauListPageState extends State<BordereauListPage>
+    with SingleTickerProviderStateMixin {
+  late final BordereauxController controller;
+  late TabController _tabController;
+
+  int _statusFromIndex(int index) =>
+      index == 0 ? 1 : index == 1 ? 2 : 3;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.find<BordereauxController>();
+    _tabController = TabController(length: 3, vsync: this);
+    // Cache-first : charger TOUS les bordereaux (status null) puis filtrer par onglet (comme Devis)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      controller.loadBordereaux(forceRefresh: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Charger les données au démarrage de la page
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Toujours charger au démarrage de la page (le contrôleur ne charge plus automatiquement)
-      controller.loadBordereaux();
-    });
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Bordereaux'),
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'En attente'),
-              Tab(text: 'Validés'),
-              Tab(text: 'Rejetés'),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bordereaux'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => controller.loadBordereaux(forceRefresh: true),
+            tooltip: 'Actualiser',
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'En attente'),
+            Tab(text: 'Validés'),
+            Tab(text: 'Rejetés'),
+          ],
+        ),
+      ),
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabController,
+            children: [
+              _buildBordereauList(1), // En attente
+              _buildBordereauList(2), // Validés
+              _buildBordereauList(3), // Rejetés
             ],
           ),
-        ),
-        body: Stack(
-          children: [
-            TabBarView(
-              children: [
-                _buildBordereauList(1), // En attente
-                _buildBordereauList(2), // Validés
-                _buildBordereauList(3), // Rejetés
-              ],
-            ),
-            // Bouton d'ajout uniforme en bas à droite
-            UniformAddButton(
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: UniformAddButton(
               onPressed: () => Get.toNamed('/bordereaux/new'),
               label: 'Nouveau Bordereau',
               icon: Icons.assignment,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildBordereauList(int status) {
-    // Récupérer clientId depuis les arguments
     final args = Get.arguments as Map<String, dynamic>?;
-    final filterClientId = clientId ?? args?['clientId'] as int?;
+    final filterClientId = widget.clientId ?? args?['clientId'] as int?;
 
     return Obx(() {
+      // Skeleton dès que loading (y compris au changement d'onglet : liste vidée + isLoading = true)
       if (controller.isLoading.value) {
         return const SkeletonSearchResults(itemCount: 6);
       }
 
-      var bordereauList =
-          controller.bordereaux.where((b) => b.status == status).toList();
-
-      // Filtrer par clientId si fourni
+      // Filtrer par statut de l'onglet (En attente=1, Validés=2, Rejetés=3)
+      var bordereauList = controller.bordereaux
+          .where((b) => b.status == status)
+          .toList();
       if (filterClientId != null) {
         bordereauList =
             bordereauList.where((b) => b.clientId == filterClientId).toList();
@@ -103,8 +137,11 @@ class BordereauListPage extends StatelessWidget {
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
+      return PaginatedListView(
+        scrollController: controller.scrollController,
+        onLoadMore: controller.loadMore,
+        hasNextPage: controller.hasNextPage.value,
+        isLoadingMore: controller.isLoadingMore.value,
         itemCount: bordereauList.length,
         itemBuilder: (context, index) {
           final bordereau = bordereauList[index];
@@ -149,9 +186,31 @@ class BordereauListPage extends StatelessWidget {
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor),
         ),
-        title: Text(
-          bordereau.reference,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Nom de l'entreprise en grand pour reconnaissance rapide
+            Text(
+              bordereau.clientNomEntreprise?.isNotEmpty == true
+                  ? bordereau.clientNomEntreprise!
+                  : 'Client #${bordereau.clientId}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              bordereau.reference,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,11 +245,12 @@ class BordereauListPage extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: () => controller.generatePDF(bordereau.id!),
-              tooltip: 'Générer PDF',
-            ),
+            if (bordereau.id != null)
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf),
+                onPressed: () => controller.generatePDF(bordereau.id!),
+                tooltip: 'Générer PDF',
+              ),
             _buildActionButton(bordereau),
           ],
         ),
@@ -261,6 +321,8 @@ class BordereauListPage extends StatelessWidget {
   }
 
   void _showSubmitConfirmation(Bordereau bordereau) {
+    final id = bordereau.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous soumettre ce bordereau pour validation ?',
@@ -269,12 +331,14 @@ class BordereauListPage extends StatelessWidget {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.submitBordereau(bordereau.id!);
+        controller.submitBordereau(id);
       },
     );
   }
 
   void _showDeleteConfirmation(Bordereau bordereau) {
+    final id = bordereau.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous supprimer ce bordereau ?',
@@ -283,26 +347,33 @@ class BordereauListPage extends StatelessWidget {
       confirmTextColor: Colors.white,
       onConfirm: () {
         Get.back();
-        controller.deleteBordereau(bordereau.id!);
+        controller.deleteBordereau(id);
       },
     );
   }
 
   void _showApproveConfirmation(Bordereau bordereau) {
+    final id = bordereau.id;
+    if (id == null) return;
     Get.defaultDialog(
       title: 'Confirmation',
       middleText: 'Voulez-vous valider ce bordereau ?',
       textConfirm: 'Valider',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
+      onConfirm: () async {
         Get.back();
-        controller.approveBordereau(bordereau.id!);
+        await controller.approveBordereau(id);
+        controller.loadBordereaux(
+          status: _statusFromIndex(_tabController.index),
+        );
       },
     );
   }
 
   void _showRejectDialog(Bordereau bordereau) {
+    final id = bordereau.id;
+    if (id == null) return;
     final commentController = TextEditingController();
 
     Get.defaultDialog(
@@ -323,8 +394,8 @@ class BordereauListPage extends StatelessWidget {
       textConfirm: 'Rejeter',
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
+      onConfirm: () async {
+        if (commentController.text.trim().isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -333,7 +404,10 @@ class BordereauListPage extends StatelessWidget {
           return;
         }
         Get.back();
-        controller.rejectBordereau(bordereau.id!, commentController.text);
+        await controller.rejectBordereau(id, commentController.text.trim());
+        controller.loadBordereaux(
+          status: _statusFromIndex(_tabController.index),
+        );
       },
     );
   }

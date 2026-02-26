@@ -64,6 +64,7 @@ class Bordereau {
   final String? etatLivraison;
   final String? garantie;
   final DateTime? dateLivraison;
+  final String? clientNomEntreprise; // Nom de l'entreprise (client) pour affichage liste
 
   Bordereau({
     this.id,
@@ -81,6 +82,7 @@ class Bordereau {
     this.etatLivraison,
     this.garantie,
     this.dateLivraison,
+    this.clientNomEntreprise,
   });
 
   double get montantHT => 0.0;
@@ -177,6 +179,7 @@ class Bordereau {
         etatLivraison: json['etat_livraison']?.toString(),
         garantie: json['garantie']?.toString(),
         dateLivraison: parseDate(json['date_livraison']),
+        clientNomEntreprise: _clientDisplayName(json['client']),
       );
     } catch (e, stackTrace) {
       print('❌ Bordereau.fromJson: Erreur: $e');
@@ -203,5 +206,18 @@ class Bordereau {
       }
     }
     return null;
+  }
+
+  static String? _clientDisplayName(dynamic client) {
+    if (client == null || client is! Map) return null;
+    final c = client as Map<String, dynamic>;
+    final nomEnt = c['nom_entreprise']?.toString().trim();
+    if (nomEnt != null && nomEnt.isNotEmpty) return nomEnt;
+    final display = c['display_name']?.toString().trim();
+    if (display != null && display.isNotEmpty) return display;
+    final nom = (c['nom']?.toString() ?? '').trim();
+    final prenom = (c['prenom']?.toString() ?? '').trim();
+    final full = '$prenom $nom'.trim();
+    return full.isEmpty ? null : full;
   }
 }

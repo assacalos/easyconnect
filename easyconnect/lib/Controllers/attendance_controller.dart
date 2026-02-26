@@ -17,6 +17,7 @@ class AttendanceController extends GetxController {
   final RxBool isLoading = false.obs;
   final RxBool isCheckingIn = false.obs;
   final RxBool isCheckingOut = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final RxString currentStatus =
       'unknown'.obs; // 'checked_in', 'checked_out', 'unknown'
   final Rx<LocationInfo?> currentLocation = Rx<LocationInfo?>(null);
@@ -55,72 +56,82 @@ class AttendanceController extends GetxController {
     super.onClose();
   }
 
-  // Charger les données de pointage
+  bool _isLoadingAttendanceInProgress = false;
+
+  /// Charge les pointages : Hive d'abord (affichage immédiat), puis API dans la même méthode.
   Future<void> loadAttendanceData({int page = 1}) async {
-    try {
+    final user = _authController.userAuth.value;
+    if (user == null) return;
+    if (_isLoadingAttendanceInProgress) return;
+    _isLoadingAttendanceInProgress = true;
+
+    if (page == 1) {
       isLoading.value = true;
-
-      final user = _authController.userAuth.value;
-      if (user == null) {
-        return;
+      final cached = AttendancePunchService.getCachedAttendances();
+      if (cached.isNotEmpty) {
+        attendanceHistory.assignAll(cached);
+        isLoading.value = false;
+      } else {
+        attendanceHistory.value = [];
       }
+    } else {
+      isLoadingMore.value = true;
+    }
 
-      try {
-        // Utiliser la méthode paginée
-        final paginatedResponse = await _attendanceService
-            .getAttendancesPaginated(
-              userId: user.role == Roles.PATRON ? null : user.id,
-              page: page,
-              perPage: perPage.value,
-              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
-            );
+    try {
+      final paginatedResponse = await _attendanceService
+          .getAttendancesPaginated(
+            userId: user.role == Roles.PATRON ? null : user.id,
+            page: page,
+            perPage: perPage.value,
+            search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          );
 
-        // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
-
-        // Mettre à jour la liste
-        if (page == 1) {
-          attendanceHistory.value = paginatedResponse.data;
-        } else {
-          attendanceHistory.addAll(paginatedResponse.data);
-        }
-      } catch (e, stackTrace) {
-        // En cas d'erreur, essayer la méthode non-paginée en fallback
-        try {
-          final history =
-              user.role == Roles.PATRON
-                  ? await _attendanceService.getAttendances()
-                  : await _attendanceService.getAttendances(userId: user.id);
-          if (page == 1) {
-            attendanceHistory.value = history;
-          } else {
-            attendanceHistory.addAll(history);
-          }
-        } catch (fallbackError) {
-          rethrow;
-        }
+      if (page == 1) {
+        attendanceHistory.assignAll(paginatedResponse.data);
+      } else {
+        attendanceHistory.addAll(paginatedResponse.data);
       }
-
-      // Vérifier le statut actuel
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = paginatedResponse.meta.currentPage;
       await checkCurrentStatus();
-    } catch (e, stackTrace) {
-      /*  Get.snackbar(
-        'Erreur',
-        'Impossible de charger les données de pointage: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      ); */
+    } catch (e) {
+      try {
+        final history =
+            user.role == Roles.PATRON
+                ? await _attendanceService.getAttendances()
+                : await _attendanceService.getAttendances(userId: user.id);
+        if (page == 1)
+          attendanceHistory.assignAll(history);
+        else
+          attendanceHistory.addAll(history);
+        await checkCurrentStatus();
+      } catch (_) {
+        if (attendanceHistory.isEmpty) {
+          final fallback = AttendancePunchService.getCachedAttendances();
+          if (fallback.isNotEmpty) attendanceHistory.assignAll(fallback);
+        }
+      }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+      _isLoadingAttendanceInProgress = false;
+    }
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadAttendanceData(page: currentPage.value + 1);
     }
   }

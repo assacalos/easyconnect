@@ -24,11 +24,15 @@ class WebSocketService {
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
+  DateTime? _lastConnectionLog;
+  static const Duration _connectionLogThrottle = Duration(seconds: 15);
 
   bool get isConnected => _isConnected;
 
   Future<void> initialize() async {
     if (_isConnected) return;
+    // Désactiver complètement le WebSocket : mettre websocketKey à '' dans app_config.dart
+    if (!AppConfig.websocketEnabled) return;
 
     try {
       final token = await SessionService.getToken();
@@ -38,13 +42,13 @@ class WebSocketService {
 
       AppLogger.info('🔌 Connexion Pusher pour user $userId', tag: 'WEBSOCKET');
 
-      // --- CONFIGURATION CORRIGÉE POUR PUSHER CHANNELS ---
+      // URL d'auth Laravel : /broadcasting/auth (sans /api, enregistrée par Broadcast::routes())
+      final authUrl = '${AppConfig.baseUrlWithoutApi}/broadcasting/auth';
       PusherOptions options = PusherOptions(
-        cluster:
-            'eu', // Assure-toi que c'est 'eu' ou 'mt1' comme sur ton dashboard Pusher
+        cluster: AppConfig.websocketCluster,
         encrypted: true,
         auth: PusherAuth(
-          '${AppConfig.baseUrl}/api/broadcasting/auth',
+          authUrl,
           headers: {
             'Authorization': 'Bearer $token',
             'Accept': 'application/json',
@@ -56,7 +60,7 @@ class WebSocketService {
       pusher = PusherClient(
         AppConfig.websocketKey, // Ta PUSHER_APP_KEY du .env
         options,
-        enableLogging: true,
+        enableLogging: false, // Évite le spam CONNECTING/RECONNECTING/ON_ERROR dans les logs
       );
 
       echo = Echo(broadcaster: EchoBroadcasterType.Pusher, client: pusher);
@@ -73,7 +77,13 @@ class WebSocketService {
     if (pusher == null) return;
 
     pusher!.onConnectionStateChange((state) {
-      AppLogger.info('État: ${state?.currentState}', tag: 'WEBSOCKET');
+      final now = DateTime.now();
+      final canLog = _lastConnectionLog == null ||
+          now.difference(_lastConnectionLog!) > _connectionLogThrottle;
+      if (canLog) {
+        AppLogger.info('État: ${state?.currentState}', tag: 'WEBSOCKET');
+        _lastConnectionLog = now;
+      }
       if (state?.currentState == 'connected') {
         _isConnected = true;
         _reconnectAttempts = 0;
@@ -86,7 +96,13 @@ class WebSocketService {
     });
 
     pusher!.onConnectionError((error) {
-      AppLogger.error('❌ Erreur: ${error?.message}', tag: 'WEBSOCKET');
+      final now = DateTime.now();
+      final canLog = _lastConnectionLog == null ||
+          now.difference(_lastConnectionLog!) > _connectionLogThrottle;
+      if (canLog) {
+        AppLogger.error('❌ Erreur: ${error?.message}', tag: 'WEBSOCKET');
+        _lastConnectionLog = now;
+      }
       _isConnected = false;
       _scheduleReconnect();
     });
@@ -187,7 +203,8 @@ class WebSocketService {
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) return;
     _cancelReconnectTimer();
-    final delay = Duration(seconds: 2 * (_reconnectAttempts + 1));
+    // Délai progressif (5s, 10s, 15s...) pour éviter de saturer les logs et le serveur
+    final delay = Duration(seconds: 5 * (_reconnectAttempts + 1).clamp(1, 6));
     _reconnectAttempts++;
     _reconnectTimer = Timer(delay, () => initialize());
   }

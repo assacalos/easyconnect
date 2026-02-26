@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class InterventionService {
   final storage = GetStorage();
@@ -78,10 +79,14 @@ class InterventionService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Intervention>(
+        final result = PaginationHelper.parseResponse<Intervention>(
           json: data,
           fromJsonT: (json) => Intervention.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveInterventionsToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des interventions: ${response.statusCode}',
@@ -135,10 +140,10 @@ class InterventionService {
             },
           )
           .timeout(
-            const Duration(seconds: 30),
+            AppConfig.extraLongTimeout,
             onTimeout: () {
               throw Exception(
-                'Timeout: Le serveur ne répond pas dans les 30 secondes',
+                'Timeout: le serveur ne répond pas',
               );
             },
           );
@@ -166,7 +171,9 @@ class InterventionService {
         }
 
         print('✅ [INTERVENTION] ${data.length} interventions trouvées');
-        return data.map((json) => Intervention.fromJson(json)).toList();
+        final list = data.map((json) => Intervention.fromJson(json)).toList();
+        _saveInterventionsToHive(list);
+        return list;
       }
 
       throw Exception(
@@ -210,15 +217,21 @@ class InterventionService {
     try {
       final token = storage.read('token');
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(intervention.toJson()),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/interventions-create'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode(intervention.toJson()),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
       final result = ApiService.parseResponse(response);
 
       if (result['success'] == true) {
@@ -290,15 +303,21 @@ class InterventionService {
     try {
       final token = storage.read('token');
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/interventions-update/${intervention.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(intervention.toJson()),
-      );
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/interventions-update/${intervention.id}'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode(intervention.toJson()),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       final result = ApiService.parseResponse(response);
 
@@ -619,6 +638,25 @@ class InterventionService {
       return result['success'] == true;
     } catch (e) {
       return false;
+    }
+  }
+
+  static void _saveInterventionsToHive(List<Intervention> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyInterventions,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des interventions pour affichage instantané.
+  static List<Intervention> getCachedInterventions() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyInterventions);
+      return raw.map((e) => Intervention.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

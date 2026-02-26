@@ -1,6 +1,8 @@
 import 'package:easyconnect/Controllers/client_controller.dart';
+import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -66,10 +68,12 @@ class _ClientsPageState extends State<ClientsPage>
       initialIndex: initialIndex,
     );
 
-    // Charger les données au démarrage de la page
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Cache-first : charger TOUS les clients (status null) puis filtrer par onglet (comme Devis)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
       final controller = Get.find<ClientController>();
-      controller.loadClients(status: null);
+      controller.loadClients(forceRefresh: false);
     });
   }
 
@@ -100,9 +104,7 @@ class _ClientsPageState extends State<ClientsPage>
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              controller.loadClients(status: null);
-            },
+            onPressed: () => controller.loadClients(forceRefresh: true),
           ),
         ],
       ),
@@ -116,13 +118,17 @@ class _ClientsPageState extends State<ClientsPage>
               _buildClientList(2), // Rejetés
             ],
           ),
-          // Bouton d'ajout uniforme en bas à droite (seulement pour commerciaux et patrons)
-          RoleBasedWidget(
-            allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.COMMERCIAL],
-            child: UniformAddButton(
-              onPressed: () => Get.toNamed('/clients/new'),
-              label: 'Nouveau Client',
-              icon: Icons.person_add,
+          // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: RoleBasedWidget(
+              allowedRoles: [Roles.ADMIN, Roles.PATRON, Roles.COMMERCIAL],
+              child: UniformAddButton(
+                onPressed: () => Get.toNamed('/clients/new'),
+                label: 'Nouveau Client',
+                icon: Icons.person_add,
+              ),
             ),
           ),
         ],
@@ -133,17 +139,15 @@ class _ClientsPageState extends State<ClientsPage>
   Widget _buildClientList(int status) {
     final ClientController controller = Get.find<ClientController>();
     return Obx(() {
+      // Skeleton dès que loading (y compris au changement d'onglet : liste vidée + isLoading = true)
       if (controller.isLoading.value) {
         return const SkeletonSearchResults(itemCount: 6);
       }
 
-      // Filtrer les clients par statut
-      // Si status est null, on le traite comme 0 (en attente)
-      final clientList =
-          controller.clients.where((c) {
-            final clientStatus = c.status ?? 0; // null = en attente
-            return clientStatus == status;
-          }).toList();
+      // Liste filtrée par statut de l'onglet (0=attente, 1=validé, 2=rejeté)
+      final clientList = controller.clients
+          .where((c) => c.status == status)
+          .toList();
 
       if (clientList.isEmpty) {
         return Center(
@@ -173,8 +177,11 @@ class _ClientsPageState extends State<ClientsPage>
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
+      return PaginatedListView(
+        scrollController: controller.scrollController,
+        onLoadMore: controller.loadMore,
+        hasNextPage: controller.hasNextPage.value,
+        isLoadingMore: controller.isLoadingMore.value,
         itemCount: clientList.length,
         itemBuilder: (context, index) {
           final client = clientList[index];
@@ -184,7 +191,7 @@ class _ClientsPageState extends State<ClientsPage>
     });
   }
 
-  Widget _buildClientCard(client) {
+  Widget _buildClientCard(Client client) {
     final status = client.status ?? 0;
     final statusText = _getStatusText(status);
     final statusColor = _getStatusColor(status);
@@ -213,7 +220,7 @@ class _ClientsPageState extends State<ClientsPage>
                           ? "${client.prenom ?? ''} ${client.nom ?? ''}".trim()
                           : 'Client #${client.id}',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 19,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -308,10 +315,21 @@ class _ClientsPageState extends State<ClientsPage>
                 ),
               ],
 
-              // Actions selon le statut et le rôle
+              // Modifier : autorisé en attente (0) et validé (1)
+              if (status == 0 || status == 1) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Get.toNamed('/clients/${client.id}/edit'),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Modifier'),
+                  ),
+                ),
+              ],
+              // Actions selon le statut et le rôle (valider/rejeter uniquement en attente)
               if (status == 0) ...[
                 const SizedBox(height: 8),
-                // Seul le patron peut valider/rejeter
                 RoleBasedWidget(
                   allowedRoles: [Roles.ADMIN, Roles.PATRON],
                   child: Row(
@@ -346,7 +364,7 @@ class _ClientsPageState extends State<ClientsPage>
     );
   }
 
-  void _showValidationDialog(client) {
+  void _showValidationDialog(Client client) {
     final ClientController controller = Get.find<ClientController>();
     Get.dialog(
       AlertDialog(
@@ -357,9 +375,12 @@ class _ClientsPageState extends State<ClientsPage>
           ElevatedButton(
             onPressed: () async {
               Get.back();
-              await controller.approveClient(client.id);
-              // Recharger tous les clients après validation
-              await controller.loadClients(status: null);
+              final id = client.id;
+              if (id != null) {
+                await controller.approveClient(id);
+                // Mise à jour optimiste déjà faite côté contrôleur ; sync en arrière-plan sans bloquer l'UI
+                controller.loadClients(status: _tabController.index);
+              }
             },
             child: const Text('Valider'),
           ),
@@ -368,7 +389,7 @@ class _ClientsPageState extends State<ClientsPage>
     );
   }
 
-  void _showRejectionDialog(client) {
+  void _showRejectionDialog(Client client) {
     final ClientController controller = Get.find<ClientController>();
     final reasonController = TextEditingController();
     Get.dialog(
@@ -393,17 +414,16 @@ class _ClientsPageState extends State<ClientsPage>
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
-              if (reasonController.text.trim().isNotEmpty) {
-                Get.back();
-                await controller.rejectClient(
-                  client.id,
-                  reasonController.text.trim(),
-                );
-                // Recharger tous les clients après rejet
-                await controller.loadClients(status: null);
-              } else {
+              if (reasonController.text.trim().isEmpty) {
                 Get.snackbar('Erreur', 'Veuillez saisir une raison');
+                return;
               }
+              final id = client.id;
+              if (id == null) return;
+              Get.back();
+              await controller.rejectClient(id, reasonController.text.trim());
+              // Mise à jour optimiste côté contrôleur ; sync en arrière-plan sans bloquer l'UI
+              controller.loadClients(status: _tabController.index);
             },
             child: const Text('Rejeter'),
           ),

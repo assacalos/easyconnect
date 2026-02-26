@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/payment_controller.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -27,10 +28,15 @@ class _PaymentListState extends State<PaymentList>
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
-        controller.loadPayments();
+        controller.loadByStatus(_tabController.index);
       }
     });
-    controller.loadPayments();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        controller.loadByStatus(0);
+      });
+    });
   }
 
   @override
@@ -39,41 +45,17 @@ class _PaymentListState extends State<PaymentList>
     super.dispose();
   }
 
+  /// Liste déjà filtrée par statut via loadByStatus ; on filtre uniquement par recherche.
   List<PaymentModel> get _filteredPayments {
-    List<PaymentModel> filtered = controller.payments;
-
-    // Filtrer par statut selon l'onglet actif
-    switch (_tabController.index) {
-      case 0: // Tous
-        break;
-      case 1: // En attente
-        filtered = filtered.where((p) => p.isPending).toList();
-        break;
-      case 2: // Validés
-        filtered = filtered.where((p) => p.isApproved).toList();
-        break;
-      case 3: // Rejetés
-        filtered = filtered.where((p) => p.isRejected).toList();
-        break;
-    }
-
-    // Filtrer par recherche
-    if (_searchQuery.isNotEmpty) {
-      filtered =
-          filtered
-              .where(
-                (payment) =>
-                    payment.paymentNumber.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    payment.clientName.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
-
-    return filtered;
+    List<PaymentModel> list = controller.payments;
+    if (_searchQuery.isEmpty) return list;
+    return list
+        .where(
+          (payment) =>
+              payment.paymentNumber.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              payment.clientName.toLowerCase().contains(_searchQuery.toLowerCase()),
+        )
+        .toList();
   }
 
   @override
@@ -129,14 +111,18 @@ class _PaymentListState extends State<PaymentList>
               ),
             ),
 
-            // Liste des paiements
+            // Liste des paiements (skeleton au changement d'onglet : liste vidée + isLoading = true)
             Expanded(
               child:
                   controller.isLoading.value
                       ? const SkeletonSearchResults(itemCount: 6)
                       : _filteredPayments.isEmpty
                       ? const Center(child: Text('Aucun paiement trouvé'))
-                      : ListView.builder(
+                      : PaginatedListView(
+                        scrollController: controller.scrollController,
+                        onLoadMore: controller.loadMore,
+                        hasNextPage: controller.hasNextPage.value,
+                        isLoadingMore: controller.isLoadingMore.value,
                         itemCount: _filteredPayments.length,
                         itemBuilder: (context, index) {
                           final payment = _filteredPayments[index];

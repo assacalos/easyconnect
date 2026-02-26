@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class StockService extends GetxService {
   static StockService get to => Get.find();
@@ -96,10 +97,14 @@ class StockService extends GetxService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Stock>(
+        final result = PaginationHelper.parseResponse<Stock>(
           json: data,
           fromJsonT: (json) => Stock.fromJson(json),
         );
+        if (page == 1 && result.data.isNotEmpty) {
+          _saveStocksToHive(result.data);
+        }
+        return result;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des stocks: ${response.statusCode}',
@@ -198,9 +203,9 @@ class StockService extends GetxService {
           }
 
           try {
-            return data.map((json) {
-              return Stock.fromJson(json);
-            }).toList();
+            final list = data.map((json) => Stock.fromJson(json)).toList();
+            _saveStocksToHive(list);
+            return list;
           } catch (e) {
             rethrow;
           }
@@ -868,6 +873,25 @@ class StockService extends GetxService {
       );
     } catch (e) {
       rethrow;
+    }
+  }
+
+  static void _saveStocksToHive(List<Stock> list) {
+    try {
+      HiveStorageService.saveEntityList(
+        HiveStorageService.keyStocks,
+        list.map((e) => e.toJson()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  /// Cache Hive : liste des stocks pour affichage instantané.
+  static List<Stock> getCachedStocks() {
+    try {
+      final raw = HiveStorageService.getEntityList(HiveStorageService.keyStocks);
+      return raw.map((e) => Stock.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

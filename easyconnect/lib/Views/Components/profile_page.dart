@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
 import 'package:easyconnect/models/user_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/session_service.dart';
@@ -23,6 +25,17 @@ class ProfilePage extends StatelessWidget {
         backgroundColor: Colors.blueGrey.shade900,
         foregroundColor: Colors.white,
         actions: [
+          Obx(() {
+            final isPatron = authController.userAuth.value?.role == Roles.PATRON;
+            if (isPatron && Get.isRegistered<NotificationController>()) {
+              return IconButton(
+                icon: const NotificationBadgeIcon(),
+                onPressed: () => Get.toNamed('/notifications'),
+                tooltip: 'Notifications',
+              );
+            }
+            return const SizedBox.shrink();
+          }),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => _showEditProfileDialog(context, authController),
@@ -685,9 +698,9 @@ class ProfilePage extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Get.back();
-              authController.logout();
+              await authController.logout(redirectTo: '/login');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

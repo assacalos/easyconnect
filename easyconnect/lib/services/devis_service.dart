@@ -7,9 +7,8 @@ import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
-import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
-import 'package:easyconnect/services/api_service.dart';
 
 class DevisService {
   final storage = GetStorage();
@@ -17,6 +16,7 @@ class DevisService {
   /// Récupérer les devis avec pagination côté serveur
   Future<PaginationResponse<Devis>> getDevisPaginated({
     int? status,
+    int? clientId,
     int page = 1,
     int perPage = 15,
     String? search,
@@ -26,81 +26,58 @@ class DevisService {
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
-      String url = '${AppConfig.baseUrl}/devis';
-      List<String> params = [];
-
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
       if (status != null) {
-        params.add('status=$status');
+        final apiStatus = status == 1 ? 0 : status;
+        queryParams['status'] = apiStatus.toString();
       }
-      if (userRole == 2 && userId != null) {
-        params.add('user_id=$userId');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
+      if (clientId != null) queryParams['client_id'] = clientId.toString();
+      if (userRole == 2 && userId != null) queryParams['user_id'] = userId.toString();
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'DEVIS_SERVICE');
-      AppLogger.info(
-        'Paramètres: status=$status, userRole=$userRole, userId=$userId, page=$page, perPage=$perPage',
-        tag: 'DEVIS_SERVICE',
+      final uri = Uri.parse('${AppConfig.baseUrl}/devis').replace(
+        queryParameters: queryParams,
       );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'DEVIS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-            ),
+            () => http
+                .get(
+                  uri,
+                  headers: {
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout:
+                      () =>
+                          throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
-      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
-
-      // Logger le corps de la réponse pour debug
-      AppLogger.debug(
-        'Réponse brute (premiers 500 caractères): ${response.body.length > 500 ? response.body.substring(0, 500) + "..." : response.body}',
-        tag: 'DEVIS_SERVICE',
-      );
-
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'DEVIS_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        AppLogger.debug(
-          'Données décodées: ${jsonEncode(data)}',
-          tag: 'DEVIS_SERVICE',
-        );
-
-        final paginatedResponse = PaginationHelper.parseResponse<Devis>(
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final paginatedResponse = PaginationHelper.parseResponseSafe<Devis>(
           json: data,
           fromJsonT: (json) {
             try {
               return Devis.fromJson(json);
-            } catch (e, stackTrace) {
-              AppLogger.error(
-                'Erreur parsing devis JSON: $e',
-                tag: 'DEVIS_SERVICE',
-                error: e,
-                stackTrace: stackTrace,
-              );
-              rethrow;
+            } catch (_) {
+              return null;
             }
           },
         );
-        AppLogger.info(
-          'Devis paginés récupérés: ${paginatedResponse.data.length} devis sur ${paginatedResponse.meta.total} total (page ${paginatedResponse.meta.currentPage}/${paginatedResponse.meta.lastPage})',
-          tag: 'DEVIS_SERVICE',
-        );
+        if (page == 1 && clientId == null) _saveDevisToHive(paginatedResponse.data, status);
 
         if (paginatedResponse.data.isEmpty) {
           AppLogger.warning(
@@ -130,161 +107,17 @@ class DevisService {
     }
   }
 
-  Future<List<Devis>> getDevis({int? status, bool forceRefresh = false}) async {
-    try {
-      // OPTIMISATION : Vérifier le cache d'abord (sauf si on force le rafraîchissement)
-      final cacheKey = 'devis_${status ?? 'all'}';
-      if (!forceRefresh) {
-        final cached = CacheHelper.get<List<Devis>>(cacheKey);
-        if (cached != null) {
-          AppLogger.debug(
-            'Using cached devis: ${cached.length} devis',
-            tag: 'DEVIS_SERVICE',
-          );
-          return cached;
-        }
-      }
-
-      final token = storage.read('token');
-
-      final userRole = storage.read('userRole');
-      final userId = storage.read('userId');
-
-      var queryParams = <String, String>{};
-      if (status != null) {
-        // Statuts uniformisés : 1=En attente, 2=Validé, 3=Rejeté
-        queryParams['status'] = status.toString();
-      }
-      // Filtrer par userId pour les commerciaux (role 2)
-      if (userRole == 2 && userId != null) {
-        queryParams['user_id'] = userId.toString();
-      }
-
-      final queryString =
-          queryParams.isEmpty
-              ? ''
-              : '?${Uri(queryParameters: queryParams).query}';
-
-      final url = '${AppConfig.baseUrl}/devis-list$queryString';
-      AppLogger.httpRequest('GET', url, tag: 'DEVIS_SERVICE');
-
-      final response = await RetryHelper.retryNetwork(
-        operation:
-            () => http.get(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-            ),
-        maxRetries: AppConfig.defaultMaxRetries,
-      );
-
-      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
-
-      // Logger le corps de la réponse pour debug
-      AppLogger.debug(
-        'Réponse brute /devis-list (premiers 500 caractères): ${response.body.length > 500 ? response.body.substring(0, 500) + "..." : response.body}',
-        tag: 'DEVIS_SERVICE',
-      );
-
-      // Gérer les erreurs d'authentification
-      await AuthErrorHandler.handleHttpResponse(response);
-
-      // Utiliser ApiService.parseResponse pour gérer le format standardisé
-      final result = ApiService.parseResponse(response);
-
-      AppLogger.debug(
-        'Résultat parseResponse: success=${result['success']}, hasData=${result['data'] != null}',
-        tag: 'DEVIS_SERVICE',
-      );
-
-      if (result['success'] == true) {
-        try {
-          final responseData = result['data'];
-
-          List<dynamic> data;
-
-          // Gérer différents formats de réponse
-          if (responseData is List) {
-            data = responseData;
-          } else if (responseData != null && responseData is Map) {
-            // Si c'est un objet avec un champ 'data', l'extraire
-            if (responseData['data'] != null) {
-              if (responseData['data'] is List) {
-                data = responseData['data'];
-              } else {
-                data = [responseData['data']];
-              }
-            } else {
-              // Si c'est un objet direct, le convertir en liste
-              data = [responseData];
-            }
-          } else {
-            AppLogger.warning(
-              'Format de réponse inattendu pour /devis-list: $responseData',
-              tag: 'DEVIS_SERVICE',
-            );
-            return [];
-          }
-
-          final List<Devis> devisList =
-              data
-                  .map((json) {
-                    try {
-                      return Devis.fromJson(json);
-                    } catch (e, stackTrace) {
-                      AppLogger.error(
-                        'Erreur lors du parsing d\'un devis: $e',
-                        tag: 'DEVIS_SERVICE',
-                        error: e,
-                        stackTrace: stackTrace,
-                      );
-                      return null;
-                    }
-                  })
-                  .where((devis) => devis != null)
-                  .cast<Devis>()
-                  .toList();
-
-          // Mettre en cache pour 5 minutes
-          CacheHelper.set(
-            cacheKey,
-            devisList,
-            duration: AppConfig.defaultCacheDuration,
-          );
-
-          AppLogger.info(
-            'Devis chargés via /devis-list: ${devisList.length} devis',
-            tag: 'DEVIS_SERVICE',
-          );
-
-          return devisList;
-        } catch (e) {
-          AppLogger.error(
-            'Erreur lors du parsing de la réponse: $e',
-            tag: 'DEVIS_SERVICE',
-            error: e,
-          );
-          throw Exception('Erreur lors du parsing de la réponse: $e');
-        }
-      }
-
-      // Si success == false, utiliser le message d'erreur
-      throw Exception(
-        result['message'] ?? 'Erreur lors de la récupération des devis',
-      );
-    } catch (e) {
-      // Gérer les erreurs d'authentification dans les exceptions
-      await AuthErrorHandler.handleException(e);
-
-      // Si c'est une erreur d'authentification, ne pas la propager
-      if (AuthErrorHandler.shouldIgnoreError(e)) {
-        throw Exception('Session expirée');
-      }
-
-      throw Exception('Erreur lors de la récupération des devis: $e');
-    }
+  /// Récupère la première page (délégation vers getDevisPaginated pour compatibilité).
+  /// [clientId] : si fourni, ne retourne que les devis de ce client (utilisé par le formulaire bordereau).
+  Future<List<Devis>> getDevis({int? status, int? clientId, bool forceRefresh = false}) async {
+    final res = await getDevisPaginated(
+      status: status,
+      clientId: clientId,
+      page: 1,
+      perPage: 500,
+      search: null,
+    );
+    return res.data;
   }
 
   Future<Devis> createDevis(Devis devis) async {
@@ -302,15 +135,21 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-              body: json.encode(devisData),
-            ),
+            () => http
+                .post(
+                  Uri.parse(url),
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: json.encode(devisData),
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout: () =>
+                      throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -372,15 +211,21 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.put(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-              body: json.encode(devis.toJson()),
-            ),
+            () => http
+                .put(
+                  Uri.parse(url),
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: json.encode(devis.toJson()),
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout: () =>
+                      throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -472,13 +317,19 @@ class DevisService {
   Future<bool> submitDevis(int devisId) async {
     try {
       final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('${AppConfig.baseUrl}/devis-submit/$devisId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/devis-submit/$devisId'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       return response.statusCode == 200;
     } catch (e) {
@@ -560,13 +411,19 @@ class DevisService {
   Future<String> generatePDF(int devisId) async {
     try {
       final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('${AppConfig.baseUrl}/devis/$devisId/pdf'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/devis/$devisId/pdf'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout:
+                () => throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         return json.decode(response.body)['url'];
@@ -580,13 +437,19 @@ class DevisService {
   Future<Map<String, dynamic>> getDevisStats() async {
     try {
       final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('${AppConfig.baseUrl}/devis/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/devis/stats'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout:
+                () => throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       if (response.statusCode == 200) {
         return json.decode(response.body)['data'];
@@ -613,13 +476,20 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-            ),
+            () => http
+                .get(
+                  Uri.parse(url),
+                  headers: {
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout:
+                      () =>
+                          throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -651,6 +521,42 @@ class DevisService {
         tag: 'DEVIS_SERVICE_DEBUG',
       );
       rethrow;
+    }
+  }
+
+  static void _saveDevisToHive(List<Devis> list, int? status) {
+    try {
+      final key = '${HiveStorageService.keyDevis}_${status ?? 'all'}';
+      HiveStorageService.saveEntityList(
+        key,
+        list.map((e) => e.toJson()).toList(),
+      );
+      AppLogger.debug(
+        'Hive: Mise à jour cache devis (statut ${status ?? 'all'}), ${list.length} élément(s)',
+        tag: 'DEVIS_SERVICE',
+      );
+    } catch (e) {
+      AppLogger.warning('Hive: Erreur sauvegarde devis: $e', tag: 'DEVIS_SERVICE');
+    }
+  }
+
+  static void saveDevisToHive(List<Devis> list, int? status) {
+    _saveDevisToHive(list, status);
+  }
+
+  /// Cache Hive (sync) : affichage instantané Cache-First.
+  static List<Devis> getCachedDevis([int? status]) {
+    try {
+      final key = '${HiveStorageService.keyDevis}_${status ?? 'all'}';
+      final raw = HiveStorageService.getEntityList(key);
+      if (raw.isNotEmpty) {
+        return raw.map((e) => Devis.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      if (status != null) return [];
+      final fallback = HiveStorageService.getEntityList(HiveStorageService.keyDevis);
+      return fallback.map((e) => Devis.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

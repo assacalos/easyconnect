@@ -19,6 +19,7 @@ class InterventionController extends GetxController {
   final RxList<Intervention> interventions = <Intervention>[].obs;
   final RxList<Intervention> pendingInterventions = <Intervention>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final Rx<InterventionStats?> interventionStats = Rx<InterventionStats?>(null);
 
   // Variables pour le formulaire
@@ -36,6 +37,7 @@ class InterventionController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Contrôleurs de formulaire
   final TextEditingController titleController = TextEditingController();
@@ -81,7 +83,9 @@ class InterventionController extends GetxController {
   }
 
   @override
+  @override
   void onClose() {
+    scrollController.dispose();
     titleController.dispose();
     descriptionController.dispose();
     locationController.dispose();
@@ -102,12 +106,25 @@ class InterventionController extends GetxController {
   // Charger toutes les interventions
   Future<void> loadInterventions({String? statusFilter, int page = 1}) async {
     try {
-      isLoading.value = true;
       _currentStatusFilter =
           statusFilter ??
           (selectedStatus.value == 'all' ? null : selectedStatus.value);
+
+      if (page == 1) {
+        final hiveList = InterventionService.getCachedInterventions();
+        if (hiveList.isNotEmpty) {
+          interventions.value = hiveList;
+          isLoading.value = false;
+          Future.microtask(() => _refreshInterventionsFromApi());
+          return;
+        }
+        isLoading.value = true;
+      }
+      if (page > 1) {
+        isLoadingMore.value = true;
+      }
+
       try {
-        // Utiliser la méthode paginée
         final paginatedResponse = await _interventionService
             .getInterventionsPaginated(
               status: _currentStatusFilter,
@@ -155,12 +172,43 @@ class InterventionController extends GetxController {
       // Les erreurs d'authentification sont déjà gérées par AuthErrorHandler
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Rafraîchit les interventions depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
+  Future<void> _refreshInterventionsFromApi() async {
+    try {
+      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      final paginatedResponse = await _interventionService.getInterventionsPaginated(
+        status: _currentStatusFilter,
+        type: selectedType.value == 'all' ? null : selectedType.value,
+        priority: selectedPriority.value == 'all' ? null : selectedPriority.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      interventions.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      loadInterventionStats().catchError((_) {});
+    } catch (_) {}
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadInterventions(
         statusFilter: _currentStatusFilter,
         page: currentPage.value + 1,
@@ -196,6 +244,7 @@ class InterventionController extends GetxController {
 
   // Créer une intervention
   Future<bool> createIntervention() async {
+    if (isLoading.value) return false;
     try {
       isLoading.value = true;
 
@@ -311,6 +360,7 @@ class InterventionController extends GetxController {
 
   // Mettre à jour une intervention
   Future<bool> updateIntervention(Intervention intervention) async {
+    if (isLoading.value) return false;
     try {
       isLoading.value = true;
 
@@ -974,20 +1024,32 @@ class InterventionController extends GetxController {
     {'value': 'rejected', 'label': 'Rejetée', 'color': Colors.red},
   ];
 
-  // Charger les clients validés
+  // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
+    isLoadingClients.value = true;
+    final cached = ClientService.getCachedClients(1);
+    if (cached.isNotEmpty) {
+      availableClients.assignAll(cached);
+      isLoadingClients.value = false;
+    } else {
+      availableClients.value = [];
+    }
     try {
-      isLoadingClients.value = true;
-      final clients = await _clientService.getClients(
-        status: 1,
-      ); // Status 1 = Validé
-      availableClients.value = clients;
+      final clients = await _clientService.getClients(status: 1);
+      availableClients.assignAll(clients);
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger les clients validés',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (availableClients.isEmpty) {
+        final fallback = ClientService.getCachedClients(1);
+        if (fallback.isNotEmpty) {
+          availableClients.assignAll(fallback);
+        } else {
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les clients validés',
+            snackPosition: SnackPosition.BOTTOM,
+          );
+        }
+      }
     } finally {
       isLoadingClients.value = false;
     }

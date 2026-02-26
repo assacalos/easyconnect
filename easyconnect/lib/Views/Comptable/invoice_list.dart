@@ -6,13 +6,32 @@ import 'package:easyconnect/Views/Comptable/invoice_form.dart';
 import 'package:easyconnect/Views/Comptable/invoice_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class InvoiceList extends StatelessWidget {
+class InvoiceList extends StatefulWidget {
   final int? clientId;
 
   const InvoiceList({super.key, this.clientId});
+
+  @override
+  State<InvoiceList> createState() => _InvoiceListState();
+}
+
+class _InvoiceListState extends State<InvoiceList> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        try {
+          Get.find<InvoiceController>().loadInvoices();
+        } catch (_) {}
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +95,7 @@ class InvoiceList extends StatelessWidget {
                       // Récupérer clientId depuis les arguments
                       final args = Get.arguments as Map<String, dynamic>?;
                       final filterClientId =
-                          clientId ?? args?['clientId'] as int?;
+                          widget.clientId ?? args?['clientId'] as int?;
 
                       // Filtrer les factures par clientId si fourni
                       var filteredInvoices = controller.invoices;
@@ -91,27 +110,34 @@ class InvoiceList extends StatelessWidget {
                                 .obs;
                       }
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(16),
+                      return Obx(() => PaginatedListView(
+                        scrollController: controller.scrollController,
+                        onLoadMore: controller.loadMore,
+                        hasNextPage: controller.hasNextPage.value,
+                        isLoadingMore: controller.isLoadingMore.value,
                         itemCount: filteredInvoices.length,
                         itemBuilder: (context, index) {
                           final invoice = filteredInvoices[index];
                           return _buildInvoiceCard(invoice, controller);
                         },
-                      );
+                      ));
                     },
                   ),
                 ),
               ],
             );
           }),
-          // Bouton d'ajout uniforme en bas à droite (masqué pour les commerciaux)
-          RoleBasedWidget(
-            allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
-            child: UniformAddButton(
-              onPressed: () => Get.to(() => const InvoiceForm()),
-              label: 'Nouvelle Facture',
-              icon: Icons.receipt,
+          // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: RoleBasedWidget(
+              allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
+              child: UniformAddButton(
+                onPressed: () => Get.to(() => const InvoiceForm()),
+                label: 'Nouvelle Facture',
+                icon: Icons.receipt,
+              ),
             ),
           ),
         ],

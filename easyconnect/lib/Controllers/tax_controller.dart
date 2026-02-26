@@ -15,6 +15,7 @@ class TaxController extends GetxController {
   final RxList<Tax> allTaxes = <Tax>[].obs; // Toutes les taxes
   final RxList<Tax> taxes = <Tax>[].obs; // Taxes filtrées
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
   final Rx<TaxStats?> taxStats = Rx<TaxStats?>(null);
 
   // Variables pour les filtres
@@ -29,6 +30,7 @@ class TaxController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
+  final ScrollController scrollController = ScrollController();
 
   @override
   void onInit() {
@@ -40,6 +42,12 @@ class TaxController extends GetxController {
 
     // Attendre que le token soit disponible avant de charger
     _waitForTokenAndLoad();
+  }
+
+  @override
+  void onClose() {
+    scrollController.dispose();
+    super.onClose();
   }
 
   Future<void> _waitForTokenAndLoad() async {
@@ -64,7 +72,6 @@ class TaxController extends GetxController {
   // Charger toutes les taxes
   Future<void> loadTaxes({String? statusFilter, int page = 1}) async {
     try {
-      isLoading.value = true;
       _currentStatusFilter =
           statusFilter ??
           (selectedStatus.value == 'all' ? null : selectedStatus.value);
@@ -73,19 +80,32 @@ class TaxController extends GetxController {
       final storage = GetStorage();
       final token = storage.read<String?>('token');
       if (token == null) {
-        // Ne pas afficher d'erreur si le token n'est pas disponible, juste attendre
         return;
       }
 
-      // Afficher immédiatement les données du cache si disponibles (seulement page 1)
       final cacheKey = 'taxes_${_currentStatusFilter ?? 'all'}';
-      final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
-      if (cachedTaxes != null && cachedTaxes.isNotEmpty && page == 1) {
-        allTaxes.assignAll(cachedTaxes);
-        applyFilters();
-        isLoading.value = false; // Permettre l'affichage immédiat
-      } else {
+
+      if (page == 1) {
+        final hiveList = TaxService.getCachedTaxes();
+        if (hiveList.isNotEmpty) {
+          allTaxes.assignAll(hiveList);
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshTaxesFromApi(cacheKey));
+          return;
+        }
+        final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
+        if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
+          allTaxes.assignAll(cachedTaxes);
+          applyFilters();
+          isLoading.value = false;
+          Future.microtask(() => _refreshTaxesFromApi(cacheKey));
+          return;
+        }
+        allTaxes.value = [];
         isLoading.value = true;
+      } else if (page > 1) {
+        isLoadingMore.value = true;
       }
 
       try {
@@ -211,12 +231,43 @@ class TaxController extends GetxController {
       );
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+    }
+  }
+
+  /// Chargement de la page suivante au scroll.
+  /// Rafraîchit les taxes depuis l'API (page 1) et met à jour la liste/cache si le filtre est inchangé.
+  Future<void> _refreshTaxesFromApi(String cacheKey) async {
+    try {
+      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      final paginatedResponse = await _taxService.getTaxesPaginated(
+        status: _currentStatusFilter,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        page: 1,
+        perPage: perPage.value,
+      );
+      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      allTaxes.value = paginatedResponse.data;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      applyFilters();
+      CacheHelper.set(cacheKey, paginatedResponse.data);
+      loadTaxStats().catchError((_) {});
+    } catch (_) {}
+  }
+
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadTaxes(
         statusFilter: _currentStatusFilter,
         page: currentPage.value + 1,

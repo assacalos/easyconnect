@@ -4,6 +4,7 @@ import 'package:easyconnect/Controllers/salary_controller.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/Views/Comptable/salary_form.dart';
 import 'package:easyconnect/Views/Comptable/salary_detail.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -160,7 +161,11 @@ class _SalaryListState extends State<SalaryList>
               }
               return _filteredSalaries.isEmpty
                   ? const Center(child: Text('Aucun salaire trouvé'))
-                  : ListView.builder(
+                  : PaginatedListView(
+                    scrollController: controller.scrollController,
+                    onLoadMore: controller.loadMore,
+                    hasNextPage: controller.hasNextPage.value,
+                    isLoadingMore: controller.isLoadingMore.value,
                     itemCount: _filteredSalaries.length,
                     itemBuilder: (context, index) {
                       final salary = _filteredSalaries[index];

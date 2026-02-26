@@ -21,6 +21,7 @@ import 'package:easyconnect/Views/Patron/paiement_validation_page.dart';
 import 'package:easyconnect/Views/Patron/depense_validation_page.dart';
 import 'package:easyconnect/Views/Patron/salaire_validation_page.dart';
 import 'package:easyconnect/Views/Patron/pointage_validation_page.dart';
+import 'package:easyconnect/Views/Patron/presence_summary_page.dart';
 import 'package:easyconnect/Views/Patron/stock_validation_page.dart';
 import 'package:easyconnect/Views/Patron/intervention_validation_page.dart';
 import 'package:easyconnect/Views/Patron/recruitment_validation_page.dart';
@@ -84,6 +85,8 @@ import 'package:easyconnect/Views/Comptable/salary_detail.dart';
 import 'package:easyconnect/Views/Technicien/intervention_list.dart';
 import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
+import 'package:easyconnect/Views/Technicien/besoin_list_page.dart';
+import 'package:easyconnect/Views/Technicien/besoin_form_page.dart';
 import 'package:easyconnect/Views/Commercial/devis_detail_page.dart';
 import 'package:easyconnect/Views/Commercial/bordereau_detail_page.dart';
 import 'package:easyconnect/Views/Commercial/bon_commande_detail_page.dart';
@@ -241,6 +244,14 @@ class AppRoutes {
           () => ClientDetailsPage(
             clientId: int.tryParse(Get.parameters['id'] ?? '0') ?? 0,
           ),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/clients/:id/edit',
+      page: () => ClientFormPage(
+        isEditing: true,
+        clientId: int.tryParse(Get.parameters['id'] ?? '0'),
+      ),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -430,6 +441,11 @@ class AppRoutes {
     GetPage(
       name: '/pointage/validation',
       page: () => const PointageValidationPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/pointage/presence-summary',
+      page: () => const PresenceSummaryPage(),
       middlewares: [AuthMiddleware()],
     ),
     GetPage(
@@ -630,6 +646,17 @@ class AppRoutes {
     GetPage(
       name: '/interventions/:id',
       page: () => InterventionDetail(intervention: Get.arguments),
+      middlewares: [AuthMiddleware()],
+    ),
+    // Routes pour les besoins (rappels patron, hors intervention)
+    GetPage(
+      name: '/besoins',
+      page: () => const BesoinListPage(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: '/besoins/new',
+      page: () => const BesoinFormPage(),
       middlewares: [AuthMiddleware()],
     ),
     // Routes pour les équipements

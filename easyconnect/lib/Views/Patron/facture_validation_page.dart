@@ -616,8 +616,8 @@ class _FactureValidationPageState extends State<FactureValidationPage>
       onConfirm: () async {
         Get.back();
         await controller.approveInvoice(invoice.id);
-        // Recharger après validation pour afficher la facture dans le bon onglet
-        await _loadInvoices();
+        // Mise à jour optimiste côté contrôleur ; sync en arrière-plan sans bloquer l'UI
+        _loadInvoices().catchError((_) {});
       },
     );
   }
@@ -644,7 +644,7 @@ class _FactureValidationPageState extends State<FactureValidationPage>
       textCancel: 'Annuler',
       confirmTextColor: Colors.white,
       onConfirm: () async {
-        if (reasonController.text.isEmpty) {
+        if (reasonController.text.trim().isEmpty) {
           Get.snackbar(
             'Erreur',
             'Veuillez entrer un motif de rejet',
@@ -653,9 +653,9 @@ class _FactureValidationPageState extends State<FactureValidationPage>
           return;
         }
         Get.back();
-        await controller.rejectInvoice(invoice.id, reasonController.text);
-        // Recharger après rejet pour afficher la facture dans le bon onglet
-        await _loadInvoices();
+        await controller.rejectInvoice(invoice.id, reasonController.text.trim());
+        // Mise à jour optimiste côté contrôleur ; sync en arrière-plan sans bloquer l'UI
+        _loadInvoices().catchError((_) {});
       },
     );
   }

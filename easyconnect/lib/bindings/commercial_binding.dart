@@ -27,35 +27,84 @@ import 'package:easyconnect/services/task_service.dart';
 class CommercialBinding extends Bindings {
   @override
   void dependencies() {
-    print('=== INITIALISATION COMMERCIAL BINDING ===');
+    // Idempotent : n'enregistrer que si pas déjà présent pour éviter
+    // ré-initialisation à chaque navigation (doublons d'appels API).
+    if (!Get.isRegistered<CommercialDashboardController>()) {
+      print('=== INITIALISATION COMMERCIAL BINDING ===');
+    }
 
-    // Services d'abord
-    Get.put(CommercialDashboardService(), permanent: true);
-    Get.put(ClientService(), permanent: true);
-    Get.put(DevisService(), permanent: true);
-    Get.put(BordereauService(), permanent: true);
-    Get.put(BonCommandeService(), permanent: true);
-    Get.put(BonDeCommandeFournisseurService(), permanent: true);
-    Get.put(InvoiceService(), permanent: true);
-    Get.put(PaymentService(), permanent: true);
-    Get.put(TaskService(), permanent: true);
-    Get.put(InvoiceController(), permanent: true);
-    Get.put(ReportingService(), permanent: true);
-    Get.put(AttendancePunchService(), permanent: true);
-    Get.put(InterventionService(), permanent: true);
+    if (!Get.isRegistered<CommercialDashboardService>()) {
+      Get.put(CommercialDashboardService(), permanent: true);
+    }
+    if (!Get.isRegistered<ClientService>()) {
+      Get.put(ClientService(), permanent: true);
+    }
+    if (!Get.isRegistered<DevisService>()) {
+      Get.put(DevisService(), permanent: true);
+    }
+    if (!Get.isRegistered<BordereauService>()) {
+      Get.put(BordereauService(), permanent: true);
+    }
+    if (!Get.isRegistered<BonCommandeService>()) {
+      Get.put(BonCommandeService(), permanent: true);
+    }
+    if (!Get.isRegistered<BonDeCommandeFournisseurService>()) {
+      Get.put(BonDeCommandeFournisseurService(), permanent: true);
+    }
+    if (!Get.isRegistered<InvoiceService>()) {
+      Get.put(InvoiceService(), permanent: true);
+    }
+    if (!Get.isRegistered<PaymentService>()) {
+      Get.put(PaymentService(), permanent: true);
+    }
+    if (!Get.isRegistered<TaskService>()) {
+      Get.put(TaskService(), permanent: true);
+    }
+    if (!Get.isRegistered<ReportingService>()) {
+      Get.put(ReportingService(), permanent: true);
+    }
+    if (!Get.isRegistered<AttendancePunchService>()) {
+      Get.put(AttendancePunchService(), permanent: true);
+    }
+    if (!Get.isRegistered<InterventionService>()) {
+      Get.put(InterventionService(), permanent: true);
+    }
 
-    // Contrôleurs commerciaux
-    Get.put(ClientController(), permanent: true);
-    Get.put(DevisController(), permanent: true);
-    Get.put(BordereauxController(), permanent: true);
-    Get.put(BonCommandeController(), permanent: true);
-    Get.put(BonDeCommandeFournisseurController(), permanent: true);
-    Get.put(CommercialDashboardController(), permanent: true);
-    Get.put(ReportingController(), permanent: true);
-    Get.put(AttendanceController(), permanent: true);
-    Get.put(InvoiceController(), permanent: true);
-    Get.put(PaymentController(), permanent: true);
-    Get.put(InterventionController(), permanent: true);
-    Get.put(TaskController(), permanent: true);
+    if (!Get.isRegistered<ClientController>()) {
+      Get.put(ClientController(), permanent: true);
+    }
+    if (!Get.isRegistered<DevisController>()) {
+      Get.put(DevisController(), permanent: true);
+    }
+    if (!Get.isRegistered<BordereauxController>()) {
+      Get.put(BordereauxController(), permanent: true);
+    }
+    if (!Get.isRegistered<BonCommandeController>()) {
+      Get.put(BonCommandeController(), permanent: true);
+    }
+    if (!Get.isRegistered<BonDeCommandeFournisseurController>()) {
+      Get.put(BonDeCommandeFournisseurController(), permanent: true);
+    }
+    if (!Get.isRegistered<CommercialDashboardController>()) {
+      Get.put(CommercialDashboardController(), permanent: true);
+    }
+    if (!Get.isRegistered<ReportingController>()) {
+      Get.put(ReportingController(), permanent: true);
+    }
+    if (!Get.isRegistered<AttendanceController>()) {
+      Get.put(AttendanceController(), permanent: true);
+    }
+    if (!Get.isRegistered<InvoiceController>()) {
+      Get.put(InvoiceController(), permanent: true);
+    }
+    if (!Get.isRegistered<PaymentController>()) {
+      Get.put(PaymentController(), permanent: true);
+    }
+    if (!Get.isRegistered<InterventionController>()) {
+      Get.put(InterventionController(), permanent: true);
+    }
+    if (!Get.isRegistered<TaskController>()) {
+      Get.put(TaskController(), permanent: true);
+    }
   }
 }

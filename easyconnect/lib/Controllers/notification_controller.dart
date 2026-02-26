@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/notification_api_service.dart';
+import 'package:easyconnect/services/notification_navigation_service.dart';
 import 'package:easyconnect/services/notification_service_enhanced.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -21,6 +23,7 @@ class NotificationController extends GetxController {
 
   // État de chargement
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
 
   // Filtres
   final RxBool unreadOnly = false.obs;
@@ -34,6 +37,7 @@ class NotificationController extends GetxController {
   final RxBool hasNextPage = false.obs;
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 20.obs;
+  final ScrollController scrollController = ScrollController();
 
   // Timer pour le polling
   Timer? _pollingTimer;
@@ -93,32 +97,37 @@ class NotificationController extends GetxController {
 
   @override
   void onClose() {
+    scrollController.dispose();
     stopPolling();
     super.onClose();
   }
 
-  /// Charger les notifications
+  bool _isLoadingNotificationsInProgress = false;
+
+  /// Charge les notifications : Hive d'abord (affichage immédiat), puis API dans la même méthode.
   Future<void> loadNotifications({
     bool forceRefresh = false,
     int page = 1,
   }) async {
-    try {
-      if (!forceRefresh && isLoading.value) {
-        AppLogger.debug(
-          'Chargement déjà en cours, ignoré',
-          tag: 'NOTIFICATION_CONTROLLER',
-        );
-        return;
-      }
+    if (_isLoadingNotificationsInProgress) return;
+    _isLoadingNotificationsInProgress = true;
 
-      AppLogger.info(
-        'Début du chargement des notifications (forceRefresh=$forceRefresh, page=$page)',
-        tag: 'NOTIFICATION_CONTROLLER',
-      );
-
+    if (page == 1) {
       isLoading.value = true;
-      currentPage.value = page;
+      final cached = NotificationApiService.getCachedNotifications();
+      if (cached.isNotEmpty && !forceRefresh) {
+        notifications.assignAll(cached);
+        isLoading.value = false;
+        currentPage.value = 1;
+      } else {
+        notifications.value = [];
+      }
+    } else {
+      isLoadingMore.value = true;
+    }
+    currentPage.value = page;
 
+    try {
       final loadedNotifications = await _apiService.getNotifications(
         unreadOnly: unreadOnly.value,
         type: selectedType.value,
@@ -127,62 +136,38 @@ class NotificationController extends GetxController {
         perPage: perPage.value,
       );
 
-      // Log pour déboguer
-      AppLogger.info(
-        'Notifications chargées depuis l\'API: ${loadedNotifications.length}',
-        tag: 'NOTIFICATION_CONTROLLER',
-      );
-
-      if (loadedNotifications.isNotEmpty) {
-        AppLogger.info(
-          'Première notification: ID=${loadedNotifications[0].id}, Title=${loadedNotifications[0].title}, EntityType=${loadedNotifications[0].entityType}, IsRead=${loadedNotifications[0].isRead}',
-          tag: 'NOTIFICATION_CONTROLLER',
-        );
-      } else {
-        AppLogger.warning(
-          'Aucune notification chargée depuis l\'API',
-          tag: 'NOTIFICATION_CONTROLLER',
-        );
-      }
-
       if (page == 1) {
-        // Détecter les nouvelles notifications AVANT de mettre à jour la liste
-        // IMPORTANT: Ne pas afficher de notifications sonores au premier chargement
-        // car les notifications push FCM les gèrent déjà instantanément
-        // Seulement détecter les nouvelles notifications lors des rafraîchissements suivants
         if (!_isFirstLoad && forceRefresh) {
           _detectAndShowNewNotifications(loadedNotifications);
         }
-        // Supprimé: Ne plus afficher les notifications non lues au premier chargement
-        // car cela cause des notifications sonores quand on entre dans la page
-
-        notifications.value = loadedNotifications;
-        // Marquer toutes les notifications comme vues dans le set (pour éviter les doublons)
+        notifications.assignAll(loadedNotifications);
         _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
-
-        // Marquer que le premier chargement est terminé
         _isFirstLoad = false;
-
-        AppLogger.info(
-          'Notifications mises à jour dans la liste: ${notifications.length}',
-          tag: 'NOTIFICATION_CONTROLLER',
-        );
       } else {
         notifications.addAll(loadedNotifications);
-        // Marquer les nouvelles notifications comme vues
         _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
       }
 
-      // Mettre à jour le compteur de non lues
       await refreshUnreadCount();
-
-      isLoading.value = false;
     } catch (e) {
-      AppLogger.error(
-        'Erreur lors du chargement des notifications: $e',
-        tag: 'NOTIFICATION_CONTROLLER',
-      );
+      AppLogger.error('Erreur chargement notifications: $e', tag: 'NOTIFICATION_CONTROLLER');
+      if (notifications.isEmpty) {
+        final fallback = NotificationApiService.getCachedNotifications();
+        if (fallback.isNotEmpty) {
+          notifications.assignAll(fallback);
+        }
+      }
+    } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
+      _isLoadingNotificationsInProgress = false;
+    }
+  }
+
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
     }
   }
 
@@ -302,103 +287,17 @@ class NotificationController extends GetxController {
 
   /// Charger la page suivante
   Future<void> loadNextPage() async {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       await loadNotifications(page: currentPage.value + 1);
     }
   }
 
-  /// Gérer le tap sur une notification
+  /// Gérer le tap sur une notification : marquer comme lue puis rediriger vers l'élément cible
   void handleNotificationTap(AppNotification notification) {
-    // Marquer comme lue
     if (!notification.isRead) {
       markAsRead(notification.id);
     }
-
-    // Naviguer vers l'entité
-    _navigateToEntity(notification);
-  }
-
-  /// Naviguer vers l'entité concernée
-  void _navigateToEntity(AppNotification notification) {
-    try {
-      final entityId = notification.entityId;
-      final entityType = notification.entityType;
-
-      // Mapping des routes selon le guide
-      String? route;
-      switch (entityType) {
-        case 'expense':
-          route = '/expenses/$entityId';
-          break;
-        case 'leave_request':
-          route = '/leave-requests/$entityId';
-          break;
-        case 'attendance':
-          route = '/attendances/$entityId';
-          break;
-        case 'contract':
-          route = '/contracts/$entityId';
-          break;
-        case 'payment':
-          route = '/payments/$entityId';
-          break;
-        case 'client':
-          route = '/clients/$entityId';
-          break;
-        case 'devis':
-          route = '/devis/$entityId';
-          break;
-        case 'bordereau':
-          route = '/bordereaux/$entityId';
-          break;
-        case 'bon_commande':
-          route = '/bons-de-commande/$entityId';
-          break;
-        case 'invoice':
-          route = '/invoices/$entityId';
-          break;
-        case 'salary':
-          route = '/salaries/$entityId';
-          break;
-        case 'tax':
-          route = '/taxes/$entityId';
-          break;
-        case 'supplier':
-          route = '/fournisseurs/$entityId';
-          break;
-        case 'intervention':
-          route = '/interventions/$entityId';
-          break;
-        case 'recruitment':
-          route = '/recruitment-requests/$entityId';
-          break;
-        case 'stock':
-          route = '/stocks/$entityId';
-          break;
-        case 'reporting':
-          route = '/user-reportings/$entityId';
-          break;
-        default:
-          Get.snackbar(
-            'Information',
-            'Type d\'entité non reconnu: $entityType',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-      }
-
-      Get.toNamed(route);
-    } catch (e) {
-      AppLogger.error(
-        'Erreur lors de la navigation: $e',
-        tag: 'NOTIFICATION_CONTROLLER',
-      );
-      Get.snackbar(
-        'Erreur',
-        'Impossible de naviguer vers l\'entité',
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    }
+    NotificationNavigationService().handleNavigationFromNotification(notification);
   }
 
   /// Détecter les nouvelles notifications et déclencher des notifications locales

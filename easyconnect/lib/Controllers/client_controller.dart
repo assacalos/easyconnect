@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/services/client_service.dart';
@@ -8,12 +10,13 @@ import 'package:easyconnect/utils/notification_helper.dart';
 
 class ClientController extends GetxController {
   final ClientService _clientService = ClientService();
-  final clients = <Client>[].obs; // ✅ Utilise bien ton modèle
+  final clients = <Client>[].obs;
   final isLoading = false.obs;
-  int? _currentStatus; // Mémoriser le statut actuellement chargé
-  bool _isLoadingInProgress = false; // Protection contre les appels multiples
+  final RxBool isLoadingMore = false.obs;
+  int? _currentStatus;
+  bool _isLoadingInProgress = false;
+  bool _isRefreshingFromApi = false;
 
-  // Métadonnées de pagination
   final RxInt currentPage = 1.obs;
   final RxInt totalPages = 1.obs;
   final RxInt totalItems = 0.obs;
@@ -21,13 +24,33 @@ class ClientController extends GetxController {
   final RxBool hasPreviousPage = false.obs;
   final RxInt perPage = 15.obs;
   final RxString searchQuery = ''.obs;
+  final ScrollController scrollController = ScrollController();
+
+  Timer? _searchDebounceTimer;
 
   @override
   void onInit() {
     super.onInit();
-    // Ne pas charger automatiquement - laisser les pages décider quand charger
-    // Cela évite les erreurs et ralentissements inutiles
-    // Les pages appelleront loadClients() quand nécessaire
+    // Debounce recherche : loadClients 500ms après la dernière frappe
+    ever(searchQuery, (_) {
+      _searchDebounceTimer?.cancel();
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        if (!_isLoadingInProgress) {
+          AppLogger.debug(
+            'Recherche (debounce): rechargement statut=$_currentStatus, query="${searchQuery.value}"',
+            tag: 'CLIENT_CONTROLLER',
+          );
+          loadClients(status: _currentStatus, forceRefresh: true);
+        }
+      });
+    });
+  }
+
+  @override
+  void onClose() {
+    _searchDebounceTimer?.cancel();
+    scrollController.dispose();
+    super.onClose();
   }
 
   Future<void> loadClients({
@@ -35,7 +58,6 @@ class ClientController extends GetxController {
     bool forceRefresh = false,
     int page = 1,
   }) async {
-    // Protection contre les appels multiples simultanés
     if (_isLoadingInProgress) {
       AppLogger.debug(
         'Chargement déjà en cours, ignore cet appel',
@@ -44,156 +66,177 @@ class ClientController extends GetxController {
       return;
     }
 
-    try {
-      // Si on ne force pas le rafraîchissement et que les données sont déjà chargées avec le même statut, ne rien faire
-      // MAIS seulement si on a vraiment des données (pas si la liste est vide)
-      // ET seulement si le statut a déjà été défini (pas au premier chargement)
-      // ET seulement si c'est la même page
-      if (!forceRefresh &&
-          clients.isNotEmpty &&
-          _currentStatus == status &&
-          _currentStatus != null &&
-          currentPage.value == page &&
-          page == 1) {
+    if (!forceRefresh &&
+        clients.isNotEmpty &&
+        _currentStatus == status &&
+        currentPage.value == page &&
+        page == 1) {
+      AppLogger.debug(
+        'Données déjà chargées, pas de rechargement nécessaire',
+        tag: 'CLIENT_CONTROLLER',
+      );
+      return;
+    }
+
+    _isLoadingInProgress = true;
+    _currentStatus = status;
+    final entityKey = 'clients_${status ?? 'all'}';
+
+    if (page == 1) {
+      isLoading.value = true;
+      final cachedData = ClientService.getCachedClients(status);
+      if (cachedData.isNotEmpty) {
+        clients.assignAll(cachedData);
+        isLoading.value = false;
         AppLogger.debug(
-          'Données déjà chargées, pas de rechargement nécessaire',
+          '[Hive] statut=$status, ${cachedData.length} client(s) → affichage instantané',
+          tag: 'CLIENT_CONTROLLER',
+        );
+      } else {
+        clients.value = [];
+      }
+    } else {
+      isLoadingMore.value = true;
+    }
+
+    try {
+      final response = await _clientService.getClientsPaginated(
+        status: status,
+        page: page,
+        perPage: perPage.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+      );
+
+      if (_currentStatus != status) {
+        AppLogger.debug(
+          '[API] onglet changé (current=$_currentStatus, response=$status), mise à jour ignorée',
           tag: 'CLIENT_CONTROLLER',
         );
         return;
       }
 
-      _isLoadingInProgress = true;
-      _currentStatus = status; // Mémoriser le statut actuel
-
-      // Afficher IMMÉDIATEMENT les données du cache si disponibles (AVANT isLoading)
-      final cacheKey =
-          'clients_${status ?? 'all'}_false'; // Utiliser la même clé que le service
-      final cachedClients = CacheHelper.get<List<Client>>(cacheKey);
-      final hasCache =
-          cachedClients != null &&
-          cachedClients.isNotEmpty &&
-          !forceRefresh &&
-          page == 1;
-
-      if (hasCache) {
-        // Afficher le cache immédiatement pour que l'utilisateur voie quelque chose tout de suite
-        clients.assignAll(cachedClients);
-        isLoading.value = false; // Ne pas bloquer l'affichage si on a du cache
+      if (page == 1) {
+        clients.assignAll(response.data);
+        CacheHelper.set(entityKey, response.data);
+        ClientService.saveClientsToHive(response.data, status);
+        currentPage.value = 1;
         AppLogger.debug(
-          'Données chargées depuis le cache: ${cachedClients.length} clients',
+          '[API] page 1 → ${response.data.length} client(s), Hive mis à jour',
           tag: 'CLIENT_CONTROLLER',
         );
       } else {
-        // Pas de cache, afficher le loader
-        isLoading.value = true;
+        clients.addAll(response.data);
       }
 
-      // Charger les données avec pagination
-      try {
-        final paginatedResponse = await _clientService.getClientsPaginated(
-          status: status,
-          page: page,
-          perPage: perPage.value,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
-        );
-
-        // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
-
-        // Mettre à jour la liste
-        if (page == 1) {
-          clients.value = paginatedResponse.data;
+      totalPages.value = response.meta.lastPage;
+      totalItems.value = response.meta.total;
+      hasNextPage.value = response.hasNextPage;
+      hasPreviousPage.value = response.hasPreviousPage;
+      if (page > 1) currentPage.value = response.meta.currentPage;
+    } catch (e) {
+      AppLogger.error('Erreur API Clients: $e', tag: 'CLIENT_CONTROLLER');
+      if (clients.isEmpty) {
+        final fallback = ClientService.getCachedClients(status);
+        if (fallback.isNotEmpty) {
+          clients.assignAll(fallback);
         } else {
-          // Pour les pages suivantes, ajouter les données
-          clients.addAll(paginatedResponse.data);
-        }
-
-        // Sauvegarder dans le cache (seulement pour la page 1)
-        if (page == 1) {
-          CacheHelper.set(cacheKey, paginatedResponse.data);
-        }
-      } catch (e, stackTrace) {
-        // En cas d'erreur, essayer la méthode non-paginée en fallback
-        try {
-          final loadedClients = await _clientService.getClients(
-            status: status,
-            isPending: false,
+          Get.snackbar(
+            'Erreur',
+            'Impossible de charger les clients',
+            snackPosition: SnackPosition.BOTTOM,
           );
-          if (page == 1) {
-            clients.value = loadedClients;
-          } else {
-            clients.addAll(loadedClients);
-          }
-          if (page == 1) {
-            CacheHelper.set(cacheKey, loadedClients);
-          }
-        } catch (fallbackError) {
-          // Si le fallback échoue aussi, vérifier le cache
-          if (!hasCache || page > 1) {
-            if (clients.isEmpty) {
-              final cacheKey = 'clients_${status ?? 'all'}_false';
-              final cachedClients = CacheHelper.get<List<Client>>(cacheKey);
-              if (cachedClients != null && cachedClients.isNotEmpty) {
-                clients.assignAll(cachedClients);
-                AppLogger.warning(
-                  'Erreur réseau, utilisation du cache: $fallbackError',
-                  tag: 'CLIENT_CONTROLLER',
-                );
-                return; // Ne pas afficher d'erreur si on a du cache
-              }
-            }
-            rethrow; // Relancer l'erreur seulement si on n'avait pas de cache
-          }
-          AppLogger.warning(
-            'Erreur lors du chargement frais, utilisation du cache: $fallbackError',
-            tag: 'CLIENT_CONTROLLER',
-          );
-        }
-      }
-    } catch (e, stackTrace) {
-      // Ne pas afficher de message d'erreur si c'est une erreur d'authentification
-      // (elle est déjà gérée par AuthErrorHandler)
-      final errorString = e.toString().toLowerCase();
-      if (!errorString.contains('session expirée') &&
-          !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        AppLogger.error(
-          'Erreur lors du chargement des clients: $e',
-          tag: 'CLIENT_CONTROLLER',
-          error: e,
-          stackTrace: stackTrace,
-        );
-
-        // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-        if (clients.isEmpty) {
-          // Vérifier une dernière fois le cache avant d'afficher l'erreur
-          final cacheKey = 'clients_${status ?? 'all'}_false';
-          final cachedClients = CacheHelper.get<List<Client>>(cacheKey);
-          if (cachedClients == null || cachedClients.isEmpty) {
-            Get.snackbar(
-              'Erreur',
-              'Impossible de charger les clients',
-              snackPosition: SnackPosition.BOTTOM,
-            );
-          } else {
-            // Charger les données du cache si disponibles
-            clients.assignAll(cachedClients);
-          }
         }
       }
     } finally {
       isLoading.value = false;
+      isLoadingMore.value = false;
       _isLoadingInProgress = false;
     }
   }
 
+  /// Chargement de la page suivante au scroll.
+  void loadMore() {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+      loadNextPage();
+    }
+  }
+
+  /// Charge les clients pour l’onglet donné (0=En attente, 1=Validés, 2=Rejetés). Appelé par le TabBar.
+  Future<void> loadByStatus(int index) async {
+    await loadClients(status: index, forceRefresh: false);
+  }
+
+  /// Méthode conservée pour compatibilité ; le flux unique est dans loadClients.
+  // ignore: unused_element
+  Future<void> _refreshClientsFromApi(int? status, String cacheKey) async {
+    if (_isRefreshingFromApi) return;
+    _isRefreshingFromApi = true;
+    try {
+      AppLogger.debug(
+        '[Retour API] demande en cours statut=$status...',
+        tag: 'CLIENT_CONTROLLER',
+      );
+      final paginatedResponse = await _clientService.getClientsPaginated(
+        status: status,
+        page: 1,
+        perPage: perPage.value,
+        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+      );
+      AppLogger.debug(
+        '[Retour API] statut=$status, ${paginatedResponse.data.length} client(s) reçu(s)',
+        tag: 'CLIENT_CONTROLLER',
+      );
+      if (_currentStatus != status) {
+        AppLogger.debug(
+          '[Retour API] onglet changé (current=$_currentStatus, response=$status), mise à jour ignorée',
+          tag: 'CLIENT_CONTROLLER',
+        );
+        return;
+      }
+      final newData = paginatedResponse.data;
+      clients.value = newData;
+      totalPages.value = paginatedResponse.meta.lastPage;
+      totalItems.value = paginatedResponse.meta.total;
+      hasNextPage.value = paginatedResponse.hasNextPage;
+      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
+      currentPage.value = 1;
+      CacheHelper.set(cacheKey, newData);
+      ClientService.saveClientsToHive(newData, status);
+      AppLogger.debug(
+        '[Mise à jour Cache] liste et Hive mis à jour avec ${newData.length} client(s)',
+        tag: 'CLIENT_CONTROLLER',
+      );
+    } catch (e) {
+      // Ne pas effacer les données déjà affichées (Hive/cache)
+      AppLogger.warning(
+        'Rafraîchissement clients en arrière-plan échoué: $e',
+        tag: 'CLIENT_CONTROLLER',
+      );
+      // Message uniquement si la liste est vide (pas de cache) : erreur de chargement
+      if (clients.isEmpty) {
+        Get.snackbar(
+          'Connexion',
+          'Impossible de charger les clients. Vérifiez votre connexion.',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 3),
+        );
+      }
+      // Si des données en cache sont déjà affichées, ne pas afficher de message (UX)
+    } finally {
+      isLoading.value = false;
+      _isRefreshingFromApi = false;
+      _isLoadingInProgress = false;
+    }
+  }
+
+  /// Rafraîchissement manuel (ex. Pull to refresh). Recharge la liste avec l’API.
+  Future<void> refreshData() async {
+    await loadClients(status: _currentStatus, forceRefresh: true, page: 1);
+  }
+
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
+    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
       loadClients(status: _currentStatus, page: currentPage.value + 1);
     }
   }
@@ -209,16 +252,23 @@ class ClientController extends GetxController {
     try {
       isLoading.value = true;
 
-      // Créer le client
       final createdClient = await _clientService.createClient(client);
 
-      // Invalider le cache
       CacheHelper.clearByPrefix('clients_');
 
-      // Ajouter le nouveau client à la liste localement (mise à jour optimiste)
-      clients.insert(0, createdClient);
+      // Insertion locale uniquement si le statut du nouveau client correspond à l'onglet actuel (ou tous)
+      final newStatus = createdClient.status ?? 0;
+      final shouldInsert = _currentStatus == null || _currentStatus == newStatus;
+      if (shouldInsert) {
+        clients.insert(0, createdClient);
+        final fullList = clients.toList();
+        ClientService.saveClientsToHive(fullList, _currentStatus);
+        AppLogger.debug(
+          '[Création client] insertion locale + mise à jour Hive (statut=$_currentStatus, ${fullList.length} total)',
+          tag: 'CLIENT_CONTROLLER',
+        );
+      }
 
-      // Notifier le patron de la soumission
       if (createdClient.id != null) {
         NotificationHelper.notifySubmission(
           entityType: 'client',
@@ -233,14 +283,7 @@ class ClientController extends GetxController {
           ),
         );
       }
-
-      // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
-      try {
-        await loadClients(forceRefresh: true);
-      } catch (e) {
-        // Si le rechargement échoue, on ne fait rien car le client a été créé avec succès
-        // L'utilisateur peut recharger manuellement si nécessaire
-      }
+      // Pas de loadClients(forceRefresh: true) pour ne pas écraser l'insertion par d'anciennes données
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
       final errorStr = e.toString().toLowerCase();
@@ -264,25 +307,29 @@ class ClientController extends GetxController {
   }
 
   Future<bool> createClientFromMap(Map<String, dynamic> data) async {
+    if (isLoading.value) return false;
     try {
       isLoading.value = true;
 
-      // Transformer le Map en objet Client
       final client = Client.fromJson(data);
-
-      // Créer le client
       final createdClient = await _clientService.createClient(client);
 
-      // Invalider le cache pour forcer le rechargement
       CacheHelper.clearByPrefix('clients_');
 
-      // Ajouter le nouveau client à la liste localement (mise à jour optimiste)
-      clients.insert(0, createdClient);
-      // Le client créé a toujours le status 0 (en attente)
-      if (createdClient.id != null) {
-        clients.add(createdClient);
+      // Insertion locale uniquement si le statut du nouveau client correspond à l'onglet actuel (ou tous)
+      final newStatus = createdClient.status ?? 0;
+      final shouldInsert = _currentStatus == null || _currentStatus == newStatus;
+      if (shouldInsert) {
+        clients.insert(0, createdClient);
+        final fullList = clients.toList();
+        ClientService.saveClientsToHive(fullList, _currentStatus);
+        AppLogger.debug(
+          '[Création client (Map)] insertion locale + mise à jour Hive (statut=$_currentStatus, ${fullList.length} total)',
+          tag: 'CLIENT_CONTROLLER',
+        );
+      }
 
-        // Notifier le patron de la soumission
+      if (createdClient.id != null) {
         NotificationHelper.notifySubmission(
           entityType: 'client',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -297,27 +344,14 @@ class ClientController extends GetxController {
         );
       }
 
-      // Si la création réussit, afficher le message de succès
       Get.snackbar(
         'Succès',
         'Client enregistré avec succès',
         snackPosition: SnackPosition.BOTTOM,
       );
 
-      // Recharger la liste pour synchroniser avec le serveur
-      try {
-        await loadClients(status: null);
-
-        // Rafraîchir les compteurs du dashboard patron
-        DashboardRefreshHelper.refreshPatronCounter('client');
-      } catch (e) {
-        // Si le rechargement échoue, on garde quand même le client ajouté localement
-        AppLogger.warning(
-          'Erreur lors du rechargement après création: $e',
-          tag: 'CLIENT_CONTROLLER',
-        );
-      }
-
+      // Rafraîchir les compteurs en arrière-plan (sans recharger la liste pour garder l'affichage instantané)
+      DashboardRefreshHelper.refreshPatronCounter('client');
       return true;
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -347,6 +381,7 @@ class ClientController extends GetxController {
   }
 
   Future<bool> updateClient(Map<String, dynamic> data) async {
+    if (isLoading.value) return false;
     try {
       isLoading.value = true;
 

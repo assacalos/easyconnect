@@ -79,6 +79,7 @@ class Devis {
   final String? titre; // Titre du devis
   final String? delaiLivraison; // Délai de livraison
   final String? garantie; // Garantie
+  final String? clientNomEntreprise; // Nom de l'entreprise (client) pour affichage liste
 
   Devis({
     this.id,
@@ -101,6 +102,7 @@ class Devis {
     this.titre,
     this.delaiLivraison,
     this.garantie,
+    this.clientNomEntreprise,
   });
 
   double get sousTotal {
@@ -221,14 +223,14 @@ class Devis {
               : null,
       notes: json['notes'],
       status: () {
-        final parsedStatus = _parseInt(json['status']) ?? 1;
-        return parsedStatus == 0
-            ? 1
-            : parsedStatus; // Traiter 0 comme 1 (en attente)
+        // BDD: 0=en attente, 2=validé, 3=rejeté. App: 1=attente, 2=validé, 3=rejeté
+        final p = _parseInt(json['status']);
+        if (p == null) return 1;
+        return p == 0 ? 1 : p; // 0 → 1 (en attente) ; 2, 3 inchangés
       }(),
       items:
-          (json['items'] as List)
-              .map((item) => DevisItem.fromJson(item))
+          ((json['items'] as List?) ?? [])
+              .map((item) => DevisItem.fromJson(item as Map<String, dynamic>))
               .toList(),
       remiseGlobale:
           json['remise_globale'] != null
@@ -255,7 +257,21 @@ class Devis {
       titre: json['titre'],
       delaiLivraison: json['delai_livraison'],
       garantie: json['garantie'],
+      clientNomEntreprise: _clientDisplayName(json['client']),
     );
+  }
+
+  static String? _clientDisplayName(dynamic client) {
+    if (client == null || client is! Map) return null;
+    final c = client as Map<String, dynamic>;
+    final nomEnt = c['nom_entreprise']?.toString().trim();
+    if (nomEnt != null && nomEnt.isNotEmpty) return nomEnt;
+    final display = c['display_name']?.toString().trim();
+    if (display != null && display.isNotEmpty) return display;
+    final nom = (c['nom']?.toString() ?? '').trim();
+    final prenom = (c['prenom']?.toString() ?? '').trim();
+    final full = '$prenom $nom'.trim();
+    return full.isEmpty ? null : full;
   }
 
   static double _parseDouble(dynamic value) {

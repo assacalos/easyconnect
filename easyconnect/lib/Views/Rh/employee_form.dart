@@ -647,11 +647,12 @@ class EmployeeForm extends StatelessWidget {
               const SizedBox(height: 32),
 
               // Boutons d'action uniformes
-              UniformFormButtons(
+              Obx(() => UniformFormButtons(
                 onCancel: () => Get.back(),
                 onSubmit: () => _saveEmployee(controller),
                 submitText: 'Soumettre',
-              ),
+                isLoading: controller.isCreating.value || controller.isUpdating.value,
+              )),
             ],
           ),
         ),

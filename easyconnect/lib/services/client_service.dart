@@ -10,69 +10,90 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/storage_service.dart';
 
 class ClientService {
   final storage = GetStorage();
 
+  Map<String, String> _getHeaders(String? token, {bool isJson = false}) {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+    };
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    if (isJson) headers['Content-Type'] = 'application/json; charset=utf-8';
+    return headers;
+  }
+
   /// Récupérer les clients avec pagination côté serveur
+  /// [timeout] : délai max (défaut 15s). Utiliser [AppConfig.extraLongTimeout] pour la génération PDF.
   Future<PaginationResponse<Client>> getClientsPaginated({
     int? status,
     bool? isPending = false,
     int page = 1,
     int perPage = 15,
     String? search,
+    Duration? timeout,
   }) async {
+    final effectiveTimeout = timeout ?? AppConfig.defaultTimeout;
     try {
       final token = storage.read('token');
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
-      String url = '${AppConfig.baseUrl}/clients';
-      List<String> params = [];
-
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+      };
       if (status != null) {
-        params.add('status=$status');
+        // status=0 (En attente), 1 (Validé), 2 (Rejeté) : le serveur doit recevoir une valeur explicite
+        queryParams['status'] = status.toString();
+      } else {
+        // Mode patron / tous : demander tous les statuts (backend attend include_pending)
+        queryParams['include_pending'] = '1';
       }
-      if (isPending == true) {
-        params.add('pending=true');
-      }
-      if (userRole == 2) {
-        params.add('user_id=$userId');
-      }
-      if (search != null && search.isNotEmpty) {
-        params.add('search=$search');
-      }
-      // Ajouter la pagination
-      params.add('page=$page');
-      params.add('per_page=$perPage');
+      if (isPending == true) queryParams['pending'] = 'true';
+      if (userRole == 2 && userId != null) queryParams['user_id'] = userId.toString();
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      if (params.isNotEmpty) {
-        url += '?${params.join('&')}';
-      }
-
-      AppLogger.httpRequest('GET', url, tag: 'CLIENT_SERVICE');
+      final uri = Uri.parse('${AppConfig.baseUrl}/clients-list').replace(
+        queryParameters: queryParams,
+      );
+      AppLogger.httpRequest('GET', uri.toString(), tag: 'CLIENT_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-            ),
+            () => http
+                .get(
+                  uri,
+                  headers: _getHeaders(token as String?),
+                )
+                .timeout(
+                  effectiveTimeout,
+                  onTimeout: () =>
+                      throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
-      AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
+      AppLogger.httpResponse(response.statusCode, uri.toString(), tag: 'CLIENT_SERVICE');
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PaginationHelper.parseResponse<Client>(
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final paginatedResponse = PaginationHelper.parseResponseSafe<Client>(
           json: data,
-          fromJsonT: (json) => Client.fromJson(json),
+          fromJsonT: (json) {
+            try {
+              return Client.fromJson(json);
+            } catch (_) {
+              return null;
+            }
+          },
         );
+        if (page == 1) _saveClientsToHive(paginatedResponse.data, status);
+        return paginatedResponse;
       } else {
         throw Exception(
           'Erreur lors de la récupération paginée des clients: ${response.statusCode}',
@@ -87,227 +108,26 @@ class ClientService {
     }
   }
 
+  /// Récupère la première page (délégation vers getClientsPaginated pour compatibilité).
+  /// [timeout] : utiliser [AppConfig.extraLongTimeout] pour opérations lentes (ex. génération PDF).
   Future<List<Client>> getClients({
     int? status,
     bool? isPending = false,
     bool forceRefresh = false,
+    Duration? timeout,
   }) async {
-    try {
-      // OPTIMISATION : Vérifier le cache d'abord (sauf si forceRefresh)
-      if (!forceRefresh) {
-        final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
-        final cached = CacheHelper.get<List<Client>>(cacheKey);
-        if (cached != null && cached.isNotEmpty) {
-          AppLogger.debug(
-            'Using cached clients: ${cached.length} clients',
-            tag: 'CLIENT_SERVICE',
-          );
-          // Retourner le cache immédiatement, puis charger en arrière-plan
-          _refreshClientsInBackground(status, isPending, cacheKey);
-          return cached;
-        }
-      }
-
-      // Pas de cache ou forceRefresh, charger depuis le serveur
-      List<Client> allClients;
-
-      // Si status est null, on veut TOUS les statuts
-      // OPTIMISATION : Charger les 3 statuts en parallèle au lieu de séquentiellement
-      if (status == null) {
-        final results = await Future.wait([
-          _fetchClientsByStatus(0, isPending),
-          _fetchClientsByStatus(1, isPending),
-          _fetchClientsByStatus(2, isPending),
-        ], eagerError: false); // Continuer même si une requête échoue
-
-        allClients = results.expand((list) => list).toList();
-      } else {
-        // Si un statut spécifique est demandé, faire un seul appel
-        allClients = await _fetchClientsByStatus(status, isPending);
-      }
-
-      // Mettre en cache pour 5 minutes
-      final cacheKey = 'clients_${status ?? 'all'}_${isPending ?? false}';
-      CacheHelper.set(
-        cacheKey,
-        allClients,
-        duration: AppConfig.defaultCacheDuration,
-      );
-
-      return allClients;
-    } catch (e) {
-      // Si erreur, on laisse l'erreur se propager
-      // Le contrôleur gérera l'affichage du cache s'il est disponible
-      throw Exception('Erreur lors de la récupération des clients: $e');
-    }
+    final res = await getClientsPaginated(
+      status: status,
+      isPending: isPending,
+      page: 1,
+      perPage: 500,
+      search: null,
+      timeout: timeout,
+    );
+    return res.data;
   }
 
-  // Charger les données en arrière-plan pour mettre à jour le cache
-  void _refreshClientsInBackground(
-    int? status,
-    bool? isPending,
-    String cacheKey,
-  ) {
-    // Ne pas attendre, charger en arrière-plan
-    Future.microtask(() async {
-      try {
-        List<Client> allClients;
-        if (status == null) {
-          final results = await Future.wait([
-            _fetchClientsByStatus(0, isPending),
-            _fetchClientsByStatus(1, isPending),
-            _fetchClientsByStatus(2, isPending),
-          ], eagerError: false);
-          allClients = results.expand((list) => list).toList();
-        } else {
-          allClients = await _fetchClientsByStatus(status, isPending);
-        }
-
-        // Mettre à jour le cache avec les nouvelles données
-        CacheHelper.set(
-          cacheKey,
-          allClients,
-          duration: AppConfig.defaultCacheDuration,
-        );
-        AppLogger.debug(
-          'Cache mis à jour en arrière-plan: ${allClients.length} clients',
-          tag: 'CLIENT_SERVICE',
-        );
-      } catch (e) {
-        // Ignorer les erreurs en arrière-plan, on a déjà le cache
-        AppLogger.debug(
-          'Erreur lors de la mise à jour en arrière-plan (ignorée): $e',
-          tag: 'CLIENT_SERVICE',
-        );
-      }
-    });
-  }
-
-  Future<List<Client>> _fetchClientsByStatus(
-    int status,
-    bool? isPending,
-  ) async {
-    try {
-      final token = storage.read('token');
-      final userRole = storage.read('userRole');
-      final userId = storage.read('userId');
-
-      var queryParams = <String, String>{};
-      queryParams['status'] = status.toString();
-      if (isPending == true) queryParams['pending'] = 'true';
-      if (userRole == 2) queryParams['user_id'] = userId.toString();
-
-      final queryString =
-          queryParams.isEmpty
-              ? ''
-              : '?${Uri(queryParameters: queryParams).query}';
-
-      final url = '${AppConfig.baseUrl}/clients-list$queryString';
-      AppLogger.httpRequest('GET', url, tag: 'CLIENT_SERVICE');
-
-      // Vérifier que le token existe
-      if (token == null || token.toString().isEmpty) {
-        AppLogger.warning(
-          'Token d\'authentification manquant',
-          tag: 'CLIENT_SERVICE',
-        );
-        throw Exception(
-          'Token d\'authentification manquant. Veuillez vous reconnecter.',
-        );
-      }
-
-      final response = await RetryHelper.retryNetwork(
-        operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
-        maxRetries: AppConfig.defaultMaxRetries,
-      );
-
-      AppLogger.httpResponse(response.statusCode, url, tag: 'CLIENT_SERVICE');
-
-      // Gérer les erreurs d'authentification
-      await AuthErrorHandler.handleHttpResponse(response);
-
-      final result = ApiService.parseResponse(response);
-
-      if (result['success'] == true) {
-        try {
-          final responseData = result['data'];
-          List<dynamic> data = [];
-
-          // Gérer différents formats de réponse de l'API
-          if (responseData is List) {
-            data = responseData;
-          } else if (responseData is Map) {
-            if (responseData['data'] != null) {
-              if (responseData['data'] is List) {
-                data = responseData['data'];
-              } else if (responseData['data'] is Map &&
-                  responseData['data']['data'] != null) {
-                if (responseData['data']['data'] is List) {
-                  data = responseData['data']['data'];
-                }
-              }
-            } else if (responseData['clients'] != null) {
-              if (responseData['clients'] is List) {
-                data = responseData['clients'];
-              }
-            }
-          }
-
-          // Filtrer par statut (double vérification côté client)
-          if (data.isNotEmpty) {
-            data =
-                data.where((item) {
-                  if (item is Map) {
-                    final itemStatus = item['status'];
-                    int? parsedStatus;
-                    if (itemStatus is String) {
-                      parsedStatus = int.tryParse(itemStatus);
-                    } else if (itemStatus is int) {
-                      parsedStatus = itemStatus;
-                    }
-                    return parsedStatus == status;
-                  }
-                  return true;
-                }).toList();
-          }
-
-          final clients = data.map((json) => Client.fromJson(json)).toList();
-          return clients;
-        } catch (e) {
-          throw Exception('Erreur de parsing JSON: $e');
-        }
-      } else if (result['statusCode'] == 403) {
-        throw Exception(
-          'Accès refusé (403). Vous n\'avez pas les permissions pour accéder aux clients. Vérifiez vos droits d\'accès.',
-        );
-      }
-
-      // Si c'est une erreur 401, elle a déjà été gérée
-      if (response.statusCode == 401) {
-        throw Exception('Session expirée');
-      }
-
-      throw Exception(
-        'Erreur lors de la récupération des clients: ${response.statusCode} - ${response.body}',
-      );
-    } catch (e, stackTrace) {
-      // Gérer les erreurs d'authentification dans les exceptions
-      final isAuthError = await AuthErrorHandler.handleError(e);
-      if (isAuthError) {
-        throw Exception('Session expirée');
-      }
-
-      AppLogger.error(
-        'Erreur lors de la récupération des clients: $e',
-        tag: 'CLIENT_SERVICE',
-        error: e,
-        stackTrace: stackTrace,
-      );
-
-      throw Exception('Erreur lors de la récupération des clients: $e');
-    }
-  }
+  // _fetchClientsByStatus supprimé : utiliser getClientsPaginated (getClients délègue à getClientsPaginated).
 
   Future<Client> createClient(Client client) async {
     try {
@@ -323,15 +143,17 @@ class ClientService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
-              Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-              body: json.encode(clientData),
-            ),
+            () => http
+                .post(
+                  Uri.parse(url),
+                  headers: _getHeaders(token as String?, isJson: true),
+                  body: json.encode(clientData),
+                )
+                .timeout(
+                  AppConfig.defaultTimeout,
+                  onTimeout: () =>
+                      throw Exception('Timeout: le serveur ne répond pas'),
+                ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -372,15 +194,18 @@ class ClientService {
   Future<Client> updateClient(Client client) async {
     try {
       final token = storage.read('token');
-      final response = await http.put(
-        Uri.parse('${AppConfig.baseUrl}/clients-update/${client.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode(client.toJson()),
-      );
+      // Backend attend POST pour clients-update (pas PUT)
+      final response = await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/clients-update/${client.id}'),
+            headers: _getHeaders(token as String?, isJson: true),
+            body: json.encode(client.toJson()),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       final result = ApiService.parseResponse(response);
 
@@ -403,10 +228,7 @@ class ClientService {
       final url = '${AppConfig.baseUrl}/clients-validate/$clientId';
       final response = await http.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: _getHeaders(token as String?),
       );
 
       // Si le status code est 200 ou 201, considérer comme succès même si le body dit false
@@ -443,11 +265,7 @@ class ClientService {
       final body = json.encode({'commentaire': comment});
       final response = await http.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: _getHeaders(token as String?, isJson: true),
         body: body,
       );
 
@@ -471,10 +289,7 @@ class ClientService {
       final token = storage.read('token');
       final response = await http.delete(
         Uri.parse('${AppConfig.baseUrl}/clients-delete/$clientId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: _getHeaders(token as String?),
       );
 
       final result = ApiService.parseResponse(response);
@@ -487,13 +302,16 @@ class ClientService {
   Future<Map<String, dynamic>> getClientStats() async {
     try {
       final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('${AppConfig.baseUrl}/clients/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/clients/stats'),
+            headers: _getHeaders(token as String?),
+          )
+          .timeout(
+            AppConfig.defaultTimeout,
+            onTimeout: () =>
+                throw Exception('Timeout: le serveur ne répond pas'),
+          );
 
       final result = ApiService.parseResponse(response);
 
@@ -506,6 +324,43 @@ class ClientService {
       );
     } catch (e) {
       throw Exception('Erreur lors de la récupération des statistiques');
+    }
+  }
+
+  static void _saveClientsToHive(List<Client> list, int? status) {
+    try {
+      final key = '${HiveStorageService.keyClients}_${status ?? 'all'}';
+      HiveStorageService.saveEntityList(
+        key,
+        list.map((e) => e.toJson()).toList(),
+      );
+      AppLogger.debug(
+        'Hive: Mise à jour cache clients (statut ${status ?? 'all'}), ${list.length} élément(s)',
+        tag: 'CLIENT_SERVICE',
+      );
+    } catch (e) {
+      AppLogger.warning('Hive: Erreur sauvegarde clients: $e', tag: 'CLIENT_SERVICE');
+    }
+  }
+
+  /// Expose pour le contrôleur : sauvegarder la liste complète en Hive (après création locale).
+  static void saveClientsToHive(List<Client> list, int? status) {
+    _saveClientsToHive(list, status);
+  }
+
+  /// Cache Hive (sync, sans await) : affichage instantané Cache-First.
+  static List<Client> getCachedClients([int? status]) {
+    try {
+      final key = '${HiveStorageService.keyClients}_${status ?? 'all'}';
+      final raw = HiveStorageService.getEntityList(key);
+      if (raw.isNotEmpty) {
+        return raw.map((e) => Client.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      if (status != null) return [];
+      final fallback = HiveStorageService.getEntityList(HiveStorageService.keyClients);
+      return fallback.map((e) => Client.fromJson(Map<String, dynamic>.from(e))).toList();
+    } catch (_) {
+      return [];
     }
   }
 }

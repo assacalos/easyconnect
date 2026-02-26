@@ -5,128 +5,201 @@ import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/Views/Rh/employee_form.dart';
 import 'package:easyconnect/Views/Rh/employee_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/utils/controller_helper.dart';
 
-class EmployeeList extends StatelessWidget {
+class EmployeeList extends StatefulWidget {
   const EmployeeList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final EmployeeController controller = Get.put(EmployeeController());
+  State<EmployeeList> createState() => _EmployeeListState();
+}
 
-    // Charger tous les employés au chargement de la page
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Réinitialiser les filtres et charger tous les employés
-      controller.selectedStatus.value = 'all';
-      controller.selectedDepartment.value = 'all';
-      controller.selectedPosition.value = 'all';
-      controller.searchQuery.value = '';
-      controller.loadEmployees(loadAll: true);
+class _EmployeeListState extends State<EmployeeList>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging && mounted) {
+        try {
+          Get.find<EmployeeController>().loadByStatus(_tabController.index);
+        } catch (_) {}
+      }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        try {
+          final c = Get.find<EmployeeController>();
+          c.loadByStatus(0);
+          c.loadEmployeeStats();
+          c.loadDepartments();
+          c.loadPositions();
+        } catch (_) {}
+      });
+    });
+  }
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Employés'),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'Actifs'),
-              Tab(text: 'Inactifs'),
-              Tab(text: 'En congé'),
-              Tab(text: 'Terminés'),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () {
-                controller.selectedStatus.value = 'all';
-                controller.selectedDepartment.value = 'all';
-                controller.selectedPosition.value = 'all';
-                controller.searchQuery.value = '';
-                controller.loadEmployees(loadAll: true);
-              },
-            ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            TabBarView(
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final EmployeeController? controller =
+        ControllerHelper.findOrNull<EmployeeController>();
+    if (controller == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Employés')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildEmployeeListByStatus('active', controller),
-                _buildEmployeeListByStatus('inactive', controller),
-                _buildEmployeeListByStatus('on_leave', controller),
-                _buildEmployeeListByStatus('terminated', controller),
+                const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text(
+                  'Configuration incorrecte. Revenez au tableau de bord.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => Get.back(),
+                  child: const Text('Retour'),
+                ),
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite
-            if (controller.canManageEmployees)
-              UniformAddButton(
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Employés'),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          onTap: (index) => controller.loadByStatus(index),
+          tabs: const [
+            Tab(text: 'Actifs'),
+            Tab(text: 'Inactifs'),
+            Tab(text: 'En congé'),
+            Tab(text: 'Terminés'),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              controller.selectedStatus.value = 'all';
+              controller.selectedDepartment.value = 'all';
+              controller.selectedPosition.value = 'all';
+              controller.searchQuery.value = '';
+              controller.loadEmployees(loadAll: true, forceRefresh: true);
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          TabBarView(
+            controller: _tabController,
+            children: [
+              _buildEmployeeList(controller),
+              _buildEmployeeList(controller),
+              _buildEmployeeList(controller),
+              _buildEmployeeList(controller),
+            ],
+          ),
+          if (controller.canManageEmployees)
+            Positioned(
+              bottom: 80,
+              right: 16,
+              child: UniformAddButton(
                 onPressed: () => Get.to(() => const EmployeeForm()),
                 label: 'Nouvel Employé',
                 icon: Icons.person_add,
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildEmployeeListByStatus(
-    String status,
-    EmployeeController controller,
-  ) {
+  Widget _buildEmployeeList(EmployeeController controller) {
     return Obx(() {
+      // Skeleton dès que loading (y compris au changement d'onglet : liste vidée + isLoading = true)
       if (controller.isLoading.value) {
         return const SkeletonSearchResults(itemCount: 6);
       }
 
-      final employeeList =
-          controller.employees.where((e) => e.status == status).toList();
+      final employeeList = controller.employees;
 
       if (employeeList.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == 'active'
-                    ? Icons.person
-                    : status == 'inactive'
-                    ? Icons.person_off
-                    : status == 'on_leave'
-                    ? Icons.event_available
-                    : Icons.person_remove,
-                size: 64,
-                color: Colors.grey.shade400,
+        return RefreshIndicator(
+          onRefresh: () => controller.loadEmployees(forceRefresh: true),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: 300,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _tabController.index == 0
+                          ? Icons.person
+                          : _tabController.index == 1
+                              ? Icons.person_off
+                              : _tabController.index == 2
+                                  ? Icons.event_available
+                                  : Icons.person_remove,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _tabController.index == 0
+                          ? 'Aucun employé actif'
+                          : _tabController.index == 1
+                              ? 'Aucun employé inactif'
+                              : _tabController.index == 2
+                                  ? 'Aucun employé en congé'
+                                  : 'Aucun employé terminé',
+                      style: const TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                status == 'active'
-                    ? 'Aucun employé actif'
-                    : status == 'inactive'
-                    ? 'Aucun employé inactif'
-                    : status == 'on_leave'
-                    ? 'Aucun employé en congé'
-                    : 'Aucun employé terminé',
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
+            ),
           ),
         );
       }
 
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: employeeList.length,
-        itemBuilder: (context, index) {
-          final employee = employeeList[index];
-          return _buildEmployeeCard(employee);
-        },
+      return RefreshIndicator(
+        onRefresh: () => controller.loadEmployees(forceRefresh: true),
+        child: PaginatedListView(
+          scrollController: controller.scrollController,
+          onLoadMore: controller.loadMore,
+          hasNextPage: controller.hasNextPage.value,
+          isLoadingMore: controller.isLoadingMore.value,
+          itemCount: employeeList.length,
+          itemBuilder: (context, index) {
+            final employee = employeeList[index];
+            return _buildEmployeeCard(employee);
+          },
+        ),
       );
     });
   }

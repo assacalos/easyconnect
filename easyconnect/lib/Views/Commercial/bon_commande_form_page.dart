@@ -248,10 +248,14 @@ class BonCommandeFormPage extends StatelessWidget {
   }
 
   Widget _buildSaveButton(GlobalKey<FormState> formKey) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
+    return Obx(() {
+      final loading = controller.isLoading.value;
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: loading
+              ? null
+              : () async {
           if (formKey.currentState!.validate()) {
             if (controller.selectedClient.value == null) {
               Get.snackbar(
@@ -303,8 +307,14 @@ class BonCommandeFormPage extends StatelessWidget {
             }
           }
         },
-        icon: const Icon(Icons.save),
-        label: const Text('Enregistrer'),
+        icon: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.save),
+        label: Text(loading ? 'Enregistrement...' : 'Enregistrer'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -313,6 +323,7 @@ class BonCommandeFormPage extends StatelessWidget {
         ),
       ),
     );
+    });
   }
 
   void _showClientSelection(BuildContext context) {
