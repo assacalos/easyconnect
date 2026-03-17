@@ -1,25 +1,44 @@
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_commande_controller.dart';
-import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:easyconnect/providers/bon_commande_notifier.dart';
+import 'package:easyconnect/providers/bon_commande_state.dart';
+import 'package:easyconnect/services/camera_service.dart';
+import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 
-class BonCommandeFormPage extends StatelessWidget {
-  final BonCommandeController controller = Get.put(BonCommandeController());
+class BonCommandeFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
   final int? bonCommandeId;
 
-  BonCommandeFormPage({super.key, this.isEditing = false, this.bonCommandeId});
+  const BonCommandeFormPage({super.key, this.isEditing = false, this.bonCommandeId});
+
+  @override
+  ConsumerState<BonCommandeFormPage> createState() => _BonCommandeFormPageState();
+}
+
+class _BonCommandeFormPageState extends ConsumerState<BonCommandeFormPage> {
+  final formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.isEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(bonCommandeProvider.notifier).clearForm();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
+    final state = ref.watch(bonCommandeProvider);
+    final notifier = ref.read(bonCommandeProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          isEditing ? 'Modifier le bon de commande' : 'Nouveau bon de commande',
-        ),
+        title: Text(widget.isEditing ? 'Modifier le bon de commande' : 'Nouveau bon de commande'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -28,7 +47,6 @@ class BonCommandeFormPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Sélection du client
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -37,105 +55,60 @@ class BonCommandeFormPage extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Text(
-                            'Client',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          const Text('Client', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.green.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: Colors.green),
                             ),
-                            child: const Text(
-                              'Validés uniquement',
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: const Text('Validés uniquement', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Obx(() {
-                        final selectedClient = controller.selectedClient.value;
-                        if (selectedClient != null) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                selectedClient.nomEntreprise?.isNotEmpty == true
-                                    ? selectedClient.nomEntreprise!
-                                    : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                        .trim()
-                                        .isNotEmpty
-                                    ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                        .trim()
-                                    : 'Client #${selectedClient.id}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (selectedClient.nomEntreprise?.isNotEmpty ==
-                                      true &&
-                                  '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                      .trim()
-                                      .isNotEmpty)
+                      state.selectedClient != null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                      .trim(),
+                                  state.selectedClient!.nomEntreprise?.isNotEmpty == true
+                                      ? state.selectedClient!.nomEntreprise!
+                                      : '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'.trim().isNotEmpty
+                                          ? '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'.trim()
+                                          : 'Client #${state.selectedClient!.id}',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                 ),
-                              if (selectedClient.email != null)
-                                Text(selectedClient.email ?? ''),
-                              if (selectedClient.contact != null)
-                                Text(selectedClient.contact ?? ''),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: controller.clearSelectedClient,
-                                child: const Text('Changer de client'),
-                              ),
-                            ],
-                          );
-                        }
-                        return ElevatedButton(
-                          onPressed: () => _showClientSelection(context),
-                          child: const Text('Sélectionner un client'),
-                        );
-                      }),
+                                if (state.selectedClient!.nomEntreprise?.isNotEmpty == true &&
+                                    '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'.trim().isNotEmpty)
+                                  Text('Contact: ${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'.trim()),
+                                if (state.selectedClient!.email != null) Text(state.selectedClient!.email ?? ''),
+                                if (state.selectedClient!.contact != null) Text(state.selectedClient!.contact ?? ''),
+                                const SizedBox(height: 8),
+                                TextButton(onPressed: notifier.clearSelectedClient, child: const Text('Changer de client')),
+                              ],
+                            )
+                          : ElevatedButton(
+                              onPressed: () => _showClientSelection(context, notifier),
+                              child: const Text('Sélectionner un client'),
+                            ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Fichiers scannés
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Fichiers scannés',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Fichiers scannés', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
-                        onPressed: () => controller.selectFiles(),
+                        onPressed: () => _selectFiles(context, notifier),
                         icon: const Icon(Icons.add_photo_alternate),
                         label: const Text('Ajouter des fichiers'),
                         style: ElevatedButton.styleFrom(
@@ -147,35 +120,23 @@ class BonCommandeFormPage extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         'Formats acceptés: PDF, Images, Documents (max 10 MB par fichier)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        if (controller.selectedFiles.isEmpty) {
-                          return const Center(
-                            child: Text('Aucun fichier sélectionné'),
-                          );
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: controller.selectedFiles.length,
-                          itemBuilder: (context, index) {
-                            final file = controller.selectedFiles[index];
-                            return _buildFileCard(file, index);
-                          },
-                        );
-                      }),
+                      state.selectedFiles.isEmpty
+                          ? const Center(child: Text('Aucun fichier sélectionné'))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: state.selectedFiles.length,
+                              itemBuilder: (context, index) => _buildFileCard(state.selectedFiles[index], index, notifier),
+                            ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-              _buildSaveButton(formKey),
+              _buildSaveButton(context, state, notifier),
             ],
           ),
         ),
@@ -183,21 +144,12 @@ class BonCommandeFormPage extends StatelessWidget {
     );
   }
 
-  Widget _buildFileCard(Map<String, dynamic> file, int index) {
+  Widget _buildFileCard(Map<String, dynamic> file, int index, BonCommandeNotifier notifier) {
     final fileName = file['name'] as String? ?? 'Fichier';
     final filePath = file['path'] as String? ?? '';
     final fileType = file['type'] as String? ?? 'document';
     final fileSize = file['size'] as int? ?? 0;
-
-    IconData fileIcon;
-    if (fileType == 'pdf') {
-      fileIcon = Icons.picture_as_pdf;
-    } else if (fileType == 'image') {
-      fileIcon = Icons.image;
-    } else {
-      fileIcon = Icons.insert_drive_file;
-    }
-
+    IconData fileIcon = fileType == 'pdf' ? Icons.picture_as_pdf : fileType == 'image' ? Icons.image : Icons.insert_drive_file;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
@@ -206,13 +158,10 @@ class BonCommandeFormPage extends StatelessWidget {
         subtitle: Text(_formatFileSize(fileSize)),
         trailing: IconButton(
           icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: () => controller.removeFile(index),
+          onPressed: () => notifier.removeSelectedFile(index),
         ),
         onTap: () {
-          // Afficher un aperçu si c'est une image
-          if (fileType == 'image' && filePath.isNotEmpty) {
-            _showImagePreview(filePath);
-          }
+          if (fileType == 'image' && filePath.isNotEmpty) _showImagePreview(context, filePath);
         },
       ),
     );
@@ -224,21 +173,17 @@ class BonCommandeFormPage extends StatelessWidget {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  void _showImagePreview(String imagePath) {
-    Get.dialog(
-      Dialog(
+  void _showImagePreview(BuildContext context, String imagePath) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AppBar(
               title: const Text('Aperçu'),
               automaticallyImplyLeading: false,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Get.back(),
-                ),
-              ],
+              actions: [IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))],
             ),
             Flexible(child: Image.file(File(imagePath), fit: BoxFit.contain)),
           ],
@@ -247,74 +192,111 @@ class BonCommandeFormPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSaveButton(GlobalKey<FormState> formKey) {
-    return Obx(() {
-      final loading = controller.isLoading.value;
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: loading
-              ? null
-              : () async {
-          if (formKey.currentState!.validate()) {
-            if (controller.selectedClient.value == null) {
-              Get.snackbar(
-                'Erreur',
-                'Veuillez sélectionner un client validé',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
-              );
-              return;
-            }
+  Future<void> _selectFiles(BuildContext context, BonCommandeNotifier notifier) async {
+    final selectionType = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sélectionner des fichiers'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(leading: const Icon(Icons.insert_drive_file), title: const Text('Fichiers (PDF, Documents, etc.)'), onTap: () => Navigator.pop(ctx, 'file')),
+            ListTile(leading: const Icon(Icons.photo_library), title: const Text('Image depuis la galerie'), onTap: () => Navigator.pop(ctx, 'gallery')),
+            ListTile(leading: const Icon(Icons.camera_alt), title: const Text('Prendre une photo / Scanner'), onTap: () => Navigator.pop(ctx, 'camera')),
+          ],
+        ),
+      ),
+    );
+    if (selectionType == null) return;
 
-            if (controller.selectedClient.value!.status != 1) {
-              Get.snackbar(
-                'Erreur',
-                'Seuls les clients validés peuvent être sélectionnés',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
-              );
-              return;
-            }
-
-            if (controller.selectedFiles.isEmpty) {
-              Get.snackbar(
-                'Erreur',
-                'Veuillez ajouter au moins un fichier scanné',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
-              );
-              return;
-            }
-
-            if (isEditing && bonCommandeId != null) {
-              final success = await controller.updateBonCommande(
-                bonCommandeId!,
-              );
-              if (success) {
-                await Future.delayed(const Duration(milliseconds: 500));
-                Get.offNamed('/bon-commandes');
-              }
-            } else {
-              final success = await controller.createBonCommande();
-              if (success) {
-                await Future.delayed(const Duration(milliseconds: 500));
-                Get.offNamed('/bon-commandes');
-              }
-            }
+    if (selectionType == 'file') {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true);
+      if (result != null && result.files.isNotEmpty) {
+        final toAdd = <Map<String, dynamic>>[];
+        for (var platformFile in result.files) {
+          if (platformFile.path == null) continue;
+          final file = File(platformFile.path!);
+          final fileSize = await file.length();
+          if (fileSize > 10 * 1024 * 1024) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)')));
+            continue;
           }
-        },
-        icon: loading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
+          final extension = platformFile.extension?.toLowerCase() ?? '';
+          String type = 'document';
+          if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) type = 'image';
+          else if (extension == 'pdf') type = 'pdf';
+          toAdd.add({'name': platformFile.name, 'path': platformFile.path!, 'size': fileSize, 'type': type, 'extension': extension});
+        }
+        if (toAdd.isNotEmpty) {
+          notifier.addSelectedFiles(toAdd);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${toAdd.length} fichier(s) ajouté(s)')));
+        }
+      }
+    } else {
+      try {
+        final cameraService = CameraService();
+        File? imageFile = selectionType == 'camera' ? await cameraService.takePicture() : await cameraService.pickImageFromGallery();
+        if (imageFile != null && await imageFile.exists()) {
+          final fileSize = await imageFile.length();
+          if (fileSize > 10 * 1024 * 1024) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Le fichier est trop volumineux (max 10 MB)')));
+            return;
+          }
+          await cameraService.validateImage(imageFile);
+          final fileName = imageFile.path.split('/').last;
+          final extension = fileName.split('.').last.toLowerCase();
+          notifier.addSelectedFile({'name': fileName, 'path': imageFile.path, 'size': fileSize, 'type': 'image', 'extension': extension});
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fichier ajouté')));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: ${e.toString().replaceFirst('Exception: ', '')}')));
+      }
+    }
+  }
+
+  Widget _buildSaveButton(BuildContext context, BonCommandeState state, BonCommandeNotifier notifier) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: state.isLoading
+            ? null
+            : () async {
+                if (formKey.currentState!.validate()) {
+                  if (state.selectedClient == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez sélectionner un client validé'), backgroundColor: Colors.red));
+                    return;
+                  }
+                  if (state.selectedClient!.status != 1) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seuls les clients validés peuvent être sélectionnés'), backgroundColor: Colors.red));
+                    return;
+                  }
+                  if (state.selectedFiles.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez ajouter au moins un fichier scanné'), backgroundColor: Colors.red));
+                    return;
+                  }
+                  try {
+                    if (widget.isEditing && widget.bonCommandeId != null) {
+                      final success = await notifier.updateBonCommande(widget.bonCommandeId!);
+                      if (success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bon de commande mis à jour avec succès')));
+                        context.go('/bon-commandes');
+                      }
+                    } else {
+                      final success = await notifier.createBonCommande();
+                      if (success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bon de commande créé avec succès'), backgroundColor: Colors.green));
+                        context.go('/bon-commandes');
+                      }
+                    }
+                  } catch (e) {
+                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+        icon: state.isLoading
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.save),
-        label: Text(loading ? 'Enregistrement...' : 'Enregistrer'),
+        label: Text(state.isLoading ? 'Enregistrement...' : 'Enregistrer'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -323,18 +305,17 @@ class BonCommandeFormPage extends StatelessWidget {
         ),
       ),
     );
-    });
   }
 
-  void _showClientSelection(BuildContext context) {
-    showDialog(
+  void _showClientSelection(BuildContext context, BonCommandeNotifier notifier) {
+    showDialog<void>(
       context: context,
-      builder:
-          (context) => ClientSelectionDialog(
-            onClientSelected: (client) {
-              controller.selectClient(client);
-            },
-          ),
+      builder: (ctx) => ClientSelectionDialog(
+        onClientSelected: (client) {
+          notifier.selectClient(client);
+          Navigator.of(ctx).pop();
+        },
+      ),
     );
   }
 }

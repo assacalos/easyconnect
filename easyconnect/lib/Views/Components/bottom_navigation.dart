@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 
-class BottomNavigation extends StatelessWidget {
+class BottomNavigation extends ConsumerWidget {
   final int currentIndex;
   final Function(int) onTap;
 
@@ -14,14 +15,11 @@ class BottomNavigation extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRole = ref.watch(authProvider).user?.role;
+    if (userRole == null) return const SizedBox.shrink();
 
-    return Obx(() {
-      final userRole = authController.userAuth.value?.role;
-      if (userRole == null) return const SizedBox.shrink();
-
-      return BottomNavigationBar(
+    return BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: currentIndex,
         onTap: onTap,
@@ -31,7 +29,6 @@ class BottomNavigation extends StatelessWidget {
         elevation: 8,
         items: _getNavigationItems(userRole),
       );
-    });
   }
 
   List<BottomNavigationBarItem> _getNavigationItems(int role) {
@@ -198,84 +195,13 @@ class BottomNavigation extends StatelessWidget {
   }
 }
 
-class BottomNavigationController extends GetxController {
-  final AuthController authController = Get.find<AuthController>();
-  final RxInt currentIndex = 0.obs;
-  final RxList<String> routes = <String>[].obs;
+class BottomNavigationController {
+  final BuildContext context;
+  BottomNavigationController(this.context);
 
-  @override
-  void onInit() {
-    super.onInit();
-    _initializeRoutes();
-  }
-
-  void _initializeRoutes() {
-    final userRole = authController.userAuth.value?.role;
-    if (userRole == null) return;
-
-    switch (userRole) {
-      case Roles.COMMERCIAL:
-        routes.value = [
-          '/commercial',
-          '/clients',
-          '/devis',
-          '/attendance-punch',
-          '/media',
-        ];
-        break;
-      case Roles.COMPTABLE:
-        routes.value = [
-          '/comptable',
-          '/invoices',
-          '/payments',
-          '/attendance-punch',
-          '/media',
-        ];
-        break;
-      case Roles.TECHNICIEN:
-        routes.value = [
-          '/technicien',
-          '/equipments',
-          '/interventions',
-          '/attendance-punch',
-          '/media',
-        ];
-        break;
-      case Roles.RH:
-        routes.value = [
-          '/rh',
-          '/employees',
-          '/leaves',
-          '/attendance-punch',
-          '/media',
-        ];
-        break;
-      case Roles.PATRON:
-        routes.value = [
-          '/patron',
-          '/company',
-          '/approvals',
-          '/analytics',
-          '/media',
-        ];
-        break;
-      default:
-        routes.value = ['/dashboard', '/profile'];
-    }
-  }
-
-  void onItemTapped(int index) {
+  void onItemTapped(int index, List<String> routes) {
     if (index < routes.length) {
-      currentIndex.value = index;
-      Get.toNamed(routes[index]);
+      context.go(routes[index]);
     }
-  }
-
-  void setCurrentIndex(int index) {
-    currentIndex.value = index;
-  }
-
-  int getCurrentIndex() {
-    return currentIndex.value;
   }
 }

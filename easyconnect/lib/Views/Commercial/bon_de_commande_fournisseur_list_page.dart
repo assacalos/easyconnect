@@ -1,191 +1,242 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/bon_de_commande_fournisseur_notifier.dart';
+import 'package:easyconnect/providers/bon_de_commande_fournisseur_state.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BonDeCommandeFournisseurListPage extends StatefulWidget {
+class BonDeCommandeFournisseurListPage extends ConsumerStatefulWidget {
   final int? supplierId;
 
   const BonDeCommandeFournisseurListPage({super.key, this.supplierId});
 
   @override
-  State<BonDeCommandeFournisseurListPage> createState() =>
+  ConsumerState<BonDeCommandeFournisseurListPage> createState() =>
       _BonDeCommandeFournisseurListPageState();
 }
 
 class _BonDeCommandeFournisseurListPageState
-    extends State<BonDeCommandeFournisseurListPage> {
-  final BonDeCommandeFournisseurController controller = Get.put(
-    BonDeCommandeFournisseurController(),
-  );
+    extends ConsumerState<BonDeCommandeFournisseurListPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_onTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Toujours recharger les données quand la page est affichée
-      // pour s'assurer que les nouveaux bons de commande sont visibles
-      controller.loadBonDeCommandes();
+      ref.read(bonDeCommandeFournisseurProvider.notifier).loadBonDeCommandes(
+            forceRefresh: true,
+          );
     });
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) {
+      String? status;
+      switch (_tabController.index) {
+        case 0:
+          status = null;
+          break;
+        case 1:
+          status = 'en_attente';
+          break;
+        case 2:
+          status = 'valide';
+          break;
+        case 3:
+          status = 'rejete';
+          break;
+        case 4:
+          status = 'livre';
+          break;
+        default:
+          status = null;
+      }
+      ref.read(bonDeCommandeFournisseurProvider.notifier).setCurrentStatus(status);
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(bonDeCommandeFournisseurProvider);
+    final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
+    final userRole = ref.read(authProvider).user?.role;
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/commercial', iconColor: Colors.white),
         title: const Text('Bons de commande fournisseur'),
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterDialog(context),
+            onPressed: () => _showFilterDialog(context, notifier),
           ),
         ],
       ),
       body: Column(
         children: [
-          _buildStatusTabs(),
-          Expanded(child: _buildBonDeCommandeList()),
+          _buildStatusTabs(state),
+          Expanded(child: _buildBonDeCommandeList(state, notifier, userRole)),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed('/bons-de-commande-fournisseur/new'),
+        onPressed: () => context.go('/bons-de-commande-fournisseur/new'),
         icon: const Icon(Icons.add),
         label: const Text('Nouveau bon de commande'),
       ),
     );
   }
 
-  Widget _buildStatusTabs() {
-    return Obx(
-      () => Container(
-        color: Colors.grey[100],
-        child: TabBar(
-          controller: controller.tabController,
-          isScrollable: true,
-          indicatorColor: Colors.blue,
-          labelColor: Colors.blue,
-          unselectedLabelColor: Colors.grey[600],
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.all_inclusive, size: 16),
-                  const SizedBox(width: 4),
-                  Text('Tous (${controller.bonDeCommandes.length})'),
-                ],
-              ),
+  Widget _buildStatusTabs(BonDeCommandeFournisseurState state) {
+    final list = state.bonDeCommandes;
+    return Container(
+      color: Colors.grey[100],
+      child: TabBar(
+        controller: _tabController,
+        isScrollable: true,
+        indicatorColor: Colors.blue,
+        labelColor: Colors.blue,
+        unselectedLabelColor: Colors.grey[600],
+        tabs: [
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.all_inclusive, size: 16),
+                const SizedBox(width: 4),
+                Text('Tous (${list.length})'),
+              ],
             ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.pending, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    'En attente (${controller.bonDeCommandes.where((bc) => bc.statut == 'en_attente').length})',
-                  ),
-                ],
-              ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.pending, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'En attente (${list.where((bc) => bc.statut == 'en_attente').length})',
+                ),
+              ],
             ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Validés (${controller.bonDeCommandes.where((bc) => bc.statut == 'valide').length})',
-                  ),
-                ],
-              ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'Validés (${list.where((bc) => bc.statut == 'valide').length})',
+                ),
+              ],
             ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cancel, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Rejetés (${controller.bonDeCommandes.where((bc) => bc.statut == 'rejete').length})',
-                  ),
-                ],
-              ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cancel, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'Rejetés (${list.where((bc) => bc.statut == 'rejete').length})',
+                ),
+              ],
             ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.local_shipping, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Livrés (${controller.bonDeCommandes.where((bc) => bc.statut == 'livre').length})',
-                  ),
-                ],
-              ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.local_shipping, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'Livrés (${list.where((bc) => bc.statut == 'livre').length})',
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildBonDeCommandeList() {
-    return Obx(() {
-      final filteredBonDeCommandes = controller.getFilteredBonDeCommandes();
+  Widget _buildBonDeCommandeList(
+    BonDeCommandeFournisseurState state,
+    BonDeCommandeFournisseurNotifier notifier,
+    int? userRole,
+  ) {
+    final filtered = state.getFilteredBonDeCommandes();
 
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-      if (filteredBonDeCommandes.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucun bon de commande trouvé',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                controller.bonDeCommandes.isEmpty
-                    ? 'Créez votre premier bon de commande fournisseur'
-                    : 'Aucun bon de commande ne correspond au filtre sélectionné',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        );
-      }
-
-      return RefreshIndicator(
-        onRefresh: () async {
-          await controller.loadBonDeCommandes();
-        },
-        child: ListView.builder(
-          itemCount: filteredBonDeCommandes.length,
-          padding: const EdgeInsets.all(8),
-          itemBuilder: (context, index) {
-            final bonDeCommande = filteredBonDeCommandes[index];
-            return _buildBonDeCommandeCard(bonDeCommande);
-          },
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun bon de commande trouvé',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.bonDeCommandes.isEmpty
+                  ? 'Créez votre premier bon de commande fournisseur'
+                  : 'Aucun bon de commande ne correspond au filtre sélectionné',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
-    });
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await notifier.loadBonDeCommandes(status: state.currentStatus);
+      },
+      child: ListView.builder(
+        itemCount: filtered.length,
+        padding: const EdgeInsets.all(8),
+        itemBuilder: (context, index) {
+          final bonDeCommande = filtered[index];
+          return _buildBonDeCommandeCard(
+            context,
+            bonDeCommande,
+            notifier,
+            userRole,
+          );
+        },
+      ),
+    );
   }
 
-  Widget _buildBonDeCommandeCard(BonDeCommande bonDeCommande) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
+  Widget _buildBonDeCommandeCard(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+    int? userRole,
+  ) {
+    final formatCurrency =
+        NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
     final formatDate = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
@@ -234,7 +285,10 @@ class _BonDeCommandeFournisseurListPageState
             ),
             Text(
               'Status: ${bonDeCommande.statusText}',
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                color: statusColor,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             if (bonDeCommande.statut == 'rejete' &&
                 bonDeCommande.commentaire != null &&
@@ -248,7 +302,10 @@ class _BonDeCommandeFournisseurListPageState
                   Expanded(
                     child: Text(
                       'Raison du rejet: ${bonDeCommande.commentaire}',
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -261,40 +318,63 @@ class _BonDeCommandeFournisseurListPageState
           children: [
             IconButton(
               icon: const Icon(Icons.picture_as_pdf),
-              onPressed: () => controller.generatePDF(bonDeCommande.id!),
+              onPressed: () {
+                if (bonDeCommande.id != null) {
+                  notifier.generatePDF(bonDeCommande.id!).then((_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('PDF généré avec succès'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  }).catchError((e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur PDF: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  });
+                }
+              },
               tooltip: 'Générer PDF',
             ),
-            _buildActionButton(bonDeCommande),
+            _buildActionButton(context, bonDeCommande, notifier, userRole),
           ],
         ),
-        onTap:
-            () => Get.toNamed(
-              '/bons-de-commande-fournisseur/${bonDeCommande.id}',
-            ),
+        onTap: () => context.go(
+          '/bons-de-commande-fournisseur/${bonDeCommande.id}',
+        ),
       ),
     );
   }
 
-  Widget _buildActionButton(BonDeCommande bonDeCommande) {
-    final userRole = Get.find<BonDeCommandeFournisseurController>().userId;
-
+  Widget _buildActionButton(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+    int? userRole,
+  ) {
     if (userRole == Roles.COMMERCIAL) {
       if (bonDeCommande.statut == 'en_attente') {
-        return PopupMenuButton(
-          itemBuilder:
-              (context) => [
-                const PopupMenuItem(value: 'edit', child: Text('Modifier')),
-                const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
-              ],
+        return PopupMenuButton<String>(
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'edit', child: Text('Modifier')),
+            const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
+          ],
           onSelected: (value) {
             switch (value) {
               case 'edit':
-                Get.toNamed(
+                context.go(
                   '/bons-de-commande-fournisseur/${bonDeCommande.id}/edit',
                 );
                 break;
               case 'delete':
-                _showDeleteConfirmation(bonDeCommande);
+                _showDeleteConfirmation(context, bonDeCommande, notifier);
                 break;
             }
           },
@@ -303,19 +383,22 @@ class _BonDeCommandeFournisseurListPageState
     }
 
     if (userRole == Roles.PATRON && bonDeCommande.statut == 'en_attente') {
-      return PopupMenuButton(
-        itemBuilder:
-            (context) => [
-              const PopupMenuItem(value: 'approve', child: Text('Valider')),
-              const PopupMenuItem(value: 'reject', child: Text('Rejeter')),
-            ],
+      return PopupMenuButton<String>(
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'approve', child: Text('Valider')),
+          const PopupMenuItem(value: 'reject', child: Text('Rejeter')),
+        ],
         onSelected: (value) {
           switch (value) {
             case 'approve':
-              _showApproveConfirmation(bonDeCommande);
+              _showApproveConfirmation(
+                context,
+                bonDeCommande,
+                notifier,
+              );
               break;
             case 'reject':
-              _showRejectDialog(bonDeCommande);
+              _showRejectDialog(context, bonDeCommande, notifier);
               break;
           }
         },
@@ -325,123 +408,225 @@ class _BonDeCommandeFournisseurListPageState
     return const SizedBox.shrink();
   }
 
-  void _showFilterDialog(BuildContext context) {
+  void _showFilterDialog(
+    BuildContext context,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Filtrer par statut'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('Tous'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonDeCommandes();
-                  },
-                ),
-                ListTile(
-                  title: const Text('En attente'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonDeCommandes(status: 'en_attente');
-                  },
-                ),
-                ListTile(
-                  title: const Text('Validés'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonDeCommandes(status: 'valide');
-                  },
-                ),
-                ListTile(
-                  title: const Text('Rejetés'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonDeCommandes(status: 'rejete');
-                  },
-                ),
-                ListTile(
-                  title: const Text('Livrés'),
-                  onTap: () {
-                    Get.back();
-                    controller.loadBonDeCommandes(status: 'livre');
-                  },
-                ),
-              ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('Filtrer par statut'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Tous'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.loadBonDeCommandes();
+              },
             ),
+            ListTile(
+              title: const Text('En attente'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.loadBonDeCommandes(status: 'en_attente');
+              },
+            ),
+            ListTile(
+              title: const Text('Validés'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.loadBonDeCommandes(status: 'valide');
+              },
+            ),
+            ListTile(
+              title: const Text('Rejetés'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.loadBonDeCommandes(status: 'rejete');
+              },
+            ),
+            ListTile(
+              title: const Text('Livrés'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.loadBonDeCommandes(status: 'livre');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text(
+          'Voulez-vous supprimer ce bon de commande ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
           ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              notifier.deleteBonDeCommande(id).then((_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bon de commande supprimé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
     );
   }
 
-  void _showDeleteConfirmation(BonDeCommande bonDeCommande) {
+  void _showApproveConfirmation(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
     final id = bonDeCommande.id;
     if (id == null) return;
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous supprimer ce bon de commande ?',
-      textConfirm: 'Supprimer',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.deleteBonDeCommande(id);
-      },
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text(
+          'Voulez-vous valider ce bon de commande ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              notifier.approveBonDeCommande(id).then((_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bon de commande validé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
     );
   }
 
-  void _showApproveConfirmation(BonDeCommande bonDeCommande) {
-    final id = bonDeCommande.id;
-    if (id == null) return;
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce bon de commande ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveBonDeCommande(id);
-      },
-    );
-  }
-
-  void _showRejectDialog(BonDeCommande bonDeCommande) {
+  void _showRejectDialog(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
     final id = bonDeCommande.id;
     if (id == null) return;
     final commentController = TextEditingController();
 
-    Get.defaultDialog(
-      title: 'Rejeter le bon de commande',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le bon de commande'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              notifier
+                  .rejectBonDeCommande(id, commentController.text.trim())
+                  .then((_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bon de commande rejeté avec succès'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+            child: const Text('Rejeter'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.trim().isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectBonDeCommande(id, commentController.text.trim());
-      },
     );
   }
 }

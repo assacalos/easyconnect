@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/task_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
@@ -11,8 +10,11 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
 
-class TaskService extends GetxService {
-  static TaskService get to => Get.find<TaskService>();
+class TaskService {
+  static final TaskService _instance = TaskService._();
+  static TaskService get to => _instance;
+  factory TaskService() => _instance;
+  TaskService._();
 
   /// Liste des tâches en attente (ou tous si status null). Même approche que getBordereaux : liste puis comptage.
   Future<List<TaskModel>> getTasksList({String? status}) async {

@@ -1,27 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/devis_notifier.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class DevisFormPage extends StatefulWidget {
+class DevisFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
   final int? devisId;
 
   const DevisFormPage({super.key, this.isEditing = false, this.devisId});
 
   @override
-  State<DevisFormPage> createState() => _DevisFormPageState();
+  ConsumerState<DevisFormPage> createState() => _DevisFormPageState();
 }
 
-class _DevisFormPageState extends State<DevisFormPage> {
-  final DevisController controller = Get.put(DevisController());
-
+class _DevisFormPageState extends ConsumerState<DevisFormPage> {
   final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
   final formatDate = DateFormat('dd/MM/yyyy');
 
-  // Contrôleurs de formulaire
   late final TextEditingController referenceController;
   late final TextEditingController notesController;
   late final TextEditingController conditionsController;
@@ -35,7 +34,6 @@ class _DevisFormPageState extends State<DevisFormPage> {
   @override
   void initState() {
     super.initState();
-    // Créer les contrôleurs de formulaire
     referenceController = TextEditingController();
     notesController = TextEditingController();
     conditionsController = TextEditingController();
@@ -46,55 +44,39 @@ class _DevisFormPageState extends State<DevisFormPage> {
     delaiLivraisonController = TextEditingController();
     garantieController = TextEditingController();
 
-    // Ne pas appeler clearForm() ici car cela vide le formulaire même si l'utilisateur
-    // a commencé à remplir des données. clearForm() sera appelé uniquement après
-    // un succès confirmé.
-
-    // Charger les clients validés dès l'entrée (cache puis API), comme sur le formulaire bordereau
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadValidatedClients();
+      final notifier = ref.read(devisProvider.notifier);
+      notifier.loadValidatedClients();
       if (!widget.isEditing) {
-        controller.initializeGeneratedReference();
+        notifier.initializeGeneratedReference();
+      }
+      if (widget.isEditing && widget.devisId != null) {
+        final devisList = ref.read(devisProvider).devis.where((d) => d.id == widget.devisId).toList();
+        if (devisList.isNotEmpty) {
+          final devis = devisList.first;
+          referenceController.text = devis.reference;
+          notesController.text = devis.notes ?? '';
+          conditionsController.text = devis.conditions ?? '';
+          remiseGlobaleController.text = devis.remiseGlobale?.toString() ?? '';
+          tvaController.text = devis.tva?.toString() ?? '';
+          titreController.text = devis.titre ?? '';
+          delaiLivraisonController.text = devis.delaiLivraison ?? '';
+          garantieController.text = devis.garantie ?? '';
+          if (devis.dateValidite != null) {
+            dateValiditeController.text = formatDate.format(devis.dateValidite!);
+          }
+          notifier.clearItems();
+          for (final item in devis.items) {
+            notifier.addItem(item);
+          }
+          final clients = ref.read(devisProvider).clients;
+          if (clients.isNotEmpty) {
+            final clientList = clients.where((c) => c.id == devis.clientId).toList();
+            if (clientList.isNotEmpty) notifier.selectClient(clientList.first);
+          }
+        }
       }
     });
-
-    // Pré-remplir le formulaire si édition
-    if (widget.isEditing && widget.devisId != null) {
-      final devis = controller.devis.firstWhere(
-        (d) => d.id == widget.devisId,
-        orElse:
-            () => Devis(
-              id: 0,
-              clientId: 0,
-              reference: '',
-              dateCreation: DateTime.now(),
-              items: [],
-              remiseGlobale: 0,
-              tva: 0,
-              commercialId: 0,
-            ),
-      );
-
-      referenceController.text = devis.reference;
-      notesController.text = devis.notes ?? '';
-      conditionsController.text = devis.conditions ?? '';
-      remiseGlobaleController.text = devis.remiseGlobale?.toString() ?? '';
-      tvaController.text = devis.tva?.toString() ?? '';
-      titreController.text = devis.titre ?? '';
-      delaiLivraisonController.text = devis.delaiLivraison ?? '';
-      garantieController.text = devis.garantie ?? '';
-      if (devis.dateValidite != null) {
-        dateValiditeController.text = formatDate.format(devis.dateValidite!);
-      }
-      controller.items.value = devis.items;
-      if (controller.clients.isNotEmpty) {
-        final client = controller.clients.firstWhere(
-          (c) => c.id == devis.clientId,
-          orElse: () => controller.clients.first,
-        );
-        controller.selectClient(client);
-      }
-    }
   }
 
   @override
@@ -115,6 +97,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/devis'),
         title: Text(widget.isEditing ? 'Modifier le devis' : 'Nouveau devis'),
       ),
       body: SingleChildScrollView(
@@ -122,24 +105,26 @@ class _DevisFormPageState extends State<DevisFormPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildClientSection(),
+            _buildClientSection(ref),
             const SizedBox(height: 16),
-            _buildInformationsGenerales(),
+            _buildInformationsGenerales(ref),
             const SizedBox(height: 16),
-            _buildArticlesSection(),
+            _buildArticlesSection(ref),
             const SizedBox(height: 16),
-            _buildTotauxSection(),
+            _buildTotauxSection(ref),
             const SizedBox(height: 16),
             _buildNotesConditionsSection(),
             const SizedBox(height: 24),
-            _buildSaveButton(),
+            _buildSaveButton(ref),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildClientSection() {
+  Widget _buildClientSection(WidgetRef ref) {
+    final devisState = ref.watch(devisProvider);
+    final devisNotifier = ref.read(devisProvider.notifier);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -151,9 +136,10 @@ class _DevisFormPageState extends State<DevisFormPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              final selectedClient = controller.selectedClient.value;
-              if (selectedClient == null) {
+            Builder(
+              builder: (context) {
+                final selectedClient = devisState.selectedClient;
+                if (selectedClient == null) {
                 return ElevatedButton.icon(
                   icon: const Icon(Icons.person_add),
                   label: const Text('Sélectionner un client'),
@@ -179,17 +165,19 @@ class _DevisFormPageState extends State<DevisFormPage> {
                 subtitle: Text(selectedClient.email ?? ''),
                 trailing: IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: controller.clearSelectedClient,
+                  onPressed: devisNotifier.clearSelectedClient,
                 ),
               );
-            }),
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInformationsGenerales() {
+  Widget _buildInformationsGenerales(WidgetRef ref) {
+    final devisState = ref.watch(devisProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -201,26 +189,27 @@ class _DevisFormPageState extends State<DevisFormPage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              // Mettre à jour le contrôleur avec la référence générée
-              final generatedRef = controller.generatedReference.value;
-              if (generatedRef.isNotEmpty &&
-                  referenceController.text != generatedRef) {
-                referenceController.text = generatedRef;
-              }
-              return TextFormField(
-                controller: referenceController,
-                decoration: const InputDecoration(
-                  labelText: 'Référence (générée automatiquement)',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.grey,
-                  helperText: 'Référence générée automatiquement',
-                ),
-                readOnly: true,
-                enabled: false,
-              );
-            }),
+            Builder(
+              builder: (context) {
+                final generatedRef = devisState.generatedReference;
+                if (generatedRef.isNotEmpty &&
+                    referenceController.text != generatedRef) {
+                  referenceController.text = generatedRef;
+                }
+                return TextFormField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(
+                    labelText: 'Référence (générée automatiquement)',
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.grey,
+                    helperText: 'Référence générée automatiquement',
+                  ),
+                  readOnly: true,
+                  enabled: false,
+                );
+              },
+            ),
             const SizedBox(height: 16),
             TextFormField(
               controller: dateValiditeController,
@@ -231,7 +220,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
                   icon: const Icon(Icons.calendar_today),
                   onPressed: () async {
                     final date = await showDatePicker(
-                      context: Get.context!,
+                      context: context,
                       initialDate: DateTime.now().add(const Duration(days: 30)),
                       firstDate: DateTime.now(),
                       lastDate: DateTime.now().add(const Duration(days: 365)),
@@ -276,7 +265,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
     );
   }
 
-  Widget _buildArticlesSection() {
+  Widget _buildArticlesSection(WidgetRef ref) {
+    final devisState = ref.watch(devisProvider);
+    final devisNotifier = ref.read(devisProvider.notifier);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -298,60 +289,58 @@ class _DevisFormPageState extends State<DevisFormPage> {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              if (controller.items.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Aucun article ajouté',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                );
-              }
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: controller.items.length,
-                itemBuilder: (context, index) {
-                  final item = controller.items[index];
-                  return Card(
-                    child: ListTile(
-                      title: Text(item.designation),
-                      subtitle: Text(
-                        (item.reference != null && item.reference!.isNotEmpty
-                                ? '${item.reference!} • '
-                                : '') +
-                            '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            formatCurrency.format(item.total),
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed:
-                                () => _showItemDialog(index: index, item: item),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => controller.removeItem(index),
-                          ),
-                        ],
-                      ),
+            devisState.items.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Aucun article ajouté',
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
                     ),
-                  );
-                },
-              );
-            }),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: devisState.items.length,
+                    itemBuilder: (context, index) {
+                      final item = devisState.items[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text(item.designation),
+                          subtitle: Text(
+                            (item.reference != null && item.reference!.isNotEmpty
+                                    ? '${item.reference!} • '
+                                    : '') +
+                                '${item.quantite} x ${formatCurrency.format(item.prixUnitaire)}',
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                formatCurrency.format(item.total),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed:
+                                    () => _showItemDialog(index: index, item: item),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => devisNotifier.removeItem(index),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTotauxSection() {
+  Widget _buildTotauxSection(WidgetRef ref) {
+    final devisState = ref.watch(devisProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -389,35 +378,36 @@ class _DevisFormPageState extends State<DevisFormPage> {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              final devis = Devis(
-                clientId: controller.selectedClient.value?.id ?? 0,
-                reference: referenceController.text,
-                dateCreation: DateTime.now(),
-                items: controller.items,
-                remiseGlobale:
-                    double.tryParse(remiseGlobaleController.text) ?? 0,
-                tva: double.tryParse(tvaController.text) ?? 0,
-                commercialId: 0,
-              );
-
-              return Column(
-                children: [
-                  _buildTotalRow('Sous-total', devis.sousTotal),
-                  if (devis.remise > 0)
-                    _buildTotalRow('Remise', -devis.remise, color: Colors.red),
-                  _buildTotalRow('Total HT', devis.totalHT, bold: true),
-                  if (devis.montantTVA > 0)
-                    _buildTotalRow('TVA', devis.montantTVA),
-                  _buildTotalRow(
-                    'Total TTC',
-                    devis.totalTTC,
-                    bold: true,
-                    large: true,
-                  ),
-                ],
-              );
-            }),
+            Builder(
+              builder: (context) {
+                final devis = Devis(
+                  clientId: devisState.selectedClient?.id ?? 0,
+                  reference: referenceController.text,
+                  dateCreation: DateTime.now(),
+                  items: devisState.items,
+                  remiseGlobale:
+                      double.tryParse(remiseGlobaleController.text) ?? 0,
+                  tva: double.tryParse(tvaController.text) ?? 0,
+                  commercialId: 0,
+                );
+                return Column(
+                  children: [
+                    _buildTotalRow('Sous-total', devis.sousTotal),
+                    if (devis.remise > 0)
+                      _buildTotalRow('Remise', -devis.remise, color: Colors.red),
+                    _buildTotalRow('Total HT', devis.totalHT, bold: true),
+                    if (devis.montantTVA > 0)
+                      _buildTotalRow('TVA', devis.montantTVA),
+                    _buildTotalRow(
+                      'Total TTC',
+                      devis.totalTTC,
+                      bold: true,
+                      large: true,
+                    ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -492,12 +482,15 @@ class _DevisFormPageState extends State<DevisFormPage> {
   }
 
   void _showClientSearchDialog() {
-    if (controller.clients.isEmpty) {
-      controller.loadValidatedClients();
+    final devisState = ref.read(devisProvider);
+    final devisNotifier = ref.read(devisProvider.notifier);
+    if (devisState.clients.isEmpty) {
+      devisNotifier.loadValidatedClients();
     }
     final searchController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Sélectionner un client'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -508,43 +501,43 @@ class _DevisFormPageState extends State<DevisFormPage> {
                 labelText: 'Rechercher un client',
                 prefixIcon: Icon(Icons.search),
               ),
-              onChanged: (value) => controller.searchClients(value),
+              onChanged: (value) => devisNotifier.searchClients(value),
             ),
             const SizedBox(height: 16),
             SizedBox(
               height: 300,
               width: double.maxFinite,
-              child: Obx(() {
-                if (controller.isLoadingClients.value) {
-                  return const SkeletonSearchResults(itemCount: 4);
-                }
-
-                if (controller.clients.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.person_off, size: 48, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          'Aucun client validé trouvé',
-                          style: TextStyle(color: Colors.grey, fontSize: 16),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Veuillez d\'abord créer et valider des clients',
-                          style: TextStyle(color: Colors.grey, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: controller.clients.length,
-                  itemBuilder: (context, index) {
-                    final client = controller.clients[index];
-                    return ListTile(
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final state = ref.watch(devisProvider);
+                  if (state.isLoadingClients) {
+                    return const SkeletonSearchResults(itemCount: 4);
+                  }
+                  if (state.clients.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.person_off, size: 48, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'Aucun client validé trouvé',
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Veuillez d\'abord créer et valider des clients',
+                            style: TextStyle(color: Colors.grey, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: state.clients.length,
+                    itemBuilder: (context, index) {
+                      final client = state.clients[index];
+                      return ListTile(
                       leading: CircleAvatar(
                         backgroundColor: Colors.green.shade100,
                         child: Icon(
@@ -590,22 +583,23 @@ class _DevisFormPageState extends State<DevisFormPage> {
                         ],
                       ),
                       onTap: () {
-                        controller.selectClient(client);
-                        Get.back();
+                        devisNotifier.selectClient(client);
+                        Navigator.of(context).pop();
                       },
                     );
                   },
                 );
-              }),
+                },
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annuler')),
           TextButton(
             onPressed: () {
-              Get.back();
-              Get.toNamed('/clients/new');
+              Navigator.of(context).pop();
+              context.go('/clients/new');
             },
             child: const Text('Nouveau client'),
           ),
@@ -615,6 +609,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
   }
 
   void _showItemDialog({int? index, DevisItem? item}) {
+    final devisNotifier = ref.read(devisProvider.notifier);
     final referenceController = TextEditingController(
       text: item?.reference ?? '',
     );
@@ -628,8 +623,9 @@ class _DevisFormPageState extends State<DevisFormPage> {
       text: item?.prixUnitaire.toString() ?? '',
     );
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: Text(item == null ? 'Nouvel article' : 'Modifier l\'article'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -679,7 +675,7 @@ class _DevisFormPageState extends State<DevisFormPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
               final ref = referenceController.text.trim();
@@ -691,11 +687,11 @@ class _DevisFormPageState extends State<DevisFormPage> {
                 prixUnitaire: double.tryParse(prixUnitaireController.text) ?? 0,
               );
               if (index != null) {
-                controller.updateItem(index, newItem);
+                devisNotifier.updateItem(index, newItem);
               } else {
-                controller.addItem(newItem);
+                devisNotifier.addItem(newItem);
               }
-              Get.back();
+              Navigator.of(context).pop();
             },
             child: const Text('Enregistrer'),
           ),
@@ -715,84 +711,78 @@ class _DevisFormPageState extends State<DevisFormPage> {
     titreController.clear();
     delaiLivraisonController.clear();
     garantieController.clear();
-    controller.clearForm();
+    ref.read(devisProvider.notifier).clearForm();
   }
 
-  Widget _buildSaveButton() {
-    return Obx(() {
-      final loading = controller.isLoading.value;
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: loading ? null : _saveDevis,
-          icon: loading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.save),
-          label: Text(
-            loading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le devis' : 'Créer le devis'),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+  Widget _buildSaveButton(WidgetRef ref) {
+    final devisState = ref.watch(devisProvider);
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: devisState.isLoading ? null : _saveDevis,
+        icon: devisState.isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.save),
+        label: Text(
+          devisState.isLoading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le devis' : 'Créer le devis'),
         ),
-      );
-    });
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
   }
 
   void _saveDevis() async {
+    final devisState = ref.read(devisProvider);
+    final devisNotifier = ref.read(devisProvider.notifier);
     print('💾 [DEVIS FORM] Début de la sauvegarde du devis');
     print('💾 [DEVIS FORM] Mode édition: ${widget.isEditing}');
     print('💾 [DEVIS FORM] Devis ID: ${widget.devisId}');
 
-    if (controller.selectedClient.value == null) {
+    if (devisState.selectedClient == null) {
       print('❌ [DEVIS FORM] Aucun client sélectionné');
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner un client',
-        snackPosition: SnackPosition.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez sélectionner un client')),
       );
       return;
     }
     print(
-      '✅ [DEVIS FORM] Client sélectionné: ${controller.selectedClient.value?.id} - ${controller.selectedClient.value?.nom}',
+      '✅ [DEVIS FORM] Client sélectionné: ${devisState.selectedClient?.id} - ${devisState.selectedClient?.nom}',
     );
 
-    if (controller.items.isEmpty) {
+    if (devisState.items.isEmpty) {
       print('❌ [DEVIS FORM] Aucun article ajouté');
-      Get.snackbar(
-        'Erreur',
-        'Veuillez ajouter au moins un article',
-        snackPosition: SnackPosition.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez ajouter au moins un article')),
       );
       return;
     }
-    print('✅ [DEVIS FORM] Nombre d\'articles: ${controller.items.length}');
+    print('✅ [DEVIS FORM] Nombre d\'articles: ${devisState.items.length}');
 
     // Utiliser la référence générée si disponible, sinon celle saisie
     final reference =
-        controller.generatedReference.value.isNotEmpty
-            ? controller.generatedReference.value
+        devisState.generatedReference.isNotEmpty
+            ? devisState.generatedReference
             : referenceController.text;
 
     print(
-      '💾 [DEVIS FORM] Référence générée: ${controller.generatedReference.value}',
+      '💾 [DEVIS FORM] Référence générée: ${devisState.generatedReference}',
     );
     print('💾 [DEVIS FORM] Référence saisie: ${referenceController.text}');
     print('💾 [DEVIS FORM] Référence finale: $reference');
 
     if (reference.isEmpty) {
       print('❌ [DEVIS FORM] Référence vide');
-      Get.snackbar(
-        'Erreur',
-        'Veuillez saisir une référence',
-        snackPosition: SnackPosition.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez saisir une référence')),
       );
       return;
     }
@@ -822,22 +812,22 @@ class _DevisFormPageState extends State<DevisFormPage> {
 
     if (widget.isEditing && widget.devisId != null) {
       print('💾 [DEVIS FORM] Mise à jour du devis ${widget.devisId}');
-      final success = await controller.updateDevis(widget.devisId!, data);
+      final success = await devisNotifier.updateDevis(widget.devisId!, data);
       if (success) {
         print('✅ [DEVIS FORM] Devis mis à jour avec succès');
         _clearForm();
-        Get.offNamed('/devis');
+        context.go('/devis');
       } else {
         print('❌ [DEVIS FORM] Échec de la mise à jour');
       }
     } else {
       print('💾 [DEVIS FORM] Création d\'un nouveau devis');
       try {
-        final success = await controller.createDevis(data);
+        final success = await devisNotifier.createDevis(data);
         if (success) {
           print('✅ [DEVIS FORM] Devis créé avec succès');
           _clearForm();
-          Get.offNamed('/devis');
+          context.go('/devis');
         } else {
           print(
             '❌ [DEVIS FORM] Échec de la création - createDevis a retourné false',
@@ -847,13 +837,12 @@ class _DevisFormPageState extends State<DevisFormPage> {
       } catch (e, stackTrace) {
         print('❌ [DEVIS FORM] Exception lors de la création: $e');
         print('❌ [DEVIS FORM] Stack trace: $stackTrace');
-        Get.snackbar(
-          'Erreur',
-          'Une erreur inattendue s\'est produite: $e',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 5),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Une erreur inattendue s\'est produite: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     }

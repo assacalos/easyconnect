@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/bon_de_commande_fournisseur_notifier.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class BonDeCommandeFournisseurFormPage extends StatefulWidget {
+class BonDeCommandeFournisseurFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
   final int? bonDeCommandeId;
 
@@ -16,16 +17,12 @@ class BonDeCommandeFournisseurFormPage extends StatefulWidget {
   });
 
   @override
-  State<BonDeCommandeFournisseurFormPage> createState() =>
+  ConsumerState<BonDeCommandeFournisseurFormPage> createState() =>
       _BonDeCommandeFournisseurFormPageState();
 }
 
 class _BonDeCommandeFournisseurFormPageState
-    extends State<BonDeCommandeFournisseurFormPage> {
-  final BonDeCommandeFournisseurController controller = Get.put(
-    BonDeCommandeFournisseurController(),
-  );
-
+    extends ConsumerState<BonDeCommandeFournisseurFormPage> {
   final formKey = GlobalKey<FormState>();
   late final TextEditingController numeroCommandeController;
   late final TextEditingController descriptionController;
@@ -42,37 +39,31 @@ class _BonDeCommandeFournisseurFormPageState
     conditionsPaiementController = TextEditingController();
     delaiLivraisonController = TextEditingController();
 
-    // Réinitialiser le formulaire si c'est une nouvelle création
     if (!widget.isEditing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.clearForm();
+        ref.read(bonDeCommandeFournisseurProvider.notifier).clearForm();
+        ref
+            .read(bonDeCommandeFournisseurProvider.notifier)
+            .initializeGeneratedNumeroCommande();
       });
     }
 
-    // Écouter les changements de la référence générée pour mettre à jour le champ
-    ever(controller.generatedNumeroCommande, (String ref) {
-      if (ref.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (numeroCommandeController.text != ref) {
-            numeroCommandeController.text = ref;
-          }
-        });
-      }
-    });
-
-    // Pré-remplir si édition
     if (widget.isEditing && widget.bonDeCommandeId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadBonDeCommandeData();
+        ref
+            .read(bonDeCommandeFournisseurProvider.notifier)
+            .loadBonDeCommandes()
+            .then((_) => _loadBonDeCommandeData());
       });
     }
   }
 
   void _loadBonDeCommandeData() {
+    final state = ref.read(bonDeCommandeFournisseurProvider);
+    final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
     try {
-      final bonDeCommande = controller.bonDeCommandes.firstWhere(
-        (b) => b.id == widget.bonDeCommandeId,
-      );
+      final bonDeCommande = state.bonDeCommandes
+          .firstWhere((b) => b.id == widget.bonDeCommandeId);
       numeroCommandeController.text = bonDeCommande.numeroCommande;
       descriptionController.text = bonDeCommande.description ?? '';
       commentaireController.text = bonDeCommande.commentaire ?? '';
@@ -80,7 +71,8 @@ class _BonDeCommandeFournisseurFormPageState
           bonDeCommande.conditionsPaiement ?? '';
       delaiLivraisonController.text =
           bonDeCommande.delaiLivraison?.toString() ?? '';
-      controller.items.value = bonDeCommande.items;
+      notifier.setItems(bonDeCommande.items);
+      notifier.selectSupplier(null);
     } catch (e) {
       // Le bon de commande n'est pas encore chargé
     }
@@ -98,6 +90,20 @@ class _BonDeCommandeFournisseurFormPageState
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(bonDeCommandeFournisseurProvider);
+    final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
+
+    // Sync generated number to field
+    if (state.generatedNumeroCommande.isNotEmpty &&
+        numeroCommandeController.text != state.generatedNumeroCommande) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            numeroCommandeController.text != state.generatedNumeroCommande) {
+          numeroCommandeController.text = state.generatedNumeroCommande;
+        }
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -128,9 +134,8 @@ class _BonDeCommandeFournisseurFormPageState
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        final selectedSupplier =
-                            controller.selectedSupplier.value;
+                      (() {
+                        final selectedSupplier = state.selectedSupplier;
                         if (selectedSupplier != null) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,19 +144,18 @@ class _BonDeCommandeFournisseurFormPageState
                               Text(selectedSupplier.email),
                               const SizedBox(height: 8),
                               TextButton(
-                                onPressed: () {
-                                  controller.selectSupplier(null);
-                                },
+                                onPressed: () => notifier.selectSupplier(null),
                                 child: const Text('Changer'),
                               ),
                             ],
                           );
                         }
                         return ElevatedButton(
-                          onPressed: () => _showSupplierSelection(context),
+                          onPressed: () =>
+                              _showSupplierSelection(context, notifier),
                           child: const Text('Sélectionner un fournisseur'),
                         );
-                      }),
+                      })(),
                     ],
                   ),
                 ),
@@ -173,44 +177,28 @@ class _BonDeCommandeFournisseurFormPageState
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        // Mettre à jour le contrôleur avec le numéro généré si nécessaire
-                        final generatedRef =
-                            controller.generatedNumeroCommande.value;
-                        if (generatedRef.isNotEmpty &&
-                            numeroCommandeController.text != generatedRef) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted &&
-                                numeroCommandeController.text != generatedRef) {
-                              numeroCommandeController.text = generatedRef;
-                            }
-                          });
-                        }
-                        return TextFormField(
-                          controller: numeroCommandeController,
-                          decoration: const InputDecoration(
-                            labelText:
-                                'Numéro de commande (généré automatiquement) *',
-                            border: OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Colors.grey,
-                            helperText: 'Numéro généré automatiquement',
-                          ),
-                          readOnly: true,
-                          enabled: false,
-                          validator: (value) {
-                            // Utiliser la valeur générée si le champ est vide
-                            final refValue =
-                                (value == null || value.isEmpty)
-                                    ? controller.generatedNumeroCommande.value
-                                    : value;
-                            if (refValue.isEmpty) {
-                              return 'Le numéro de commande est requis';
-                            }
-                            return null;
-                          },
-                        );
-                      }),
+                      TextFormField(
+                        controller: numeroCommandeController,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'Numéro de commande (généré automatiquement) *',
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey,
+                          helperText: 'Numéro généré automatiquement',
+                        ),
+                        readOnly: true,
+                        enabled: false,
+                        validator: (value) {
+                          final refValue = (value == null || value.isEmpty)
+                              ? state.generatedNumeroCommande
+                              : value;
+                          if (refValue.isEmpty) {
+                            return 'Le numéro de commande est requis';
+                          }
+                          return null;
+                        },
+                      ),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: descriptionController,
@@ -270,66 +258,66 @@ class _BonDeCommandeFournisseurFormPageState
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () => _showItemForm(context),
+                            onPressed: () => _showItemForm(context, notifier),
                             icon: const Icon(Icons.add),
                             label: const Text('Ajouter'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        if (controller.items.isEmpty) {
-                          return const Center(
-                            child: Text('Aucun article ajouté'),
-                          );
-                        }
-                        return ListView.builder(
+                      if (state.items.isEmpty)
+                        const Center(
+                          child: Text('Aucun article ajouté'),
+                        )
+                      else
+                        ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          itemCount: controller.items.length,
+                          itemCount: state.items.length,
                           itemBuilder: (context, index) {
-                            final item = controller.items[index];
-                            return _buildItemCard(context, item, index);
+                            final item = state.items[index];
+                            return _buildItemCard(
+                              context,
+                              item,
+                              index,
+                              notifier,
+                            );
                           },
-                        );
-                      }),
+                        ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        final total = controller.items.fold(
-                          0.0,
-                          (sum, item) => sum + item.montantTotal,
-                        );
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Montant total:',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Montant total:',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
                               ),
-                              Text(
-                                NumberFormat.currency(
-                                  locale: 'fr_FR',
-                                  symbol: 'fcfa',
-                                ).format(total),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue,
-                                ),
+                            ),
+                            Text(
+                              NumberFormat.currency(
+                                locale: 'fr_FR',
+                                symbol: 'fcfa',
+                              ).format(state.items.fold(
+                                0.0,
+                                (sum, item) => sum + item.montantTotal,
+                              )),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
                               ),
-                            ],
-                          ),
-                        );
-                      }),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -337,92 +325,109 @@ class _BonDeCommandeFournisseurFormPageState
               const SizedBox(height: 16),
 
               // Bouton de soumission
-              Obx(
-                () => ElevatedButton(
-                  onPressed:
-                      controller.isLoading.value
-                          ? null
-                          : () async {
-                            if (formKey.currentState!.validate()) {
-                              if (controller.selectedSupplier.value == null) {
-                                Get.snackbar(
-                                  'Erreur',
+              ElevatedButton(
+                onPressed: state.isLoading
+                    ? null
+                    : () async {
+                        if (formKey.currentState!.validate()) {
+                          if (state.selectedSupplier == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
                                   'Veuillez sélectionner un fournisseur',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                  backgroundColor: Colors.red,
-                                  colorText: Colors.white,
-                                );
-                                return;
-                              }
-                              if (controller.items.isEmpty) {
-                                Get.snackbar(
-                                  'Erreur',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+                          if (state.items.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
                                   'Veuillez ajouter au moins un article',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                  backgroundColor: Colors.red,
-                                  colorText: Colors.white,
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+                          final data = {
+                            'numero_commande': state
+                                    .generatedNumeroCommande
+                                    .isNotEmpty
+                                ? state.generatedNumeroCommande
+                                : numeroCommandeController.text,
+                            'date_commande': DateTime.now(),
+                            'description': descriptionController.text.isEmpty
+                                ? null
+                                : descriptionController.text,
+                            'commentaire':
+                                commentaireController.text.isEmpty
+                                    ? null
+                                    : commentaireController.text,
+                            'conditions_paiement':
+                                conditionsPaiementController.text.isEmpty
+                                    ? null
+                                    : conditionsPaiementController.text,
+                            'delai_livraison':
+                                delaiLivraisonController.text.isEmpty
+                                    ? null
+                                    : int.tryParse(
+                                        delaiLivraisonController.text,
+                                      ),
+                          };
+                          try {
+                            if (widget.isEditing &&
+                                widget.bonDeCommandeId != null) {
+                              await notifier.updateBonDeCommande(
+                                widget.bonDeCommandeId!,
+                                data,
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Bon de commande mis à jour avec succès',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
                                 );
-                                return;
+                                context.go('/bons-de-commande-fournisseur');
                               }
-                              final data = {
-                                'numero_commande':
-                                    controller
-                                            .generatedNumeroCommande
-                                            .value
-                                            .isNotEmpty
-                                        ? controller
-                                            .generatedNumeroCommande
-                                            .value
-                                        : numeroCommandeController.text,
-                                'date_commande': DateTime.now(),
-                                'description':
-                                    descriptionController.text.isEmpty
-                                        ? null
-                                        : descriptionController.text,
-                                'commentaire':
-                                    commentaireController.text.isEmpty
-                                        ? null
-                                        : commentaireController.text,
-                                'conditions_paiement':
-                                    conditionsPaiementController.text.isEmpty
-                                        ? null
-                                        : conditionsPaiementController.text,
-                                'delai_livraison':
-                                    delaiLivraisonController.text.isEmpty
-                                        ? null
-                                        : int.tryParse(
-                                          delaiLivraisonController.text,
-                                        ),
-                              };
-                              if (widget.isEditing &&
-                                  widget.bonDeCommandeId != null) {
-                                final success = await controller
-                                    .updateBonDeCommande(
-                                      widget.bonDeCommandeId!,
-                                      data,
-                                    );
-                                if (success) {
-                                  // Fermer immédiatement le formulaire après succès
-                                  Get.offNamed('/bons-de-commande-fournisseur');
-                                }
-                              } else {
-                                final success = await controller
-                                    .createBonDeCommande(data);
-                                if (success) {
-                                  // Fermer immédiatement le formulaire après succès
-                                  Get.offNamed('/bons-de-commande-fournisseur');
-                                }
+                            } else {
+                              final success =
+                                  await notifier.createBonDeCommande(data);
+                              if (success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Bon de commande créé avec succès',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                                context.go('/bons-de-commande-fournisseur');
                               }
                             }
-                          },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child:
-                      controller.isLoading.value
-                          ? const CircularProgressIndicator()
-                          : Text(widget.isEditing ? 'Modifier' : 'Créer'),
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Erreur: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
+                child: state.isLoading
+                    ? const CircularProgressIndicator()
+                    : Text(widget.isEditing ? 'Modifier' : 'Créer'),
               ),
             ],
           ),
@@ -435,6 +440,7 @@ class _BonDeCommandeFournisseurFormPageState
     BuildContext context,
     BonDeCommandeItem item,
     int index,
+    BonDeCommandeFournisseurNotifier notifier,
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -459,15 +465,16 @@ class _BonDeCommandeFournisseurFormPageState
         ),
         trailing: IconButton(
           icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: () => controller.removeItem(index),
+          onPressed: () => notifier.removeItem(index),
         ),
-        onTap: () => _showItemForm(context, index: index, item: item),
+        onTap: () => _showItemForm(context, notifier, index: index, item: item),
       ),
     );
   }
 
   void _showItemForm(
-    BuildContext context, {
+    BuildContext context,
+    BonDeCommandeFournisseurNotifier notifier, {
     int? index,
     BonDeCommandeItem? item,
   }) {
@@ -481,12 +488,13 @@ class _BonDeCommandeFournisseurFormPageState
     final prixController = TextEditingController(
       text: item?.prixUnitaire.toString() ?? '0',
     );
-    final descriptionController = TextEditingController(
+    final descriptionItemController = TextEditingController(
       text: item?.description ?? '',
     );
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: Text(
           item == null ? 'Ajouter un article' : 'Modifier l\'article',
         ),
@@ -554,7 +562,7 @@ class _BonDeCommandeFournisseurFormPageState
               ),
               const SizedBox(height: 16),
               TextFormField(
-                controller: descriptionController,
+                controller: descriptionItemController,
                 decoration: const InputDecoration(
                   labelText: 'Description',
                   border: OutlineInputBorder(),
@@ -565,16 +573,21 @@ class _BonDeCommandeFournisseurFormPageState
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
             onPressed: () {
               if (designationController.text.isEmpty ||
                   quantiteController.text.isEmpty ||
                   prixController.text.isEmpty) {
-                Get.snackbar(
-                  'Erreur',
-                  'Veuillez remplir tous les champs obligatoires',
-                  snackPosition: SnackPosition.BOTTOM,
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Veuillez remplir tous les champs obligatoires',
+                    ),
+                  ),
                 );
                 return;
               }
@@ -585,18 +598,17 @@ class _BonDeCommandeFournisseurFormPageState
                 designation: designationController.text,
                 quantite: int.parse(quantiteController.text),
                 prixUnitaire: double.parse(prixController.text),
-                description:
-                    descriptionController.text.isEmpty
-                        ? null
-                        : descriptionController.text,
+                description: descriptionItemController.text.isEmpty
+                    ? null
+                    : descriptionItemController.text,
               );
 
               if (index != null) {
-                controller.updateItem(index, newItem);
+                notifier.updateItem(index, newItem);
               } else {
-                controller.addItem(newItem);
+                notifier.addItem(newItem);
               }
-              Get.back();
+              Navigator.pop(ctx);
             },
             child: const Text('Enregistrer'),
           ),
@@ -605,37 +617,52 @@ class _BonDeCommandeFournisseurFormPageState
     );
   }
 
-  void _showSupplierSelection(BuildContext context) async {
-    await Get.dialog(
-      AlertDialog(
-        title: const Text('Sélectionner un fournisseur'),
-        content: Obx(() {
-          if (controller.isLoadingSuppliers.value) {
-            return const SkeletonSearchResults(itemCount: 4);
+  void _showSupplierSelection(
+    BuildContext context,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) async {
+    notifier.loadSuppliers();
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => Consumer(
+        builder: (context, ref, _) {
+          final stateSuppliers =
+              ref.watch(bonDeCommandeFournisseurProvider);
+          if (stateSuppliers.isLoadingSuppliers) {
+            return AlertDialog(
+              title: const Text('Sélectionner un fournisseur'),
+              content: const SkeletonSearchResults(itemCount: 4),
+            );
           }
-          if (controller.availableSuppliers.isEmpty) {
-            return const Text('Aucun fournisseur disponible');
+          if (stateSuppliers.suppliers.isEmpty) {
+            return AlertDialog(
+              title: const Text('Sélectionner un fournisseur'),
+              content: const Text('Aucun fournisseur disponible'),
+            );
           }
-          return SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: controller.availableSuppliers.length,
-              itemBuilder: (context, index) {
-                final supplier = controller.availableSuppliers[index];
-                return ListTile(
-                  title: Text(supplier.nom),
-                  subtitle: Text(supplier.email),
-                  onTap: () {
-                    controller.selectSupplier(supplier);
-                    controller.selectClient(null);
-                    Get.back();
-                  },
-                );
-              },
+          return AlertDialog(
+            title: const Text('Sélectionner un fournisseur'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: stateSuppliers.suppliers.length,
+                itemBuilder: (context, index) {
+                  final supplier = stateSuppliers.suppliers[index];
+                  return ListTile(
+                    title: Text(supplier.nom),
+                    subtitle: Text(supplier.email),
+                    onTap: () {
+                      notifier.selectSupplier(supplier);
+                      Navigator.pop(ctx);
+                    },
+                  );
+                },
+              ),
             ),
           );
-        }),
+        },
       ),
     );
   }

@@ -1,22 +1,22 @@
-import 'package:easyconnect/Controllers/client_controller.dart';
+import 'package:easyconnect/providers/client_notifier.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class ClientFormPage extends StatefulWidget {
+class ClientFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
   final int? clientId;
 
   const ClientFormPage({super.key, this.isEditing = false, this.clientId});
 
   @override
-  State<ClientFormPage> createState() => _ClientFormPageState();
+  ConsumerState<ClientFormPage> createState() => _ClientFormPageState();
 }
 
-class _ClientFormPageState extends State<ClientFormPage> {
+class _ClientFormPageState extends ConsumerState<ClientFormPage> {
   final _formKey = GlobalKey<FormState>();
-  final ClientController controller = Get.put(ClientController());
 
-  // contrôleurs pour les champs
   late final TextEditingController nomController;
   late final TextEditingController prenomController;
   late final TextEditingController nomEntrepriseController;
@@ -25,6 +25,11 @@ class _ClientFormPageState extends State<ClientFormPage> {
   late final TextEditingController telephoneController;
   late final TextEditingController adresseController;
   late final TextEditingController numeroContribuableController;
+
+  static bool _isEmail(String? value) {
+    if (value == null || value.isEmpty) return false;
+    return value.contains('@') && value.contains('.');
+  }
 
   @override
   void initState() {
@@ -38,7 +43,6 @@ class _ClientFormPageState extends State<ClientFormPage> {
     adresseController = TextEditingController();
     numeroContribuableController = TextEditingController();
 
-    // Pré-remplir si édition
     if (widget.isEditing && widget.clientId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadClientData();
@@ -47,8 +51,9 @@ class _ClientFormPageState extends State<ClientFormPage> {
   }
 
   void _loadClientData() {
+    final clients = ref.read(clientProvider).clients;
     try {
-      final client = controller.clients.firstWhere(
+      final client = clients.firstWhere(
         (c) => c.id == widget.clientId,
       );
       nomController.text = client.nom?.toString() ?? '';
@@ -96,6 +101,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/clients'),
         title: Text(widget.isEditing ? "Modifier un Client" : "Nouveau Client"),
       ),
       body: SingleChildScrollView(
@@ -134,7 +140,7 @@ class _ClientFormPageState extends State<ClientFormPage> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value!.isEmpty) return "Email requis";
-                    if (!GetUtils.isEmail(value)) return "Email invalide";
+                    if (!_isEmail(value)) return "Email invalide";
                     return null;
                   },
                 ),
@@ -173,54 +179,83 @@ class _ClientFormPageState extends State<ClientFormPage> {
                   ),
                 ),
                 SizedBox(height: 20),
-                Obx(() {
-                  final loading = controller.isLoading.value;
-                  return ElevatedButton(
-                    onPressed: loading
-                        ? null
-                        : () async {
-                            if (_formKey.currentState!.validate()) {
-                              final data = {
-                                "nom": nomController.text.trim(),
-                                "prenom": prenomController.text.trim(),
-                                "nom_entreprise":
-                                    nomEntrepriseController.text.trim(),
-                                "situation_geographique":
-                                    situationGeographiqueController.text.trim(),
-                                "email": emailController.text.trim(),
-                                "contact": telephoneController.text.trim(),
-                                "adresse": adresseController.text.trim(),
-                                "numero_contribuable":
-                                    numeroContribuableController.text.trim(),
-                              };
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isLoading = ref.watch(clientProvider).isLoading;
+                    final notifier = ref.read(clientProvider.notifier);
+                    return ElevatedButton(
+                      onPressed: isLoading
+                          ? null
+                          : () async {
+                              if (_formKey.currentState!.validate()) {
+                                final data = {
+                                  "nom": nomController.text.trim(),
+                                  "prenom": prenomController.text.trim(),
+                                  "nom_entreprise":
+                                      nomEntrepriseController.text.trim(),
+                                  "situation_geographique":
+                                      situationGeographiqueController.text.trim(),
+                                  "email": emailController.text.trim(),
+                                  "contact": telephoneController.text.trim(),
+                                  "adresse": adresseController.text.trim(),
+                                  "numero_contribuable":
+                                      numeroContribuableController.text.trim(),
+                                };
 
-                              bool success = false;
-                              if (widget.isEditing && widget.clientId != null) {
-                                success = await controller.updateClient(data);
-                              } else {
-                                success =
-                                    await controller.createClientFromMap(data);
-                              }
+                                bool success = false;
+                                try {
+                                  if (widget.isEditing && widget.clientId != null) {
+                                    success = await notifier.updateClient(data);
+                                    if (success && mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'Client mis à jour avec succès')),
+                                      );
+                                    }
+                                  } else {
+                                    success =
+                                        await notifier.createClientFromMap(data);
+                                    if (success && mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'Client enregistré avec succès')),
+                                      );
+                                    }
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text(
+                                              'Erreur: ${e.toString()}')),
+                                    );
+                                  }
+                                  return;
+                                }
 
-                              if (success && mounted) {
-                                _clearForm();
-                                await Future.delayed(
-                                    const Duration(milliseconds: 500));
-                                Get.offNamed('/clients');
+                                if (success && mounted) {
+                                  _clearForm();
+                                  await Future.delayed(
+                                      const Duration(milliseconds: 500));
+                                  context.go('/clients');
+                                }
                               }
-                            }
-                          },
-                    child: loading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            widget.isEditing ? "Modifier" : "Enregistrer",
-                          ),
-                  );
-                }),
+                            },
+                      child: isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              widget.isEditing ? "Modifier" : "Enregistrer",
+                            ),
+                    );
+                  },
+                ),
                 SizedBox(height: 20),
               ],
             ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
 
@@ -12,7 +11,7 @@ class PresenceSummaryPage extends StatefulWidget {
 }
 
 class _PresenceSummaryPageState extends State<PresenceSummaryPage> {
-  final AttendancePunchService _attendanceService = Get.find<AttendancePunchService>();
+  final AttendancePunchService _attendanceService = AttendancePunchService();
 
   String _period = 'month'; // week | month | year
   int _year = DateTime.now().year;

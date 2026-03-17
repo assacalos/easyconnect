@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/intervention_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/intervention_notifier.dart';
+import 'package:easyconnect/providers/intervention_state.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
-import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:intl/intl.dart';
 
-class InterventionDetail extends StatelessWidget {
+class InterventionDetail extends ConsumerWidget {
   final Intervention intervention;
 
   const InterventionDetail({super.key, required this.intervention});
 
   @override
-  Widget build(BuildContext context) {
-    final InterventionController controller = Get.put(InterventionController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(interventionProvider);
+    final notifier = ref.read(interventionProvider.notifier);
     final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
     final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
@@ -22,18 +24,18 @@ class InterventionDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageInterventions &&
+          if (state.canManageInterventions &&
               intervention.status == 'pending')
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed:
-                  () => Get.to(
-                    () => InterventionForm(intervention: intervention),
-                  ),
+              onPressed: () => context.push(
+                '/interventions/${intervention.id}/edit',
+                extra: intervention,
+              ),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareIntervention(),
+            onPressed: () => _shareIntervention(context),
           ),
         ],
       ),
@@ -42,11 +44,8 @@ class InterventionDetail extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec statut
             _buildHeaderCard(),
             const SizedBox(height: 16),
-
-            // Informations de base
             _buildInfoCard('Informations de base', [
               _buildInfoRow(Icons.title, 'Titre', intervention.title),
               _buildInfoRow(Icons.category, 'Type', intervention.typeText),
@@ -61,8 +60,6 @@ class InterventionDetail extends StatelessWidget {
                 intervention.description,
               ),
             ]),
-
-            // Informations de planification
             const SizedBox(height: 16),
             _buildInfoCard('Planification', [
               _buildInfoRow(
@@ -95,8 +92,6 @@ class InterventionDetail extends StatelessWidget {
                   '${intervention.actualDuration!.toStringAsFixed(1)}h',
                 ),
             ]),
-
-            // Informations client
             if (intervention.clientName != null ||
                 intervention.location != null) ...[
               const SizedBox(height: 16),
@@ -123,8 +118,6 @@ class InterventionDetail extends StatelessWidget {
                   ),
               ]),
             ],
-
-            // Informations techniques
             if (intervention.equipment != null ||
                 intervention.problemDescription != null) ...[
               const SizedBox(height: 16),
@@ -149,8 +142,6 @@ class InterventionDetail extends StatelessWidget {
                   ),
               ]),
             ],
-
-            // Coût
             if (intervention.cost != null) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Coût', [
@@ -161,8 +152,6 @@ class InterventionDetail extends StatelessWidget {
                 ),
               ]),
             ],
-
-            // Notes
             if (intervention.notes != null &&
                 intervention.notes!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -170,8 +159,6 @@ class InterventionDetail extends StatelessWidget {
                 _buildInfoRow(Icons.note, 'Notes', intervention.notes!),
               ]),
             ],
-
-            // Motif du rejet
             if (intervention.status == 'rejected' &&
                 intervention.rejectionReason != null &&
                 intervention.rejectionReason!.isNotEmpty) ...[
@@ -191,8 +178,6 @@ class InterventionDetail extends StatelessWidget {
                 ),
               ]),
             ],
-
-            // Notes de fin
             if (intervention.completionNotes != null &&
                 intervention.completionNotes!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -204,8 +189,6 @@ class InterventionDetail extends StatelessWidget {
                 ),
               ]),
             ],
-
-            // Pièces jointes
             if (intervention.attachments != null &&
                 intervention.attachments!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -214,15 +197,10 @@ class InterventionDetail extends StatelessWidget {
                   _buildInfoRow(Icons.attach_file, 'Fichier', attachment),
               ]),
             ],
-
-            // Historique des actions
             const SizedBox(height: 16),
             _buildHistoryCard(),
-
             const SizedBox(height: 16),
-
-            // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, state, notifier),
           ],
         ),
       ),
@@ -497,7 +475,12 @@ class InterventionDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(InterventionController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    InterventionState state,
+    InterventionNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -517,15 +500,15 @@ class InterventionDetail extends StatelessWidget {
             Row(
               children: [
                 if (intervention.status == 'pending' &&
-                    controller.canManageInterventions) ...[
+                    state.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(
-                            () => InterventionForm(intervention: intervention),
-                          ),
+                      onPressed: () => context.push(
+                        '/interventions/${intervention.id}/edit',
+                        extra: intervention,
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -535,12 +518,12 @@ class InterventionDetail extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 if (intervention.status == 'approved' &&
-                    controller.canManageInterventions) ...[
+                    state.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.play_arrow),
                       label: const Text('Démarrer'),
-                      onPressed: () => _showStartDialog(controller),
+                      onPressed: () => _showStartDialog(context, intervention, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -550,12 +533,12 @@ class InterventionDetail extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 if (intervention.status == 'in_progress' &&
-                    controller.canManageInterventions) ...[
+                    state.canManageInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.stop),
                       label: const Text('Terminer'),
-                      onPressed: () => _showCompleteDialog(controller),
+                      onPressed: () => _showCompleteDialog(context, intervention, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -565,12 +548,12 @@ class InterventionDetail extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 if (intervention.status == 'pending' &&
-                    controller.canApproveInterventions) ...[
+                    state.canApproveInterventions) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, intervention, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -582,7 +565,7 @@ class InterventionDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, intervention, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -611,20 +594,23 @@ class InterventionDetail extends StatelessWidget {
     );
   }
 
-  void _shareIntervention() {
-    // Implémentation du partage
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareIntervention(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showStartDialog(InterventionController controller) {
+  void _showStartDialog(
+    BuildContext context,
+    Intervention intervention,
+    InterventionNotifier notifier,
+  ) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Démarrer l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -644,12 +630,22 @@ class InterventionDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.startIntervention(intervention);
-              Get.back();
+              notifier.startIntervention(intervention,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Intervention démarrée'),
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Démarrer'),
@@ -659,14 +655,19 @@ class InterventionDetail extends StatelessWidget {
     );
   }
 
-  void _showCompleteDialog(InterventionController controller) {
+  void _showCompleteDialog(
+    BuildContext context,
+    Intervention intervention,
+    InterventionNotifier notifier,
+  ) {
     final solutionController = TextEditingController();
     final completionNotesController = TextEditingController();
     final actualDurationController = TextEditingController();
     final costController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Terminer l\'intervention'),
         content: SingleChildScrollView(
           child: Column(
@@ -711,17 +712,27 @@ class InterventionDetail extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
-              controller.solutionController.text = solutionController.text;
-              controller.completionNotesController.text =
-                  completionNotesController.text;
-              controller.actualDurationController.text =
-                  actualDurationController.text;
-              controller.costController.text = costController.text;
-              controller.completeIntervention(intervention);
-              Get.back();
+              notifier.completeIntervention(
+                intervention,
+                solution: solutionController.text.trim(),
+                completionNotes: completionNotesController.text.trim().isEmpty
+                    ? null
+                    : completionNotesController.text.trim(),
+                actualDuration: double.tryParse(actualDurationController.text),
+                cost: double.tryParse(costController.text),
+              );
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Intervention terminée'),
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Terminer'),
@@ -731,11 +742,15 @@ class InterventionDetail extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(InterventionController controller) {
+  void _showApproveDialog(
+    BuildContext context,
+    Intervention intervention,
+    InterventionNotifier notifier,
+  ) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -755,12 +770,31 @@ class InterventionDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveIntervention(intervention);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveIntervention(intervention,
+                    notes: notesController.text.trim().isEmpty
+                        ? null
+                        : notesController.text.trim());
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Intervention approuvée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(e.toString()),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Approuver'),
@@ -770,11 +804,15 @@ class InterventionDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(InterventionController controller) {
+  void _showRejectDialog(
+    BuildContext context,
+    Intervention intervention,
+    InterventionNotifier notifier,
+  ) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -792,17 +830,36 @@ class InterventionDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectIntervention(
-                  intervention,
-                  reasonController.text.trim(),
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez indiquer la raison du rejet'),
+                  ),
                 );
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectIntervention(
+                    intervention, reasonController.text.trim());
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Intervention rejetée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(e.toString()),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

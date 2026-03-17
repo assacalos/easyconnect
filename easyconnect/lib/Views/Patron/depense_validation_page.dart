@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/expense_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/expense_notifier.dart';
 import 'package:easyconnect/Models/expense_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class DepenseValidationPage extends StatefulWidget {
+class DepenseValidationPage extends ConsumerStatefulWidget {
   const DepenseValidationPage({super.key});
 
   @override
-  State<DepenseValidationPage> createState() => _DepenseValidationPageState();
+  ConsumerState<DepenseValidationPage> createState() =>
+      _DepenseValidationPageState();
 }
 
-class _DepenseValidationPageState extends State<DepenseValidationPage>
+class _DepenseValidationPageState extends ConsumerState<DepenseValidationPage>
     with SingleTickerProviderStateMixin {
-  final ExpenseController controller = Get.find<ExpenseController>();
   late TabController _tabController;
-  String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -24,9 +24,9 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (!_tabController.indexIsChanging) _onTabChanged();
     });
-    _loadExpenses();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadExpenses());
   }
 
   @override
@@ -37,45 +37,45 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadExpenses();
+    String status;
+    switch (_tabController.index) {
+      case 0:
+        status = 'all';
+        break;
+      case 1:
+        status = 'pending';
+        break;
+      case 2:
+        status = 'approved';
+        break;
+      case 3:
+        status = 'rejected';
+        break;
+      default:
+        status = 'all';
     }
+    ref.read(expenseProvider.notifier).filterByStatus(status);
   }
 
   Future<void> _loadExpenses() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 'pending';
-        break;
-      case 2: // Validés
-        status = 'approved';
-        break;
-      case 3: // Rejetés
-        status = 'rejected';
-        break;
-    }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadExpenses();
+    await ref.read(expenseProvider.notifier).loadExpenses(forceRefresh: true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(expenseProvider);
+    final notifier = ref.read(expenseProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Dépenses'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadExpenses();
-            },
+            onPressed: _loadExpenses,
             tooltip: 'Actualiser',
           ),
         ],
@@ -94,7 +94,6 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -102,57 +101,32 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par titre, catégorie...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchExpenses('');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => notifier.searchExpenses(value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildExpenseList(),
-            ),
+            child: state.isLoading && state.expenses.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildExpenseList(state.expenses),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildExpenseList() {
-    // Filtrer les dépenses selon la recherche
-    final filteredExpenses =
-        _searchQuery.isEmpty
-            ? controller.expenses
-            : controller.expenses
-                .where(
-                  (depense) =>
-                      depense.title.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      depense.category.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ),
-                )
-                .toList();
+  Widget _buildExpenseList(List<Expense> filteredExpenses) {
+    final searchQuery = ref.watch(expenseProvider).searchQuery;
 
     if (filteredExpenses.isEmpty) {
       return Center(
@@ -162,19 +136,17 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
             Icon(Icons.receipt, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              _searchQuery.isEmpty
+              searchQuery.isEmpty
                   ? 'Aucune dépense trouvée'
-                  : 'Aucune dépense correspondant à "$_searchQuery"',
+                  : 'Aucune dépense correspondant à "$searchQuery"',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-            if (_searchQuery.isNotEmpty) ...[
+            if (searchQuery.isNotEmpty) ...[
               const SizedBox(height: 8),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  ref.read(expenseProvider.notifier).searchExpenses('');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -336,7 +308,7 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(depense, statusColor),
+                _buildActionButtons(context, depense, statusColor),
               ],
             ),
           ),
@@ -345,7 +317,8 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Expense depense, Color statusColor) {
+  Widget _buildActionButtons(
+      BuildContext context, Expense depense, Color statusColor) {
     if (depense.status == 'pending') {
       // En attente - Afficher boutons Valider/Rejeter
       return Column(
@@ -354,7 +327,7 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(depense),
+                onPressed: () => _showApproveConfirmation(context, depense),
                 icon: const Icon(Icons.check),
                 label: const Text('Valider'),
                 style: ElevatedButton.styleFrom(
@@ -363,7 +336,7 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(depense),
+                onPressed: () => _showRejectDialog(context, depense),
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
                 style: ElevatedButton.styleFrom(
@@ -450,55 +423,82 @@ class _DepenseValidationPageState extends State<DepenseValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Expense depense) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider cette dépense ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveExpense(depense);
-        _loadExpenses();
-      },
-    );
-  }
-
-  void _showRejectDialog(Expense depense) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter la dépense',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(BuildContext context, Expense depense) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider cette dépense ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await ref.read(expenseProvider.notifier).approveExpense(depense);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense validée')),
+                );
+              }
+              _loadExpenses();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectExpense(depense, commentController.text);
-        _loadExpenses();
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, Expense depense) {
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter la dépense'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                  ),
+                );
+                return;
+              }
+              await ref
+                  .read(expenseProvider.notifier)
+                  .rejectExpense(depense, commentController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense rejetée')),
+                );
+              }
+              _loadExpenses();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

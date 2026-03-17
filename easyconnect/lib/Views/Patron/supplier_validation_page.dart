@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/supplier_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/supplier_notifier.dart';
+import 'package:easyconnect/providers/supplier_state.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class SupplierValidationPage extends StatefulWidget {
+class SupplierValidationPage extends ConsumerStatefulWidget {
   const SupplierValidationPage({super.key});
 
   @override
-  State<SupplierValidationPage> createState() => _SupplierValidationPageState();
+  ConsumerState<SupplierValidationPage> createState() =>
+      _SupplierValidationPageState();
 }
 
-class _SupplierValidationPageState extends State<SupplierValidationPage>
+class _SupplierValidationPageState extends ConsumerState<SupplierValidationPage>
     with SingleTickerProviderStateMixin {
-  final SupplierController controller = Get.find<SupplierController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -22,10 +24,10 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      _onTabChanged();
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(supplierProvider.notifier).loadSuppliers();
     });
-    _loadSuppliers();
   }
 
   @override
@@ -37,29 +39,30 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) {
-      _loadSuppliers();
+      ref.read(supplierProvider.notifier).loadSuppliers();
     }
   }
 
   Future<void> _loadSuppliers() async {
-    // Toujours charger tous les fournisseurs, le filtrage se fait côté client dans _buildSupplierList
-    controller.selectedStatus.value = 'all';
-    await controller.loadSuppliers();
+    ref.read(supplierProvider.notifier).filterByStatus('all');
+    await ref.read(supplierProvider.notifier).loadSuppliers();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(supplierProvider);
+    final notifier = ref.read(supplierProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Fournisseurs'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadSuppliers();
-            },
+            onPressed: _loadSuppliers,
             tooltip: 'Actualiser',
           ),
         ],
@@ -78,7 +81,6 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -89,109 +91,90 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          Expanded(child: _buildSupplierList()),
+          Expanded(child: _buildSupplierList(state, notifier)),
         ],
       ),
     );
   }
 
-  Widget _buildSupplierList() {
-    return Obx(() {
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+  Widget _buildSupplierList(SupplierState state, SupplierNotifier notifier) {
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-      // Utiliser allSuppliers au lieu de suppliers pour avoir tous les fournisseurs
-      List<Supplier> filteredSuppliers = List.from(controller.allSuppliers);
-
-      // Filtrer selon l'onglet actif
-      switch (_tabController.index) {
-        case 0: // Tous
-          filteredSuppliers = controller.allSuppliers;
-          break;
-        case 1: // En attente
-          filteredSuppliers =
-              controller.allSuppliers
-                  .where((supplier) => supplier.isPending)
-                  .toList();
-          break;
-        case 2: // Validés
-          filteredSuppliers =
-              controller.allSuppliers
-                  .where((supplier) => supplier.isValidated)
-                  .toList();
-          break;
-        case 3: // Rejetés
-          filteredSuppliers =
-              controller.allSuppliers
-                  .where((supplier) => supplier.isRejected)
-                  .toList();
-          break;
-        default:
-          filteredSuppliers = controller.allSuppliers;
-      }
-
-      // Appliquer aussi le filtre de recherche
-      if (_searchQuery.isNotEmpty) {
-        final query = _searchQuery.toLowerCase();
+    List<Supplier> filteredSuppliers = List.from(state.allSuppliers);
+    switch (_tabController.index) {
+      case 0:
+        filteredSuppliers = state.allSuppliers;
+        break;
+      case 1:
         filteredSuppliers =
-            filteredSuppliers.where((supplier) {
-              return supplier.nom.toLowerCase().contains(query) ||
-                  supplier.email.toLowerCase().contains(query) ||
-                  supplier.telephone.toLowerCase().contains(query) ||
-                  supplier.ville.toLowerCase().contains(query) ||
-                  supplier.pays.toLowerCase().contains(query);
-            }).toList();
-      }
+            state.allSuppliers.where((s) => s.isPending).toList();
+        break;
+      case 2:
+        filteredSuppliers =
+            state.allSuppliers.where((s) => s.isValidated).toList();
+        break;
+      case 3:
+        filteredSuppliers =
+            state.allSuppliers.where((s) => s.isRejected).toList();
+        break;
+      default:
+        filteredSuppliers = state.allSuppliers;
+    }
 
-      if (filteredSuppliers.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.business, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucun fournisseur trouvé',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        );
-      }
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filteredSuppliers = filteredSuppliers.where((s) {
+        return s.nom.toLowerCase().contains(query) ||
+            s.email.toLowerCase().contains(query) ||
+            s.telephone.toLowerCase().contains(query) ||
+            s.ville.toLowerCase().contains(query) ||
+            s.pays.toLowerCase().contains(query);
+      }).toList();
+    }
 
-      return ListView.builder(
-        itemCount: filteredSuppliers.length,
-        padding: const EdgeInsets.all(8),
-        itemBuilder: (context, index) {
-          final supplier = filteredSuppliers[index];
-          return _buildSupplierCard(supplier);
-        },
+    if (filteredSuppliers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.business, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun fournisseur trouvé',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+          ],
+        ),
       );
-    });
+    }
+
+    return ListView.builder(
+      itemCount: filteredSuppliers.length,
+      padding: const EdgeInsets.all(8),
+      itemBuilder: (context, index) {
+        final supplier = filteredSuppliers[index];
+        return _buildSupplierCard(context, supplier, notifier);
+      },
+    );
   }
 
-  Widget _buildSupplierCard(Supplier supplier) {
+  Widget _buildSupplierCard(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     Color statusColor;
     switch (supplier.statusColor) {
       case 'orange':
@@ -281,7 +264,7 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
                     '${supplier.noteEvaluation!.toStringAsFixed(1)}/5',
                   ),
                 const SizedBox(height: 16),
-                _buildActionButtons(supplier, statusColor),
+                _buildActionButtons(context, supplier, statusColor, notifier),
               ],
             ),
           ),
@@ -300,25 +283,27 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
             width: 100,
             child: Text(
               '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 12),
             ),
           ),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+          Expanded(
+              child: Text(value, style: const TextStyle(fontSize: 12))),
         ],
       ),
     );
   }
 
-  Widget _buildActionButtons(Supplier supplier, Color statusColor) {
+  Widget _buildActionButtons(BuildContext context, Supplier supplier,
+      Color statusColor, SupplierNotifier notifier) {
     if (supplier.isPending) {
-      // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(supplier),
+                onPressed: () => _showApproveConfirmation(context, supplier, notifier),
                 icon: const Icon(Icons.check),
                 label: const Text('Valider'),
                 style: ElevatedButton.styleFrom(
@@ -327,7 +312,7 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(supplier),
+                onPressed: () => _showRejectDialog(context, supplier, notifier),
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
                 style: ElevatedButton.styleFrom(
@@ -342,7 +327,6 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
     }
 
     if (supplier.isValidated) {
-      // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -368,7 +352,6 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
     }
 
     if (supplier.isRejected) {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -417,10 +400,12 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
     );
   }
 
-  void _showApproveConfirmation(Supplier supplier) {
+  void _showApproveConfirmation(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final commentsController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Confirmation'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -439,18 +424,30 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
             onPressed: () async {
-              Get.back();
-              await controller.approveSupplier(
-                supplier,
-                validationComment:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              _loadSuppliers().catchError((_) {});
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveSupplier(
+                  supplier,
+                  validationComment: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Fournisseur validé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadSuppliers();
+              } catch (_) {}
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -463,11 +460,13 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
     );
   }
 
-  void _showRejectDialog(Supplier supplier) {
+  void _showRejectDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final reasonController = TextEditingController();
     final commentController = TextEditingController();
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter le fournisseur'),
         content: SingleChildScrollView(
           child: Column(
@@ -498,27 +497,37 @@ class _SupplierValidationPageState extends State<SupplierValidationPage>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
             onPressed: () {
               if (reasonController.text.trim().isEmpty) {
-                Get.snackbar(
-                  'Erreur',
-                  'Le motif du rejet est obligatoire',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Le motif du rejet est obligatoire',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
                 );
                 return;
               }
-              Get.back();
-              controller.rejectSupplier(
+              Navigator.pop(ctx);
+              notifier.rejectSupplier(
                 supplier,
                 rejectionReason: reasonController.text.trim(),
-                rejectionComment:
-                    commentController.text.trim().isEmpty
-                        ? null
-                        : commentController.text.trim(),
+                rejectionComment: commentController.text.trim().isEmpty
+                    ? null
+                    : commentController.text.trim(),
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Fournisseur rejeté'),
+                  backgroundColor: Colors.orange,
+                ),
               );
               _loadSuppliers();
             },

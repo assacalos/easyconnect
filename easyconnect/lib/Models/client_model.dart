@@ -16,7 +16,8 @@ class Client {
   final String? commentaire;
   final String? createdAt;
   final String? updatedAt;
-  final int? userId;
+  final int? userId;       // commercial créateur
+  final int? portalUserId;  // compte portail client (rôle 7) lié à ce client
 
   Client({
     this.id,
@@ -33,6 +34,7 @@ class Client {
     this.createdAt,
     this.updatedAt,
     this.userId,
+    this.portalUserId,
   });
 
   factory Client.fromJson(Map<String, dynamic> json) {
@@ -59,6 +61,10 @@ class Client {
           json['user_id'] is String
               ? int.tryParse(json['user_id'])
               : json['user_id'],
+      portalUserId:
+          json['portal_user_id'] is String
+              ? int.tryParse(json['portal_user_id'])
+              : json['portal_user_id'],
     );
   }
 
@@ -76,6 +82,7 @@ class Client {
       'status': status,
       'commentaire': commentaire,
       'user_id': userId,
+      'portal_user_id': portalUserId,
     };
   }
 

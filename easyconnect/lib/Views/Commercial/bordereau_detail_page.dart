@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/bordereau_controller.dart';
+import 'package:easyconnect/providers/bordereau_notifier.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 
-class BordereauDetailPage extends StatelessWidget {
+class BordereauDetailPage extends ConsumerWidget {
   final int bordereauId;
 
-  BordereauDetailPage({super.key, required this.bordereauId});
+  const BordereauDetailPage({super.key, required this.bordereauId});
 
   @override
-  Widget build(BuildContext context) {
-    final BordereauxController controller = Get.find<BordereauxController>();
-    final bordereau = controller.bordereaux.firstWhereOrNull(
-      (b) => b.id == bordereauId,
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bordereaux = ref.watch(bordereauProvider).bordereaux;
+    final bordereau = bordereaux.where((b) => b.id == bordereauId).toList();
+    final b = bordereau.isEmpty ? null : bordereau.first;
     final formatDate = DateFormat('dd/MM/yyyy');
     final nf = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
 
-    if (bordereau == null) {
+    if (b == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Détails du bordereau')),
         body: const Center(child: Text('Bordereau introuvable')),
@@ -26,38 +25,38 @@ class BordereauDetailPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Bordereau ${bordereau.reference}')),
+      appBar: AppBar(title: Text('Bordereau ${b.reference}')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(bordereau, nf),
+            _header(b, nf),
             const SizedBox(height: 16),
             _card('Informations', [
-              if (bordereau.titre != null && bordereau.titre!.isNotEmpty)
-                _row(Icons.title, 'Titre', bordereau.titre!),
+              if (b.titre != null && b.titre!.isNotEmpty)
+                _row(Icons.title, 'Titre', b.titre!),
               _row(
                 Icons.calendar_today,
                 'Date de création',
-                formatDate.format(bordereau.dateCreation),
+                formatDate.format(b.dateCreation),
               ),
-              if (bordereau.dateValidation != null)
+              if (b.dateValidation != null)
                 _row(
                   Icons.event_available,
                   'Date de validation',
-                  formatDate.format(bordereau.dateValidation!),
+                  formatDate.format(b.dateValidation!),
                 ),
-              _row(Icons.info, 'Statut', bordereau.statusText),
-              if (bordereau.etatLivraison != null && bordereau.etatLivraison!.isNotEmpty)
-                _row(Icons.local_shipping, 'État de livraison', _etatLivraisonLabel(bordereau.etatLivraison!)),
-              if (bordereau.garantie != null && bordereau.garantie!.isNotEmpty)
-                _row(Icons.verified_user, 'Garantie', bordereau.garantie!),
-              if (bordereau.dateLivraison != null)
+              _row(Icons.info, 'Statut', b.statusText),
+              if (b.etatLivraison != null && b.etatLivraison!.isNotEmpty)
+                _row(Icons.local_shipping, 'État de livraison', _etatLivraisonLabel(b.etatLivraison!)),
+              if (b.garantie != null && b.garantie!.isNotEmpty)
+                _row(Icons.verified_user, 'Garantie', b.garantie!),
+              if (b.dateLivraison != null)
                 _row(
                   Icons.event,
                   'Date de livraison',
-                  formatDate.format(bordereau.dateLivraison!),
+                  formatDate.format(b.dateLivraison!),
                 ),
             ]),
             const SizedBox(height: 16),
@@ -65,21 +64,21 @@ class BordereauDetailPage extends StatelessWidget {
               _row(
                 Icons.summarize,
                 'Montant HT',
-                nf.format(bordereau.montantHT),
+                nf.format(b.montantHT),
               ),
-              _row(Icons.percent, 'TVA', nf.format(bordereau.montantTVA)),
+              _row(Icons.percent, 'TVA', nf.format(b.montantTVA)),
               _row(
                 Icons.calculate,
                 'Montant TTC',
-                nf.format(bordereau.montantTTC),
+                nf.format(b.montantTTC),
                 bold: true,
               ),
             ]),
-            if (bordereau.status == 3 &&
-                bordereau.commentaireRejet != null &&
-                bordereau.commentaireRejet!.isNotEmpty) ...[
+            if (b.status == 3 &&
+                b.commentaireRejet != null &&
+                b.commentaireRejet!.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _rejection('Motif du rejet', bordereau.commentaireRejet!),
+              _rejection('Motif du rejet', b.commentaireRejet!),
             ],
           ],
         ),

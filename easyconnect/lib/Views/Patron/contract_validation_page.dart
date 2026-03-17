@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/contract_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/contract_notifier.dart';
+import 'package:easyconnect/providers/contract_state.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class ContractValidationPage extends StatefulWidget {
+class ContractValidationPage extends ConsumerStatefulWidget {
   const ContractValidationPage({super.key});
 
   @override
-  State<ContractValidationPage> createState() => _ContractValidationPageState();
+  ConsumerState<ContractValidationPage> createState() =>
+      _ContractValidationPageState();
 }
 
-class _ContractValidationPageState extends State<ContractValidationPage>
+class _ContractValidationPageState extends ConsumerState<ContractValidationPage>
     with SingleTickerProviderStateMixin {
-  final ContractController controller = Get.find<ContractController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -23,10 +25,8 @@ class _ContractValidationPageState extends State<ContractValidationPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      _onTabChanged();
-    });
-    _loadContracts();
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadContracts());
   }
 
   @override
@@ -37,45 +37,45 @@ class _ContractValidationPageState extends State<ContractValidationPage>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadContracts();
-    }
+    if (_tabController.indexIsChanging) _loadContracts();
   }
 
   Future<void> _loadContracts() async {
     String? status;
     switch (_tabController.index) {
-      case 0: // Tous
+      case 0:
         status = null;
         break;
-      case 1: // En attente
+      case 1:
         status = 'pending';
         break;
-      case 2: // Actifs
+      case 2:
         status = 'active';
         break;
-      case 3: // Rejetés
+      case 3:
         status = 'cancelled';
         break;
     }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadContracts();
+    final notifier = ref.read(contractProvider.notifier);
+    notifier.filterByStatus(status ?? 'all');
+    await notifier.loadContracts();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(contractProvider);
+    final notifier = ref.read(contractProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Contrats'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadContracts();
-            },
+            onPressed: _loadContracts,
             tooltip: 'Actualiser',
           ),
         ],
@@ -94,7 +94,6 @@ class _ContractValidationPageState extends State<ContractValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -102,84 +101,54 @@ class _ContractValidationPageState extends State<ContractValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par employé, département...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildContractList(),
-            ),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildContractList(state, notifier),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildContractList() {
-    // Filtrer les contrats selon la recherche et le statut
-    List<Contract> filteredContracts = controller.contracts;
-
-    // Filtrer par statut selon l'onglet
+  Widget _buildContractList(
+      ContractState state, ContractNotifier notifier) {
+    List<Contract> filteredContracts = List.from(state.contracts);
     switch (_tabController.index) {
-      case 1: // En attente
+      case 1:
         filteredContracts =
-            filteredContracts
-                .where((contract) => contract.status == 'pending')
-                .toList();
+            state.contracts.where((c) => c.status == 'pending').toList();
         break;
-      case 2: // Actifs
+      case 2:
         filteredContracts =
-            filteredContracts
-                .where((contract) => contract.status == 'active')
-                .toList();
+            state.contracts.where((c) => c.status == 'active').toList();
         break;
-      case 3: // Rejetés
+      case 3:
         filteredContracts =
-            filteredContracts
-                .where((contract) => contract.status == 'cancelled')
-                .toList();
+            state.contracts.where((c) => c.status == 'cancelled').toList();
         break;
     }
-
-    // Filtrer par recherche
     if (_searchQuery.isNotEmpty) {
-      filteredContracts =
-          filteredContracts
-              .where(
-                (contract) =>
-                    contract.employeeName.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    contract.department.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    contract.jobTitle.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
+      final q = _searchQuery.toLowerCase();
+      filteredContracts = filteredContracts.where((c) {
+        return c.employeeName.toLowerCase().contains(q) ||
+            c.department.toLowerCase().contains(q) ||
+            c.jobTitle.toLowerCase().contains(q);
+      }).toList();
     }
 
     if (filteredContracts.isEmpty) {
@@ -200,9 +169,7 @@ class _ContractValidationPageState extends State<ContractValidationPage>
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  setState(() => _searchQuery = '');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -218,12 +185,13 @@ class _ContractValidationPageState extends State<ContractValidationPage>
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final contract = filteredContracts[index];
-        return _buildContractCard(context, contract);
+        return _buildContractCard(context, contract, notifier);
       },
     );
   }
 
-  Widget _buildContractCard(BuildContext context, Contract contract) {
+  Widget _buildContractCard(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
     final formatDate = DateFormat('dd/MM/yyyy');
     final statusColor = _getStatusColor(contract.status);
     final statusIcon = _getStatusIcon(contract.status);
@@ -274,10 +242,10 @@ class _ContractValidationPageState extends State<ContractValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
                 const Text(
                   'Informations du contrat',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -320,7 +288,7 @@ class _ContractValidationPageState extends State<ContractValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(contract, statusColor),
+                _buildActionButtons(context, contract, statusColor, notifier),
               ],
             ),
           ),
@@ -329,38 +297,33 @@ class _ContractValidationPageState extends State<ContractValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Contract contract, Color statusColor) {
+  Widget _buildActionButtons(BuildContext context, Contract contract,
+      Color statusColor, ContractNotifier notifier) {
     if (contract.status == 'pending') {
-      // En attente - Afficher boutons Valider/Rejeter
-      return Column(
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(contract),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(contract),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
+          ElevatedButton.icon(
+            onPressed: () => _showApproveConfirmation(context, contract, notifier),
+            icon: const Icon(Icons.check),
+            label: const Text('Valider'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => _showRejectDialog(context, contract, notifier),
+            icon: const Icon(Icons.close),
+            label: const Text('Rejeter'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       );
     } else if (contract.status == 'active') {
-      // Actif - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -384,7 +347,6 @@ class _ContractValidationPageState extends State<ContractValidationPage>
         ),
       );
     } else if (contract.status == 'cancelled') {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -414,37 +376,36 @@ class _ContractValidationPageState extends State<ContractValidationPage>
               const SizedBox(height: 8),
               Text(
                 'Motif: ${contract.rejectionReason}',
-                style: TextStyle(color: Colors.red[700], fontSize: 12),
+                style: TextStyle(
+                    color: Colors.red[700], fontSize: 12),
               ),
             ],
           ],
         ),
       );
-    } else {
-      // Autres statuts
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.help, color: Colors.grey[600]),
-            const SizedBox(width: 8),
-            Text(
-              'Statut: ${contract.status}',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
     }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.help, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            'Statut: ${contract.status}',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _getStatusColor(String status) {
@@ -498,55 +459,98 @@ class _ContractValidationPageState extends State<ContractValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Contract contract) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce contrat ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveContract(contract);
-        _loadContracts();
-      },
-    );
-  }
-
-  void _showRejectDialog(Contract contract) {
-    final reasonController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le contrat',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: reasonController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
+  void _showApproveConfirmation(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce contrat ?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveContract(contract);
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contrat validé'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadContracts();
+              } catch (_) {}
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
             ),
-            maxLines: 3,
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (reasonController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectContract(contract, reasonController.text.trim());
-        _loadContracts();
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le contrat'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              notifier.rejectContract(
+                  contract, reasonController.text.trim());
+              _loadContracts();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Contrat rejeté'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

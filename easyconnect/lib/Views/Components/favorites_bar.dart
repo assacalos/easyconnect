@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/services/favorites_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/favorites_notifier.dart';
 
-class FavoritesBar extends StatelessWidget {
+class FavoritesBar extends ConsumerWidget {
   final List<FavoriteItem> items;
   final bool showTitle;
 
   const FavoritesBar({super.key, required this.items, this.showTitle = true});
 
   @override
-  Widget build(BuildContext context) {
-    final favoritesService = Get.find<FavoritesService>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favoritesState = ref.watch(favoritesProvider);
+    final favoriteItems = items.where((item) => favoritesState.isFavorite(item.id)).toList();
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -32,43 +34,33 @@ class FavoritesBar extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            Obx(() {
-              final favoriteItems =
-                  items
-                      .where((item) => favoritesService.isFavorite(item.id))
-                      .toList();
-
-              if (favoriteItems.isEmpty) {
-                return Center(
-                  child: Text(
-                    'Aucun favori',
-                    style: TextStyle(color: Colors.grey.shade600),
-                  ),
-                );
-              }
-
-              return Wrap(
+            if (favoriteItems.isEmpty)
+              Center(
+                child: Text(
+                  'Aucun favori',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              )
+            else
+              Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children:
-                    favoriteItems.map((item) {
-                      return InputChip(
-                        avatar: Icon(item.icon, size: 18),
-                        label: Text(item.label),
-                        onPressed: () {
-                          if (item.onTap != null) {
-                            item.onTap!();
-                          } else if (item.route != null) {
-                            Get.toNamed(item.route!);
-                          }
-                        },
-                        deleteIcon: const Icon(Icons.star, size: 18),
-                        onDeleted:
-                            () => favoritesService.toggleFavorite(item.id),
-                      );
-                    }).toList(),
-              );
-            }),
+                children: favoriteItems.map((item) {
+                  return InputChip(
+                    avatar: Icon(item.icon, size: 18),
+                    label: Text(item.label),
+                    onPressed: () {
+                      if (item.onTap != null) {
+                        item.onTap!();
+                      } else if (item.route != null) {
+                        context.go(item.route!);
+                      }
+                    },
+                    deleteIcon: const Icon(Icons.star, size: 18),
+                    onDeleted: () => ref.read(favoritesProvider.notifier).toggleFavorite(item.id),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),

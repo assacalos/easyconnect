@@ -1,18 +1,20 @@
-import 'package:get/get.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class JournalController extends GetxController {
-  final isLoading = false.obs;
-  final RxMap<String, dynamic> journalData = <String, dynamic>{}.obs;
+class JournalController {
+  static final JournalController _instance = JournalController._();
+  static JournalController get to => _instance;
+  factory JournalController() => _instance;
+
+  bool isLoading = false;
+  Map<String, dynamic> journalData = <String, dynamic>{};
 
   int? selectedMonth;
   int? selectedYear;
   String? dateDebut;
   String? dateFin;
 
-  @override
-  void onInit() {
-    super.onInit();
+  JournalController._() {
     final now = DateTime.now();
     selectedMonth = now.month;
     selectedYear = now.year;
@@ -20,7 +22,7 @@ class JournalController extends GetxController {
   }
 
   Future<void> loadJournal() async {
-    isLoading.value = true;
+    isLoading = true;
     try {
       final res = await ApiService.getJournal(
         mois: selectedMonth,
@@ -29,12 +31,12 @@ class JournalController extends GetxController {
         dateFin: dateFin,
       );
       if (res['success'] == true && res['data'] != null) {
-        journalData.value = Map<String, dynamic>.from(res['data'] as Map);
+        journalData = Map<String, dynamic>.from(res['data'] as Map);
       }
     } catch (e) {
-      Get.snackbar('Erreur', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -67,10 +69,10 @@ class JournalController extends GetxController {
         await loadJournal();
         return true;
       }
-      Get.snackbar('Erreur', res['message']?.toString() ?? 'Échec', snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', res['message']?.toString() ?? 'Échec');
       return false;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     }
   }
@@ -82,10 +84,10 @@ class JournalController extends GetxController {
         await loadJournal();
         return true;
       }
-      Get.snackbar('Erreur', res['message']?.toString() ?? 'Échec', snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', res['message']?.toString() ?? 'Échec');
       return false;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     }
   }
@@ -97,10 +99,10 @@ class JournalController extends GetxController {
         await loadJournal();
         return true;
       }
-      Get.snackbar('Erreur', res['message']?.toString() ?? 'Échec', snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', res['message']?.toString() ?? 'Échec');
       return false;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     }
   }

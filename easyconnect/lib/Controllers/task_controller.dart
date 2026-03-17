@@ -1,22 +1,27 @@
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/task_model.dart';
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/services/task_service.dart';
 import 'package:easyconnect/services/user_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class TaskController extends GetxController {
-  final TaskService _taskService = Get.find<TaskService>();
-  final AuthController _authController = Get.find<AuthController>();
+class TaskController {
+  static final TaskController _instance = TaskController._();
+  static TaskController get to => _instance;
+  factory TaskController() => _instance;
+  TaskController._();
+
+  final TaskService _taskService = TaskService.to;
+  final AuthController _authController = AuthController.to;
   final UserService _userService = UserService();
 
-  final isLoading = false.obs;
-  final tasks = <TaskModel>[].obs;
-  final currentTask = Rxn<TaskModel>();
-  final users = <UserModel>[].obs;
-  final selectedStatus = Rxn<String>();
-  final selectedAssignedTo = Rxn<int>();
+  bool isLoading = false;
+  final List<TaskModel> tasks = [];
+  TaskModel? currentTask;
+  final List<UserModel> users = [];
+  String? selectedStatus;
+  int? selectedAssignedTo;
 
   int currentPage = 1;
   int lastPage = 1;
@@ -24,40 +29,28 @@ class TaskController extends GetxController {
   bool _isRefreshingFromApi = false;
 
   bool get canAssignTasks =>
-      _authController.userAuth.value?.role == Roles.ADMIN ||
-      _authController.userAuth.value?.role == Roles.PATRON;
+      _authController.userAuth?.role == Roles.ADMIN ||
+      _authController.userAuth?.role == Roles.PATRON;
 
-  final loadError = false.obs;
-
-  @override
-  void onInit() {
-    super.onInit();
-  }
-
-  @override
-  void onReady() {
-    super.onReady();
-    loadError.value = false;
-    isLoading.value = true;
-    // Premier chargement déclenché par la page (TaskListPage) après le premier frame
-    // pour éviter échec systématique au premier affichage.
-  }
+  bool loadError = false;
 
   Future<void> loadTasks({
     int page = 1,
     bool append = false,
     bool isRetry = false,
+    bool forceRefresh = false,
   }) async {
-    if (page == 1) loadError.value = false;
+    if (page == 1) loadError = false;
 
-    // 1) Remplir immédiatement depuis Hive (page 1 uniquement)
     if (page == 1 && !append) {
-      final hiveList = TaskService.getCachedTaches();
-      if (hiveList.isNotEmpty) {
-        tasks.value = hiveList;
-        isLoading.value = false;
+      if (!forceRefresh) {
+        final hiveList = TaskService.getCachedTaches();
+        if (hiveList.isNotEmpty) {
+          tasks.clear();
+          tasks.addAll(hiveList);
+          isLoading = false;
+        }
       }
-      // Lancer l'API en arrière-plan pour la page 1
       Future.microtask(
         () => _refreshTasksFromApi(append: append, isRetry: isRetry),
       );
@@ -65,21 +58,22 @@ class TaskController extends GetxController {
     }
 
     try {
-      isLoading.value = true;
+      isLoading = true;
       final result = await _taskService.getTasks(
         page: page,
         perPage: 20,
-        assignedTo: selectedAssignedTo.value,
-        status: selectedStatus.value,
+        assignedTo: selectedAssignedTo,
+        status: selectedStatus,
       );
       if (result['success'] == true) {
         final list = result['data'] as List<TaskModel>? ?? [];
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
-        loadError.value = false;
+        loadError = false;
         if (append) {
           tasks.addAll(list);
         } else {
-          tasks.value = list;
+          tasks.clear();
+          tasks.addAll(list);
         }
         currentPage = pagination['current_page'] as int? ?? page;
         lastPage = pagination['last_page'] as int? ?? 1;
@@ -90,14 +84,13 @@ class TaskController extends GetxController {
         await Future.delayed(const Duration(milliseconds: 400));
         return loadTasks(page: page, append: append, isRetry: true);
       }
-      if (page == 1) loadError.value = true;
-      // Ne pas effacer les données déjà affichées (Hive)
+      if (page == 1) loadError = true;
       if (tasks.isEmpty) {
         final msg = e.toString().replaceFirst('Exception: ', '');
-        Get.snackbar('Erreur', 'Impossible de charger les tâches: $msg');
+        errorHelperShowSnackbar?.call('Erreur', 'Impossible de charger les tâches: $msg');
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -108,18 +101,19 @@ class TaskController extends GetxController {
     if (_isRefreshingFromApi) return;
     _isRefreshingFromApi = true;
     try {
-      isLoading.value = true;
+      isLoading = true;
       final result = await _taskService.getTasks(
         page: 1,
         perPage: 20,
-        assignedTo: selectedAssignedTo.value,
-        status: selectedStatus.value,
+        assignedTo: selectedAssignedTo,
+        status: selectedStatus,
       );
       if (result['success'] == true) {
         final list = result['data'] as List<TaskModel>? ?? [];
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
-        loadError.value = false;
-        tasks.value = list;
+        loadError = false;
+        tasks.clear();
+        tasks.addAll(list);
         currentPage = pagination['current_page'] as int? ?? 1;
         lastPage = pagination['last_page'] as int? ?? 1;
         totalItems = pagination['total'] as int? ?? 0;
@@ -129,13 +123,13 @@ class TaskController extends GetxController {
         await Future.delayed(const Duration(milliseconds: 400));
         return _refreshTasksFromApi(append: append, isRetry: true);
       }
-      loadError.value = true;
+      loadError = true;
       if (tasks.isEmpty) {
         final msg = e.toString().replaceFirst('Exception: ', '');
-        Get.snackbar('Erreur', 'Impossible de charger les tâches: $msg');
+        errorHelperShowSnackbar?.call('Erreur', 'Impossible de charger les tâches: $msg');
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
       _isRefreshingFromApi = false;
     }
   }
@@ -143,22 +137,23 @@ class TaskController extends GetxController {
   Future<void> loadUsers() async {
     try {
       final list = await _userService.getUsers();
-      users.value = list;
+      users.clear();
+      users.addAll(list);
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger les utilisateurs');
+      errorHelperShowSnackbar?.call('Erreur', 'Impossible de charger les utilisateurs');
     }
   }
 
   Future<TaskModel?> loadTask(int id) async {
     try {
-      isLoading.value = true;
-      currentTask.value = await _taskService.getTask(id);
-      return currentTask.value;
+      isLoading = true;
+      currentTask = await _taskService.getTask(id);
+      return currentTask;
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger la tâche: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Impossible de charger la tâche: $e');
       return null;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -170,7 +165,7 @@ class TaskController extends GetxController {
     String? dueDate,
   }) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       await _taskService.createTask(
         titre: titre,
         description: description,
@@ -179,30 +174,30 @@ class TaskController extends GetxController {
         dueDate: dueDate,
       );
       await loadTasks(page: 1);
-      Get.snackbar('Succès', 'Tâche assignée avec succès');
+      ErrorHelper.showSuccess('Tâche assignée avec succès');
       return true;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<bool> updateTaskStatus(int id, String status) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final updated = await _taskService.updateTaskStatus(id, status);
       final index = tasks.indexWhere((t) => t.id == id);
       if (index >= 0) tasks[index] = updated;
-      if (currentTask.value?.id == id) currentTask.value = updated;
-      Get.snackbar('Succès', 'Statut mis à jour');
+      if (currentTask?.id == id) currentTask = updated;
+      ErrorHelper.showSuccess('Statut mis à jour');
       return true;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -216,7 +211,7 @@ class TaskController extends GetxController {
     String? dueDate,
   }) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final updated = await _taskService.updateTask(
         id,
         titre: titre,
@@ -228,46 +223,46 @@ class TaskController extends GetxController {
       );
       final index = tasks.indexWhere((t) => t.id == id);
       if (index >= 0) tasks[index] = updated;
-      currentTask.value = updated;
-      Get.snackbar('Succès', 'Tâche mise à jour');
+      currentTask = updated;
+      ErrorHelper.showSuccess('Tâche mise à jour');
       return true;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<bool> deleteTask(int id) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       await _taskService.deleteTask(id);
       tasks.removeWhere((t) => t.id == id);
-      if (currentTask.value?.id == id) currentTask.value = null;
-      Get.snackbar('Succès', 'Tâche supprimée');
+      if (currentTask?.id == id) currentTask = null;
+      ErrorHelper.showSuccess('Tâche supprimée');
       return true;
     } catch (e) {
-      Get.snackbar('Erreur', e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   void setStatusFilter(String? status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadTasks(page: 1);
   }
 
   void setAssignedToFilter(int? userId) {
-    selectedAssignedTo.value = userId;
+    selectedAssignedTo = userId;
     loadTasks(page: 1);
   }
 
   void clearFilters() {
-    selectedStatus.value = null;
-    selectedAssignedTo.value = null;
+    selectedStatus = null;
+    selectedAssignedTo = null;
     loadTasks(page: 1);
   }
 }

@@ -36,33 +36,41 @@ dependencies:
   cupertino_icons: ^1.0.8
   get: ^4.7.2
   get_storage: ^2.1.1
-  flutter_secure_storage: ^9.0.0
-  http: ^0.13.6
-  intl: ^0.17.0
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.2
+  flutter_secure_storage: ^10.0.0
+  http: ^1.6.0
+  intl: ^0.20.2
   shared_preferences: ^2.1.1
-  fl_chart: ^0.68.0
-  geolocator: ^10.1.0
-  geocoding: ^2.1.1
+  fl_chart: ^1.1.0
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
   image_picker: ^1.0.4
   cached_network_image: ^3.3.1
   path_provider: ^2.1.1
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  permission_handler: ^11.0.1
+  permission_handler: ^12.0.1
   pdf: ^3.10.7
   open_file: ^3.3.2
-  share_plus: ^7.2.2
-  file_picker: ^8.0.0+1
-  flutter_local_notifications: ^17.2.3
+  share_plus: ^12.0.1
+  file_picker: ^10.3.10
+  flutter_local_notifications: ^19.5.0
   flutter_app_badger: ^1.5.0
   url_launcher: ^6.2.5
-  firebase_core: ^2.24.2
-  firebase_messaging: ^14.7.9
-  device_info_plus: ^9.1.0
+  firebase_core: ^3.15.2
+  firebase_messaging: ^15.2.10
+  device_info_plus: ^12.3.0
   package_info_plus: ^9.0.0
   # WebSocket & Laravel Echo pour notifications en temps réel
   pusher_client: ^2.0.0
   laravel_echo: 1.0.0-beta.1
+
+# Fix compilation web : firebase_messaging_web 3.5.x incompatible avec Dart 3 (PromiseJsImpl, handleThenable)
+# Fix fl_chart 1.1.0 : translateByDouble/scaleByDouble nécessitent vector_math >= 2.2.0
+dependency_overrides:
+  firebase_messaging_web: ^3.8.13
+  vector_math: ^2.2.0
 
 dev_dependencies:
   flutter_test:
@@ -74,7 +82,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
   patch_package: ^0.0.8
 
 # For information on the generic Dart part of this file, see the

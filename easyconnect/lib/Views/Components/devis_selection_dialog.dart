@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -98,7 +97,7 @@ class _DevisSelectionDialogState extends State<DevisSelectionDialog> {
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Get.back(),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -154,7 +153,7 @@ class _DevisSelectionDialogState extends State<DevisSelectionDialog> {
                               ),
                               onTap: () async {
                                 await widget.onDevisSelected(devis);
-                                Get.back();
+                                if (context.mounted) Navigator.of(context).pop();
                               },
                             ),
                           );

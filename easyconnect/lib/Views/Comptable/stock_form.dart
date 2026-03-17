@@ -1,31 +1,78 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/stock_model.dart';
+import 'package:easyconnect/providers/stock_notifier.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 
-class StockForm extends StatefulWidget {
+class StockForm extends ConsumerStatefulWidget {
   final Stock? stock;
 
   const StockForm({super.key, this.stock});
 
   @override
-  State<StockForm> createState() => _StockFormState();
+  ConsumerState<StockForm> createState() => _StockFormState();
 }
 
-class _StockFormState extends State<StockForm> {
-  final StockController controller = Get.put(StockController());
+class _StockFormState extends ConsumerState<StockForm> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _skuController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _minQuantityController = TextEditingController();
+  final _maxQuantityController = TextEditingController();
+  final _unitPriceController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  String _selectedCategory = '';
+
+  static const _stockCategories = [
+    {'value': 'electronics', 'label': 'Électronique'},
+    {'value': 'clothing', 'label': 'Vêtements'},
+    {'value': 'food', 'label': 'Alimentation'},
+    {'value': 'books', 'label': 'Livres'},
+    {'value': 'tools', 'label': 'Outils'},
+    {'value': 'furniture', 'label': 'Mobilier'},
+    {'value': 'sports', 'label': 'Sport'},
+    {'value': 'beauty', 'label': 'Beauté'},
+    {'value': 'automotive', 'label': 'Automobile'},
+    {'value': 'other', 'label': 'Autre'},
+  ];
 
   @override
   void initState() {
     super.initState();
-    // Si on édite un stock existant, remplir le formulaire
-    if (widget.stock != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        controller.fillForm(widget.stock!);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(stockProvider.notifier).loadCategories();
+      if (widget.stock != null) _fillForm(widget.stock!);
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _skuController.dispose();
+    _quantityController.dispose();
+    _minQuantityController.dispose();
+    _maxQuantityController.dispose();
+    _unitPriceController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _fillForm(Stock s) {
+    _nameController.text = s.name;
+    _descriptionController.text = s.description ?? '';
+    _skuController.text = s.sku;
+    _quantityController.text = s.quantity.toString();
+    _minQuantityController.text = s.minQuantity.toString();
+    _maxQuantityController.text = s.maxQuantity.toString();
+    _unitPriceController.text = s.unitPrice.toString();
+    _notesController.text = s.commentaire ?? '';
+    _selectedCategory = s.category;
+    setState(() {});
   }
 
   @override
@@ -40,7 +87,7 @@ class _StockFormState extends State<StockForm> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: () => _saveStock(controller),
+            onPressed: _saveStock,
           ),
         ],
       ),
@@ -51,29 +98,23 @@ class _StockFormState extends State<StockForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Informations de base
               _buildSectionTitle('Informations de base'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.nameController,
+                controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Nom du produit *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.inventory),
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Le nom est obligatoire';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'Le nom est obligatoire';
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.descriptionController,
+                controller: _descriptionController,
                 decoration: const InputDecoration(
                   labelText: 'Description',
                   border: OutlineInputBorder(),
@@ -82,48 +123,31 @@ class _StockFormState extends State<StockForm> {
                 ),
                 maxLines: 3,
               ),
-
               const SizedBox(height: 16),
-
-              // Catégorie
-              Obx(
-                () => DropdownButtonFormField<String>(
-                  value:
-                      controller.selectedCategoryForm.value.isNotEmpty
-                          ? controller.selectedCategoryForm.value
-                          : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Catégorie *',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.category),
-                  ),
-                  items:
-                      controller.stockCategories.map<DropdownMenuItem<String>>((
-                        category,
-                      ) {
-                        return DropdownMenuItem<String>(
-                          value: category['value'] as String,
-                          child: Text(category['label'] as String),
-                        );
-                      }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      controller.selectCategory(value);
-                    }
-                  },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'La catégorie est obligatoire';
-                    }
-                    return null;
-                  },
+              DropdownButtonFormField<String>(
+                value: _selectedCategory.isNotEmpty ? _selectedCategory : null,
+                decoration: const InputDecoration(
+                  labelText: 'Catégorie *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.category),
                 ),
+                items: _stockCategories.map<DropdownMenuItem<String>>((c) {
+                  return DropdownMenuItem<String>(
+                    value: c['value'] as String,
+                    child: Text(c['label'] as String),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) setState(() => _selectedCategory = value);
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'La catégorie est obligatoire';
+                  return null;
+                },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.skuController,
+                controller: _skuController,
                 decoration: const InputDecoration(
                   labelText: 'SKU (Code produit) *',
                   border: OutlineInputBorder(),
@@ -131,21 +155,15 @@ class _StockFormState extends State<StockForm> {
                   hintText: 'Code unique du produit',
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Le SKU est obligatoire';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'Le SKU est obligatoire';
                   return null;
                 },
               ),
-
               const SizedBox(height: 24),
-
-              // Informations de stock
               _buildSectionTitle('Informations de stock'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.quantityController,
+                controller: _quantityController,
                 decoration: const InputDecoration(
                   labelText: 'Quantité initiale *',
                   border: OutlineInputBorder(),
@@ -153,26 +171,18 @@ class _StockFormState extends State<StockForm> {
                 ),
                 keyboardType: TextInputType.number,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'La quantité est obligatoire';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'La quantité doit être un nombre';
-                  }
-                  if (double.parse(value) < 0) {
-                    return 'La quantité ne peut pas être négative';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'La quantité est obligatoire';
+                  if (double.tryParse(value) == null) return 'La quantité doit être un nombre';
+                  if (double.parse(value) < 0) return 'La quantité ne peut pas être négative';
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
-                      controller: controller.minQuantityController,
+                      controller: _minQuantityController,
                       decoration: const InputDecoration(
                         labelText: 'Seuil minimum *',
                         border: OutlineInputBorder(),
@@ -181,15 +191,9 @@ class _StockFormState extends State<StockForm> {
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Le seuil minimum est obligatoire';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Le seuil minimum doit être un nombre';
-                        }
-                        if (double.parse(value) < 0) {
-                          return 'Le seuil minimum ne peut pas être négatif';
-                        }
+                        if (value == null || value.trim().isEmpty) return 'Le seuil minimum est obligatoire';
+                        if (double.tryParse(value) == null) return 'Le seuil minimum doit être un nombre';
+                        if (double.parse(value) < 0) return 'Le seuil minimum ne peut pas être négatif';
                         return null;
                       },
                     ),
@@ -197,7 +201,7 @@ class _StockFormState extends State<StockForm> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: TextFormField(
-                      controller: controller.maxQuantityController,
+                      controller: _maxQuantityController,
                       decoration: const InputDecoration(
                         labelText: 'Seuil maximum *',
                         border: OutlineInputBorder(),
@@ -206,26 +210,18 @@ class _StockFormState extends State<StockForm> {
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Le seuil maximum est obligatoire';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Le seuil maximum doit être un nombre';
-                        }
-                        if (double.parse(value) < 0) {
-                          return 'Le seuil maximum ne peut pas être négatif';
-                        }
+                        if (value == null || value.trim().isEmpty) return 'Le seuil maximum est obligatoire';
+                        if (double.tryParse(value) == null) return 'Le seuil maximum doit être un nombre';
+                        if (double.parse(value) < 0) return 'Le seuil maximum ne peut pas être négatif';
                         return null;
                       },
                     ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.unitPriceController,
+                controller: _unitPriceController,
                 decoration: const InputDecoration(
                   labelText: 'Prix unitaire (fcfa) *',
                   border: OutlineInputBorder(),
@@ -233,23 +229,15 @@ class _StockFormState extends State<StockForm> {
                 ),
                 keyboardType: TextInputType.number,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Le prix unitaire est obligatoire';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'Le prix unitaire doit être un nombre';
-                  }
-                  if (double.parse(value) < 0) {
-                    return 'Le prix unitaire ne peut pas être négatif';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'Le prix unitaire est obligatoire';
+                  if (double.tryParse(value) == null) return 'Le prix unitaire doit être un nombre';
+                  if (double.parse(value) < 0) return 'Le prix unitaire ne peut pas être négatif';
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.notesController,
+                controller: _notesController,
                 decoration: const InputDecoration(
                   labelText: 'Commentaire',
                   border: OutlineInputBorder(),
@@ -258,13 +246,10 @@ class _StockFormState extends State<StockForm> {
                 ),
                 maxLines: 3,
               ),
-
               const SizedBox(height: 32),
-
-              // Boutons d'action uniformes
               UniformFormButtons(
-                onCancel: () => Get.back(),
-                onSubmit: () => _saveStock(controller),
+                onCancel: () => context.pop(),
+                onSubmit: _saveStock,
                 submitText: 'Soumettre',
               ),
             ],
@@ -285,20 +270,62 @@ class _StockFormState extends State<StockForm> {
     );
   }
 
-  void _saveStock(StockController controller) async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  Future<void> _saveStock() async {
+    if (!_formKey.currentState!.validate()) return;
 
-    final success =
-        widget.stock == null
-            ? await controller.createStock()
-            : await controller.updateStock(widget.stock!);
+    final quantity = double.tryParse(_quantityController.text.trim()) ?? 0;
+    final minQty = double.tryParse(_minQuantityController.text.trim()) ?? 0;
+    final maxQty = double.tryParse(_maxQuantityController.text.trim()) ?? 0;
+    final unitPrice = double.tryParse(_unitPriceController.text.trim()) ?? 0;
 
-    if (success && mounted) {
-      // Rediriger vers la page de liste après enregistrement réussi
-      await Future.delayed(const Duration(milliseconds: 500));
-      Get.offNamed('/stocks');
+    final notifier = ref.read(stockProvider.notifier);
+
+    if (widget.stock == null) {
+      final stock = Stock(
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
+        category: _selectedCategory,
+        sku: _skuController.text.trim(),
+        unit: 'pièce',
+        quantity: quantity,
+        minQuantity: minQty,
+        maxQuantity: maxQty,
+        unitPrice: unitPrice,
+        commentaire: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+        status: 'en_attente',
+      );
+      final created = await notifier.createStock(stock);
+      if (!mounted) return;
+      if (created != null) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        context.go('/stocks');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la création du produit')),
+        );
+      }
+    } else {
+      final stock = widget.stock!.copyWith(
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
+        category: _selectedCategory,
+        sku: _skuController.text.trim(),
+        quantity: quantity,
+        minQuantity: minQty,
+        maxQuantity: maxQty,
+        unitPrice: unitPrice,
+        commentaire: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+      );
+      final success = await notifier.updateStock(stock);
+      if (!mounted) return;
+      if (success) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        context.go('/stocks');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la mise à jour du produit')),
+        );
+      }
     }
   }
 }

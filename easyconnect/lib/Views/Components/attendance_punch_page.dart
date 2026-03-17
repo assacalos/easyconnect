@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/attendance_punch_service.dart';
 import '../../services/location_service.dart';
 import '../../services/camera_service.dart';
@@ -145,28 +145,27 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
 
         // Afficher le message de succès
         try {
-          Get.snackbar(
-            '✅ Pointage enregistré',
-            message,
-            backgroundColor: Colors.green,
-            colorText: Colors.white,
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 5),
-            margin: const EdgeInsets.all(16),
-            borderRadius: 8,
-            icon: const Icon(Icons.check_circle, color: Colors.white, size: 28),
-            shouldIconPulse: true,
-            isDismissible: true,
-            mainButton: TextButton(
-              onPressed: () => Get.back(),
-              child: const Text('OK', style: TextStyle(color: Colors.white)),
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+              margin: const EdgeInsets.all(16),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
             ),
           );
         } catch (e) {
           // Afficher un message alternatif si le snackbar échoue
           if (mounted) {
-            Get.dialog(
-              AlertDialog(
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
                 title: const Row(
                   children: [
                     Icon(Icons.check_circle, color: Colors.green, size: 28),
@@ -178,8 +177,8 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
                 actions: [
                   TextButton(
                     onPressed: () {
-                      Get.back(); // Fermer le dialog
-                      Get.back(); // Fermer la page de pointage
+                      Navigator.pop(ctx);
+                      Navigator.pop(context);
                     },
                     child: const Text('OK'),
                   ),
@@ -194,7 +193,7 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
 
         // Fermer la page automatiquement
         if (mounted) {
-          Get.back();
+          Navigator.pop(context);
         }
       } else {
         // Arrêter le loading en cas d'erreur
@@ -206,17 +205,17 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
             result['message'] ?? 'Erreur lors de l\'enregistrement du pointage';
 
         // Afficher un message d'erreur
-        Get.snackbar(
-          '❌ Erreur',
-          errorMessage,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 4),
-          margin: const EdgeInsets.all(16),
-          borderRadius: 8,
-          icon: const Icon(Icons.error, color: Colors.white, size: 28),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              margin: const EdgeInsets.all(16),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
 
         final statusCode = result['status_code'] ?? 0;
         // Si c'est une erreur 400 (ne peut pas pointer), re-vérifier le statut
@@ -231,17 +230,19 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
       }
 
       // Afficher un message d'erreur
-      Get.snackbar(
-        '❌ Erreur',
-        'Une erreur est survenue lors de l\'enregistrement du pointage. Veuillez réessayer.',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
-        margin: const EdgeInsets.all(16),
-        borderRadius: 8,
-        icon: const Icon(Icons.error, color: Colors.white, size: 28),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Une erreur est survenue lors de l\'enregistrement du pointage. Veuillez réessayer.',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            margin: const EdgeInsets.all(16),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -265,7 +266,7 @@ class _AttendancePunchPageState extends State<AttendancePunchPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.list),
-            onPressed: () => Get.toNamed('/attendance-validation'),
+            onPressed: () => context.go('/attendance-validation'),
             tooltip: 'Voir la liste des pointages',
           ),
           IconButton(

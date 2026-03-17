@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/journal_controller.dart';
+import 'package:easyconnect/providers/journal_notifier.dart';
 import 'package:easyconnect/Models/journal_entry_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 
-class JournalFormPage extends StatefulWidget {
+class JournalFormPage extends ConsumerStatefulWidget {
   final int? entryId;
 
   const JournalFormPage({super.key, this.entryId});
 
   @override
-  State<JournalFormPage> createState() => _JournalFormPageState();
+  ConsumerState<JournalFormPage> createState() => _JournalFormPageState();
 }
 
-class _JournalFormPageState extends State<JournalFormPage> {
+class _JournalFormPageState extends ConsumerState<JournalFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _dateController = TextEditingController();
   final _referenceController = TextEditingController();
@@ -51,12 +52,21 @@ class _JournalFormPageState extends State<JournalFormPage> {
         _libelleController.text = d['libelle']?.toString() ?? '';
         _categorieController.text = d['categorie']?.toString() ?? '';
         _modePaiement = d['mode_paiement']?.toString() ?? 'especes';
-        _entreeController.text = (d['entree'] is num) ? (d['entree'] as num).toString() : '0';
-        _sortieController.text = (d['sortie'] is num) ? (d['sortie'] as num).toString() : '0';
+        _entreeController.text =
+            (d['entree'] is num) ? (d['entree'] as num).toString() : '0';
+        _sortieController.text =
+            (d['sortie'] is num) ? (d['sortie'] as num).toString() : '0';
         _notesController.text = d['notes']?.toString() ?? '';
       }
     } catch (e) {
-      Get.snackbar('Erreur', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() {
         _loading = false;
@@ -78,17 +88,25 @@ class _JournalFormPageState extends State<JournalFormPage> {
   }
 
   Map<String, dynamic> _toData() {
-    final entree = double.tryParse(_entreeController.text.replaceAll(',', '.')) ?? 0.0;
-    final sortie = double.tryParse(_sortieController.text.replaceAll(',', '.')) ?? 0.0;
+    final entree =
+        double.tryParse(_entreeController.text.replaceAll(',', '.')) ?? 0.0;
+    final sortie =
+        double.tryParse(_sortieController.text.replaceAll(',', '.')) ?? 0.0;
     return {
       'date': _dateController.text.trim(),
-      'reference': _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
+      'reference': _referenceController.text.trim().isEmpty
+          ? null
+          : _referenceController.text.trim(),
       'libelle': _libelleController.text.trim(),
-      'categorie': _categorieController.text.trim().isEmpty ? null : _categorieController.text.trim(),
+      'categorie': _categorieController.text.trim().isEmpty
+          ? null
+          : _categorieController.text.trim(),
       'mode_paiement': _modePaiement,
       'entree': entree,
       'sortie': sortie,
-      'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      'notes': _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
     };
   }
 
@@ -96,12 +114,29 @@ class _JournalFormPageState extends State<JournalFormPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      final controller = Get.find<JournalController>();
+      final notifier = ref.read(journalProvider.notifier);
       final data = _toData();
       final ok = widget.entryId != null
-          ? await controller.updateEntry(widget.entryId!, data)
-          : await controller.createEntry(data);
-      if (ok && mounted) Get.back(result: true);
+          ? await notifier.updateEntry(widget.entryId!, data)
+          : await notifier.createEntry(data);
+      if (ok && mounted) {
+        context.pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enregistrement réussi'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -109,10 +144,11 @@ class _JournalFormPageState extends State<JournalFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_initialized || _loading && widget.entryId != null) {
+    if (!_initialized || (_loading && widget.entryId != null)) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(widget.entryId != null ? 'Modifier l\'écriture' : 'Nouvelle écriture'),
+          title: Text(
+              widget.entryId != null ? 'Modifier l\'écriture' : 'Nouvelle écriture'),
           backgroundColor: Colors.teal.shade800,
           foregroundColor: Colors.white,
         ),
@@ -121,7 +157,8 @@ class _JournalFormPageState extends State<JournalFormPage> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.entryId != null ? 'Modifier l\'écriture' : 'Nouvelle écriture'),
+        title: Text(
+            widget.entryId != null ? 'Modifier l\'écriture' : 'Nouvelle écriture'),
         backgroundColor: Colors.teal.shade800,
         foregroundColor: Colors.white,
       ),
@@ -140,11 +177,15 @@ class _JournalFormPageState extends State<JournalFormPage> {
               onTap: () async {
                 final date = await showDatePicker(
                   context: context,
-                  initialDate: DateTime.tryParse(_dateController.text) ?? DateTime.now(),
+                  initialDate:
+                      DateTime.tryParse(_dateController.text) ?? DateTime.now(),
                   firstDate: DateTime(2000),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  lastDate:
+                      DateTime.now().add(const Duration(days: 365)),
                 );
-                if (date != null) _dateController.text = DateFormat('yyyy-MM-dd').format(date);
+                if (date != null) {
+                  _dateController.text = DateFormat('yyyy-MM-dd').format(date);
+                }
               },
               validator: (v) => v == null || v.isEmpty ? 'Date requise' : null,
             ),
@@ -164,7 +205,8 @@ class _JournalFormPageState extends State<JournalFormPage> {
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
-              validator: (v) => v == null || v.trim().isEmpty ? 'Libellé requis' : null,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Libellé requis' : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -238,9 +280,12 @@ class _JournalFormPageState extends State<JournalFormPage> {
                   ? const SizedBox(
                       height: 22,
                       width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
-                  : Text(widget.entryId != null ? 'Enregistrer' : 'Créer'),
+                  : Text(
+                      widget.entryId != null ? 'Enregistrer' : 'Créer',
+                    ),
             ),
           ],
         ),

@@ -1,35 +1,46 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/stock_notifier.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class StockValidationPage extends StatefulWidget {
+class StockValidationPage extends ConsumerStatefulWidget {
   const StockValidationPage({super.key});
 
   @override
-  State<StockValidationPage> createState() => _StockValidationPageState();
+  ConsumerState<StockValidationPage> createState() =>
+      _StockValidationPageState();
 }
 
-class _StockValidationPageState extends State<StockValidationPage>
+class _StockValidationPageState extends ConsumerState<StockValidationPage>
     with SingleTickerProviderStateMixin {
-  final StockController controller = Get.find<StockController>();
   late TabController _tabController;
-  String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  static String _statusForIndex(int index) {
+    switch (index) {
+      case 0: return 'all';
+      case 1: return 'en_attente';
+      case 2: return 'valide';
+      case 3: return 'rejete';
+      default: return 'all';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (!_tabController.indexIsChanging) {
+        ref.read(stockProvider.notifier).filterByStatus(
+          _statusForIndex(_tabController.index),
+        );
+      }
     });
-    // Charger les données après que le widget soit monté pour éviter de bloquer l'UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadStocks();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStocks());
   }
 
   @override
@@ -39,31 +50,25 @@ class _StockValidationPageState extends State<StockValidationPage>
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadStocks();
-    }
-  }
-
   Future<void> _loadStocks() async {
-    // Charger tous les stocks, le filtrage se fera côté client
-    controller.selectedStatus.value = 'all';
-    await controller.loadStocks();
+    await ref.read(stockProvider.notifier).loadStocks(forceRefresh: true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(stockProvider);
+    final notifier = ref.read(stockProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation du Stock'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadStocks();
-            },
+            onPressed: _loadStocks,
             tooltip: 'Actualiser',
           ),
         ],
@@ -82,7 +87,6 @@ class _StockValidationPageState extends State<StockValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
@@ -90,79 +94,33 @@ class _StockValidationPageState extends State<StockValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par nom, catégorie...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchStocks('');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => notifier.searchStocks(value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildStockList(),
-            ),
+            child: state.isLoading && state.stocks.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildStockList(state.stocks),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStockList() {
-    // Filtrer les stocks selon l'onglet actif
-    List<Stock> filteredStocks;
-    switch (_tabController.index) {
-      case 0: // Tous
-        filteredStocks = controller.stocks;
-        break;
-      case 1: // En attente
-        filteredStocks =
-            controller.stocks.where((stock) => stock.isPending).toList();
-        break;
-      case 2: // Validés
-        filteredStocks =
-            controller.stocks.where((stock) => stock.isValidated).toList();
-        break;
-      case 3: // Rejetés
-        filteredStocks =
-            controller.stocks.where((stock) => stock.isRejected).toList();
-        break;
-      default:
-        filteredStocks = controller.stocks;
-    }
-
-    // Filtrer les stocks selon la recherche
-    if (_searchQuery.isNotEmpty) {
-      filteredStocks =
-          filteredStocks
-              .where(
-                (stock) =>
-                    stock.name.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    stock.category.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
+  Widget _buildStockList(List<Stock> filteredStocks) {
+    final searchQuery = ref.watch(stockProvider).searchQuery;
+    final formatDate = DateFormat('dd/MM/yyyy');
 
     if (filteredStocks.isEmpty) {
       return Center(
@@ -172,19 +130,17 @@ class _StockValidationPageState extends State<StockValidationPage>
             Icon(Icons.inventory_2, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 12),
             Text(
-              _searchQuery.isEmpty
+              searchQuery.isEmpty
                   ? 'Aucun article trouvé'
-                  : 'Aucun article correspondant à "$_searchQuery"',
+                  : 'Aucun article correspondant à "$searchQuery"',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-            if (_searchQuery.isNotEmpty) ...[
+            if (searchQuery.isNotEmpty) ...[
               const SizedBox(height: 6),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  ref.read(stockProvider.notifier).searchStocks('');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -200,16 +156,16 @@ class _StockValidationPageState extends State<StockValidationPage>
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final stock = filteredStocks[index];
-        return _buildStockCard(context, stock);
+        return _buildStockCard(context, stock, formatDate);
       },
     );
   }
 
-  Widget _buildStockCard(BuildContext context, Stock stock) {
-    final formatDate = DateFormat('dd/MM/yyyy');
+  Widget _buildStockCard(
+      BuildContext context, Stock stock, DateFormat formatDate) {
     final statusColor = _getStatusColor(stock.status);
     final statusIcon = _getStatusIcon(stock.status);
-    final statusText = stock.statusText; // Utiliser la propriété du modèle
+    final statusText = stock.statusText;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -256,7 +212,6 @@ class _StockValidationPageState extends State<StockValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
                 const Text(
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -283,7 +238,7 @@ class _StockValidationPageState extends State<StockValidationPage>
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildActionButtons(stock, statusColor),
+                _buildActionButtons(context, stock, statusColor),
               ],
             ),
           ),
@@ -292,17 +247,16 @@ class _StockValidationPageState extends State<StockValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Stock stock, Color statusColor) {
-    // Vérifier si le stock est en attente (pending ou en_attente)
+  Widget _buildActionButtons(
+      BuildContext context, Stock stock, Color statusColor) {
     if (stock.isPending) {
-      // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(stock),
+                onPressed: () => _showApproveConfirmation(context, stock),
                 icon: const Icon(Icons.check, size: 18),
                 label: const Text('Valider', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
@@ -316,7 +270,7 @@ class _StockValidationPageState extends State<StockValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(stock),
+                onPressed: () => _showRejectDialog(context, stock),
                 icon: const Icon(Icons.close, size: 18),
                 label: const Text('Rejeter', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
@@ -334,7 +288,6 @@ class _StockValidationPageState extends State<StockValidationPage>
         ],
       );
     } else if (stock.isValidated) {
-      // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -358,7 +311,6 @@ class _StockValidationPageState extends State<StockValidationPage>
         ),
       );
     } else if (stock.isRejected) {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -382,7 +334,6 @@ class _StockValidationPageState extends State<StockValidationPage>
         ),
       );
     } else {
-      // Autres statuts
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -440,58 +391,80 @@ class _StockValidationPageState extends State<StockValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Stock stock) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider cet article ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        Get.back();
-        await controller.approveStock(stock);
-        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
-      },
-    );
-  }
-
-  void _showRejectDialog(Stock stock) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter l\'article',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(BuildContext context, Stock stock) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider cet article ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await ref.read(stockProvider.notifier).approveStock(stock);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Article validé')),
+                );
+              }
+              _loadStocks();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectStock(
-          stock,
-          commentaire: commentController.text.trim(),
-        );
-        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, Stock stock) {
+    final commentController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter l\'article'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                  ),
+                );
+                return;
+              }
+              await ref.read(stockProvider.notifier).rejectStock(
+                  stock, commentController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Article rejeté')),
+                );
+              }
+              _loadStocks();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

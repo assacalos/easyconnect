@@ -1,39 +1,59 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/equipment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/equipment_notifier.dart';
+import 'package:easyconnect/providers/equipment_state.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
-import 'package:easyconnect/Views/Technicien/equipment_form.dart';
-import 'package:easyconnect/Views/Technicien/equipment_detail.dart';
-import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:intl/intl.dart';
 
-class EquipmentList extends StatelessWidget {
+class EquipmentList extends ConsumerStatefulWidget {
   const EquipmentList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final EquipmentController controller = Get.find<EquipmentController>();
+  ConsumerState<EquipmentList> createState() => _EquipmentListState();
+}
 
-    // Chargement différé au premier affichage (évite la charge au binding)
+class _EquipmentListState extends ConsumerState<EquipmentList> {
+  static const List<String> _tabStatuses = [
+    'active',
+    'inactive',
+    'maintenance',
+    'broken',
+    'retired',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadEquipments();
-      controller.loadEquipmentStats();
-      controller.loadEquipmentCategories();
-      controller.loadEquipmentsNeedingMaintenance();
-      controller.loadEquipmentsWithExpiredWarranty();
+      final notifier = ref.read(equipmentProvider.notifier);
+      notifier.loadEquipments(forceRefresh: true);
+      notifier.loadEquipmentStats();
+      notifier.loadEquipmentCategories();
+      notifier.loadEquipmentsNeedingMaintenance();
+      notifier.loadEquipmentsWithExpiredWarranty();
     });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(equipmentProvider);
+    final notifier = ref.read(equipmentProvider.notifier);
 
     return DefaultTabController(
       length: 5,
       child: Scaffold(
         appBar: AppBar(
+          leading: const AppBarBackButton(fallbackRoute: '/technicien', iconColor: Colors.white),
           title: const Text('Gestion des Équipements'),
           backgroundColor: Colors.deepPurple,
           foregroundColor: Colors.white,
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => controller.loadEquipments(),
+              onPressed: () => notifier.loadEquipments(forceRefresh: true),
             ),
           ],
           bottom: const TabBar(
@@ -51,130 +71,68 @@ class EquipmentList extends StatelessWidget {
           ),
         ),
         body: TabBarView(
-          children: [
-            _buildEquipmentTab(controller, 'active'),
-            _buildEquipmentTab(controller, 'inactive'),
-            _buildEquipmentTab(controller, 'maintenance'),
-            _buildEquipmentTab(controller, 'broken'),
-            _buildEquipmentTab(controller, 'retired'),
-          ],
+          children: List.generate(5, (i) {
+            return _buildEquipmentTab(_tabStatuses[i], state, notifier);
+          }),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => Get.to(() => const EquipmentForm()),
-          icon: const Icon(Icons.add),
-          label: const Text('Nouvel Équipement'),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          elevation: 8,
-          tooltip: 'Créer un nouvel équipement',
-        ),
+        floatingActionButton: state.canManageEquipments
+            ? FloatingActionButton.extended(
+                onPressed: () => context.go('/equipments/new'),
+                icon: const Icon(Icons.add),
+                label: const Text('Nouvel Équipement'),
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                elevation: 8,
+                tooltip: 'Créer un nouvel équipement',
+              )
+            : null,
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
   }
 
-  Widget _buildEquipmentTab(EquipmentController controller, String status) {
-    return Obx(() {
-      // Filtrer les équipements par statut (normaliser pour la comparaison)
-      final normalizedStatus = status.toLowerCase().trim();
-      
-      // Debug: Afficher tous les statuts des équipements
-      print('🔍 [EQUIPMENT_LIST] ===== _buildEquipmentTab REBUILD =====');
-      print('🔍 [EQUIPMENT_LIST] Statut recherché: "$status" (normalisé: "$normalizedStatus")');
-      print('🔍 [EQUIPMENT_LIST] isLoading: ${controller.isLoading.value}');
-      print('🔍 [EQUIPMENT_LIST] Nombre total d\'équipements dans controller.equipments: ${controller.equipments.length}');
-      print('🔍 [EQUIPMENT_LIST] HashCode du controller: ${controller.hashCode}');
-      
-      if (controller.equipments.isNotEmpty) {
-        final allStatuses = controller.equipments.map((e) => e.status).toSet();
-        print('🔍 [EQUIPMENT_LIST] Tous les statuts trouvés: $allStatuses');
-        print('🔍 [EQUIPMENT_LIST] Recherche du statut: "$normalizedStatus"');
-        
-        // Afficher tous les équipements avec leurs statuts
-        for (var eq in controller.equipments) {
-          print('🔍 [EQUIPMENT_LIST] Équipement dans liste: "${eq.name}", status="${eq.status}", status.toLowerCase()="${eq.status.toLowerCase()}"');
-        }
-      } else {
-        print('⚠️ [EQUIPMENT_LIST] La liste d\'équipements est VIDE!');
-      }
-      
-      final equipments =
-          controller.equipments.where((equipment) {
-            // Normaliser le statut de l'équipement pour la comparaison
-            final equipmentStatus = equipment.status.toLowerCase().trim();
-            final matches = equipmentStatus == normalizedStatus;
-            
-            // Debug pour chaque équipement
-            print('🔍 [EQUIPMENT_LIST] Filtrage - Équipement "${equipment.name}": status="$equipmentStatus" (recherché: "$normalizedStatus") -> $matches');
-            
-            return matches;
-          }).toList();
-      
-      print('🔍 [EQUIPMENT_LIST] Équipements filtrés pour "$normalizedStatus": ${equipments.length}');
+  Widget _buildEquipmentTab(
+    String status,
+    EquipmentState state,
+    EquipmentNotifier notifier,
+  ) {
+    final normalized = status.toLowerCase().trim();
+    final list = state.equipments
+        .where((e) => e.status.toLowerCase().trim() == normalized)
+        .toList();
 
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-      if (equipments.isEmpty) {
-        // Si aucun équipement n'est chargé du tout, afficher un message différent
-        if (controller.equipments.isEmpty && !controller.isLoading.value) {
-          return RefreshIndicator(
-            onRefresh: () => controller.loadEquipments(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: SizedBox(
-                height: 320,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.devices_outlined, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Aucun équipement chargé',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tirez pour actualiser',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Actualiser'),
-                        onPressed: () => controller.loadEquipments(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-
-        // Sinon, afficher le message normal pour l'onglet vide
+    if (list.isEmpty) {
+      if (state.equipments.isEmpty) {
         return RefreshIndicator(
-          onRefresh: () => controller.loadEquipments(),
+          onRefresh: () => notifier.loadEquipments(forceRefresh: true),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: SizedBox(
-              height: 300,
+              height: 320,
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
+                    Icon(Icons.devices_outlined, size: 64, color: Colors.grey[400]),
                     const SizedBox(height: 16),
                     Text(
-                      _getEmptyMessage(status),
+                      'Aucun équipement chargé',
                       style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _getEmptySubMessage(status),
+                      'Tirez pour actualiser',
                       style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Actualiser'),
+                      onPressed: () => notifier.loadEquipments(forceRefresh: true),
                     ),
                   ],
                 ),
@@ -183,19 +141,46 @@ class EquipmentList extends StatelessWidget {
           ),
         );
       }
-
       return RefreshIndicator(
-        onRefresh: () => controller.loadEquipments(),
-        child: ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: equipments.length,
-          itemBuilder: (context, index) {
-            final equipment = equipments[index];
-            return _buildEquipmentCard(equipment, controller);
-          },
+        onRefresh: () => notifier.loadEquipments(forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 300,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    _getEmptyMessage(status),
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _getEmptySubMessage(status),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
-    });
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadEquipments(forceRefresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final equipment = list[index];
+          return _buildEquipmentCard(context, equipment, state, notifier);
+        },
+      ),
+    );
   }
 
   IconData _getEmptyIcon(String status) {
@@ -250,8 +235,10 @@ class EquipmentList extends StatelessWidget {
   }
 
   Widget _buildEquipmentCard(
+    BuildContext context,
     Equipment equipment,
-    EquipmentController controller,
+    EquipmentState state,
+    EquipmentNotifier notifier,
   ) {
     final formatDate = DateFormat('dd/MM/yyyy');
 
@@ -259,14 +246,13 @@ class EquipmentList extends StatelessWidget {
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => Get.to(() => EquipmentDetail(equipment: equipment)),
+        onTap: () => context.go('/equipments/${equipment.id}', extra: equipment),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec nom et statut
               Row(
                 children: [
                   Expanded(
@@ -281,10 +267,7 @@ class EquipmentList extends StatelessWidget {
                   _buildStatusChip(equipment),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // Catégorie et état
               Row(
                 children: [
                   Icon(
@@ -318,10 +301,7 @@ class EquipmentList extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // Description
               if (equipment.description.isNotEmpty)
                 Text(
                   equipment.description,
@@ -329,10 +309,7 @@ class EquipmentList extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-
               const SizedBox(height: 8),
-
-              // Informations détaillées
               if (equipment.serialNumber != null) ...[
                 Row(
                   children: [
@@ -346,7 +323,6 @@ class EquipmentList extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-
               if (equipment.location != null) ...[
                 Row(
                   children: [
@@ -360,7 +336,6 @@ class EquipmentList extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-
               if (equipment.assignedTo != null) ...[
                 Row(
                   children: [
@@ -374,7 +349,6 @@ class EquipmentList extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-
               if (equipment.nextMaintenance != null) ...[
                 Row(
                   children: [
@@ -383,22 +357,19 @@ class EquipmentList extends StatelessWidget {
                     Text(
                       'Prochaine maintenance: ${formatDate.format(equipment.nextMaintenance!)}',
                       style: TextStyle(
-                        color:
-                            equipment.needsMaintenance
-                                ? Colors.red
-                                : Colors.grey[600],
+                        color: equipment.needsMaintenance
+                            ? Colors.red
+                            : Colors.grey[600],
                         fontSize: 14,
-                        fontWeight:
-                            equipment.needsMaintenance
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                        fontWeight: equipment.needsMaintenance
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
               ],
-
               if (equipment.warrantyExpiry != null) ...[
                 Row(
                   children: [
@@ -407,46 +378,40 @@ class EquipmentList extends StatelessWidget {
                     Text(
                       'Garantie: ${formatDate.format(equipment.warrantyExpiry!)}',
                       style: TextStyle(
-                        color:
-                            equipment.isWarrantyExpired
-                                ? Colors.red
-                                : Colors.grey[600],
+                        color: equipment.isWarrantyExpired
+                            ? Colors.red
+                            : Colors.grey[600],
                         fontSize: 14,
-                        fontWeight:
-                            equipment.isWarrantyExpired
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                        fontWeight: equipment.isWarrantyExpired
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
               ],
-
               const SizedBox(height: 12),
-
-              // Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (controller.canManageEquipments) ...[
+                  if (state.canManageEquipments) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () =>
-                              Get.to(() => EquipmentForm(equipment: equipment)),
+                      onPressed: () => context.go(
+                          '/equipments/${equipment.id}/edit',
+                          extra: equipment),
                     ),
                     const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.visibility, size: 16),
-                      label: const Text('Détails'),
-                      onPressed:
-                          () => Get.to(
-                            () => EquipmentDetail(equipment: equipment),
-                          ),
-                    ),
                   ],
+                  TextButton.icon(
+                    icon: const Icon(Icons.visibility, size: 16),
+                    label: const Text('Détails'),
+                    onPressed: () => context.go(
+                        '/equipments/${equipment.id}',
+                        extra: equipment),
+                  ),
                 ],
               ),
             ],
@@ -460,9 +425,10 @@ class EquipmentList extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: equipment.statusColor.withValues(alpha: 0.1),
+        color: equipment.statusColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: equipment.statusColor.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: equipment.statusColor.withOpacity(0.5)),
       ),
       child: Text(
         equipment.statusText,

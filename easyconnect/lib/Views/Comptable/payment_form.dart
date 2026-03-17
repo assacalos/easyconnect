@@ -1,89 +1,127 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/payment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/payment_notifier.dart';
+import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
 import 'package:easyconnect/Models/client_model.dart';
-import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class PaymentForm extends StatefulWidget {
+class PaymentForm extends ConsumerStatefulWidget {
   final int? paymentId;
 
   const PaymentForm({super.key, this.paymentId});
 
   @override
-  State<PaymentForm> createState() => _PaymentFormState();
+  ConsumerState<PaymentForm> createState() => _PaymentFormState();
 }
 
-class _PaymentFormState extends State<PaymentForm> {
+class _PaymentFormState extends ConsumerState<PaymentForm> {
   bool _isLoading = true;
-  late final PaymentController controller;
+  bool _isCreating = false;
+  String _paymentType = 'one_time';
+  DateTime _paymentDate = DateTime.now();
+  DateTime? _dueDate;
+  double _amount = 0.0;
+  String _paymentMethod = 'bank_transfer';
+  int _selectedClientId = 0;
+  String _selectedClientName = '';
+  String _selectedClientEmail = '';
+  String _selectedClientAddress = '';
+  DateTime _scheduleStartDate = DateTime.now();
+  DateTime _scheduleEndDate = DateTime.now().add(const Duration(days: 365));
+  int _frequency = 30;
+  int _totalInstallments = 12;
+  double _installmentAmount = 0.0;
+  String _generatedReference = '';
+
+  final TextEditingController descriptionController = TextEditingController();
+  final TextEditingController notesController = TextEditingController();
+  final TextEditingController referenceController = TextEditingController();
+  final TextEditingController clientNameController = TextEditingController();
+  final TextEditingController clientEmailController = TextEditingController();
+  final TextEditingController clientAddressController = TextEditingController();
+
+  bool _referenceRequested = false;
+  bool _loadEditRequested = false;
 
   @override
   void initState() {
     super.initState();
-    controller = Get.put(PaymentController());
+    if (widget.paymentId == null) {
+      setState(() => _isLoading = false);
+    }
+  }
 
-    // Écouter les changements de la référence générée pour mettre à jour le champ
-    ever(controller.generatedReference, (String ref) {
-      if (ref.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && controller.referenceController.text != ref) {
-            controller.referenceController.text = ref;
-          }
+  void _requestGeneratedReference() {
+    if (_referenceRequested || _generatedReference.isNotEmpty) return;
+    _referenceRequested = true;
+    ref.read(paymentProvider.notifier).generatePaymentReference().then((ref) {
+      if (mounted) {
+        setState(() {
+          _generatedReference = ref;
+          referenceController.text = ref;
         });
       }
     });
+  }
 
-    if (widget.paymentId != null) {
-      _loadPaymentForEdit();
-    } else {
-      _isLoading = false;
-    }
+  void _loadPaymentForEditIfNeeded() {
+    if (widget.paymentId == null || !_isLoading || _loadEditRequested) return;
+    _loadEditRequested = true;
+    _loadPaymentForEdit();
+  }
+
+  @override
+  void dispose() {
+    descriptionController.dispose();
+    notesController.dispose();
+    referenceController.dispose();
+    clientNameController.dispose();
+    clientEmailController.dispose();
+    clientAddressController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPaymentForEdit() async {
     try {
-      final payment = await PaymentService.to.getPaymentById(widget.paymentId!);
-      final controller = Get.find<PaymentController>();
-
-      // Remplir les champs avec les données du paiement
-      controller.selectedClientId.value = payment.clientId;
-      controller.selectedClientName.value = payment.clientName;
-      controller.selectedClientEmail.value = payment.clientEmail;
-      controller.selectedClientAddress.value = payment.clientAddress;
-      controller.paymentType.value = payment.type;
-      controller.paymentDate.value = payment.paymentDate;
-      controller.dueDate.value = payment.dueDate;
-      controller.amount.value = payment.amount;
-      controller.paymentMethod.value = payment.paymentMethod;
-      controller.descriptionController.text = payment.description ?? '';
-      controller.notesController.text = payment.notes ?? '';
-      controller.referenceController.text = payment.reference ?? '';
-
-      if (payment.schedule != null) {
-        controller.scheduleStartDate.value = payment.schedule!.startDate;
-        controller.scheduleEndDate.value = payment.schedule!.endDate;
-        controller.frequency.value = payment.schedule!.frequency;
-        controller.totalInstallments.value =
-            payment.schedule!.totalInstallments;
-        controller.installmentAmount.value =
-            payment.schedule!.installmentAmount;
-      }
-
+      final notifier = ref.read(paymentProvider.notifier);
+      final payment = await notifier.getPaymentById(widget.paymentId!);
+      if (!mounted) return;
       setState(() {
+        _selectedClientId = payment.clientId;
+        _selectedClientName = payment.clientName;
+        _selectedClientEmail = payment.clientEmail;
+        _selectedClientAddress = payment.clientAddress;
+        _paymentType = payment.type;
+        _paymentDate = payment.paymentDate;
+        _dueDate = payment.dueDate;
+        _amount = payment.amount;
+        _paymentMethod = payment.paymentMethod;
+        descriptionController.text = payment.description ?? '';
+        notesController.text = payment.notes ?? '';
+        referenceController.text = payment.reference ?? '';
+        clientNameController.text = payment.clientName;
+        clientEmailController.text = payment.clientEmail;
+        clientAddressController.text = payment.clientAddress;
+        if (payment.schedule != null) {
+          _scheduleStartDate = payment.schedule!.startDate;
+          _scheduleEndDate = payment.schedule!.endDate;
+          _frequency = payment.schedule!.frequency;
+          _totalInstallments = payment.schedule!.totalInstallments;
+          _installmentAmount = payment.schedule!.installmentAmount;
+        }
         _isLoading = false;
       });
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de charger le paiement: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Impossible de charger le paiement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -99,6 +137,13 @@ class _PaymentFormState extends State<PaymentForm> {
         body: const SkeletonPage(listItemCount: 6),
       );
     }
+    if (!_referenceRequested && widget.paymentId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _requestGeneratedReference());
+    }
+    if (_isLoading && widget.paymentId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPaymentForEditIfNeeded());
+    }
+    final notifier = ref.read(paymentProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -115,41 +160,21 @@ class _PaymentFormState extends State<PaymentForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Type de paiement
-            _buildPaymentTypeSection(controller),
+            _buildPaymentTypeSection(),
             const SizedBox(height: 20),
-
-            // Informations client
-            _buildClientSection(controller),
+            _buildClientSection(notifier),
             const SizedBox(height: 20),
-
-            // Détails du paiement
-            _buildPaymentDetailsSection(controller),
+            _buildPaymentDetailsSection(),
             const SizedBox(height: 20),
-
-            // Section planning (pour paiements mensuels)
-            Obx(() {
-              if (controller.paymentType.value == 'monthly') {
-                return Column(
-                  children: [
-                    _buildScheduleSection(controller),
-                    const SizedBox(height: 20),
-                  ],
-                );
-              }
-              return const SizedBox.shrink();
-            }),
-
-            // Notes et références
-            _buildNotesSection(controller),
+            if (_paymentType == 'monthly') ...[
+              _buildScheduleSection(),
+              const SizedBox(height: 20),
+            ],
+            _buildNotesSection(),
             const SizedBox(height: 20),
-
-            // Résumé
-            _buildSummarySection(controller),
+            _buildSummarySection(),
             const SizedBox(height: 20),
-
-            // Bouton d'enregistrement
-            _buildSaveButton(controller),
+            _buildSaveButton(notifier),
             const SizedBox(height: 20),
           ],
         ),
@@ -157,57 +182,90 @@ class _PaymentFormState extends State<PaymentForm> {
     );
   }
 
-  Widget _buildSaveButton(PaymentController controller) {
-    return Obx(
-      () => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed:
-                controller.isCreating.value
-                    ? null
-                    : () async {
-                      final success = await controller.createPayment();
+  Widget _buildSaveButton(PaymentNotifier notifier) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _isCreating
+              ? null
+              : () async {
+                  setState(() => _isCreating = true);
+                  try {
+                    final schedule = _paymentType == 'monthly'
+                        ? PaymentSchedule(
+                            id: 0,
+                            startDate: DateTime(_scheduleStartDate.year, _scheduleStartDate.month, _scheduleStartDate.day),
+                            endDate: DateTime(_scheduleEndDate.year, _scheduleEndDate.month, _scheduleEndDate.day),
+                            frequency: _frequency,
+                            totalInstallments: _totalInstallments,
+                            paidInstallments: 0,
+                            installmentAmount: _amount / _totalInstallments,
+                            status: 'active',
+                            nextPaymentDate: _scheduleStartDate,
+                            installments: [],
+                          )
+                        : null;
+                    final success = await notifier.createPayment(
+                      clientId: _selectedClientId,
+                      clientName: _selectedClientName,
+                      clientEmail: _selectedClientEmail,
+                      clientAddress: _selectedClientAddress,
+                      type: _paymentType,
+                      paymentDate: _paymentDate,
+                      dueDate: _dueDate,
+                      amount: _amount,
+                      paymentMethod: _paymentMethod,
+                      description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+                      notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                      reference: _generatedReference.isNotEmpty ? _generatedReference : (referenceController.text.trim().isEmpty ? null : referenceController.text.trim()),
+                      schedule: schedule,
+                    );
+                    if (mounted) {
                       if (success) {
-                        // Recharger les paiements avant de revenir à la liste
-                        await controller.loadPayments();
-                        Get.back();
+                        await notifier.loadPayments();
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Paiement créé avec succès'), backgroundColor: Colors.green),
+                        );
                       }
-                    },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              minimumSize: const Size(0, 44),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _isCreating = false);
+                  }
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            minimumSize: const Size(0, 44),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
-            child:
-                controller.isCreating.value
-                    ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                    : const Text(
-                      'Créer le paiement',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
           ),
+          child: _isCreating
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text(
+                  'Créer le paiement',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
         ),
       ),
     );
   }
 
-  Widget _buildPaymentTypeSection(PaymentController controller) {
+  Widget _buildPaymentTypeSection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -219,31 +277,27 @@ class _PaymentFormState extends State<PaymentForm> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<String>(
-                      title: const Text('Ponctuel'),
-                      subtitle: const Text('Paiement unique'),
-                      value: 'one_time',
-                      groupValue: controller.paymentType.value,
-                      onChanged:
-                          (value) => controller.paymentType.value = value!,
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('Ponctuel'),
+                    subtitle: const Text('Paiement unique'),
+                    value: 'one_time',
+                    groupValue: _paymentType,
+                    onChanged: (value) => setState(() => _paymentType = value!),
                   ),
-                  Expanded(
-                    child: RadioListTile<String>(
-                      title: const Text('Mensuel'),
-                      subtitle: const Text('Paiements récurrents'),
-                      value: 'monthly',
-                      groupValue: controller.paymentType.value,
-                      onChanged:
-                          (value) => controller.paymentType.value = value!,
-                    ),
+                ),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('Mensuel'),
+                    subtitle: const Text('Paiements récurrents'),
+                    value: 'monthly',
+                    groupValue: _paymentType,
+                    onChanged: (value) => setState(() => _paymentType = value!),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
@@ -251,7 +305,7 @@ class _PaymentFormState extends State<PaymentForm> {
     );
   }
 
-  Widget _buildClientSection(PaymentController controller) {
+  Widget _buildClientSection(PaymentNotifier notifier) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -269,7 +323,7 @@ class _PaymentFormState extends State<PaymentForm> {
                 const SizedBox(width: 8),
                 Flexible(
                   child: ElevatedButton.icon(
-                    onPressed: () => _showClientSelectionDialog(controller),
+                    onPressed: () => _showClientSelectionDialog(notifier),
                     icon: const Icon(Icons.person_search, size: 18),
                     label: const Text(
                       'Sélectionner',
@@ -288,97 +342,92 @@ class _PaymentFormState extends State<PaymentForm> {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              final hasSelectedClient = controller.selectedClientId.value > 0;
-              return Column(
-                children: [
-                  if (hasSelectedClient)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Client sélectionné: ${controller.selectedClientName.value}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
+            Column(
+              children: [
+                if (_selectedClientId > 0)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Client sélectionné: $_selectedClientName',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
                             ),
                           ),
-                          TextButton(
-                            onPressed: () {
-                              controller.selectedClientId.value = 0;
-                              controller.clientNameController.clear();
-                              controller.clientEmailController.clear();
-                              controller.clientAddressController.clear();
-                              controller.selectedClientName.value = '';
-                              controller.selectedClientEmail.value = '';
-                              controller.selectedClientAddress.value = '';
-                            },
-                            child: const Text('Réinitialiser'),
-                          ),
-                        ],
-                      ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedClientId = 0;
+                              clientNameController.clear();
+                              clientEmailController.clear();
+                              clientAddressController.clear();
+                              _selectedClientName = '';
+                              _selectedClientEmail = '';
+                              _selectedClientAddress = '';
+                            });
+                          },
+                          child: const Text('Réinitialiser'),
+                        ),
+                      ],
                     ),
-                  if (hasSelectedClient) const SizedBox(height: 16),
-                  TextField(
-                    controller: controller.clientNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Nom du client *',
-                      border: const OutlineInputBorder(),
-                      enabled: !hasSelectedClient,
-                      filled: hasSelectedClient,
-                      fillColor: Colors.grey[200],
-                    ),
-                    onChanged:
-                        (value) => controller.selectedClientName.value = value,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller.clientEmailController,
-                    decoration: InputDecoration(
-                      labelText: 'Email du client *',
-                      border: const OutlineInputBorder(),
-                      enabled: !hasSelectedClient,
-                      filled: hasSelectedClient,
-                      fillColor: Colors.grey[200],
-                    ),
-                    onChanged:
-                        (value) => controller.selectedClientEmail.value = value,
+                if (_selectedClientId > 0) const SizedBox(height: 16),
+                TextField(
+                  controller: clientNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Nom du client *',
+                    border: const OutlineInputBorder(),
+                    enabled: _selectedClientId == 0,
+                    filled: _selectedClientId > 0,
+                    fillColor: Colors.grey[200],
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller.clientAddressController,
-                    decoration: InputDecoration(
-                      labelText: 'Adresse du client *',
-                      border: const OutlineInputBorder(),
-                      enabled: !hasSelectedClient,
-                      filled: hasSelectedClient,
-                      fillColor: Colors.grey[200],
-                    ),
-                    maxLines: 2,
-                    onChanged:
-                        (value) =>
-                            controller.selectedClientAddress.value = value,
+                  onChanged: (value) => setState(() => _selectedClientName = value),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: clientEmailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email du client *',
+                    border: const OutlineInputBorder(),
+                    enabled: _selectedClientId == 0,
+                    filled: _selectedClientId > 0,
+                    fillColor: Colors.grey[200],
                   ),
-                ],
-              );
-            }),
+                  onChanged: (value) => setState(() => _selectedClientEmail = value),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: clientAddressController,
+                  decoration: InputDecoration(
+                    labelText: 'Adresse du client *',
+                    border: const OutlineInputBorder(),
+                    enabled: _selectedClientId == 0,
+                    filled: _selectedClientId > 0,
+                    fillColor: Colors.grey[200],
+                  ),
+                  maxLines: 2,
+                  onChanged: (value) => setState(() => _selectedClientAddress = value),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPaymentDetailsSection(PaymentController controller) {
+  Widget _buildPaymentDetailsSection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -397,25 +446,21 @@ class _PaymentFormState extends State<PaymentForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date de paiement'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate: controller.paymentDate.value,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
-                            );
-                            if (date != null) {
-                              controller.paymentDate.value = date;
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            '${controller.paymentDate.value.day}/${controller.paymentDate.value.month}/${controller.paymentDate.value.year}',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _paymentDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) setState(() => _paymentDate = date);
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          '${_paymentDate.day}/${_paymentDate.month}/${_paymentDate.year}',
                         ),
                       ),
                     ],
@@ -427,28 +472,23 @@ class _PaymentFormState extends State<PaymentForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date d\'échéance'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate:
-                                  controller.dueDate.value ?? DateTime.now(),
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
-                            );
-                            if (date != null) {
-                              controller.dueDate.value = date;
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            controller.dueDate.value != null
-                                ? '${controller.dueDate.value!.day}/${controller.dueDate.value!.month}/${controller.dueDate.value!.year}'
-                                : 'Sélectionner',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _dueDate ?? DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) setState(() => _dueDate = date);
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          _dueDate != null
+                              ? '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}'
+                              : 'Sélectionner',
                         ),
                       ),
                     ],
@@ -461,10 +501,8 @@ class _PaymentFormState extends State<PaymentForm> {
               children: [
                 Expanded(
                   child: TextField(
-                    onChanged:
-                        (value) =>
-                            controller.amount.value =
-                                double.tryParse(value) ?? 0.0,
+                    onChanged: (value) =>
+                        setState(() => _amount = double.tryParse(value) ?? 0.0),
                     decoration: const InputDecoration(
                       labelText: 'Montant *',
                       border: OutlineInputBorder(),
@@ -476,7 +514,7 @@ class _PaymentFormState extends State<PaymentForm> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: controller.paymentMethod.value,
+                    value: _paymentMethod,
                     decoration: const InputDecoration(
                       labelText: 'Méthode de paiement',
                       border: OutlineInputBorder(),
@@ -497,15 +535,15 @@ class _PaymentFormState extends State<PaymentForm> {
                         child: Text('Prélèvement'),
                       ),
                     ],
-                    onChanged:
-                        (value) => controller.paymentMethod.value = value!,
+                    onChanged: (value) =>
+                        setState(() => _paymentMethod = value!),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: controller.descriptionController,
+              controller: descriptionController,
               decoration: const InputDecoration(
                 labelText: 'Description',
                 border: OutlineInputBorder(),
@@ -518,7 +556,7 @@ class _PaymentFormState extends State<PaymentForm> {
     );
   }
 
-  Widget _buildScheduleSection(PaymentController controller) {
+  Widget _buildScheduleSection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -537,30 +575,27 @@ class _PaymentFormState extends State<PaymentForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date de début'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate: controller.scheduleStartDate.value,
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
-                            );
-                            if (date != null) {
-                              // Normaliser la date à minuit pour éviter les problèmes d'heure
-                              controller.scheduleStartDate.value = DateTime(
-                                date.year,
-                                date.month,
-                                date.day,
-                              );
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            '${controller.scheduleStartDate.value.day}/${controller.scheduleStartDate.value.month}/${controller.scheduleStartDate.value.year}',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _scheduleStartDate,
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) {
+                            setState(() => _scheduleStartDate = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                            ));
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          '${_scheduleStartDate.day}/${_scheduleStartDate.month}/${_scheduleStartDate.year}',
                         ),
                       ),
                     ],
@@ -572,30 +607,27 @@ class _PaymentFormState extends State<PaymentForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date de fin'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate: controller.scheduleEndDate.value,
-                              firstDate: controller.scheduleStartDate.value,
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365 * 5),
-                              ),
-                            );
-                            if (date != null) {
-                              // Normaliser la date à minuit pour éviter les problèmes d'heure
-                              controller.scheduleEndDate.value = DateTime(
-                                date.year,
-                                date.month,
-                                date.day,
-                              );
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            '${controller.scheduleEndDate.value.day}/${controller.scheduleEndDate.value.month}/${controller.scheduleEndDate.value.year}',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _scheduleEndDate,
+                            firstDate: _scheduleStartDate,
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365 * 5),
+                            ),
+                          );
+                          if (date != null) {
+                            setState(() => _scheduleEndDate = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                            ));
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          '${_scheduleEndDate.day}/${_scheduleEndDate.month}/${_scheduleEndDate.year}',
                         ),
                       ),
                     ],
@@ -608,20 +640,16 @@ class _PaymentFormState extends State<PaymentForm> {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: TextEditingController(
-                        text: controller.frequency.value.toString(),
-                      )
-                      ..selection = TextSelection.fromPosition(
-                        TextPosition(
-                          offset: controller.frequency.value.toString().length,
-                        ),
-                      ),
+                    controller: TextEditingController(text: _frequency.toString()),
                     onChanged: (value) {
                       final parsed = int.tryParse(value);
                       if (parsed != null && parsed > 0) {
-                        controller.frequency.value = parsed;
+                        setState(() {
+                          _frequency = parsed;
+                          if (_amount > 0) _installmentAmount = _amount / parsed;
+                        });
                       } else if (value.isEmpty) {
-                        controller.frequency.value = 30; // Valeur par défaut
+                        setState(() => _frequency = 30);
                       }
                     },
                     decoration: const InputDecoration(
@@ -637,29 +665,16 @@ class _PaymentFormState extends State<PaymentForm> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: TextField(
-                    controller: TextEditingController(
-                        text: controller.totalInstallments.value.toString(),
-                      )
-                      ..selection = TextSelection.fromPosition(
-                        TextPosition(
-                          offset:
-                              controller.totalInstallments.value
-                                  .toString()
-                                  .length,
-                        ),
-                      ),
+                    controller: TextEditingController(text: _totalInstallments.toString()),
                     onChanged: (value) {
                       final parsed = int.tryParse(value);
                       if (parsed != null && parsed > 0) {
-                        controller.totalInstallments.value = parsed;
-                        // Recalculer le montant par échéance
-                        if (controller.amount.value > 0) {
-                          controller.installmentAmount.value =
-                              controller.amount.value / parsed;
-                        }
+                        setState(() {
+                          _totalInstallments = parsed;
+                          if (_amount > 0) _installmentAmount = _amount / parsed;
+                        });
                       } else if (value.isEmpty) {
-                        controller.totalInstallments.value =
-                            12; // Valeur par défaut
+                        setState(() => _totalInstallments = 12);
                       }
                     },
                     decoration: const InputDecoration(
@@ -673,14 +688,12 @@ class _PaymentFormState extends State<PaymentForm> {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => Text(
-                'Montant par échéance: ${controller.installmentAmount.value.toStringAsFixed(2)} €',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
+            Text(
+              'Montant par échéance: ${_installmentAmount.toStringAsFixed(2)} €',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
               ),
             ),
           ],
@@ -689,7 +702,7 @@ class _PaymentFormState extends State<PaymentForm> {
     );
   }
 
-  Widget _buildNotesSection(PaymentController controller) {
+  Widget _buildNotesSection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -702,7 +715,7 @@ class _PaymentFormState extends State<PaymentForm> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: controller.notesController,
+              controller: notesController,
               decoration: const InputDecoration(
                 labelText: 'Notes',
                 border: OutlineInputBorder(),
@@ -710,38 +723,25 @@ class _PaymentFormState extends State<PaymentForm> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              // Mettre à jour le contrôleur avec la référence générée si nécessaire
-              final generatedRef = controller.generatedReference.value;
-              if (generatedRef.isNotEmpty &&
-                  controller.referenceController.text != generatedRef) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted &&
-                      controller.referenceController.text != generatedRef) {
-                    controller.referenceController.text = generatedRef;
-                  }
-                });
-              }
-              return TextField(
-                controller: controller.referenceController,
-                decoration: const InputDecoration(
-                  labelText: 'Référence (générée automatiquement)',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.grey,
-                  helperText: 'Référence générée automatiquement',
-                ),
-                readOnly: true,
-                enabled: false,
-              );
-            }),
+            TextField(
+              controller: referenceController,
+              decoration: const InputDecoration(
+                labelText: 'Référence (générée automatiquement)',
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.grey,
+                helperText: 'Référence générée automatiquement',
+              ),
+              readOnly: true,
+              enabled: false,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSummarySection(PaymentController controller) {
+  Widget _buildSummarySection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -753,45 +753,41 @@ class _PaymentFormState extends State<PaymentForm> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => Column(
-                children: [
+            Column(
+              children: [
+                _buildSummaryRow(
+                  'Type',
+                  PaymentNotifier.getPaymentTypeName(_paymentType),
+                ),
+                _buildSummaryRow(
+                  'Montant',
+                  '${_amount.toStringAsFixed(2)} €',
+                ),
+                _buildSummaryRow(
+                  'Méthode',
+                  PaymentNotifier.getPaymentMethodName(_paymentMethod),
+                ),
+                if (_paymentType == 'monthly') ...[
                   _buildSummaryRow(
-                    'Type',
-                    controller.getPaymentTypeName(controller.paymentType.value),
+                    'Échéances',
+                    '$_totalInstallments',
                   ),
                   _buildSummaryRow(
-                    'Montant',
-                    '${controller.amount.value.toStringAsFixed(2)} €',
+                    'Fréquence',
+                    '$_frequency jours',
                   ),
                   _buildSummaryRow(
-                    'Méthode',
-                    controller.getPaymentMethodName(
-                      controller.paymentMethod.value,
-                    ),
-                  ),
-                  if (controller.paymentType.value == 'monthly') ...[
-                    _buildSummaryRow(
-                      'Échéances',
-                      '${controller.totalInstallments.value}',
-                    ),
-                    _buildSummaryRow(
-                      'Fréquence',
-                      '${controller.frequency.value} jours',
-                    ),
-                    _buildSummaryRow(
-                      'Montant par échéance',
-                      '${controller.installmentAmount.value.toStringAsFixed(2)} fcfa',
-                    ),
-                  ],
-                  const Divider(),
-                  _buildSummaryRow(
-                    'Total',
-                    '${controller.amount.value.toStringAsFixed(2)} fcfa',
-                    isTotal: true,
+                    'Montant par échéance',
+                    '${_installmentAmount.toStringAsFixed(2)} fcfa',
                   ),
                 ],
-              ),
+                const Divider(),
+                _buildSummaryRow(
+                  'Total',
+                  '${_amount.toStringAsFixed(2)} fcfa',
+                  isTotal: true,
+                ),
+              ],
             ),
           ],
         ),
@@ -830,50 +826,46 @@ class _PaymentFormState extends State<PaymentForm> {
     );
   }
 
-  void _showClientSelectionDialog(PaymentController controller) {
+  void _showClientSelectionDialog(PaymentNotifier notifier) {
     showDialog(
-      context: Get.context!,
-      builder:
-          (context) => ClientSelectionDialog(
-            onClientSelected: (Client client) {
-              // Prioriser nom entreprise
-              final clientName =
-                  client.nomEntreprise?.isNotEmpty == true
-                      ? client.nomEntreprise!
-                      : '${client.nom ?? ''} ${client.prenom ?? ''}'
-                          .trim()
-                          .isNotEmpty
-                      ? '${client.nom ?? ''} ${client.prenom ?? ''}'.trim()
-                      : 'Client #${client.id}';
-
-              // Construire l'adresse complète
-              final addressParts = <String>[];
-              if (client.adresse != null && client.adresse!.isNotEmpty) {
-                addressParts.add(client.adresse!);
-              }
-              final clientAddress =
-                  addressParts.isEmpty
-                      ? 'Non spécifiée'
-                      : addressParts.join(', ');
-
-              // Appeler la méthode du contrôleur pour définir le client sélectionné
-              controller.selectClient(
-                clientId: client.id ?? 0,
-                clientName: clientName,
-                clientEmail: client.email ?? '',
-                clientAddress: clientAddress,
-              );
-
-              Get.snackbar(
-                'Client sélectionné',
-                'Les informations du client ont été remplies automatiquement',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.green,
-                colorText: Colors.white,
-                duration: const Duration(seconds: 2),
-              );
-            },
-          ),
+      context: context,
+      builder: (ctx) => ClientSelectionDialog(
+        onClientSelected: (Client client) {
+          final clientName =
+              client.nomEntreprise?.isNotEmpty == true
+                  ? client.nomEntreprise!
+                  : '${client.nom ?? ''} ${client.prenom ?? ''}'
+                      .trim()
+                      .isNotEmpty
+                  ? '${client.nom ?? ''} ${client.prenom ?? ''}'.trim()
+                  : 'Client #${client.id}';
+          final addressParts = <String>[];
+          if (client.adresse != null && client.adresse!.isNotEmpty) {
+            addressParts.add(client.adresse!);
+          }
+          final clientAddress =
+              addressParts.isEmpty
+                  ? 'Non spécifiée'
+                  : addressParts.join(', ');
+          setState(() {
+            _selectedClientId = client.id ?? 0;
+            _selectedClientName = clientName;
+            _selectedClientEmail = client.email ?? '';
+            _selectedClientAddress = clientAddress;
+            clientNameController.text = clientName;
+            clientEmailController.text = client.email ?? '';
+            clientAddressController.text = clientAddress;
+          });
+          Navigator.of(ctx).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Les informations du client ont été remplies automatiquement'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
+      ),
     );
   }
 }

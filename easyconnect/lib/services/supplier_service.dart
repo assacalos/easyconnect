@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/supplier_model.dart';
@@ -10,8 +9,11 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/storage_service.dart';
 
-class SupplierService extends GetxService {
-  static SupplierService get to => Get.find();
+class SupplierService {
+  static final SupplierService _instance = SupplierService._();
+  static SupplierService get to => _instance;
+  factory SupplierService() => _instance;
+  SupplierService._();
 
   final storage = GetStorage();
 

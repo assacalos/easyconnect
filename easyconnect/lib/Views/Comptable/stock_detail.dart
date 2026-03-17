@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/stock_notifier.dart';
 import 'package:easyconnect/Models/stock_model.dart';
-import 'package:easyconnect/Views/Comptable/stock_form.dart';
 import 'package:intl/intl.dart';
 
-class StockDetail extends StatelessWidget {
+class StockDetail extends ConsumerWidget {
   final Stock stock;
 
   const StockDetail({super.key, required this.stock});
 
   @override
-  Widget build(BuildContext context) {
-    final StockController controller = Get.put(StockController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(stockProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -20,14 +20,14 @@ class StockDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageStocks)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => StockForm(stock: stock)),
-            ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () =>
+                context.go('/stocks/${stock.id}/edit', extra: stock),
+          ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareStock(),
+            onPressed: () => _shareStock(context),
           ),
         ],
       ),
@@ -133,7 +133,7 @@ class StockDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier),
           ],
         ),
       ),
@@ -368,7 +368,8 @@ class StockDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(StockController controller) {
+  Widget _buildActionButtons(
+      BuildContext context, WidgetRef ref, StockNotifier notifier) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -387,61 +388,61 @@ class StockDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (controller.canManageStocks) ...[
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Entrée'),
-                      onPressed: () => _showMovementDialog(controller, 'in'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Entrée'),
+                    onPressed: () =>
+                        _showMovementDialog(context, ref, notifier, 'in'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.remove),
-                      label: const Text('Sortie'),
-                      onPressed: () => _showMovementDialog(controller, 'out'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.remove),
+                    label: const Text('Sortie'),
+                    onPressed: () =>
+                        _showMovementDialog(context, ref, notifier, 'out'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                ],
+                ),
               ],
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                if (controller.canManageStocks) ...[
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => StockForm(stock: stock)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Modifier'),
+                    onPressed: () =>
+                        context.go('/stocks/${stock.id}/edit', extra: stock),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.tune),
-                      label: const Text('Ajuster'),
-                      onPressed: () => _showAdjustmentDialog(controller),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Ajuster'),
+                    onPressed: () =>
+                        _showAdjustmentDialog(context, ref, notifier),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
                     ),
                   ),
-                ],
+                ),
               ],
             ),
           ],
@@ -506,81 +507,97 @@ class StockDetail extends StatelessWidget {
     }
   }
 
-  void _shareStock() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareStock(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showMovementDialog(StockController controller, String type) {
+  void _showMovementDialog(
+      BuildContext context, WidgetRef ref, StockNotifier notifier, String type) {
     final quantityController = TextEditingController();
     final reasonController = TextEditingController();
     final referenceController = TextEditingController();
     final notesController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: Text('${type == 'in' ? 'Entrée' : 'Sortie'} de stock'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: quantityController,
-              decoration: InputDecoration(
-                labelText: 'Quantité *',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.numbers),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Quantité *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
               ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.help_outline),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Raison *',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.help_outline),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: referenceController,
-              decoration: const InputDecoration(
-                labelText: 'Référence (optionnel)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.tag),
+              const SizedBox(height: 16),
+              TextField(
+                controller: referenceController,
+                decoration: const InputDecoration(
+                  labelText: 'Référence (optionnel)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.tag),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optionnel)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.note),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optionnel)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.note),
+                ),
+                maxLines: 3,
               ),
-              maxLines: 3,
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (quantityController.text.isNotEmpty &&
                   reasonController.text.isNotEmpty) {
-                controller.selectedMovementType.value = type;
-                controller.movementQuantityController.text =
-                    quantityController.text;
-                controller.movementReasonController.text =
-                    reasonController.text;
-                controller.movementReferenceController.text =
-                    referenceController.text;
-                controller.movementNotesController.text = notesController.text;
-                controller.addStockMovement(stock);
-                Get.back();
+                final qty = double.tryParse(quantityController.text) ?? 0;
+                if (stock.id == null) return;
+                await notifier.addStockMovement(
+                  stockId: stock.id!,
+                  type: type,
+                  quantity: qty,
+                  reason: reasonController.text.trim(),
+                  reference: referenceController.text.trim().isEmpty
+                      ? null
+                      : referenceController.text.trim(),
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Mouvement enregistré')),
+                  );
+                }
               }
             },
             child: Text('${type == 'in' ? 'Ajouter' : 'Retirer'}'),
@@ -590,15 +607,17 @@ class StockDetail extends StatelessWidget {
     );
   }
 
-  void _showAdjustmentDialog(StockController controller) {
+  void _showAdjustmentDialog(
+      BuildContext context, WidgetRef ref, StockNotifier notifier) {
     final quantityController = TextEditingController(
       text: stock.quantity.toString(),
     );
     final reasonController = TextEditingController();
     final notesController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Ajuster le stock'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -634,19 +653,29 @@ class StockDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (quantityController.text.isNotEmpty &&
                   reasonController.text.isNotEmpty) {
-                controller.adjustmentQuantityController.text =
-                    quantityController.text;
-                controller.adjustmentReasonController.text =
-                    reasonController.text;
-                controller.adjustmentNotesController.text =
-                    notesController.text;
-                controller.adjustStock(stock);
-                Get.back();
+                final newQty = double.tryParse(quantityController.text) ?? 0;
+                if (stock.id == null) return;
+                await notifier.adjustStock(
+                  stockId: stock.id!,
+                  newQuantity: newQty,
+                  reason: reasonController.text.trim(),
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Stock ajusté')),
+                  );
+                }
               }
             },
             child: const Text('Ajuster'),

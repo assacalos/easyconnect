@@ -1,29 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_commande_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/bon_commande_notifier.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BonCommandeDetailPage extends StatelessWidget {
+class BonCommandeDetailPage extends ConsumerWidget {
   final int bonCommandeId;
 
-  BonCommandeDetailPage({super.key, required this.bonCommandeId});
+  const BonCommandeDetailPage({super.key, required this.bonCommandeId});
 
   @override
-  Widget build(BuildContext context) {
-    final BonCommandeController controller = Get.find<BonCommandeController>();
-    final bon = controller.bonCommandes.firstWhereOrNull(
-      (b) => b.id == bonCommandeId,
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(bonCommandeProvider).bonCommandes.where((b) => b.id == bonCommandeId).toList();
+    final bon = list.isEmpty ? null : list.first;
 
     if (bon == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Détails du bon de commande')),
+        appBar: AppBar(
+          leading: const AppBarBackButton(fallbackRoute: '/bon-commandes'),
+          title: const Text('Détails du bon de commande'),
+        ),
         body: const Center(child: Text('Bon de commande introuvable')),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Bon de commande #${bon.id ?? 'N/A'}')),
+      appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/bon-commandes'),
+        title: Text('Bon de commande #${bon.id ?? 'N/A'}'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -33,11 +38,7 @@ class BonCommandeDetailPage extends StatelessWidget {
             const SizedBox(height: 16),
             _card('Informations', [
               _row(Icons.person, 'Client ID', bon.clientId.toString()),
-              _row(
-                Icons.person_outline,
-                'Commercial ID',
-                bon.commercialId.toString(),
-              ),
+              _row(Icons.person_outline, 'Commercial ID', bon.commercialId.toString()),
               _row(Icons.info, 'Statut', bon.statusText),
             ]),
             if (bon.fichiers.isNotEmpty) ...[
@@ -45,41 +46,35 @@ class BonCommandeDetailPage extends StatelessWidget {
               _card('Fichiers scannés', [
                 Text('Nombre de fichiers: ${bon.fichiers.length}'),
                 const SizedBox(height: 8),
-                if (bon.fichiers.isEmpty)
-                  const Text('Aucun fichier')
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: bon.fichiers.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.attach_file, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(bon.fichiers[index])),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: bon.fichiers.length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.attach_file, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(bon.fichiers[index])),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ]),
             ],
             if (bon.status == 2) ...[
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => controller.generatePDF(bon.id!),
+                onPressed: () => _generatePdf(context, ref, bon.id!),
                 icon: const Icon(Icons.picture_as_pdf),
                 label: const Text('Générer PDF'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
               ),
             ],
@@ -87,6 +82,17 @@ class BonCommandeDetailPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _generatePdf(BuildContext context, WidgetRef ref, int id) async {
+    try {
+      await ref.read(bonCommandeProvider.notifier).generatePDF(id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF généré avec succès'), backgroundColor: Colors.green));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+    }
   }
 
   Widget _header(BonCommande b) {

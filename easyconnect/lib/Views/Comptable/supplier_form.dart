@@ -1,49 +1,93 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/supplier_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/supplier_notifier.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 
-class SupplierForm extends StatelessWidget {
+final _emailRegex = RegExp(
+  r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+);
+
+class SupplierForm extends ConsumerStatefulWidget {
   final Supplier? supplier;
 
   const SupplierForm({super.key, this.supplier});
 
   @override
+  ConsumerState<SupplierForm> createState() => _SupplierFormState();
+}
+
+class _SupplierFormState extends ConsumerState<SupplierForm> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController nomController;
+  late final TextEditingController emailController;
+  late final TextEditingController telephoneController;
+  late final TextEditingController adresseController;
+  late final TextEditingController villeController;
+  late final TextEditingController paysController;
+  late final TextEditingController descriptionController;
+  late final TextEditingController commentairesController;
+
+  @override
+  void initState() {
+    super.initState();
+    nomController = TextEditingController(text: widget.supplier?.nom ?? '');
+    emailController = TextEditingController(text: widget.supplier?.email ?? '');
+    telephoneController =
+        TextEditingController(text: widget.supplier?.telephone ?? '');
+    adresseController =
+        TextEditingController(text: widget.supplier?.adresse ?? '');
+    villeController = TextEditingController(text: widget.supplier?.ville ?? '');
+    paysController = TextEditingController(text: widget.supplier?.pays ?? '');
+    descriptionController =
+        TextEditingController(text: widget.supplier?.description ?? '');
+    commentairesController =
+        TextEditingController(text: widget.supplier?.commentaires ?? '');
+  }
+
+  @override
+  void dispose() {
+    nomController.dispose();
+    emailController.dispose();
+    telephoneController.dispose();
+    adresseController.dispose();
+    villeController.dispose();
+    paysController.dispose();
+    descriptionController.dispose();
+    commentairesController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final SupplierController controller = Get.put(SupplierController());
-
-    // Si on édite un fournisseur existant, remplir le formulaire
-    if (supplier != null) {
-      controller.fillForm(supplier!);
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          supplier == null ? 'Nouveau Fournisseur' : 'Modifier le Fournisseur',
+          widget.supplier == null
+              ? 'Nouveau Fournisseur'
+              : 'Modifier le Fournisseur',
         ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: () => _saveSupplier(controller),
+            onPressed: () => _saveSupplier(context),
           ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
+          key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Informations de base
               _buildSectionTitle('Informations de base'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.nomController,
+                controller: nomController,
                 decoration: const InputDecoration(
                   labelText: 'Nom du fournisseur *',
                   border: OutlineInputBorder(),
@@ -56,11 +100,9 @@ class SupplierForm extends StatelessWidget {
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.emailController,
+                controller: emailController,
                 decoration: const InputDecoration(
                   labelText: 'Email *',
                   border: OutlineInputBorder(),
@@ -71,17 +113,15 @@ class SupplierForm extends StatelessWidget {
                   if (value == null || value.trim().isEmpty) {
                     return 'L\'email est obligatoire';
                   }
-                  if (!GetUtils.isEmail(value)) {
+                  if (!_emailRegex.hasMatch(value)) {
                     return 'Format d\'email invalide';
                   }
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.telephoneController,
+                controller: telephoneController,
                 decoration: const InputDecoration(
                   labelText: 'Téléphone *',
                   border: OutlineInputBorder(),
@@ -95,15 +135,11 @@ class SupplierForm extends StatelessWidget {
                   return null;
                 },
               ),
-
               const SizedBox(height: 24),
-
-              // Adresse
               _buildSectionTitle('Adresse'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.adresseController,
+                controller: adresseController,
                 decoration: const InputDecoration(
                   labelText: 'Adresse *',
                   border: OutlineInputBorder(),
@@ -117,14 +153,12 @@ class SupplierForm extends StatelessWidget {
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
-                      controller: controller.villeController,
+                      controller: villeController,
                       decoration: const InputDecoration(
                         labelText: 'Ville *',
                         border: OutlineInputBorder(),
@@ -141,7 +175,7 @@ class SupplierForm extends StatelessWidget {
                   const SizedBox(width: 16),
                   Expanded(
                     child: TextFormField(
-                      controller: controller.paysController,
+                      controller: paysController,
                       decoration: const InputDecoration(
                         labelText: 'Pays *',
                         border: OutlineInputBorder(),
@@ -157,15 +191,11 @@ class SupplierForm extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Description et commentaires
               _buildSectionTitle('Informations supplémentaires'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.descriptionController,
+                controller: descriptionController,
                 decoration: const InputDecoration(
                   labelText: 'Description',
                   border: OutlineInputBorder(),
@@ -174,11 +204,9 @@ class SupplierForm extends StatelessWidget {
                 ),
                 maxLines: 3,
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.commentairesController,
+                controller: commentairesController,
                 decoration: const InputDecoration(
                   labelText: 'Commentaires',
                   border: OutlineInputBorder(),
@@ -187,13 +215,10 @@ class SupplierForm extends StatelessWidget {
                 ),
                 maxLines: 3,
               ),
-
               const SizedBox(height: 32),
-
-              // Boutons d'action uniformes
               UniformFormButtons(
-                onCancel: () => Get.back(),
-                onSubmit: () => _saveSupplier(controller),
+                onCancel: () => context.pop(),
+                onSubmit: () => _saveSupplier(context),
                 submitText: 'Soumettre',
               ),
             ],
@@ -214,18 +239,75 @@ class SupplierForm extends StatelessWidget {
     );
   }
 
-  void _saveSupplier(SupplierController controller) async {
-    bool success = false;
-    if (supplier == null) {
-      success = await controller.createSupplier();
-    } else {
-      success = await controller.updateSupplier(supplier!);
-    }
+  Future<void> _saveSupplier(BuildContext context) async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    // Rediriger vers la page de liste après succès
-    if (success) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      Get.offNamed('/suppliers');
+    final notifier = ref.read(supplierProvider.notifier);
+    final nom = nomController.text.trim();
+    final email = emailController.text.trim();
+    final telephone = telephoneController.text.trim();
+    final adresse = adresseController.text.trim();
+    final ville = villeController.text.trim();
+    final pays = paysController.text.trim();
+    final description = descriptionController.text.trim();
+    final commentaires = commentairesController.text.trim();
+
+    try {
+      bool success = false;
+      if (widget.supplier == null) {
+        final newSupplier = Supplier(
+          nom: nom,
+          email: email,
+          telephone: telephone,
+          adresse: adresse,
+          ville: ville,
+          pays: pays,
+          description: description.isEmpty ? null : description,
+          commentaires: commentaires.isEmpty ? null : commentaires,
+          statut: 'en_attente',
+        );
+        success = await notifier.createSupplier(newSupplier);
+      } else {
+        final updated = widget.supplier!.copyWith(
+          nom: nom,
+          email: email,
+          telephone: telephone,
+          adresse: adresse,
+          ville: ville,
+          pays: pays,
+          description: description.isEmpty ? null : description,
+          commentaires: commentaires.isEmpty ? null : commentaires,
+        );
+        success = await notifier.updateSupplier(updated);
+      }
+
+      if (context.mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Fournisseur enregistré avec succès'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          context.go('/suppliers');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erreur lors de l\'enregistrement'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

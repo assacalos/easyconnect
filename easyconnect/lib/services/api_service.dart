@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/utils/app_config.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/services/session_service.dart';
 
@@ -47,11 +49,28 @@ class ApiService {
   }
 
   // -------------------- AUTH --------------------
+  /// Sur le web, récupère le cookie CSRF auprès de Laravel Sanctum avant toute requête stateful (login, etc.).
+  /// Sans cet appel, le navigateur n'a pas le cookie XSRF-TOKEN et Laravel renvoie "CSRF token mismatch".
+  static Future<void> _ensureCsrfCookieIfWeb() async {
+    if (!kIsWeb) return;
+    try {
+      final csrfUrl = '${AppConfig.baseUrlWithoutApi}/sanctum/csrf-cookie';
+      await http.get(Uri.parse(csrfUrl)).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('CSRF cookie timeout'),
+      );
+    } catch (_) {
+      // En cas d'échec, le login échouera avec une erreur explicite
+    }
+  }
+
   static Future<Map<String, dynamic>> login(
     String email,
     String password,
   ) async {
     try {
+      await _ensureCsrfCookieIfWeb();
+
       final url = "$baseUrl/login";
       final requestHeaders = headers();
       final requestBody = jsonEncode({"email": email, "password": password});
@@ -59,10 +78,10 @@ class ApiService {
       final response = await http
           .post(Uri.parse(url), headers: requestHeaders, body: requestBody)
           .timeout(
-            const Duration(seconds: 30),
+            const Duration(seconds: 60),
             onTimeout: () {
               throw Exception(
-                'Timeout: Le serveur ne répond pas dans les 30 secondes',
+                'Timeout: Le serveur ne répond pas. Vérifiez votre connexion ou réessayez.',
               );
             },
           );
@@ -104,10 +123,19 @@ class ApiService {
           "statusCode": null,
         };
       }
+      if (errorString.contains('timeout')) {
+        return {
+          "success": false,
+          "message":
+              "Le serveur met trop de temps à répondre. Vérifiez votre connexion internet et réessayez.",
+          "errorType": "timeout",
+          "statusCode": null,
+        };
+      }
 
       return {
         "success": false,
-        "message": e.toString(),
+        "message": e.toString().replaceFirst('Exception: ', ''),
         "errorType": "unknown",
         "statusCode": null,
       };
@@ -125,6 +153,8 @@ class ApiService {
     File? photo,
   }) async {
     try {
+      await _ensureCsrfCookieIfWeb();
+
       final url = '$baseUrl/register';
 
       if (photo != null) {

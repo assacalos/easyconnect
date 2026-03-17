@@ -1,21 +1,19 @@
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/utils/encoding_helper.dart';
 
-class NotificationService extends GetxService {
-  static NotificationService get to => Get.find();
+class NotificationService {
+  static final NotificationService _instance = NotificationService._();
+  static NotificationService get to => _instance;
+  factory NotificationService() => _instance;
+  NotificationService._();
 
-  final notifications = <AppNotification>[].obs;
-  final unreadCount = 0.obs;
+  final List<AppNotification> notifications = [];
+  int get unreadCount => notifications.where((n) => !n.isRead).length;
 
-  void startNotificationListener() {
-    // Initialiser l'écoute des notifications
-    // Cette méthode sera appelée au démarrage de l'app
-  }
+  void startNotificationListener() {}
 
   void addNotification(AppNotification notification) {
     notifications.insert(0, notification);
-    _showNotificationSnackbar(notification);
     _updateUnreadCount();
   }
 
@@ -28,15 +26,12 @@ class NotificationService extends GetxService {
   }
 
   void _updateUnreadCount() {
-    unreadCount.value = notifications.where((n) => !n.isRead).length;
+    // Caller peut écouter ou rafraîchir via notifier Riverpod
   }
 
-  void _showNotificationSnackbar(AppNotification notification) {
-    Get.snackbar(
-      fixUtf8Mojibake(notification.title),
-      fixUtf8Mojibake(notification.message),
-      duration: const Duration(seconds: 4),
-      isDismissible: true,
-    );
-  }
+  /// À appeler par l'UI pour afficher un snackbar (ex: avec ScaffoldMessenger).
+  static String getNotificationTitle(AppNotification n) =>
+      fixUtf8Mojibake(n.title);
+  static String getNotificationMessage(AppNotification n) =>
+      fixUtf8Mojibake(n.message);
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/bindings/app_bindings.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Views/Patron/client_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bordereau_validation_page.dart';
 import 'package:easyconnect/Views/Patron/bon_commande_validation_page.dart';
@@ -16,7 +15,7 @@ import 'package:easyconnect/Views/Patron/taxe_validation_page.dart';
 import 'package:easyconnect/Views/Patron/reporting_validation_page.dart';
 
 class ValidationDashboard extends StatelessWidget {
-  const ValidationDashboard({Key? key}) : super(key: key);
+  const ValidationDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -34,84 +33,95 @@ class ValidationDashboard extends StatelessWidget {
           mainAxisSpacing: 16,
           children: [
             _buildValidationCard(
+              context: context,
               title: 'Clients',
               icon: Icons.people,
               color: Colors.blue,
-              onTap: () => Get.to(() => ClientValidationPage()),
+              onTap: () => context.push('/clients/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Devis',
               icon: Icons.description,
               color: Colors.green,
-              onTap: () => Get.to(() => const BordereauValidationPage()),
+              onTap: () => context.push('/devis/validation'),
             ),
-
             _buildValidationCard(
+              context: context,
               title: 'Bordereaux',
               icon: Icons.description,
               color: Colors.green,
-              onTap: () => Get.to(() => const BordereauValidationPage()),
+              onTap: () => context.push('/bordereaux/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Bons de Commande',
               icon: Icons.shopping_cart,
               color: Colors.orange,
-              onTap: () => Get.to(() => const BonCommandeValidationPage()),
+              onTap: () => context.push('/bon-commandes/validation'),
             ),
-
             _buildValidationCard(
+              context: context,
               title: 'Factures',
               icon: Icons.receipt,
               color: Colors.red,
-              onTap: () => Get.to(() => const FactureValidationPage()),
+              onTap: () => context.push('/factures/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Paiements',
               icon: Icons.payment,
               color: Colors.teal,
-              onTap: () => Get.to(() => const PaiementValidationPage()),
+              onTap: () => context.push('/paiements/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Stock',
               icon: Icons.inventory,
               color: Colors.deepPurple,
-              onTap: () => Get.to(() => const StockValidationPage()),
+              onTap: () => context.push('/stock/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Interventions',
               icon: Icons.build,
               color: Colors.indigo,
-              onTap: () => Get.to(() => const InterventionValidationPage()),
+              onTap: () => context.push('/interventions/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Salaires',
               icon: Icons.account_balance_wallet,
               color: Colors.amber,
-              onTap: () => Get.to(() => const SalaireValidationPage()),
+              onTap: () => context.push('/salaires/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Recrutement',
               icon: Icons.person_add,
               color: Colors.cyan,
-              onTap: () => Get.to(() => const RecruitmentValidationPage()),
+              onTap: () => context.push('/recrutement/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Pointage',
               icon: Icons.access_time,
               color: Colors.brown,
-              onTap: () => Get.to(() => const PointageValidationPage()),
+              onTap: () => context.push('/pointage/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Taxes et Impôts',
               icon: Icons.account_balance,
               color: Colors.deepOrange,
-              onTap: () => Get.to(() => const TaxeValidationPage()),
+              onTap: () => context.push('/taxes/validation'),
             ),
             _buildValidationCard(
+              context: context,
               title: 'Reporting',
               icon: Icons.analytics,
               color: Colors.pink,
-              onTap: () => Get.to(() => const ReportingValidationPage()),
+              onTap: () => context.push('/reporting/validation'),
             ),
           ],
         ),
@@ -120,6 +130,7 @@ class ValidationDashboard extends StatelessWidget {
   }
 
   Widget _buildValidationCard({
+    required BuildContext context,
     required String title,
     required IconData icon,
     required Color color,

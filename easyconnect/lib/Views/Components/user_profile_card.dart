@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/models/user_model.dart';
+import 'package:easyconnect/Models/user_model.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/permission_list.dart';
 
-class UserProfileCard extends StatelessWidget {
+class UserProfileCard extends ConsumerWidget {
   final bool showPermissions;
   final bool expanded;
 
@@ -17,81 +18,79 @@ class UserProfileCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    if (user == null) return const SizedBox.shrink();
 
-    // Obx ciblé uniquement sur userAuth - ne reconstruit que si l'utilisateur change
-    return Obx(() {
-      final user = authController.userAuth.value;
-      if (user == null) return const SizedBox.shrink();
-
-      return Card(
-        margin: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: _buildAvatar(user),
-              title: Text(
-                "${user.prenom ?? ''} ${user.nom ?? ''}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Column(
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: _buildAvatar(user),
+            title: Text(
+              "${user.prenom ?? ''} ${user.nom ?? ''}",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(user.email ?? ''),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    Roles.getRoleName(user.role),
+                    style: TextStyle(
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                await ref.read(authProvider.notifier).logout();
+                if (context.mounted) context.go('/login');
+              },
+            ),
+          ),
+          if (showPermissions) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 4),
-                  Text(user.email ?? ''),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                  Text(
+                    "Permissions",
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      Roles.getRoleName(user.role),
-                      style: TextStyle(
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  PermissionList(
+                    userRole: user.role,
+                    showOnlyGranted: !expanded,
                   ),
                 ],
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () => authController.logout(),
-              ),
             ),
-            if (showPermissions) ...[
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Permissions",
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    PermissionList(
-                      userRole: user.role,
-                      showOnlyGranted: !expanded,
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
-        ),
-      );
-    });
+        ],
+      ),
+    );
   }
 
   Widget _buildAvatar(dynamic user) {

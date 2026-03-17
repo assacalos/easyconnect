@@ -1,29 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:easyconnect/providers/devis_notifier.dart';
 import 'package:easyconnect/Models/devis_model.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class DevisDetailPage extends StatelessWidget {
+class DevisDetailPage extends ConsumerWidget {
   final int devisId;
 
-  DevisDetailPage({super.key, required this.devisId});
+  const DevisDetailPage({super.key, required this.devisId});
 
   @override
-  Widget build(BuildContext context) {
-    final DevisController controller = Get.find<DevisController>();
-    final devis = controller.devis.firstWhereOrNull((d) => d.id == devisId);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final devisList = ref.watch(devisProvider).devis.where((d) => d.id == devisId).toList();
+    final devis = devisList.isEmpty ? null : devisList.first;
     final formatDate = DateFormat('dd/MM/yyyy');
 
     if (devis == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Détails du devis')),
+        appBar: AppBar(
+          leading: const AppBarBackButton(fallbackRoute: '/devis'),
+          title: const Text('Détails du devis'),
+        ),
         body: const Center(child: Text('Devis introuvable')),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Devis ${devis.reference}')),
+      appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/devis'),
+        title: Text('Devis ${devis.reference}'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

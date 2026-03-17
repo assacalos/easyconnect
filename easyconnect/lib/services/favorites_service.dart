@@ -1,23 +1,22 @@
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
-class FavoritesService extends GetxService {
-  static FavoritesService get to => Get.find();
-
-  final _storage = GetStorage();
-  final favorites = <String>[].obs;
-  static const _storageKey = 'favorites';
-
-  @override
-  void onInit() {
-    super.onInit();
+class FavoritesService {
+  static final FavoritesService _instance = FavoritesService._();
+  static FavoritesService get to => _instance;
+  factory FavoritesService() => _instance;
+  FavoritesService._() {
     _loadFavorites();
   }
+
+  final _storage = GetStorage();
+  final List<String> favorites = [];
+  static const _storageKey = 'favorites';
 
   void _loadFavorites() {
     final storedFavorites = _storage.read<List?>(_storageKey);
     if (storedFavorites != null) {
-      favorites.value = List<String>.from(storedFavorites);
+      favorites.clear();
+      favorites.addAll(List<String>.from(storedFavorites));
     }
   }
 

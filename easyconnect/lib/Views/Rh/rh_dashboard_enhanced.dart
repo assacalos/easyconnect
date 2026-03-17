@@ -1,76 +1,146 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/rh_dashboard_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Views/Components/base_dashboard.dart';
-import 'package:easyconnect/Views/Components/filter_bar.dart';
-import 'package:easyconnect/Views/Components/favorites_bar.dart';
-import 'package:easyconnect/Views/Components/stats_grid.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
+import 'package:easyconnect/providers/rh_dashboard_notifier.dart';
+import 'package:easyconnect/providers/rh_dashboard_state.dart';
+import 'package:easyconnect/providers/dashboard_refresh_callback.dart';
+import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
+import 'package:easyconnect/Views/Components/user_profile_card.dart';
+import 'package:easyconnect/Views/Components/paginated_data_view.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/utils/dashboard_filters.dart';
+import 'package:easyconnect/utils/dashboard_entity_colors.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/dashboard_web_chart_section.dart';
+import 'package:easyconnect/Views/Components/rendements_et_alertes_card.dart';
 
-class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
+/// Dashboard RH migré vers Riverpod.
+class RhDashboardEnhanced extends ConsumerStatefulWidget {
   const RhDashboardEnhanced({super.key});
 
-  @override
-  String get title => 'RH';
+  static const String title = 'RH';
+  static const Color primaryColor = Color(0xFF6B21A8);
 
   @override
-  Color get primaryColor => const Color(0xFF6B21A8); // Purple 800
+  ConsumerState<RhDashboardEnhanced> createState() =>
+      _RhDashboardEnhancedState();
+}
+
+class _RhDashboardEnhancedState extends ConsumerState<RhDashboardEnhanced> {
+  final _scrollController = ScrollController();
 
   @override
-  Future<void> Function()? get onRefresh => () => controller.loadData();
-
-  @override
-  List<Filter> get availableFilters =>
-      DashboardFilters.getFiltersForRole(Roles.RH);
-
-  @override
-  List<FavoriteItem> get favoriteItems => [
-    FavoriteItem(id: 'employees', label: 'Employés', icon: Icons.people, route: '/employees'),
-    FavoriteItem(id: 'leaves', label: 'Congés', icon: Icons.beach_access, route: '/leaves'),
-    FavoriteItem(id: 'recruitment', label: 'Recrutement', icon: Icons.person_add, route: '/recruitment'),
-    FavoriteItem(id: 'contracts', label: 'Contrats', icon: Icons.description, route: '/contracts'),
-    FavoriteItem(id: 'tasks', label: 'Mes tâches', icon: Icons.task_alt, route: '/tasks'),
-  ];
-
-  @override
-  List<StatCard> get statsCards => controller.enhancedStats;
-
-  @override
-  Map<String, ChartConfig> get charts => {};
-
-  static String _formatAmount(double value) {
-    if (value >= 1e6) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
-    if (value >= 1e3) return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
-    return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DashboardRefreshCallback.instance.refreshRh = () {
+        ref.read(rhDashboardProvider.notifier).refresh();
+      };
+    });
   }
 
   @override
-  Widget buildCustomContent(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildWelcomeCard(context),
-          const SizedBox(height: 24),
-          _buildQuickActions(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel('En attente', Icons.schedule, const Color(0xFFF59E0B)),
-          const SizedBox(height: 12),
-          _buildPendingSection(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel('Validés', Icons.check_circle_outline, const Color(0xFF059669)),
-          const SizedBox(height: 12),
-          _buildValidatedSection(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel('Montants', Icons.trending_up, const Color(0xFF7C3AED)),
-          const SizedBox(height: 12),
-          _buildStatisticsSection(context),
+  void dispose() {
+    DashboardRefreshCallback.instance.refreshRh = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final asyncState = ref.watch(rhDashboardProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(RhDashboardEnhanced.title),
+        backgroundColor: RhDashboardEnhanced.primaryColor,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () => ref.read(rhDashboardProvider.notifier).refresh(),
+            tooltip: 'Actualiser',
+          ),
         ],
       ),
+      drawer: _buildDrawer(context),
+      body: asyncState.when(
+        data: (state) => RefreshIndicator(
+          onRefresh: () => ref.read(rhDashboardProvider.notifier).refresh(),
+          child: _buildBody(context, state),
+        ),
+        loading: () =>
+            _buildBody(context, const RhDashboardState(isLoading: true)),
+        error: (e, _) => _buildErrorBody(context, e, () => ref.read(rhDashboardProvider.notifier).refresh()),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildErrorBody(BuildContext context, Object error, VoidCallback onRetry) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade600),
+            const SizedBox(height: 16),
+            Text(
+              'Impossible de charger le dashboard.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, RhDashboardState state) {
+    return PaginatedDataView(
+      scrollController: _scrollController,
+      onLoadMore: () {},
+      hasMoreData: false,
+      isLoading: state.isLoading,
+      children: [
+        const UserProfileCard(showPermissions: false),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeCard(context),
+              const SizedBox(height: 24),
+              _buildQuickActions(context),
+              const SizedBox(height: 24),
+              _buildRendementsEtAlertes(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'En attente', Icons.schedule, const Color(0xFFF59E0B)),
+              const SizedBox(height: 12),
+              _buildPendingSection(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'Validés', Icons.check_circle_outline, const Color(0xFF059669)),
+              const SizedBox(height: 12),
+              _buildValidatedSection(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'Montants', Icons.trending_up, const Color(0xFF7C3AED)),
+              const SizedBox(height: 12),
+              if (kIsWeb) _buildMontantsWeb(context, state) else _buildStatisticsSection(context, state),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -100,66 +170,83 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
   }
 
   Widget _buildWelcomeCard(BuildContext context) {
-    return Obx(() {
-      final user = Get.find<AuthController>().userAuth.value;
-      final prenom = user?.prenom?.trim().isNotEmpty == true ? user!.prenom! : 'RH';
-      final hour = DateTime.now().hour;
-      final greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF6B21A8),
-              const Color(0xFF7C3AED),
-            ],
+    final user = ref.watch(authProvider).user;
+    final prenom =
+        user?.prenom?.trim().isNotEmpty == true ? user!.prenom! : 'RH';
+    final hour = DateTime.now().hour;
+    final greeting =
+        hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6B21A8), Color(0xFF7C3AED)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$greeting, $prenom',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.5,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$greeting, $prenom',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -0.5,
-              ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
             ),
-            const SizedBox(height: 6),
-            Text(
-              DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withOpacity(0.7),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
-      _QuickAction(label: 'Employés', icon: Icons.people, route: '/employees', color: const Color(0xFF3B82F6)),
-      _QuickAction(label: 'Congés', icon: Icons.beach_access, route: '/leaves', color: const Color(0xFF0EA5E9)),
-      _QuickAction(label: 'Recrutement', icon: Icons.person_add, route: '/recruitment', color: const Color(0xFF10B981)),
-      _QuickAction(label: 'Contrats', icon: Icons.description, route: '/contracts', color: const Color(0xFF7C3AED)),
-      _QuickAction(label: 'Pointages', icon: Icons.access_time, route: '/attendance', color: const Color(0xFFF59E0B)),
+      _QuickAction(
+          label: 'Employés',
+          icon: Icons.people,
+          route: '/employees',
+          color: DashboardEntityColors.employes),
+      _QuickAction(
+          label: 'Congés',
+          icon: Icons.beach_access,
+          route: '/leaves',
+          color: DashboardEntityColors.conges),
+      _QuickAction(
+          label: 'Recrutement',
+          icon: Icons.person_add,
+          route: '/recruitment',
+          color: DashboardEntityColors.recruitment),
+      _QuickAction(
+          label: 'Contrats',
+          icon: Icons.description,
+          route: '/contracts',
+          color: DashboardEntityColors.contracts),
+      _QuickAction(
+          label: 'Pointages',
+          icon: Icons.access_time,
+          route: '/attendance-punch',
+          color: DashboardEntityColors.attendance),
     ];
     return SizedBox(
       height: 48,
@@ -172,10 +259,11 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
           return Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => Get.toNamed(a.route),
+              onTap: () => context.go(a.route),
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: a.color.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(14),
@@ -204,15 +292,106 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
     );
   }
 
-  Widget _buildPendingSection(BuildContext context) {
-    final items = [
-      _Item('Congés', () => controller.pendingLeaves.value, Icons.beach_access, const Color(0xFF0EA5E9), '/leaves'),
-      _Item('Recrutements', () => controller.pendingRecruitments.value, Icons.person_add, const Color(0xFF10B981), '/recruitment'),
-      _Item('Pointages', () => controller.pendingAttendance.value, Icons.access_time, const Color(0xFFF59E0B), '/attendance'),
-      _Item('Contrats', () => controller.pendingContracts.value, Icons.description, const Color(0xFF7C3AED), '/contracts'),
-      _Item('Tâches', () => controller.pendingTasks.value, Icons.task_alt, const Color(0xFF7C3AED), '/tasks'),
+  Widget _buildRendementsEtAlertes(
+    BuildContext context,
+    RhDashboardState state,
+  ) {
+    final rendements = <RendementItem>[
+      RendementItem(
+        label: 'Employés actifs',
+        value: state.activeEmployees.toString(),
+        route: '/employees',
+        icon: Icons.people,
+        color: const Color(0xFF059669),
+      ),
+      RendementItem(
+        label: 'Congés approuvés',
+        value: state.approvedLeaves.toString(),
+        route: '/leaves',
+        icon: Icons.beach_access,
+        color: DashboardEntityColors.conges,
+      ),
+      RendementItem(
+        label: 'Recrutements finalisés',
+        value: state.completedRecruitments.toString(),
+        route: '/recruitment',
+        icon: Icons.person_add,
+        color: DashboardEntityColors.recruitment,
+      ),
+      RendementItem(
+        label: 'Salaires versés',
+        value: state.paidSalaries.toString(),
+        route: '/salaries',
+        icon: Icons.account_balance_wallet,
+        color: DashboardEntityColors.salaries,
+      ),
+      RendementItem(
+        label: 'Contrats approuvés',
+        value: state.approvedContracts.toString(),
+        route: '/contracts',
+        icon: Icons.description,
+        color: DashboardEntityColors.contracts,
+      ),
     ];
-    final crossCount = Get.width > 800 ? 4 : 2;
+    final alertes = <AlerteItem>[
+      if (state.pendingLeaves > 0)
+        AlerteItem(
+          message: '${state.pendingLeaves} demande(s) de congé en attente',
+          route: '/leaves',
+          icon: Icons.beach_access,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingRecruitments > 0)
+        AlerteItem(
+          message: '${state.pendingRecruitments} recrutement(s) en attente',
+          route: '/recruitment',
+          icon: Icons.person_add,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingAttendance > 0)
+        AlerteItem(
+          message: '${state.pendingAttendance} pointage(s) en attente',
+          route: '/attendance-punch',
+          icon: Icons.access_time,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingContracts > 0)
+        AlerteItem(
+          message: '${state.pendingContracts} contrat(s) en attente',
+          route: '/contracts',
+          icon: Icons.description,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingTasks > 0)
+        AlerteItem(
+          message: '${state.pendingTasks} tâche(s) à traiter',
+          route: '/tasks',
+          icon: Icons.task_alt,
+          color: const Color(0xFFDC2626),
+        ),
+    ];
+    return RendementsEtAlertesCard(
+      titleRendements: 'Mes rendements',
+      rendements: rendements,
+      titleAlertes: 'À faire / Ce qui ne va pas',
+      alertes: alertes,
+    );
+  }
+
+  Widget _buildPendingSection(BuildContext context, RhDashboardState state) {
+    final items = [
+      _Item('Congés', state.pendingLeaves, Icons.beach_access,
+          DashboardEntityColors.conges, '/leaves'),
+      _Item('Recrutements', state.pendingRecruitments, Icons.person_add,
+          DashboardEntityColors.recruitment, '/recruitment'),
+      _Item('Pointages', state.pendingAttendance, Icons.access_time,
+          DashboardEntityColors.attendance, '/attendance-punch'),
+      _Item('Contrats', state.pendingContracts, Icons.description,
+          DashboardEntityColors.contracts, '/contracts'),
+      _Item('Tâches', state.pendingTasks, Icons.task_alt,
+          DashboardEntityColors.tasks, '/tasks'),
+    ];
+    final crossCount = MediaQuery.of(context).size.width > 800 ? 4 : 2;
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -220,24 +399,31 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children: items.map((e) => _buildModernCard(
-        title: e.title,
-        count: e.count,
-        icon: e.icon,
-        color: e.color,
-        onTap: () => Get.toNamed(e.route),
-        badgeColor: const Color(0xFFF59E0B),
-      )).toList(),
+      children: items
+          .map((e) => _buildModernCard(
+                title: e.title,
+                count: e.count,
+                icon: e.icon,
+                color: e.color,
+                onTap: () => context.go(e.route),
+                badgeColor: const Color(0xFFF59E0B),
+                isLoading: state.isLoading,
+              ))
+          .toList(),
     );
   }
 
-  Widget _buildValidatedSection(BuildContext context) {
+  Widget _buildValidatedSection(BuildContext context, RhDashboardState state) {
     final items = [
-      _ValidatedItem('Congés', () => controller.approvedLeaves.value, Icons.beach_access, const Color(0xFF0EA5E9), 'Validés', '/leaves?tab=2'),
-      _ValidatedItem('Recrutements', () => controller.completedRecruitments.value, Icons.person_add, const Color(0xFF10B981), 'Embauches', '/recruitment?tab=2'),
-      _ValidatedItem('Contrats', () => controller.approvedContracts.value, Icons.description, const Color(0xFF7C3AED), 'Actifs', '/contracts?tab=2'),
+      _ValidatedItem('Congés', state.approvedLeaves, Icons.beach_access,
+          DashboardEntityColors.conges, 'Validés', '/leaves?tab=2'),
+      _ValidatedItem('Recrutements', state.completedRecruitments,
+          Icons.person_add, DashboardEntityColors.recruitment, 'Embauches',
+          '/recruitment?tab=2'),
+      _ValidatedItem('Contrats', state.approvedContracts, Icons.description,
+          DashboardEntityColors.contracts, 'Actifs', '/contracts?tab=2'),
     ];
-    final crossCount = Get.width > 800 ? 3 : 2;
+    final crossCount = MediaQuery.of(context).size.width > 800 ? 3 : 2;
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -245,24 +431,75 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children: items.map((e) => _buildModernCard(
-        title: e.title,
-        count: e.count,
-        icon: e.icon,
-        color: e.color,
-        subtitle: e.subtitle,
-        onTap: () => Get.toNamed(e.route),
-        badgeColor: const Color(0xFF059669),
-      )).toList(),
+      children: items
+          .map((e) => _buildModernCard(
+                title: e.title,
+                count: e.count,
+                icon: e.icon,
+                color: e.color,
+                subtitle: e.subtitle,
+                onTap: () => context.go(e.route),
+                badgeColor: const Color(0xFF059669),
+                isLoading: state.isLoading,
+              ))
+          .toList(),
     );
   }
 
-  Widget _buildStatisticsSection(BuildContext context) {
+  Widget _buildMontantsWeb(BuildContext context, RhDashboardState state) {
+    const blue = Color(0xFF3B82F6);
+    const green = Color(0xFF10B981);
+    const orange = Color(0xFFF59E0B);
+    return DashboardWebChartSection(
+      isLoading: state.isLoading,
+      barItems: [
+        DashboardBarItem('Primes', state.totalBonuses, green),
+        DashboardBarItem('Recrutement', state.recruitmentCost, orange),
+        DashboardBarItem('Formation', state.trainingCost, blue),
+      ],
+      cardItems: [
+        DashboardKpiCardItem(
+          title: 'Employés actifs',
+          valueText: state.activeEmployees.toString(),
+          icon: Icons.people,
+          color: blue,
+        ),
+        DashboardKpiCardItem(
+          title: 'Primes versées',
+          valueText: _formatAmount(state.totalBonuses),
+          icon: Icons.card_giftcard,
+          color: green,
+        ),
+        DashboardKpiCardItem(
+          title: 'Coût recrutement',
+          valueText: _formatAmount(state.recruitmentCost),
+          icon: Icons.person_add,
+          color: orange,
+        ),
+        DashboardKpiCardItem(
+          title: 'Coût formation',
+          valueText: _formatAmount(state.trainingCost),
+          icon: Icons.school,
+          color: blue,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatisticsSection(BuildContext context, RhDashboardState state) {
     return Column(
       children: [
         _buildStatRow(
+          'Employés actifs',
+          state.activeEmployees.toString(),
+          Icons.people,
+          const Color(0xFF3B82F6),
+          'Effectif total',
+        ),
+        const SizedBox(height: 12),
+        _buildStatRow(
           'Primes versées',
-          () => _formatAmount(controller.totalBonuses.value),
+          _formatAmount(state.totalBonuses),
           Icons.card_giftcard,
           const Color(0xFF10B981),
           'Montant des primes distribuées',
@@ -270,7 +507,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         const SizedBox(height: 12),
         _buildStatRow(
           'Coût recrutement',
-          () => _formatAmount(controller.recruitmentCost.value),
+          _formatAmount(state.recruitmentCost),
           Icons.person_add,
           const Color(0xFFF59E0B),
           'Coût total du recrutement',
@@ -278,7 +515,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
         const SizedBox(height: 12),
         _buildStatRow(
           'Coût formation',
-          () => _formatAmount(controller.trainingCost.value),
+          _formatAmount(state.trainingCost),
           Icons.school,
           const Color(0xFF3B82F6),
           'Investissement formation',
@@ -287,77 +524,86 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
     );
   }
 
-  Widget _buildStatRow(String title, String Function() valueBuilder, IconData icon, Color color, String subtitle) {
-    return Obx(() {
-      final value = valueBuilder();
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+  static String _formatAmount(double value) {
+    if (value >= 1e6) {
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
+    }
+    if (value >= 1e3) {
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
+    }
+    return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
+  }
+
+  Widget _buildStatRow(
+      String title, String value, IconData icon, Color color, String subtitle) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 22, color: color),
+            child: Icon(icon, size: 22, color: color),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildModernCard({
     required String title,
-    required int Function() count,
+    required int count,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
     required Color badgeColor,
     String? subtitle,
+    bool isLoading = false,
   }) {
     return Material(
       color: Colors.transparent,
@@ -369,6 +615,7 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: color, width: 4)),
             boxShadow: [
               BoxShadow(
                 color: color.withOpacity(0.08),
@@ -396,24 +643,33 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                     ),
                     child: Icon(icon, size: 22, color: color),
                   ),
-                  Obx(() {
-                    final c = count();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        c.toString(),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: badgeColor,
-                        ),
-                      ),
-                    );
-                  }),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: isLoading
+                        ? Shimmer(
+                            baseColor: badgeColor.withOpacity(0.25),
+                            highlightColor: badgeColor.withOpacity(0.5),
+                            child: Text(
+                              count.toString(),
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: badgeColor),
+                            ),
+                          )
+                        : Text(
+                            count.toString(),
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: badgeColor),
+                          ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -437,7 +693,8 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     subtitle,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -450,42 +707,123 @@ class RhDashboardEnhanced extends BaseDashboard<RhDashboardController> {
     );
   }
 
-  @override
-  List<Widget> buildDrawerItems(BuildContext context) {
-    return [
-      _drawerItem(Icons.people, 'Employés', () => _nav(context, '/employees')),
-      _drawerItem(Icons.beach_access, 'Congés', () => _nav(context, '/leaves')),
-      _drawerItem(Icons.person_add, 'Recrutement', () => _nav(context, '/recruitment')),
-      _drawerItem(Icons.description, 'Contrats', () => _nav(context, '/contracts')),
-      _drawerItem(Icons.access_time, 'Pointages', () => _nav(context, '/attendance')),
-      Obx(() {
-        final userRole = Get.find<AuthController>().userAuth.value?.role;
-        if (userRole == 1) {
-          return _drawerItem(Icons.settings_applications, 'Paramètres', () {
-            Navigator.pop(context);
-            Get.toNamed('/admin/settings');
-          });
+  Widget _buildDrawer(BuildContext context) {
+    final userRole = ref.watch(authProvider).user?.role;
+    return Drawer(
+      child: Container(
+        color: Colors.grey.shade900,
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration:
+                  BoxDecoration(color: RhDashboardEnhanced.primaryColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    RhDashboardEnhanced.title,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Rôle: ${Roles.getRoleName(userRole)}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            _drawerItem(Icons.people, 'Employés', DashboardEntityColors.employes,
+                () => _nav(context, '/employees')),
+            _drawerItem(Icons.beach_access, 'Congés',
+                DashboardEntityColors.conges, () => _nav(context, '/leaves')),
+            _drawerItem(Icons.person_add, 'Recrutement',
+                DashboardEntityColors.recruitment,
+                () => _nav(context, '/recruitment')),
+            _drawerItem(Icons.description, 'Contrats',
+                DashboardEntityColors.contracts,
+                () => _nav(context, '/contracts')),
+            _drawerItem(Icons.access_time, 'Pointages',
+                DashboardEntityColors.attendance, () {
+              Navigator.pop(context);
+              context.go('/attendance-punch');
+            }),
+            if (userRole == 1)
+              _drawerItem(Icons.settings, 'Paramètres',
+                  DashboardEntityColors.parametres, () {
+                Navigator.pop(context);
+                context.go('/admin/settings');
+              }),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: Icon(Icons.task_alt,
+                  color: DashboardEntityColors.tasks, size: 22),
+              title:
+                  const Text('Mes tâches', style: TextStyle(color: Colors.white70)),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/tasks');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: RhDashboardEnhanced.primaryColor,
+      unselectedItemColor: Colors.grey,
+      items: [
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.home), label: 'Accueil'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.search), label: 'Rechercher'),
+        const BottomNavigationBarItem(
+            icon: NotificationBadgeIcon(), label: 'Notifications'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.person), label: 'Profil'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.photo_library), label: 'Médias'),
+      ],
+      onTap: (index) {
+        switch (index) {
+          case 1:
+            context.go('/search');
+            break;
+          case 2:
+            context.go('/notifications');
+            break;
+          case 3:
+            context.go('/profile');
+            break;
+          case 4:
+            context.go('/media');
+            break;
         }
-        return const SizedBox.shrink();
-      }),
-    ];
+      },
+    );
   }
 
   void _nav(BuildContext context, String route) {
     Navigator.pop(context);
-    Get.toNamed(route);
+    context.go(route);
   }
 
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
+  Widget _drawerItem(
+      IconData icon, String label, Color color, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white70, size: 22),
-      title: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 15)),
+      leading: Icon(icon, color: color, size: 22),
+      title: Text(label,
+          style: const TextStyle(color: Colors.white70, fontSize: 15)),
       onTap: onTap,
     );
   }
-
-  @override
-  Widget? buildFloatingActionButton() => null;
 }
 
 class _QuickAction {
@@ -493,12 +831,16 @@ class _QuickAction {
   final IconData icon;
   final String route;
   final Color color;
-  _QuickAction({required this.label, required this.icon, required this.route, required this.color});
+  _QuickAction(
+      {required this.label,
+      required this.icon,
+      required this.route,
+      required this.color});
 }
 
 class _Item {
   final String title;
-  final int Function() count;
+  final int count;
   final IconData icon;
   final Color color;
   final String route;
@@ -507,10 +849,11 @@ class _Item {
 
 class _ValidatedItem {
   final String title;
-  final int Function() count;
+  final int count;
   final IconData icon;
   final Color color;
   final String subtitle;
   final String route;
-  _ValidatedItem(this.title, this.count, this.icon, this.color, this.subtitle, this.route);
+  _ValidatedItem(
+      this.title, this.count, this.icon, this.color, this.subtitle, this.route);
 }

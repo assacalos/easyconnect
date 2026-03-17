@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/task_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/task_notifier.dart';
+import 'package:easyconnect/providers/task_state.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/task_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/task_form_page.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class TaskListPage extends StatefulWidget {
+class TaskListPage extends ConsumerStatefulWidget {
   const TaskListPage({super.key});
 
   @override
-  State<TaskListPage> createState() => _TaskListPageState();
+  ConsumerState<TaskListPage> createState() => _TaskListPageState();
 }
 
-class _TaskListPageState extends State<TaskListPage> {
+class _TaskListPageState extends ConsumerState<TaskListPage> {
   bool _initialLoadScheduled = false;
 
   @override
@@ -22,110 +25,53 @@ class _TaskListPageState extends State<TaskListPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (_initialLoadScheduled) return;
       _initialLoadScheduled = true;
-      // Court délai pour laisser la route/connexion prête (évite échec au premier chargement)
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-      final taskController = Get.find<TaskController>();
-      if (taskController.canAssignTasks) {
-        taskController.loadUsers();
-        taskController.loadTasks(page: 1);
+      final notifier = ref.read(taskProvider.notifier);
+      final canAssign = notifier.canAssignTasks;
+      if (canAssign) {
+        notifier.loadUsers();
+        notifier.loadTasks(page: 1, forceRefresh: true);
       } else {
-        taskController.setAssignedToFilter(Get.find<AuthController>().userAuth.value?.id);
+        final userId = ref.read(authProvider).user?.id;
+        if (userId != null) notifier.setAssignedToFilter(userId);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final taskController = Get.find<TaskController>();
-    final authController = Get.find<AuthController>();
-    final canAssign = taskController.canAssignTasks;
+    final state = ref.watch(taskProvider);
+    final notifier = ref.read(taskProvider.notifier);
+    final canAssign = notifier.canAssignTasks;
+    final currentUserId = ref.watch(authProvider).user?.id;
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/commercial', iconColor: Colors.white),
         title: const Text('Tâches'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterDialog(context, taskController, canAssign),
+            onPressed: () =>
+                _showFilterDialog(context, notifier, canAssign, state),
           ),
         ],
       ),
-      body: Obx(() {
-        if (taskController.isLoading.value && taskController.tasks.isEmpty && !taskController.loadError.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (taskController.loadError.value) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 64, color: Colors.orange.shade700),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Impossible de charger les tâches',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, color: Colors.grey.shade700),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      taskController.loadError.value = false;
-                      taskController.loadTasks(page: 1);
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Réessayer'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        if (taskController.tasks.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.task_alt, size: 64, color: Colors.grey.shade400),
-                const SizedBox(height: 16),
-                Text(
-                  canAssign ? 'Aucune tâche' : 'Aucune tâche assignée',
-                  style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
-                ),
-                if (canAssign) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Assignez une tâche à un utilisateur',
-                    style: TextStyle(color: Colors.grey.shade500),
-                  ),
-                ],
-              ],
-            ),
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: () => taskController.loadTasks(page: 1),
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: taskController.tasks.length,
-            itemBuilder: (context, index) {
-              final task = taskController.tasks[index];
-              return _buildTaskCard(context, task, taskController, canAssign, authController.userAuth.value?.id);
-            },
-          ),
-        );
-      }),
+      body: _buildBody(state, notifier, canAssign, currentUserId),
       floatingActionButton: canAssign
           ? UniformAddButton(
-              onPressed: () => Get.to(() => const TaskFormPage())?.then((_) => taskController.loadTasks()),
+              onPressed: () {
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => const TaskFormPage(),
+                      ),
+                    )
+                    .then((_) => notifier.loadTasks(page: 1));
+              },
               label: 'Assigner une tâche',
               icon: Icons.add_task,
             )
@@ -133,10 +79,95 @@ class _TaskListPageState extends State<TaskListPage> {
     );
   }
 
+  Widget _buildBody(
+    TaskState state,
+    TaskNotifier notifier,
+    bool canAssign,
+    int? currentUserId,
+  ) {
+    if (state.isLoading && state.tasks.isEmpty && !state.loadError) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state.loadError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.orange.shade700,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Impossible de charger les tâches',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  notifier.loadTasks(page: 1);
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (state.tasks.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.task_alt, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              canAssign ? 'Aucune tâche' : 'Aucune tâche assignée',
+              style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+            ),
+            if (canAssign) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Assignez une tâche à un utilisateur',
+                style: TextStyle(color: Colors.grey.shade500),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadTasks(page: 1),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: state.tasks.length,
+        itemBuilder: (context, index) {
+          final task = state.tasks[index];
+          return _buildTaskCard(
+            context,
+            task,
+            notifier,
+            canAssign,
+            currentUserId,
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildTaskCard(
     BuildContext context,
     TaskModel task,
-    TaskController controller,
+    TaskNotifier notifier,
     bool canAssign,
     int? currentUserId,
   ) {
@@ -146,7 +177,7 @@ class _TaskListPageState extends State<TaskListPage> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => Get.toNamed('/tasks/${task.id}')?.then((_) => controller.loadTasks()),
+        onTap: () => context.go('/tasks/${task.id}'),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -165,39 +196,60 @@ class _TaskListPageState extends State<TaskListPage> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       task.statusLibelle,
-                      style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: statusColor,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
               ),
-              if (task.description != null && task.description!.isNotEmpty) ...[
+              if (task.description != null &&
+                  task.description!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
                   task.description!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
                 ),
               ],
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.person_outline, size: 14, color: Colors.grey.shade600),
+                  Icon(
+                    Icons.person_outline,
+                    size: 14,
+                    color: Colors.grey.shade600,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     task.assigneeName,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: priorityColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -209,11 +261,18 @@ class _TaskListPageState extends State<TaskListPage> {
                   ),
                   if (task.dueDate != null) ...[
                     const SizedBox(width: 8),
-                    Icon(Icons.calendar_today, size: 12, color: Colors.grey.shade600),
+                    Icon(
+                      Icons.calendar_today,
+                      size: 12,
+                      color: Colors.grey.shade600,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       task.dueDate!,
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ],
                 ],
@@ -251,7 +310,12 @@ class _TaskListPageState extends State<TaskListPage> {
     }
   }
 
-  void _showFilterDialog(BuildContext context, TaskController controller, bool canAssign) {
+  void _showFilterDialog(
+    BuildContext context,
+    TaskNotifier notifier,
+    bool canAssign,
+    TaskState state,
+  ) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => Padding(
@@ -260,58 +324,73 @@ class _TaskListPageState extends State<TaskListPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Filtrer par statut', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text(
+              'Filtrer par statut',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               children: [
-                _filterChip(ctx, 'Tous', null, controller.selectedStatus.value == null, () {
-                  controller.setStatusFilter(null);
-                  Get.back();
+                _filterChip(ctx, 'Tous', null,
+                    state.selectedStatus == null, () {
+                  notifier.setStatusFilter(null);
+                  Navigator.pop(ctx);
                 }),
-                _filterChip(ctx, 'En attente', 'pending', controller.selectedStatus.value == 'pending', () {
-                  controller.setStatusFilter('pending');
-                  Get.back();
+                _filterChip(ctx, 'En attente', 'pending',
+                    state.selectedStatus == 'pending', () {
+                  notifier.setStatusFilter('pending');
+                  Navigator.pop(ctx);
                 }),
-                _filterChip(ctx, 'En cours', 'in_progress', controller.selectedStatus.value == 'in_progress', () {
-                  controller.setStatusFilter('in_progress');
-                  Get.back();
+                _filterChip(ctx, 'En cours', 'in_progress',
+                    state.selectedStatus == 'in_progress', () {
+                  notifier.setStatusFilter('in_progress');
+                  Navigator.pop(ctx);
                 }),
-                _filterChip(ctx, 'Terminée', 'completed', controller.selectedStatus.value == 'completed', () {
-                  controller.setStatusFilter('completed');
-                  Get.back();
+                _filterChip(ctx, 'Terminée', 'completed',
+                    state.selectedStatus == 'completed', () {
+                  notifier.setStatusFilter('completed');
+                  Navigator.pop(ctx);
                 }),
               ],
             ),
-            if (canAssign && controller.users.isNotEmpty) ...[
+            if (canAssign && state.users.isNotEmpty) ...[
               const SizedBox(height: 20),
-              const Text('Filtrer par utilisateur', style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text(
+                'Filtrer par utilisateur',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
-                value: controller.selectedAssignedTo.value,
+                value: state.selectedAssignedTo,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('Tous')),
-                  ...controller.users.map((u) {
-                        final name = '${u.prenom ?? ''} ${u.nom ?? ''}'.trim();
-                        final label = name.isEmpty ? (u.email ?? '') : name;
-                        return DropdownMenuItem(value: u.id, child: Text(label));
-                      }),
+                  ...state.users.map((u) {
+                    final name =
+                        '${u.prenom ?? ''} ${u.nom ?? ''}'.trim();
+                    final label =
+                        name.isEmpty ? (u.email ?? '') : name;
+                    return DropdownMenuItem(
+                      value: u.id,
+                      child: Text(label),
+                    );
+                  }),
                 ],
                 onChanged: (v) {
-                  controller.setAssignedToFilter(v);
-                  Get.back();
+                  notifier.setAssignedToFilter(v);
+                  Navigator.pop(ctx);
                 },
               ),
             ],
             const SizedBox(height: 16),
             TextButton.icon(
               onPressed: () {
-                controller.clearFilters();
-                Get.back();
+                notifier.clearFilters();
+                Navigator.pop(ctx);
               },
               icon: const Icon(Icons.clear_all),
               label: const Text('Réinitialiser les filtres'),
@@ -322,7 +401,13 @@ class _TaskListPageState extends State<TaskListPage> {
     );
   }
 
-  Widget _filterChip(BuildContext context, String label, String? value, bool selected, VoidCallback onTap) {
+  Widget _filterChip(
+    BuildContext context,
+    String label,
+    String? value,
+    bool selected,
+    VoidCallback onTap,
+  ) {
     return FilterChip(
       label: Text(label),
       selected: selected,

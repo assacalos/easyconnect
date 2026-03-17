@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/bon_de_commande_fournisseur_notifier.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BonDeCommandeFournisseurValidationPage extends StatefulWidget {
+class BonDeCommandeFournisseurValidationPage
+    extends ConsumerStatefulWidget {
   const BonDeCommandeFournisseurValidationPage({super.key});
 
   @override
-  State<BonDeCommandeFournisseurValidationPage> createState() =>
+  ConsumerState<BonDeCommandeFournisseurValidationPage> createState() =>
       _BonDeCommandeFournisseurValidationPageState();
 }
 
 class _BonDeCommandeFournisseurValidationPageState
-    extends State<BonDeCommandeFournisseurValidationPage>
+    extends ConsumerState<BonDeCommandeFournisseurValidationPage>
     with SingleTickerProviderStateMixin {
-  late final BonDeCommandeFournisseurController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -24,16 +26,11 @@ class _BonDeCommandeFournisseurValidationPageState
   @override
   void initState() {
     super.initState();
-    if (!Get.isRegistered<BonDeCommandeFournisseurController>()) {
-      Get.put(BonDeCommandeFournisseurController(), permanent: true);
-    }
-    controller = Get.find<BonDeCommandeFournisseurController>();
-
     _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      _onTabChanged();
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBonDeCommandes(forceRefresh: true);
     });
-    _loadBonDeCommandes();
   }
 
   @override
@@ -49,39 +46,87 @@ class _BonDeCommandeFournisseurValidationPageState
     }
   }
 
-  Future<void> _loadBonDeCommandes() async {
+  Future<void> _loadBonDeCommandes({bool forceRefresh = false}) async {
     String? status;
     switch (_tabController.index) {
-      case 0: // Tous
+      case 0:
         status = null;
         break;
-      case 1: // En attente
+      case 1:
         status = 'en_attente';
         break;
-      case 2: // Validés
+      case 2:
         status = 'valide';
         break;
-      case 3: // Rejetés
+      case 3:
         status = 'rejete';
         break;
+      default:
+        status = null;
     }
-
-    await controller.loadBonDeCommandes(status: status);
+    ref.read(bonDeCommandeFournisseurProvider.notifier).setCurrentStatus(status);
+    await ref
+        .read(bonDeCommandeFournisseurProvider.notifier)
+        .loadBonDeCommandes(status: status, forceRefresh: forceRefresh);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(bonDeCommandeFournisseurProvider);
+    final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
+
+    List<BonDeCommande> filteredBonDeCommandes;
+    switch (_tabController.index) {
+      case 0:
+        filteredBonDeCommandes = state.bonDeCommandes;
+        break;
+      case 1:
+        filteredBonDeCommandes = state.bonDeCommandes
+            .where((bc) {
+              final s = bc.statut.toLowerCase().trim();
+              return s == 'en_attente' || s == 'pending';
+            })
+            .toList();
+        break;
+      case 2:
+        filteredBonDeCommandes = state.bonDeCommandes
+            .where((bc) {
+              final s = bc.statut.toLowerCase().trim();
+              return s == 'valide' || s == 'approved' || s == 'validated';
+            })
+            .toList();
+        break;
+      case 3:
+        filteredBonDeCommandes = state.bonDeCommandes
+            .where((bc) {
+              final s = bc.statut.toLowerCase().trim();
+              return s == 'rejete' || s == 'rejected';
+            })
+            .toList();
+        break;
+      default:
+        filteredBonDeCommandes = state.bonDeCommandes;
+    }
+    if (_searchQuery.isNotEmpty) {
+      filteredBonDeCommandes = filteredBonDeCommandes
+          .where(
+            (bc) => bc.numeroCommande
+                .toLowerCase()
+                .contains(_searchQuery.toLowerCase()),
+          )
+          .toList();
+    }
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Bons de Commande Fournisseur'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadBonDeCommandes();
-            },
+            onPressed: () => _loadBonDeCommandes(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -110,122 +155,72 @@ class _BonDeCommandeFournisseurValidationPageState
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const SkeletonSearchResults(itemCount: 6);
-              }
-
-              // Filtrer selon l'onglet actif
-              List<BonDeCommande> filteredBonDeCommandes;
-              switch (_tabController.index) {
-                case 0: // Tous
-                  filteredBonDeCommandes = controller.bonDeCommandes;
-                  break;
-                case 1: // En attente
-                  filteredBonDeCommandes =
-                      controller.bonDeCommandes.where((bc) {
-                        final status = bc.statut.toLowerCase().trim();
-                        return status == 'en_attente' || status == 'pending';
-                      }).toList();
-                  break;
-                case 2: // Validés
-                  filteredBonDeCommandes =
-                      controller.bonDeCommandes.where((bc) {
-                        final status = bc.statut.toLowerCase().trim();
-                        return status == 'valide' ||
-                            status == 'approved' ||
-                            status == 'validated';
-                      }).toList();
-                  break;
-                case 3: // Rejetés
-                  filteredBonDeCommandes =
-                      controller.bonDeCommandes.where((bc) {
-                        final status = bc.statut.toLowerCase().trim();
-                        return status == 'rejete' || status == 'rejected';
-                      }).toList();
-                  break;
-                default:
-                  filteredBonDeCommandes = controller.bonDeCommandes;
-              }
-
-              // Filtrer par recherche
-              if (_searchQuery.isNotEmpty) {
-                filteredBonDeCommandes =
-                    filteredBonDeCommandes
-                        .where(
-                          (bc) => bc.numeroCommande.toLowerCase().contains(
-                            _searchQuery.toLowerCase(),
-                          ),
-                        )
-                        .toList();
-              }
-
-              if (filteredBonDeCommandes.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.shopping_cart,
-                        size: 64,
-                        color: Colors.grey[400],
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : filteredBonDeCommandes.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.shopping_cart,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Aucun bon de commande trouvé',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: filteredBonDeCommandes.length,
+                        padding: const EdgeInsets.all(8),
+                        itemBuilder: (context, index) {
+                          final bonDeCommande = filteredBonDeCommandes[index];
+                          return _buildBonDeCommandeCard(
+                            context,
+                            bonDeCommande,
+                            notifier,
+                          );
+                        },
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Aucun bon de commande trouvé',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                itemCount: filteredBonDeCommandes.length,
-                padding: const EdgeInsets.all(8),
-                itemBuilder: (context, index) {
-                  final bonDeCommande = filteredBonDeCommandes[index];
-                  return _buildBonDeCommandeCard(bonDeCommande);
-                },
-              );
-            }),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBonDeCommandeCard(BonDeCommande bonDeCommande) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
+  Widget _buildBonDeCommandeCard(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
+    final formatCurrency =
+        NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
     final formatDate = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
     IconData statusIcon;
-
     switch (bonDeCommande.statut.toLowerCase()) {
       case 'en_attente':
         statusColor = Colors.orange;
@@ -365,7 +360,7 @@ class _BonDeCommandeFournisseurValidationPageState
               ),
             ],
             const SizedBox(height: 16),
-            _buildActionButtons(bonDeCommande, statusColor),
+            _buildActionButtons(context, bonDeCommande, notifier, statusColor),
           ],
         ),
       ),
@@ -386,7 +381,10 @@ class _BonDeCommandeFournisseurValidationPageState
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -394,7 +392,12 @@ class _BonDeCommandeFournisseurValidationPageState
     );
   }
 
-  Widget _buildActionButtons(BonDeCommande bonDeCommande, Color statusColor) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+    Color statusColor,
+  ) {
     switch (bonDeCommande.statut.toLowerCase()) {
       case 'en_attente':
         return Column(
@@ -403,7 +406,8 @@ class _BonDeCommandeFournisseurValidationPageState
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => _showApproveConfirmation(bonDeCommande),
+                  onPressed: () =>
+                      _showApproveConfirmation(context, bonDeCommande, notifier),
                   icon: const Icon(Icons.check),
                   label: const Text('Valider'),
                   style: ElevatedButton.styleFrom(
@@ -412,7 +416,8 @@ class _BonDeCommandeFournisseurValidationPageState
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () => _showRejectDialog(bonDeCommande),
+                  onPressed: () =>
+                      _showRejectDialog(context, bonDeCommande, notifier),
                   icon: const Icon(Icons.close),
                   label: const Text('Rejeter'),
                   style: ElevatedButton.styleFrom(
@@ -424,10 +429,9 @@ class _BonDeCommandeFournisseurValidationPageState
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed:
-                  () => Get.toNamed(
-                    '/bons-de-commande-fournisseur/${bonDeCommande.id}',
-                  ),
+              onPressed: () => context.go(
+                '/bons-de-commande-fournisseur/${bonDeCommande.id}',
+              ),
               icon: const Icon(Icons.visibility),
               label: const Text('Voir les détails'),
             ),
@@ -460,7 +464,29 @@ class _BonDeCommandeFournisseurValidationPageState
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bonDeCommande.id!),
+              onPressed: () {
+                final id = bonDeCommande.id;
+                if (id == null) return;
+                notifier.generatePDF(id).then((_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('PDF généré avec succès'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }).catchError((e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                });
+              },
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('Générer PDF'),
               style: ElevatedButton.styleFrom(
@@ -498,59 +524,127 @@ class _BonDeCommandeFournisseurValidationPageState
     }
   }
 
-  void _showApproveConfirmation(BonDeCommande bonDeCommande) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce bon de commande ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveBonDeCommande(bonDeCommande.id!);
-        _loadBonDeCommandes();
-      },
-    );
-  }
-
-  void _showRejectDialog(BonDeCommande bonDeCommande) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le bon de commande',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet *',
-              hintText: 'Entrez le motif du rejet',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text(
+          'Voulez-vous valider ce bon de commande ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              notifier.approveBonDeCommande(id).then((_) {
+                _loadBonDeCommandes();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bon de commande validé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectBonDeCommande(
-          bonDeCommande.id!,
-          commentController.text,
-        );
-        _loadBonDeCommandes();
-      },
+    );
+  }
+
+  void _showRejectDialog(
+    BuildContext context,
+    BonDeCommande bonDeCommande,
+    BonDeCommandeFournisseurNotifier notifier,
+  ) {
+    final id = bonDeCommande.id;
+    if (id == null) return;
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le bon de commande'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet *',
+                hintText: 'Entrez le motif du rejet',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (commentController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              notifier
+                  .rejectBonDeCommande(id, commentController.text)
+                  .then((_) {
+                _loadBonDeCommandes();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bon de commande rejeté avec succès'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              }).catchError((e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              });
+            },
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

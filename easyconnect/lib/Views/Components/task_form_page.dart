@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/task_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/task_notifier.dart';
 import 'package:easyconnect/Models/user_model.dart';
 
-class TaskFormPage extends StatefulWidget {
+class TaskFormPage extends ConsumerStatefulWidget {
   const TaskFormPage({super.key});
 
   @override
-  State<TaskFormPage> createState() => _TaskFormPageState();
+  ConsumerState<TaskFormPage> createState() => _TaskFormPageState();
 }
 
-class _TaskFormPageState extends State<TaskFormPage> {
+class _TaskFormPageState extends ConsumerState<TaskFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _titreController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -22,7 +23,7 @@ class _TaskFormPageState extends State<TaskFormPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Get.find<TaskController>().loadUsers();
+      ref.read(taskProvider.notifier).loadUsers();
     });
   }
 
@@ -45,7 +46,8 @@ class _TaskFormPageState extends State<TaskFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<TaskController>();
+    final state = ref.watch(taskProvider);
+    final notifier = ref.read(taskProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -66,7 +68,8 @@ class _TaskFormPageState extends State<TaskFormPage> {
                   labelText: 'Titre de la tâche *',
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Obligatoire' : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Obligatoire' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -79,24 +82,24 @@ class _TaskFormPageState extends State<TaskFormPage> {
                 maxLines: 4,
               ),
               const SizedBox(height: 16),
-              Obx(() {
-                final users = controller.users;
-                return DropdownButtonFormField<int>(
-                  value: _selectedUserId,
-                  decoration: const InputDecoration(
-                    labelText: 'Assigner à *',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: users
-                      .map((u) => DropdownMenuItem(
-                            value: u.id,
-                            child: Text(_userLabel(u)),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedUserId = v),
-                  validator: (v) => v == null ? 'Choisissez un utilisateur' : null,
-                );
-              }),
+              DropdownButtonFormField<int>(
+                value: _selectedUserId,
+                decoration: const InputDecoration(
+                  labelText: 'Assigner à *',
+                  border: OutlineInputBorder(),
+                ),
+                items: state.users
+                    .map(
+                      (u) => DropdownMenuItem(
+                        value: u.id,
+                        child: Text(_userLabel(u)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedUserId = v),
+                validator: (v) =>
+                    v == null ? 'Choisissez un utilisateur' : null,
+              ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _priority,
@@ -119,7 +122,8 @@ class _TaskFormPageState extends State<TaskFormPage> {
                     context: context,
                     initialDate: _dueDate ?? DateTime.now(),
                     firstDate: DateTime.now(),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    lastDate:
+                        DateTime.now().add(const Duration(days: 365)),
                   );
                   if (date != null) setState(() => _dueDate = date);
                 },
@@ -139,40 +143,72 @@ class _TaskFormPageState extends State<TaskFormPage> {
                 ),
               ),
               const SizedBox(height: 32),
-              Obx(
-                () => ElevatedButton(
-                  onPressed: controller.isLoading.value
-                      ? null
-                      : () async {
-                          if (!_formKey.currentState!.validate()) return;
-                          if (_selectedUserId == null) {
-                            Get.snackbar('Erreur', 'Choisissez un utilisateur');
-                            return;
-                          }
-                          final dueDateStr = _dueDate != null
-                              ? '${_dueDate!.year}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}'
-                              : null;
-                          final ok = await controller.createTask(
+              ElevatedButton(
+                onPressed: state.isLoading
+                    ? null
+                    : () async {
+                        if (!_formKey.currentState!.validate()) return;
+                        if (_selectedUserId == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Choisissez un utilisateur'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        final dueDateStr = _dueDate != null
+                            ? '${_dueDate!.year}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}'
+                            : null;
+                        try {
+                          await notifier.createTask(
                             titre: _titreController.text.trim(),
-                            description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+                            description: _descriptionController
+                                    .text
+                                    .trim()
+                                    .isEmpty
+                                ? null
+                                : _descriptionController.text.trim(),
                             assignedTo: _selectedUserId!,
                             priority: _priority,
                             dueDate: dueDateStr,
                           );
-                          if (ok) {
-                            _clearForm();
-                            Get.offNamed('/tasks');
+                          _clearForm();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Tâche assignée avec succès'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            context.go('/tasks');
                           }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: controller.isLoading.value
-                      ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Assigner la tâche'),
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Erreur: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
+                child: state.isLoading
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Assigner la tâche'),
               ),
             ],
           ),

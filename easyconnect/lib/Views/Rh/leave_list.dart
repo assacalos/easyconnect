@@ -1,40 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/leave_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/leave_notifier.dart';
+import 'package:easyconnect/providers/leave_state.dart';
 import 'package:easyconnect/Models/leave_model.dart';
-import 'package:easyconnect/Views/Rh/leave_form.dart';
-import 'package:easyconnect/Views/Rh/leave_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class LeaveList extends StatelessWidget {
+class LeaveList extends ConsumerStatefulWidget {
   const LeaveList({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final LeaveController controller = Get.find<LeaveController>();
+  ConsumerState<LeaveList> createState() => _LeaveListState();
+}
 
-    // Chargement différé au premier affichage (évite la charge au binding)
+class _LeaveListState extends ConsumerState<LeaveList> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadLeaveTypes();
-      controller.loadEmployees();
-      controller.loadLeaveRequests();
-      controller.loadLeaveStats();
+      final notifier = ref.read(leaveProvider.notifier);
+      notifier.loadLeaveTypes();
+      notifier.loadEmployees();
+      notifier.loadLeaveRequests(forceRefresh: true);
+      notifier.loadLeaveStats();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(leaveProvider);
+    final notifier = ref.read(leaveProvider.notifier);
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          leading: const AppBarBackButton(fallbackRoute: '/rh', iconColor: Colors.white),
           title: const Text('Congés'),
           backgroundColor: Colors.deepPurple,
           foregroundColor: Colors.white,
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => controller.loadLeaveRequests(),
+              onPressed: () => notifier.loadLeaveRequests(forceRefresh: true),
               tooltip: 'Actualiser',
             ),
           ],
@@ -51,18 +71,17 @@ class LeaveList extends StatelessWidget {
           children: [
             TabBarView(
               children: [
-                _buildLeaveList('pending', controller), // En attente
-                _buildLeaveList('approved', controller), // Validés
-                _buildLeaveList('rejected', controller), // Rejetés
+                _buildLeaveList('pending', state, notifier),
+                _buildLeaveList('approved', state, notifier),
+                _buildLeaveList('rejected', state, notifier),
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
-            if (controller.canManageLeaves.value)
+            if (state.canManageLeaves)
               Positioned(
                 bottom: 80,
                 right: 16,
                 child: UniformAddButton(
-                  onPressed: () => Get.to(() => const LeaveForm()),
+                  onPressed: () => context.go('/leaves/new'),
                   label: 'Nouvelle Demande',
                   icon: Icons.event,
                 ),
@@ -73,71 +92,76 @@ class LeaveList extends StatelessWidget {
     );
   }
 
-  Widget _buildLeaveList(String status, LeaveController controller) {
-    return Obx(() {
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+  Widget _buildLeaveList(
+    String status,
+    LeaveState state,
+    LeaveNotifier notifier,
+  ) {
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-      // Filtrer selon le statut
-      final leaveList =
-          controller.leaveRequests.where((l) => l.status == status).toList();
+    final leaveList =
+        state.leaveRequests.where((l) => l.status == status).toList();
 
-      if (leaveList.isEmpty) {
-        return RefreshIndicator(
-          onRefresh: () => controller.loadLeaveRequests(),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: SizedBox(
-              height: 300,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      status == 'pending'
-                          ? Icons.pending
-                          : status == 'approved'
-                          ? Icons.check_circle
-                          : Icons.cancel,
-                      size: 64,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      status == 'pending'
-                          ? 'Aucun congé en attente'
-                          : status == 'approved'
-                          ? 'Aucun congé validé'
-                          : 'Aucun congé rejeté',
-                      style: const TextStyle(fontSize: 18, color: Colors.grey),
-                    ),
-                  ],
-                ),
+    if (leaveList.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadLeaveRequests(),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 300,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    status == 'pending'
+                        ? Icons.pending
+                        : status == 'approved'
+                            ? Icons.check_circle
+                            : Icons.cancel,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    status == 'pending'
+                        ? 'Aucun congé en attente'
+                        : status == 'approved'
+                            ? 'Aucun congé validé'
+                            : 'Aucun congé rejeté',
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
               ),
             ),
           ),
-        );
-      }
-
-      return RefreshIndicator(
-        onRefresh: () => controller.loadLeaveRequests(),
-        child: PaginatedListView(
-          scrollController: controller.scrollController,
-          onLoadMore: controller.loadMore,
-          hasNextPage: controller.hasNextPage.value,
-          isLoadingMore: controller.isLoadingMore.value,
-          itemCount: leaveList.length,
-          itemBuilder: (context, index) {
-            final request = leaveList[index];
-            return _buildLeaveCard(request, controller);
-          },
         ),
       );
-    });
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadLeaveRequests(),
+      child: PaginatedListView(
+        scrollController: _scrollController,
+        onLoadMore: notifier.loadMore,
+        hasNextPage: state.hasNextPage,
+        isLoadingMore: state.isLoadingMore,
+        itemCount: leaveList.length,
+        itemBuilder: (context, index) {
+          final request = leaveList[index];
+          return _buildLeaveCard(context, request, notifier);
+        },
+      ),
+    );
   }
 
-  Widget _buildLeaveCard(LeaveRequest request, LeaveController controller) {
+  Widget _buildLeaveCard(
+    BuildContext context,
+    LeaveRequest request,
+    LeaveNotifier notifier,
+  ) {
     final formatDate = DateFormat('dd/MM/yyyy');
 
     Color statusColor;
@@ -207,37 +231,41 @@ class LeaveList extends StatelessWidget {
             ],
           ],
         ),
-        trailing: _buildActionButton(request, controller),
-        onTap: () => Get.to(() => LeaveDetail(request: request)),
+        trailing: _buildActionButton(context, request, notifier),
+        onTap: () =>
+            context.go('/leaves/${request.id}', extra: request),
       ),
     );
   }
 
-  Widget _buildActionButton(LeaveRequest request, LeaveController controller) {
-    if (request.isPending && controller.canApproveLeaves.value) {
-      return PopupMenuButton(
-        itemBuilder:
-            (context) => [
-              const PopupMenuItem(value: 'approve', child: Text('Valider')),
-              const PopupMenuItem(value: 'reject', child: Text('Rejeter')),
-            ],
+  Widget _buildActionButton(
+    BuildContext context,
+    LeaveRequest request,
+    LeaveNotifier notifier,
+  ) {
+    if (request.isPending && ref.read(leaveProvider).canApproveLeaves) {
+      return PopupMenuButton<String>(
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'approve', child: Text('Valider')),
+          const PopupMenuItem(value: 'reject', child: Text('Rejeter')),
+        ],
         onSelected: (value) {
           switch (value) {
             case 'approve':
-              _showApproveDialog(request, controller);
+              _showApproveDialog(context, request, notifier);
               break;
             case 'reject':
-              _showRejectDialog(request, controller);
+              _showRejectDialog(context, request, notifier);
               break;
           }
         },
       );
     }
 
-    if (request.isPending && controller.canManageLeaves.value) {
+    if (request.isPending && ref.read(leaveProvider).canManageLeaves) {
       return IconButton(
         icon: const Icon(Icons.edit),
-        onPressed: () => Get.to(() => LeaveForm(request: request)),
+        onPressed: () => context.go('/leaves/${request.id}/edit', extra: request),
         tooltip: 'Modifier',
       );
     }
@@ -245,71 +273,154 @@ class LeaveList extends StatelessWidget {
     return const SizedBox.shrink();
   }
 
-  void _showApproveDialog(LeaveRequest request, LeaveController controller) {
-    controller.commentsController.clear();
+  void _showApproveDialog(
+    BuildContext context,
+    LeaveRequest request,
+    LeaveNotifier notifier,
+  ) {
+    final commentsController = TextEditingController();
 
-    Get.defaultDialog(
-      title: 'Approuver la demande',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Êtes-vous sûr de vouloir approuver cette demande ?'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: controller.commentsController,
-            decoration: const InputDecoration(
-              labelText: 'Commentaires (optionnel)',
-              border: OutlineInputBorder(),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Approuver la demande'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                'Êtes-vous sûr de vouloir approuver cette demande ?'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: commentsController,
+              decoration: const InputDecoration(
+                labelText: 'Commentaires (optionnel)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveLeaveRequest(
+                  request,
+                  comments: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Demande approuvée avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Approuver'),
           ),
         ],
       ),
-      textConfirm: 'Approuver',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveLeaveRequest(request);
-      },
     );
   }
 
-  void _showRejectDialog(LeaveRequest request, LeaveController controller) {
-    controller.rejectionReasonController.clear();
+  void _showRejectDialog(
+    BuildContext context,
+    LeaveRequest request,
+    LeaveNotifier notifier,
+  ) {
+    final rejectionReasonController = TextEditingController();
 
-    Get.defaultDialog(
-      title: 'Rejeter la demande',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Êtes-vous sûr de vouloir rejeter cette demande ?'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: controller.rejectionReasonController,
-            decoration: const InputDecoration(
-              labelText: 'Raison du rejet *',
-              border: OutlineInputBorder(),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter la demande'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                'Êtes-vous sûr de vouloir rejeter cette demande ?'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: rejectionReasonController,
+              decoration: const InputDecoration(
+                labelText: 'Raison du rejet *',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (rejectionReasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectLeaveRequest(
+                  request,
+                  rejectionReasonController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Demande rejetée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rejeter'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (controller.rejectionReasonController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectLeaveRequest(request);
-      },
     );
   }
 }

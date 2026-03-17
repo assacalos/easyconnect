@@ -1,4 +1,3 @@
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/media_model.dart';
 import 'package:easyconnect/services/attendance_punch_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
@@ -9,8 +8,12 @@ import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/roles.dart';
 
 /// Service pour récupérer les médias (images et fichiers) de toutes les entités
-class MediaService extends GetxService {
-  static MediaService get to => Get.find();
+class MediaService {
+  static final MediaService _instance = MediaService._();
+  static MediaService get to => _instance;
+  factory MediaService() => _instance;
+
+  MediaService._();
 
   final AttendancePunchService _attendanceService = AttendancePunchService();
   final BonCommandeService _bonCommandeService = BonCommandeService();

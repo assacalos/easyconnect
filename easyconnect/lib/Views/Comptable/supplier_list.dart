@@ -1,57 +1,64 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/supplier_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/supplier_notifier.dart';
+import 'package:easyconnect/providers/supplier_state.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
-import 'package:easyconnect/Views/Comptable/supplier_detail.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class SupplierList extends StatelessWidget {
+class SupplierList extends ConsumerStatefulWidget {
   const SupplierList({super.key});
 
   @override
+  ConsumerState<SupplierList> createState() => _SupplierListState();
+}
+
+class _SupplierListState extends ConsumerState<SupplierList> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(supplierProvider.notifier).loadSuppliers();
+      ref.read(supplierProvider.notifier).loadSupplierStats();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final SupplierController controller = Get.find<SupplierController>();
-    // Appliquer un statut initial si fourni via la navigation (ex: 'pending')
-    final dynamic initialStatusArg = Get.arguments;
-    if (initialStatusArg is String && initialStatusArg.isNotEmpty) {
-      if (controller.selectedStatus.value != initialStatusArg) {
-        controller.filterByStatus(initialStatusArg);
-      }
-    }
+    final state = ref.watch(supplierProvider);
+    final notifier = ref.read(supplierProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Gestion des Fournisseurs'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => controller.loadSuppliers(),
+            onPressed: () => notifier.loadSuppliers(forceRefresh: true),
           ),
         ],
       ),
       body: Column(
         children: [
-          // Barre de recherche et filtres
-          _buildSearchAndFilters(controller),
-
-          // Statistiques rapides
-          _buildQuickStats(controller),
-
-          // Liste des fournisseurs
-          Expanded(child: _buildSupplierList(controller)),
+          _buildSearchAndFilters(context, state, notifier),
+          _buildQuickStats(state),
+          Expanded(child: _buildSupplierList(context, state, notifier)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(controller),
+        onPressed: () => _navigateToCreate(context),
         backgroundColor: Colors.deepPurple,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildSearchAndFilters(SupplierController controller) {
+  Widget _buildSearchAndFilters(
+      BuildContext context, SupplierState state, SupplierNotifier notifier) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -60,7 +67,6 @@ class SupplierList extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Barre de recherche
           TextField(
             decoration: InputDecoration(
               hintText: 'Rechercher un fournisseur...',
@@ -71,23 +77,20 @@ class SupplierList extends StatelessWidget {
               filled: true,
               fillColor: Colors.white,
             ),
-            onChanged: (value) => controller.searchSuppliers(value),
+            onChanged: (value) => notifier.searchSuppliers(value),
           ),
-
           const SizedBox(height: 12),
-
-          // Filtres par statut
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('Tous', 'all', controller),
+                _buildFilterChip(context, 'Tous', 'all', state, notifier),
                 const SizedBox(width: 8),
-                _buildFilterChip('En attente', 'en_attente', controller),
+                _buildFilterChip(context, 'En attente', 'en_attente', state, notifier),
                 const SizedBox(width: 8),
-                _buildFilterChip('Validés', 'valide', controller),
+                _buildFilterChip(context, 'Validés', 'valide', state, notifier),
                 const SizedBox(width: 8),
-                _buildFilterChip('Rejetés', 'rejete', controller),
+                _buildFilterChip(context, 'Rejetés', 'rejete', state, notifier),
               ],
             ),
           ),
@@ -97,75 +100,68 @@ class SupplierList extends StatelessWidget {
   }
 
   Widget _buildFilterChip(
+    BuildContext context,
     String label,
     String value,
-    SupplierController controller,
+    SupplierState state,
+    SupplierNotifier notifier,
   ) {
-    return Obx(() {
-      return FilterChip(
-        label: Text(label),
-        selected: controller.selectedStatus.value == value,
-        onSelected: (selected) {
-          if (selected) {
-            controller.filterByStatus(value);
-          }
-        },
-        selectedColor: Colors.deepPurple.withOpacity(0.2),
-        checkmarkColor: Colors.deepPurple,
-      );
-    });
+    return FilterChip(
+      label: Text(label),
+      selected: state.selectedStatus == value,
+      onSelected: (selected) {
+        if (selected) notifier.filterByStatus(value);
+      },
+      selectedColor: Colors.deepPurple.withOpacity(0.2),
+      checkmarkColor: Colors.deepPurple,
+    );
   }
 
-  Widget _buildQuickStats(SupplierController controller) {
-    return Obx(() {
-      if (controller.supplierStats.value == null) {
-        return const SizedBox.shrink();
-      }
-
-      final stats = controller.supplierStats.value!;
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Total',
-                stats.total.toString(),
-                Icons.business,
-                Colors.blue,
-              ),
+  Widget _buildQuickStats(SupplierState state) {
+    if (state.supplierStats == null) return const SizedBox.shrink();
+    final stats = state.supplierStats!;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStatCard(
+              'Total',
+              stats.total.toString(),
+              Icons.business,
+              Colors.blue,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'En attente',
-                stats.pending.toString(),
-                Icons.schedule,
-                Colors.orange,
-              ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatCard(
+              'En attente',
+              stats.pending.toString(),
+              Icons.schedule,
+              Colors.orange,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Validés',
-                stats.validated.toString(),
-                Icons.check_circle,
-                Colors.green,
-              ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatCard(
+              'Validés',
+              stats.validated.toString(),
+              Icons.check_circle,
+              Colors.green,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildStatCard(
-                'Rejetés',
-                stats.rejected.toString(),
-                Icons.cancel,
-                Colors.red,
-              ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatCard(
+              'Rejetés',
+              stats.rejected.toString(),
+              Icons.cancel,
+              Colors.red,
             ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStatCard(
@@ -203,75 +199,54 @@ class SupplierList extends StatelessWidget {
     );
   }
 
-  Widget _buildSupplierList(SupplierController controller) {
-    return Obx(() {
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] _buildSupplierList appelé');
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] isLoading = ${controller.isLoading.value}');
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] allSuppliers.length = ${controller.allSuppliers.length}');
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] suppliers.length = ${controller.suppliers.length}');
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] selectedStatus = ${controller.selectedStatus.value}');
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] searchQuery = "${controller.searchQuery.value}"');
-      
-      if (controller.isLoading.value) {
-        print('🟠 [SUPPLIER_LIST_COMPTABLE] Affichage du skeleton loader');
-        return const SkeletonSearchResults(itemCount: 6);
-      }
-
-      if (controller.suppliers.isEmpty) {
-        print('🟠 [SUPPLIER_LIST_COMPTABLE] suppliers est vide, affichage du message "Aucun fournisseur trouvé"');
-        print('🟠 [SUPPLIER_LIST_COMPTABLE] allSuppliers.length = ${controller.allSuppliers.length}');
-        if (controller.allSuppliers.isNotEmpty) {
-          print('🟠 [SUPPLIER_LIST_COMPTABLE] ⚠️ ATTENTION: allSuppliers n\'est pas vide mais suppliers est vide!');
-          print('🟠 [SUPPLIER_LIST_COMPTABLE] Vérification des statuts dans allSuppliers:');
-          for (var supplier in controller.allSuppliers.take(5)) {
-            print('🟠 [SUPPLIER_LIST_COMPTABLE]   - ${supplier.nom}: statut=${supplier.statut}, isPending=${supplier.isPending}, isValidated=${supplier.isValidated}, isRejected=${supplier.isRejected}');
-          }
-        }
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.business_outlined, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucun fournisseur trouvé',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Commencez par ajouter un fournisseur',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-        );
-      }
-
-      print('🟠 [SUPPLIER_LIST_COMPTABLE] Affichage de ${controller.suppliers.length} fournisseurs');
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.suppliers.length,
-        itemBuilder: (context, index) {
-          final supplier = controller.suppliers[index];
-          return _buildSupplierCard(supplier, controller);
-        },
+  Widget _buildSupplierList(
+      BuildContext context, SupplierState state, SupplierNotifier notifier) {
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
+    if (state.suppliers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.business_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun fournisseur trouvé',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Commencez par ajouter un fournisseur',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
       );
-    });
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: state.suppliers.length,
+      itemBuilder: (context, index) {
+        final supplier = state.suppliers[index];
+        return _buildSupplierCard(context, supplier, notifier);
+      },
+    );
   }
 
-  Widget _buildSupplierCard(Supplier supplier, SupplierController controller) {
+  Widget _buildSupplierCard(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => Get.to(() => SupplierDetail(supplier: supplier)),
+        onTap: () => context.go('/suppliers/${supplier.id}', extra: supplier),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec nom et statut
               Row(
                 children: [
                   Expanded(
@@ -286,10 +261,7 @@ class SupplierList extends StatelessWidget {
                   _buildStatusChip(supplier),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // Informations de contact
               Row(
                 children: [
                   Icon(Icons.email, size: 16, color: Colors.grey[600]),
@@ -302,9 +274,7 @@ class SupplierList extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 4),
-
               Row(
                 children: [
                   Icon(Icons.phone, size: 16, color: Colors.grey[600]),
@@ -315,9 +285,7 @@ class SupplierList extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 4),
-
               Row(
                 children: [
                   Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
@@ -330,8 +298,6 @@ class SupplierList extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // Note d'évaluation si disponible
               if (supplier.noteEvaluation != null) ...[
                 const SizedBox(height: 8),
                 Row(
@@ -348,31 +314,29 @@ class SupplierList extends StatelessWidget {
                   ],
                 ),
               ],
-
-              // Actions
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Les boutons Approuver/Rejeter sont uniquement disponibles pour le Patron
-                  // Ils ont été retirés de la vue Comptable
-                  if (supplier.isValidated) ...[
+                  if (supplier.isValidated)
                     TextButton.icon(
                       icon: const Icon(Icons.star, size: 16),
                       label: const Text('Évaluer'),
-                      onPressed: () => _showRatingDialog(supplier, controller),
+                      onPressed: () =>
+                          _showRatingDialog(context, supplier, notifier),
                     ),
-                  ],
                   TextButton.icon(
                     icon: const Icon(Icons.edit, size: 16),
                     label: const Text('Modifier'),
-                    onPressed: () => _showEditDialog(supplier, controller),
+                    onPressed: () =>
+                        context.go('/suppliers/${supplier.id}/edit', extra: supplier),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
                     icon: const Icon(Icons.delete, size: 16),
                     label: const Text('Supprimer'),
-                    onPressed: () => _showDeleteDialog(supplier, controller),
+                    onPressed: () =>
+                        _showDeleteDialog(context, supplier, notifier),
                     style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                 ],
@@ -402,7 +366,6 @@ class SupplierList extends StatelessWidget {
       default:
         color = Colors.grey;
     }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -421,100 +384,22 @@ class SupplierList extends StatelessWidget {
     );
   }
 
-  // Dialogues
-  void _showCreateDialog(SupplierController controller) {
-    controller.clearForm();
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Nouveau Fournisseur'),
-        content: _buildSupplierForm(controller),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.createSupplier();
-              Get.back();
-            },
-            child: const Text('Créer'),
-          ),
-        ],
-      ),
-    );
+  void _navigateToCreate(BuildContext context) {
+    context.go('/suppliers/new');
   }
 
-  void _showEditDialog(Supplier supplier, SupplierController controller) {
-    controller.fillForm(supplier);
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Modifier le Fournisseur'),
-        content: _buildSupplierForm(controller),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.updateSupplier(supplier);
-              Get.back();
-            },
-            child: const Text('Modifier'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSupplierForm(SupplierController controller) {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: controller.nomController,
-            decoration: const InputDecoration(labelText: 'Nom'),
-          ),
-          TextField(
-            controller: controller.emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
-          TextField(
-            controller: controller.telephoneController,
-            decoration: const InputDecoration(labelText: 'Téléphone'),
-          ),
-          TextField(
-            controller: controller.adresseController,
-            decoration: const InputDecoration(labelText: 'Adresse'),
-          ),
-          TextField(
-            controller: controller.villeController,
-            decoration: const InputDecoration(labelText: 'Ville'),
-          ),
-          TextField(
-            controller: controller.paysController,
-            decoration: const InputDecoration(labelText: 'Pays'),
-          ),
-          TextField(
-            controller: controller.descriptionController,
-            decoration: const InputDecoration(labelText: 'Description'),
-            maxLines: 2,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Les méthodes _showApproveDialog et _showRejectDialog ont été retirées
-  // car les boutons Approuver/Rejeter sont uniquement disponibles pour le Patron
-  // dans la page SupplierValidationPage
-
-  void _showRatingDialog(Supplier supplier, SupplierController controller) {
+  void _showRatingDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final commentsController = TextEditingController();
     double rating = supplier.noteEvaluation ?? 0.0;
 
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Évaluer le fournisseur'),
-        content: StatefulBuilder(
-          builder: (context, setState) {
-            return Column(
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Évaluer le fournisseur'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Note (1-5 étoiles) :'),
@@ -524,15 +409,11 @@ class SupplierList extends StatelessWidget {
                   children: List.generate(5, (index) {
                     return IconButton(
                       icon: Icon(
-                        index < rating ? Icons.star : Icons.star_border,
+                        index < rating.round() ? Icons.star : Icons.star_border,
                         color: Colors.amber,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          rating = index + 1.0;
-                        });
-                      },
+                      onPressed: () => setState(() => rating = index + 1.0),
                     );
                   }),
                 ),
@@ -548,41 +429,87 @@ class SupplierList extends StatelessWidget {
                   maxLines: 3,
                 ),
               ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.rateSupplier(
-                supplier,
-                rating,
-                comments:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
-            },
-            child: const Text('Évaluer'),
-          ),
-        ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await notifier.rateSupplier(
+                      supplier,
+                      rating,
+                      comments: commentsController.text.trim().isEmpty
+                          ? null
+                          : commentsController.text.trim(),
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Fournisseur évalué avec succès'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Évaluer'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  void _showDeleteDialog(Supplier supplier, SupplierController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showDeleteDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le fournisseur'),
-        content: Text('Êtes-vous sûr de vouloir supprimer ${supplier.nom} ?'),
+        content: Text(
+            'Êtes-vous sûr de vouloir supprimer ${supplier.nom} ?'),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.deleteSupplier(supplier);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.deleteSupplier(supplier);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Fournisseur supprimé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Impossible de supprimer: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -593,10 +520,5 @@ class SupplierList extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  // Méthodes manquantes pour la compatibilité
-  void rateSupplier(Supplier supplier, double rating, {String? comments}) {
-    // Cette méthode sera implémentée dans le contrôleur
   }
 }

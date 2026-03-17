@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:easyconnect/routes/app_routes.dart';
-import 'package:easyconnect/bindings/auth_binding.dart';
+import 'package:easyconnect/router/app_router.dart' show rootGoRouter, createAppRouter, currentRouterLocation;
 import 'package:easyconnect/Views/Components/app_lifecycle_wrapper.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -11,12 +10,21 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:easyconnect/utils/logger.dart';
+import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/utils/error_helper.dart';
+import 'package:easyconnect/utils/validation_helper.dart';
+import 'package:easyconnect/utils/validation_helper_enhanced.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/notification_service_enhanced.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:easyconnect/providers/notification_notifier.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/services/notification_navigation_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
+
+/// Clé globale pour afficher des snackbars depuis n'importe où (callbacks AuthErrorHandler, ErrorHelper, etc.)
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 /// Handler pour les notifications en arrière-plan (doit être top-level)
 /// Gère les notifications au format FCM v1 avec type, entity_id, action_route
@@ -175,7 +183,11 @@ void main() async {
   }
 
   // Lancer l'app sans attendre Firebase/push (premier écran plus rapide)
-  runApp(const MyApp());
+  runApp(
+    const ProviderScope(
+      child: MyApp(),
+    ),
+  );
 
   // Initialisations non bloquantes (pas critiques pour le premier écran)
   Future(() async {
@@ -190,12 +202,10 @@ void main() async {
       };
       pushService.onNotificationReceived = (Map<String, dynamic> data) {
         try {
-          if (Get.isRegistered<NotificationController>()) {
-            Get.find<NotificationController>().loadNotifications(forceRefresh: true);
-          }
+          NotificationRefreshCallback.instance.refresh();
         } catch (e, stackTrace) {
           AppLogger.error(
-            'Erreur lors de la mise à jour du controller: $e',
+            'Erreur lors de la mise à jour des notifications: $e',
             tag: 'PUSH_NOTIFICATION',
             error: e,
             stackTrace: stackTrace,
@@ -241,22 +251,87 @@ void main() async {
   });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  static bool _callbacksInitialized = false;
+
+  void _initCallbacksOnce() {
+    if (_callbacksInitialized) return;
+    _callbacksInitialized = true;
+
+    // AuthErrorHandler : déconnexion 401
+    AuthErrorHandler.logoutCallback = ({bool silent = false, String? redirectTo}) async {
+      await ref.read(authProvider.notifier).logout(silent: silent, redirectTo: redirectTo);
+      if (redirectTo != null && redirectTo.isNotEmpty) {
+        rootGoRouter?.go(redirectTo);
+      }
+    };
+    AuthErrorHandler.currentRouteCallback = () => currentRouterLocation;
+    AuthErrorHandler.showSnackbarCallback = (String title, String message, {Duration? duration}) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('$title\n$message'),
+          duration: duration ?? const Duration(seconds: 3),
+        ),
+      );
+    };
+
+    // ErrorHelper : erreurs générales
+    errorHelperShowSnackbar = (String title, String message,
+        {Color? backgroundColor, Color? colorText, Duration? duration, Icon? icon}) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('$title: $message'),
+          backgroundColor: backgroundColor ?? Colors.red,
+          duration: duration ?? const Duration(seconds: 3),
+        ),
+      );
+    };
+
+    // ValidationHelper
+    validationHelperShowSnackbar = (String title, String message,
+        {Color? backgroundColor, Color? colorText, Duration? duration}) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('$title: $message'),
+          backgroundColor: backgroundColor,
+          duration: duration ?? const Duration(seconds: 3),
+        ),
+      );
+    };
+
+    // ValidationHelperEnhanced
+    validationHelperEnhancedShowSnackbar = (String title, String message,
+        {Color? backgroundColor, Color? colorText, Duration? duration}) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('$title: $message'),
+          backgroundColor: backgroundColor ?? Colors.orange,
+          duration: duration ?? const Duration(seconds: 3),
+        ),
+      );
+    };
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GetMaterialApp(
+    _initCallbacksOnce();
+
+    return MaterialApp.router(
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'EasyConnect',
       debugShowCheckedModeBanner: false,
-      // Optimisations de performance
+      routerConfig: createAppRouter(),
       builder: (context, child) {
         return AppLifecycleWrapper(
           child: MediaQuery(
-            // Désactiver l'accessibilité pour améliorer les performances
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(1.0)),
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.0)),
             child: child!,
           ),
         );
@@ -264,12 +339,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          iconTheme: IconThemeData(color: Colors.black87),
+          actionsIconTheme: IconThemeData(color: Colors.black87),
+        ),
       ),
-      initialRoute: '/splash',
-      getPages: AppRoutes.routes,
-      initialBinding:
-          AuthBinding(), // Utilisation du binding d'authentification
-      defaultTransition: Transition.fadeIn,
     );
   }
 }

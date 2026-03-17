@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/salary_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/salary_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/salary_model.dart';
-import 'package:easyconnect/Views/Comptable/salary_form.dart';
+import 'package:easyconnect/services/pdf_service.dart';
+import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
-class SalaryDetail extends StatelessWidget {
+class SalaryDetail extends ConsumerWidget {
   final Salary salary;
 
   const SalaryDetail({super.key, required this.salary});
 
   @override
-  Widget build(BuildContext context) {
-    final SalaryController controller = Get.put(SalaryController());
-    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(salaryProvider.notifier);
+    final userRole = ref.watch(authProvider).user?.role;
+    final canManage = userRole == Roles.ADMIN || userRole == Roles.COMPTABLE;
+    final canApprove = userRole == Roles.ADMIN || userRole == Roles.PATRON;
+    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
     final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
     return Scaffold(
@@ -22,14 +28,20 @@ class SalaryDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageSalaries && salary.status == 'pending')
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            onPressed: () => _generateBulletin(context),
+            tooltip: 'Générer bulletin',
+          ),
+          if (canManage && salary.status == 'pending')
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => SalaryForm(salary: salary)),
+              onPressed: () =>
+                  context.go('/salaries/${salary.id}/edit', extra: salary),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareSalary(),
+            onPressed: () => _shareSalary(context),
           ),
         ],
       ),
@@ -92,7 +104,7 @@ class SalaryDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier, canManage, canApprove),
           ],
         ),
       ),
@@ -321,7 +333,13 @@ class SalaryDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(SalaryController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    SalaryNotifier notifier,
+    bool canManage,
+    bool canApprove,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -340,13 +358,25 @@ class SalaryDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (salary.status == 'pending' &&
-                    controller.canManageSalaries) ...[
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('Générer bulletin'),
+                    onPressed: () => _generateBulletin(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (salary.status == 'pending' && canManage) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => SalaryForm(salary: salary)),
+                      onPressed: () =>
+                          context.go('/salaries/${salary.id}/edit', extra: salary),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -355,13 +385,12 @@ class SalaryDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (salary.status == 'pending' &&
-                    controller.canApproveSalaries) ...[
+                if (salary.status == 'pending' && canApprove) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -373,7 +402,7 @@ class SalaryDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -381,13 +410,12 @@ class SalaryDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (salary.status == 'approved' &&
-                    controller.canApproveSalaries) ...[
+                if (salary.status == 'approved' && canApprove) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.payment),
                       label: const Text('Marquer payé'),
-                      onPressed: () => _showMarkPaidDialog(controller),
+                      onPressed: () => _showMarkPaidDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -416,20 +444,36 @@ class SalaryDetail extends StatelessWidget {
     );
   }
 
-  void _shareSalary() {
-    // Implémentation du partage
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  Future<void> _generateBulletin(BuildContext context) async {
+    try {
+      await PdfService().generateBulletinPaiePdf(bulletin: salary.toJson());
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bulletin de paie généré')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e')),
+        );
+      }
+    }
+  }
+
+  void _shareSalary(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showApproveDialog(SalaryController controller) {
+  void _showApproveDialog(BuildContext context, SalaryNotifier notifier) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver le salaire'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -447,12 +491,21 @@ class SalaryDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveSalary(salary);
-              Get.back();
+            onPressed: () async {
+              await notifier.approveSalary(salary,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Salaire approuvé')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Approuver'),
@@ -462,11 +515,11 @@ class SalaryDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(SalaryController controller) {
+  void _showRejectDialog(BuildContext context, SalaryNotifier notifier) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter le salaire'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -484,14 +537,25 @@ class SalaryDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectSalary(salary, reasonController.text.trim());
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez indiquer la raison du rejet')),
+                );
+                return;
+              }
+              await notifier.rejectSalary(
+                  salary, reasonController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Salaire rejeté')),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -502,11 +566,11 @@ class SalaryDetail extends StatelessWidget {
     );
   }
 
-  void _showMarkPaidDialog(SalaryController controller) {
+  void _showMarkPaidDialog(BuildContext context, SalaryNotifier notifier) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Marquer comme payé'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -524,12 +588,21 @@ class SalaryDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.markSalaryAsPaid(salary);
-              Get.back();
+            onPressed: () async {
+              await notifier.markSalaryAsPaid(salary,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Salaire marqué comme payé')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             child: const Text('Confirmer'),

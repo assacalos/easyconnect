@@ -5,7 +5,6 @@ import 'package:easyconnect/Views/Patron/patron_permissions.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/services/client_service.dart';
@@ -30,70 +29,66 @@ import 'package:easyconnect/services/task_service.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/data_chart.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
 class PatronDashboardController extends BaseDashboardController {
-  var currentSection = PatronSection.dashboard.obs;
-  var selectedPeriod = 'month'.obs;
-  var selectedDepartment = 'all'.obs;
+  PatronSection currentSection = PatronSection.dashboard;
+  String selectedPeriod = 'month';
+  String selectedDepartment = 'all';
 
-  // Services pour récupérer les données directement
-  final ClientService _clientService = Get.find<ClientService>();
-  final DevisService _devisService = Get.find<DevisService>();
-  final BordereauService _bordereauService = Get.find<BordereauService>();
-  final InvoiceService _invoiceService = Get.find<InvoiceService>();
-  final PaymentService _paymentService = Get.find<PaymentService>();
-  final ExpenseService _expenseService = Get.find<ExpenseService>();
-  final SalaryService _salaryService = Get.find<SalaryService>();
-  final ReportingService _reportingService = Get.find<ReportingService>();
-  final AttendancePunchService _attendanceService =
-      Get.find<AttendancePunchService>();
-  final BonCommandeService _bonCommandeService = Get.find<BonCommandeService>();
-  final InterventionService _interventionService =
-      Get.find<InterventionService>();
-  final TaxService _taxService = Get.find<TaxService>();
-  final RecruitmentService _recruitmentService = Get.find<RecruitmentService>();
-  final SupplierService _supplierService = Get.find<SupplierService>();
-  final StockService _stockService = Get.find<StockService>();
-  final EmployeeService _employeeService = Get.find<EmployeeService>();
-  final ContractService _contractService = Get.find<ContractService>();
-  final LeaveService _leaveService = Get.find<LeaveService>();
-  final TaskService _taskService = Get.find<TaskService>();
+  final ClientService _clientService = ClientService();
+  final DevisService _devisService = DevisService();
+  final BordereauService _bordereauService = BordereauService();
+  final InvoiceService _invoiceService = InvoiceService.to;
+  final PaymentService _paymentService = PaymentService.to;
+  final ExpenseService _expenseService = ExpenseService();
+  final SalaryService _salaryService = SalaryService();
+  final ReportingService _reportingService = ReportingService.to;
+  final AttendancePunchService _attendanceService = AttendancePunchService();
+  final BonCommandeService _bonCommandeService = BonCommandeService();
+  final InterventionService _interventionService = InterventionService();
+  final TaxService _taxService = TaxService();
+  final RecruitmentService _recruitmentService = RecruitmentService.to;
+  final SupplierService _supplierService = SupplierService.to;
+  final StockService _stockService = StockService.to;
+  final EmployeeService _employeeService = EmployeeService.to;
+  final ContractService _contractService = ContractService.to;
+  final LeaveService _leaveService = LeaveService.to;
+  final TaskService _taskService = TaskService.to;
 
   List<Filter> get filters => DashboardFilters.getFiltersForRole(Roles.PATRON);
 
   // Données des graphiques
-  final revenueData = <ChartData>[].obs;
-  final employeeData = <ChartData>[].obs;
-  final ticketData = <ChartData>[].obs;
-  final leaveData = <ChartData>[].obs;
+  final List<ChartData> revenueData = [];
+  final List<ChartData> employeeData = [];
+  final List<ChartData> ticketData = [];
+  final List<ChartData> leaveData = [];
 
-  // Nouvelles données pour le dashboard amélioré
-  // Première partie - Validations en attente
-  final pendingClients = 0.obs;
-  final pendingDevis = 0.obs;
-  final pendingBordereaux = 0.obs;
-  final pendingBonCommandes = 0.obs;
-  final pendingFactures = 0.obs;
-  final pendingPaiements = 0.obs;
-  final pendingDepenses = 0.obs;
-  final pendingSalaires = 0.obs;
-  final pendingReporting = 0.obs;
-  final pendingPointages = 0.obs;
-  final pendingInterventions = 0.obs;
-  final pendingTaxes = 0.obs;
-  final pendingRecruitments = 0.obs;
-  final pendingContracts = 0.obs;
-  final pendingLeaves = 0.obs;
-  final pendingSuppliers = 0.obs;
-  final pendingStocks = 0.obs;
-  final pendingRegistrations = 0.obs;
-  final pendingTasks = 0.obs;
+  // Validations en attente
+  int pendingClients = 0;
+  int pendingDevis = 0;
+  int pendingBordereaux = 0;
+  int pendingBonCommandes = 0;
+  int pendingFactures = 0;
+  int pendingPaiements = 0;
+  int pendingDepenses = 0;
+  int pendingSalaires = 0;
+  int pendingReporting = 0;
+  int pendingPointages = 0;
+  int pendingInterventions = 0;
+  int pendingTaxes = 0;
+  int pendingRecruitments = 0;
+  int pendingContracts = 0;
+  int pendingLeaves = 0;
+  int pendingSuppliers = 0;
+  int pendingStocks = 0;
+  int pendingRegistrations = 0;
+  int pendingTasks = 0;
 
-  // Deuxième partie - Métriques de performance
-  final validatedClients = 0.obs;
-  final totalEmployees = 0.obs;
-  final totalSuppliers = 0.obs;
-  final totalRevenue = 0.0.obs;
+  int validatedClients = 0;
+  int totalEmployees = 0;
+  int totalSuppliers = 0;
+  double totalRevenue = 0.0;
 
   // Statistiques originales
   List<StatCard> get stats => [
@@ -131,105 +126,105 @@ class PatronDashboardController extends BaseDashboardController {
   List<StatCard> get enhancedStats => [
     StatCard(
       title: "Clients en attente",
-      value: pendingClients.value.toString(),
+      value: pendingClients.toString(),
       icon: Icons.people,
       color: Colors.blue,
       requiredPermission: Permissions.MANAGE_CLIENTS,
     ),
     StatCard(
       title: "Devis en attente",
-      value: pendingDevis.value.toString(),
+      value: pendingDevis.toString(),
       icon: Icons.description,
       color: Colors.green,
       requiredPermission: Permissions.VIEW_DEVIS,
     ),
     StatCard(
       title: "Bordereaux en attente",
-      value: pendingBordereaux.value.toString(),
+      value: pendingBordereaux.toString(),
       icon: Icons.assignment_turned_in,
       color: Colors.orange,
       requiredPermission: Permissions.VIEW_SALES,
     ),
     StatCard(
       title: "Bons de commande en attente",
-      value: pendingBonCommandes.value.toString(),
+      value: pendingBonCommandes.toString(),
       icon: Icons.shopping_cart,
       color: Colors.purple,
       requiredPermission: Permissions.VIEW_SALES,
     ),
     StatCard(
       title: "Factures en attente",
-      value: pendingFactures.value.toString(),
+      value: pendingFactures.toString(),
       icon: Icons.receipt,
       color: Colors.red,
       requiredPermission: Permissions.VIEW_FINANCES,
     ),
     StatCard(
       title: "Paiements en attente",
-      value: pendingPaiements.value.toString(),
+      value: pendingPaiements.toString(),
       icon: Icons.payment,
       color: Colors.teal,
       requiredPermission: Permissions.VIEW_FINANCES,
     ),
     StatCard(
       title: "Dépenses en attente",
-      value: pendingDepenses.value.toString(),
+      value: pendingDepenses.toString(),
       icon: Icons.money_off,
       color: Colors.indigo,
       requiredPermission: Permissions.VIEW_FINANCES,
     ),
     StatCard(
       title: "Salaires en attente",
-      value: pendingSalaires.value.toString(),
+      value: pendingSalaires.toString(),
       icon: Icons.account_balance_wallet,
       color: Colors.amber,
       requiredPermission: Permissions.MANAGE_EMPLOYEES,
     ),
     StatCard(
       title: "Rapports en attente",
-      value: pendingReporting.value.toString(),
+      value: pendingReporting.toString(),
       icon: Icons.analytics,
       color: Colors.cyan,
       requiredPermission: Permissions.VIEW_REPORTS,
     ),
     StatCard(
       title: "Pointages en attente",
-      value: pendingPointages.value.toString(),
+      value: pendingPointages.toString(),
       icon: Icons.access_time,
       color: Colors.brown,
       requiredPermission: Permissions.MANAGE_EMPLOYEES,
     ),
     StatCard(
       title: "Interventions en attente",
-      value: pendingInterventions.value.toString(),
+      value: pendingInterventions.toString(),
       icon: Icons.build,
       color: Colors.deepOrange,
       requiredPermission: Permissions.MANAGE_INTERVENTIONS,
     ),
     StatCard(
       title: "Taxes en attente",
-      value: pendingTaxes.value.toString(),
+      value: pendingTaxes.toString(),
       icon: Icons.account_balance,
       color: Colors.pink,
       requiredPermission: Permissions.VIEW_FINANCES,
     ),
     StatCard(
       title: "Recrutements en attente",
-      value: pendingRecruitments.value.toString(),
+      value: pendingRecruitments.toString(),
       icon: Icons.person_add,
       color: Colors.lightBlue,
       requiredPermission: Permissions.MANAGE_EMPLOYEES,
     ),
     StatCard(
       title: "Fournisseurs en attente",
-      value: pendingSuppliers.value.toString(),
+      value: pendingSuppliers.toString(),
       icon: Icons.business,
       color: Colors.grey,
       requiredPermission: Permissions.MANAGE_SUPPLIERS,
     ),
     StatCard(
       title: "Stocks en attente",
-      value: pendingStocks.value.toString(),
+      value: pendingStocks.toString(),
       icon: Icons.inventory,
       color: Colors.deepPurple,
       requiredPermission: Permissions.MANAGE_STOCKS,
@@ -252,113 +247,117 @@ class PatronDashboardController extends BaseDashboardController {
       'dashboard_patron_pendingClients',
     );
     if (cachedPendingClients != null)
-      pendingClients.value = cachedPendingClients;
+      pendingClients = cachedPendingClients;
 
     final cachedPendingDevis = CacheHelper.get<int>(
       'dashboard_patron_pendingDevis',
     );
-    if (cachedPendingDevis != null) pendingDevis.value = cachedPendingDevis;
+    if (cachedPendingDevis != null) pendingDevis = cachedPendingDevis;
 
     final cachedPendingBordereaux = CacheHelper.get<int>(
       'dashboard_patron_pendingBordereaux',
     );
     if (cachedPendingBordereaux != null)
-      pendingBordereaux.value = cachedPendingBordereaux;
+      pendingBordereaux = cachedPendingBordereaux;
 
     final cachedPendingBonCommandes = CacheHelper.get<int>(
       'dashboard_patron_pendingBonCommandes',
     );
     if (cachedPendingBonCommandes != null)
-      pendingBonCommandes.value = cachedPendingBonCommandes;
+      pendingBonCommandes = cachedPendingBonCommandes;
 
     final cachedPendingFactures = CacheHelper.get<int>(
       'dashboard_patron_pendingFactures',
     );
     if (cachedPendingFactures != null)
-      pendingFactures.value = cachedPendingFactures;
+      pendingFactures = cachedPendingFactures;
 
     final cachedPendingPaiements = CacheHelper.get<int>(
       'dashboard_patron_pendingPaiements',
     );
     if (cachedPendingPaiements != null)
-      pendingPaiements.value = cachedPendingPaiements;
+      pendingPaiements = cachedPendingPaiements;
 
     final cachedPendingDepenses = CacheHelper.get<int>(
       'dashboard_patron_pendingDepenses',
     );
     if (cachedPendingDepenses != null)
-      pendingDepenses.value = cachedPendingDepenses;
+      pendingDepenses = cachedPendingDepenses;
 
     final cachedPendingSalaires = CacheHelper.get<int>(
       'dashboard_patron_pendingSalaires',
     );
     if (cachedPendingSalaires != null)
-      pendingSalaires.value = cachedPendingSalaires;
+      pendingSalaires = cachedPendingSalaires;
 
     final cachedPendingInterventions = CacheHelper.get<int>(
       'dashboard_patron_pendingInterventions',
     );
     if (cachedPendingInterventions != null)
-      pendingInterventions.value = cachedPendingInterventions;
+      pendingInterventions = cachedPendingInterventions;
 
     final cachedPendingTaxes = CacheHelper.get<int>(
       'dashboard_patron_pendingTaxes',
     );
-    if (cachedPendingTaxes != null) pendingTaxes.value = cachedPendingTaxes;
+    if (cachedPendingTaxes != null) pendingTaxes = cachedPendingTaxes;
 
     final cachedValidatedClients = CacheHelper.get<int>(
       'dashboard_patron_validatedClients',
     );
     if (cachedValidatedClients != null)
-      validatedClients.value = cachedValidatedClients;
+      validatedClients = cachedValidatedClients;
 
     final cachedTotalRevenue = CacheHelper.get<double>(
       'dashboard_patron_totalRevenue',
     );
-    if (cachedTotalRevenue != null) totalRevenue.value = cachedTotalRevenue;
+    if (cachedTotalRevenue != null) totalRevenue = cachedTotalRevenue;
   }
 
   @override
   Future<void> loadData() async {
-    if (isLoading.value) return;
+    if (isLoading) return;
 
-    isLoading.value = true;
+    isLoading = true;
     try {
       await _loadPriorityData();
       await _loadPendingValidations();
       await _loadPerformanceMetrics();
 
       // Simuler le chargement des données des graphiques
-      revenueData.value = [
+      revenueData.clear();
+      revenueData.addAll([
         ChartData(1, 85000, "Janvier"),
         ChartData(2, 92000, "Février"),
         ChartData(3, 88000, "Mars"),
         ChartData(4, 95000, "Avril"),
         ChartData(5, 103000, "Mai"),
         ChartData(6, 110000, "Juin"),
-      ];
+      ]);
 
-      employeeData.value = [
+      employeeData.clear();
+      employeeData.addAll([
         ChartData(1, 35, "Commercial"),
         ChartData(2, 25, "Technique"),
         ChartData(3, 20, "Support"),
         ChartData(4, 20, "Autres"),
-      ];
+      ]);
 
-      ticketData.value = [
+      ticketData.clear();
+      ticketData.addAll([
         ChartData(1, 45, "Ouverts"),
         ChartData(2, 15, "En cours"),
         ChartData(3, 8, "En attente"),
         ChartData(4, 2, "Fermés"),
-      ];
+      ]);
 
-      leaveData.value = [
+      leaveData.clear();
+      leaveData.addAll([
         ChartData(1, 12, "Lundi"),
         ChartData(2, 15, "Mardi"),
         ChartData(3, 8, "Mercredi"),
         ChartData(4, 10, "Jeudi"),
         ChartData(5, 5, "Vendredi"),
-      ];
+      ]);
 
       // Mettre à jour les données des graphiques
       updateChartData('revenue', revenueData);
@@ -376,15 +375,14 @@ class PatronDashboardController extends BaseDashboardController {
       // Afficher un message à l'utilisateur seulement si c'est une erreur critique
       if (e.toString().contains('401') ||
           e.toString().contains('Unauthorized')) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur d\'authentification',
           'Votre session a expiré. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 5),
         );
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -488,7 +486,7 @@ class PatronDashboardController extends BaseDashboardController {
                 status == 'approved';
           })
           .fold(0.0, (sum, facture) => sum + facture.totalAmount);
-      totalRevenue.value = revenue;
+      totalRevenue = revenue;
       CacheHelper.set('dashboard_patron_totalRevenue', revenue);
     } catch (e) {
       // Ne pas réinitialiser
@@ -498,7 +496,7 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadTotalEmployees() async {
     try {
       final employees = await _employeeService.getEmployees();
-      totalEmployees.value = employees.length;
+      totalEmployees = employees.length;
     } catch (e) {
       // Ne pas réinitialiser
     }
@@ -507,7 +505,7 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadTotalSuppliers() async {
     try {
       final suppliers = await _supplierService.getSuppliers();
-      totalSuppliers.value = suppliers.length;
+      totalSuppliers = suppliers.length;
     } catch (e) {
       // Ne pas réinitialiser
     }
@@ -522,14 +520,14 @@ class PatronDashboardController extends BaseDashboardController {
         perPage: 1, // On veut juste le total, pas les données
       );
       final count = paginatedResponse.meta.total;
-      validatedClients.value = count;
+      validatedClients = count;
       CacheHelper.set('dashboard_patron_validatedClients', count);
     } catch (e) {
       // En cas d'erreur, essayer avec la méthode non-paginée (fallback)
       try {
         final clients = await _clientService.getClients(status: 1);
         final count = clients.length;
-        validatedClients.value = count;
+        validatedClients = count;
         CacheHelper.set('dashboard_patron_validatedClients', count);
       } catch (fallbackError) {
         // Ne pas réinitialiser
@@ -548,7 +546,7 @@ class PatronDashboardController extends BaseDashboardController {
       final clients = await _clientService.getClients(
         status: 0,
       ); // 0 = en attente (BDD)
-      pendingClients.value = clients.length;
+      pendingClients = clients.length;
       CacheHelper.set('dashboard_patron_pendingClients', clients.length);
     } catch (e) {
       // Ne pas réinitialiser
@@ -562,7 +560,7 @@ class PatronDashboardController extends BaseDashboardController {
         status: 0,
       ); // 0 = en attente (app)
       final count = devis.length;
-      pendingDevis.value = count;
+      pendingDevis = count;
       CacheHelper.set('dashboard_patron_pendingDevis', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -574,7 +572,7 @@ class PatronDashboardController extends BaseDashboardController {
       final bordereaux = await _bordereauService.getBordereaux(
         status: 1,
       ); // 1 = en attente
-      pendingBordereaux.value = bordereaux.length;
+      pendingBordereaux = bordereaux.length;
       CacheHelper.set('dashboard_patron_pendingBordereaux', bordereaux.length);
     } catch (e) {
       // Ne pas réinitialiser
@@ -586,7 +584,7 @@ class PatronDashboardController extends BaseDashboardController {
       final bonCommandes = await _bonCommandeService.getBonCommandes(
         status: 1,
       ); // 1 = en attente
-      pendingBonCommandes.value = bonCommandes.length;
+      pendingBonCommandes = bonCommandes.length;
       CacheHelper.set(
         'dashboard_patron_pendingBonCommandes',
         bonCommandes.length,
@@ -598,13 +596,12 @@ class PatronDashboardController extends BaseDashboardController {
 
   Future<void> _loadPendingFactures() async {
     try {
-      if (!Get.isRegistered<InvoiceService>()) return;
       final factures = await _invoiceService.getAllInvoices();
       final count = factures.where((f) => _isFactureEnAttente(f.status)).length;
-      pendingFactures.value = count;
+      pendingFactures = count;
       CacheHelper.set('dashboard_patron_pendingFactures', count);
     } catch (e) {
-      pendingFactures.value = 0;
+      pendingFactures = 0;
     }
   }
 
@@ -619,12 +616,11 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingPaiements() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<PaymentService>()) return;
 
       final paiements = await _paymentService.getAllPayments();
       // Utiliser la propriété isPending du modèle qui gère tous les cas (pending, submitted, draft)
       final count = paiements.where((paiement) => paiement.isPending).length;
-      pendingPaiements.value = count;
+      pendingPaiements = count;
       CacheHelper.set('dashboard_patron_pendingPaiements', count);
     } catch (e, stackTrace) {
       // Ne pas réinitialiser
@@ -636,7 +632,7 @@ class PatronDashboardController extends BaseDashboardController {
       final depenses = await _expenseService.getExpenses();
       final count =
           depenses.where((depense) => depense.status == 'pending').length;
-      pendingDepenses.value = count;
+      pendingDepenses = count;
       CacheHelper.set('dashboard_patron_pendingDepenses', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -648,7 +644,7 @@ class PatronDashboardController extends BaseDashboardController {
       final salaires = await _salaryService.getSalaries();
       final count =
           salaires.where((salaire) => salaire.status == 'pending').length;
-      pendingSalaires.value = count;
+      pendingSalaires = count;
       CacheHelper.set('dashboard_patron_pendingSalaires', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -660,7 +656,7 @@ class PatronDashboardController extends BaseDashboardController {
       final reports = await _reportingService.getAllReports();
       final count =
           reports.where((report) => report.status == 'submitted').length;
-      pendingReporting.value = count;
+      pendingReporting = count;
       CacheHelper.set('dashboard_patron_pendingReporting', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -674,7 +670,7 @@ class PatronDashboardController extends BaseDashboardController {
           pointages
               .where((pointage) => pointage.status.toLowerCase() == 'pending')
               .length;
-      pendingPointages.value = count;
+      pendingPointages = count;
       CacheHelper.set('dashboard_patron_pendingPointages', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -691,7 +687,7 @@ class PatronDashboardController extends BaseDashboardController {
                     intervention.status.toLowerCase() == 'pending',
               )
               .length;
-      pendingInterventions.value = count;
+      pendingInterventions = count;
       CacheHelper.set('dashboard_patron_pendingInterventions', count);
     } catch (e) {
       // Ne pas réinitialiser
@@ -701,12 +697,10 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingTaxes() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<TaxService>()) return;
-
       final taxes = await _taxService.getTaxes();
       // Utiliser la propriété isPending du modèle qui gère tous les cas
       final count = taxes.where((tax) => tax.isPending).length;
-      pendingTaxes.value = count;
+      pendingTaxes = count;
       CacheHelper.set('dashboard_patron_pendingTaxes', count);
     } catch (e, stackTrace) {
       // Ne pas réinitialiser
@@ -716,12 +710,11 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingRecruitments() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<RecruitmentService>()) return;
 
       final recruitments =
           await _recruitmentService.getAllRecruitmentRequests();
       // Les recrutements en attente peuvent avoir le statut 'draft' ou 'published'
-      pendingRecruitments.value =
+      pendingRecruitments =
           recruitments
               .where(
                 (recruitment) =>
@@ -737,7 +730,7 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingSuppliers() async {
     try {
       final suppliers = await _supplierService.getSuppliers();
-      pendingSuppliers.value =
+      pendingSuppliers =
           suppliers.where((supplier) => supplier.statut == 'pending').length;
     } catch (e) {
       // Ne pas réinitialiser
@@ -747,10 +740,9 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingContracts() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<ContractService>()) return;
 
       final contracts = await _contractService.getAllContracts();
-      pendingContracts.value =
+      pendingContracts =
           contracts
               .where(
                 (contract) =>
@@ -766,10 +758,8 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingLeaves() async {
     try {
       // Vérifier que le service est bien initialisé
-      if (!Get.isRegistered<LeaveService>()) return;
-
       final leaves = await _leaveService.getAllLeaveRequests();
-      pendingLeaves.value =
+      pendingLeaves =
           leaves
               .where(
                 (leave) =>
@@ -785,7 +775,7 @@ class PatronDashboardController extends BaseDashboardController {
   Future<void> _loadPendingStocks() async {
     try {
       final stocks = await _stockService.getStocks();
-      pendingStocks.value =
+      pendingStocks =
           stocks.where((stock) => stock.status == 'pending').length;
     } catch (e) {
       // Ne pas réinitialiser
@@ -798,7 +788,7 @@ class PatronDashboardController extends BaseDashboardController {
       if (res['success'] == true && res['data'] != null) {
         final list = res['data'] as List;
         final count = list.length;
-        pendingRegistrations.value = count;
+        pendingRegistrations = count;
         CacheHelper.set('dashboard_patron_pendingRegistrations', count);
       }
     } catch (e) {
@@ -810,7 +800,7 @@ class PatronDashboardController extends BaseDashboardController {
     try {
       // Même approche que bordereaux : liste filtrée puis comptage (fiable)
       final tasks = await _taskService.getTasksList(status: 'pending');
-      pendingTasks.value = tasks.length;
+      pendingTasks = tasks.length;
     } catch (e) {
       // Ne pas réinitialiser
     }

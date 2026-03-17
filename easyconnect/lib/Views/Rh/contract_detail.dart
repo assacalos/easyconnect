@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/contract_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/contract_notifier.dart';
 import 'package:easyconnect/Models/contract_model.dart';
-import 'package:easyconnect/Views/Rh/contract_form.dart';
 import 'package:intl/intl.dart';
 
-class ContractDetail extends StatelessWidget {
+class ContractDetail extends ConsumerWidget {
   final Contract contract;
 
   const ContractDetail({super.key, required this.contract});
 
   @override
-  Widget build(BuildContext context) {
-    final ContractController controller = Get.put(ContractController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(contractProvider.notifier);
+    const canManage = true;
+    const canApprove = true;
 
     return Scaffold(
       appBar: AppBar(
@@ -20,30 +22,31 @@ class ContractDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (contract.isDraft && controller.canManageContracts.value)
+          if (contract.isDraft && canManage)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => ContractForm(contract: contract)),
+              onPressed: () =>
+                  context.go('/contracts/${contract.id}/edit', extra: contract),
             ),
-          if (contract.isPending && controller.canApproveContracts.value) ...[
+          if (contract.isPending && canApprove) ...[
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: () => _showApproveDialog(contract, controller),
+              onPressed: () => _showApproveDialog(context, contract, notifier),
             ),
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => _showRejectDialog(contract, controller),
+              onPressed: () => _showRejectDialog(context, contract, notifier),
             ),
           ],
-          if (contract.isActive && controller.canManageContracts.value)
+          if (contract.isActive && canManage)
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => _showTerminateDialog(contract, controller),
+              onPressed: () => _showTerminateDialog(context, contract, notifier),
             ),
           if (contract.canCancel)
             IconButton(
               icon: const Icon(Icons.cancel),
-              onPressed: () => _showCancelDialog(contract, controller),
+              onPressed: () => _showCancelDialog(context, contract, notifier),
             ),
         ],
       ),
@@ -93,7 +96,7 @@ class ContractDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionsCard(contract, controller),
+            _buildActionsCard(context, contract, notifier, canManage, canApprove),
           ],
         ),
       ),
@@ -426,7 +429,8 @@ class ContractDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionsCard(Contract contract, ContractController controller) {
+  Widget _buildActionsCard(BuildContext context, Contract contract,
+      ContractNotifier notifier, bool canManage, bool canApprove) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -442,11 +446,11 @@ class ContractDetail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            if (contract.isDraft && controller.canManageContracts.value) ...[
+            if (contract.isDraft && canManage) ...[
               ElevatedButton.icon(
                 icon: const Icon(Icons.send),
                 label: const Text('Soumettre pour approbation'),
-                onPressed: () => _showSubmitDialog(contract, controller),
+                onPressed: () => _showSubmitDialog(context, contract, notifier),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -454,11 +458,11 @@ class ContractDetail extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            if (contract.isPending && controller.canApproveContracts.value) ...[
+            if (contract.isPending && canApprove) ...[
               ElevatedButton.icon(
                 icon: const Icon(Icons.check),
                 label: const Text('Approuver'),
-                onPressed: () => _showApproveDialog(contract, controller),
+                onPressed: () => _showApproveDialog(context, contract, notifier),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -468,7 +472,7 @@ class ContractDetail extends StatelessWidget {
               ElevatedButton.icon(
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
-                onPressed: () => _showRejectDialog(contract, controller),
+                onPressed: () => _showRejectDialog(context, contract, notifier),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -476,11 +480,12 @@ class ContractDetail extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            if (contract.isActive && controller.canManageContracts.value) ...[
+            if (contract.isActive && canManage) ...[
               ElevatedButton.icon(
                 icon: const Icon(Icons.close),
                 label: const Text('Résilier'),
-                onPressed: () => _showTerminateDialog(contract, controller),
+                onPressed: () =>
+                    _showTerminateDialog(context, contract, notifier),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -492,7 +497,7 @@ class ContractDetail extends StatelessWidget {
               ElevatedButton.icon(
                 icon: const Icon(Icons.cancel),
                 label: const Text('Annuler'),
-                onPressed: () => _showCancelDialog(contract, controller),
+                onPressed: () => _showCancelDialog(context, contract, notifier),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey,
                   foregroundColor: Colors.white,
@@ -599,19 +604,41 @@ class ContractDetail extends StatelessWidget {
     }
   }
 
-  void _showSubmitDialog(Contract contract, ContractController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showSubmitDialog(
+      BuildContext context, Contract contract, ContractNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Soumettre le contrat'),
         content: const Text(
           'Êtes-vous sûr de vouloir soumettre ce contrat pour approbation ?',
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.submitContract(contract);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.submitContract(contract);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contrat soumis avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
@@ -624,11 +651,12 @@ class ContractDetail extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(Contract contract, ContractController controller) {
+  void _showApproveDialog(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver le contrat'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -646,17 +674,36 @@ class ContractDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.approveContract(
-                contract,
-                notes:
-                    notesController.text.trim().isEmpty
-                        ? null
-                        : notesController.text.trim(),
-              );
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveContract(
+                  contract,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contrat approuvé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -669,11 +716,12 @@ class ContractDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(Contract contract, ContractController controller) {
+  void _showRejectDialog(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter le contrat'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -691,15 +739,42 @@ class ContractDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectContract(
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez indiquer la raison du rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectContract(
                   contract,
                   reasonController.text.trim(),
                 );
-                Get.back();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contrat rejeté'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -713,83 +788,115 @@ class ContractDetail extends StatelessWidget {
     );
   }
 
-  void _showTerminateDialog(Contract contract, ContractController controller) {
+  void _showTerminateDialog(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
     final reasonController = TextEditingController();
     DateTime? selectedDate;
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Résilier le contrat'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir résilier ce contrat ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison de la résiliation *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: Get.context!,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (date != null) {
-                  selectedDate = date;
-                }
-              },
-              child: InputDecorator(
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Résilier le contrat'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  'Êtes-vous sûr de vouloir résilier ce contrat ?'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
                 decoration: const InputDecoration(
-                  labelText: 'Date de résiliation *',
+                  labelText: 'Raison de la résiliation *',
                   border: OutlineInputBorder(),
                 ),
-                child: Text(
-                  selectedDate != null
-                      ? DateFormat('dd/MM/yyyy').format(selectedDate)
-                      : 'Sélectionner une date',
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: contract.startDate,
+                    lastDate:
+                        DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (date != null) setState(() => selectedDate = date);
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Date de résiliation *',
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Text(
+                    selectedDate != null
+                        ? DateFormat('dd/MM/yyyy').format(selectedDate!)
+                        : 'Sélectionner une date',
+                  ),
                 ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            ElevatedButton(
+              onPressed: () async {
+                if (reasonController.text.trim().isEmpty ||
+                    selectedDate == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Veuillez indiquer la raison et la date'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx);
+                try {
+                  await notifier.terminateContract(
+                    contract,
+                    reasonController.text.trim(),
+                    selectedDate!,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Contrat résilié'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text('Erreur: $e'),
+                          backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Résilier'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty &&
-                  selectedDate != null) {
-                controller.terminateContract(
-                  contract,
-                  reasonController.text.trim(),
-                  selectedDate!,
-                );
-                Get.back();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Résilier'),
-          ),
-        ],
       ),
     );
   }
 
-  void _showCancelDialog(Contract contract, ContractController controller) {
+  void _showCancelDialog(BuildContext context, Contract contract,
+      ContractNotifier notifier) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Annuler le contrat'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -807,17 +914,36 @@ class ContractDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Non')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Non')),
           ElevatedButton(
-            onPressed: () {
-              controller.cancelContract(
-                contract,
-                reason:
-                    reasonController.text.trim().isEmpty
-                        ? null
-                        : reasonController.text.trim(),
-              );
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.cancelContract(
+                  contract,
+                  reason: reasonController.text.trim().isEmpty
+                      ? null
+                      : reasonController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contrat annulé'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

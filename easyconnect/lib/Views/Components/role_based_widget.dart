@@ -1,46 +1,40 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 
-class RoleBasedWidget extends StatelessWidget {
+class RoleBasedWidget extends ConsumerWidget {
   final Widget child;
   final List<int> allowedRoles;
   final Widget? fallback;
   final List<String>? requiredPermissions;
 
   const RoleBasedWidget({
-    Key? key,
+    super.key,
     required this.child,
     required this.allowedRoles,
     this.fallback,
     this.requiredPermissions,
-  }) : super(key: key);
+  });
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRole = ref.watch(authProvider).user?.role;
 
-    return Obx(() {
-      final userRole = authController.userAuth.value?.role;
-      
-      // Vérifier si l'utilisateur a le rôle requis
-      bool hasRole = allowedRoles.contains(userRole);
-      
-      // Vérifier les permissions si spécifiées
-      bool hasPermissions = true;
-      if (requiredPermissions != null && requiredPermissions!.isNotEmpty) {
-        final rolePermissions = Roles.getRolePermissions()[userRole] ?? [];
-        hasPermissions = requiredPermissions!.every(
-          (permission) => rolePermissions.contains(permission)
-        );
-      }
+    bool hasRole = allowedRoles.contains(userRole);
 
-      if (hasRole && hasPermissions) {
-        return child;
-      }
+    bool hasPermissions = true;
+    if (requiredPermissions != null && requiredPermissions!.isNotEmpty) {
+      final rolePermissions = Roles.getRolePermissions()[userRole] ?? [];
+      hasPermissions = requiredPermissions!.every(
+        (permission) => rolePermissions.contains(permission),
+      );
+    }
 
-      return fallback ?? const SizedBox.shrink();
-    });
+    if (hasRole && hasPermissions) {
+      return child;
+    }
+
+    return fallback ?? const SizedBox.shrink();
   }
 }

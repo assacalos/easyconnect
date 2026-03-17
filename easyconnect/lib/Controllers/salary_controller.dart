@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
@@ -9,36 +8,41 @@ import 'package:easyconnect/services/camera_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class SalaryController extends GetxController {
+class SalaryController {
+  static final SalaryController _instance = SalaryController._();
+  static SalaryController get to => _instance;
+  factory SalaryController() => _instance;
+  SalaryController._();
+
   final SalaryService _salaryService = SalaryService();
-  final AuthController _authController = Get.find<AuthController>();
 
-  // Variables observables
-  final RxList<Salary> allSalaries = <Salary>[].obs; // Tous les salaires
-  final RxList<Salary> salaries = <Salary>[].obs; // Salaires filtrés
-  final RxList<Salary> pendingSalaries = <Salary>[].obs;
-  final RxList<SalaryComponent> salaryComponents = <SalaryComponent>[].obs;
-  final RxList<Map<String, dynamic>> employees = <Map<String, dynamic>>[].obs;
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final Rx<SalaryStats?> salaryStats = Rx<SalaryStats?>(null);
+  // Variables
+  final List<Salary> allSalaries = [];
+  final List<Salary> salaries = [];
+  final List<Salary> pendingSalaries = [];
+  final List<SalaryComponent> salaryComponents = [];
+  final List<Map<String, dynamic>> employees = [];
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  SalaryStats? salaryStats;
 
   // Variables pour le formulaire
-  final RxString searchQuery = ''.obs;
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedMonth = 'all'.obs;
-  final RxInt selectedYear = DateTime.now().year.obs;
-  final Rx<Salary?> selectedSalary = Rx<Salary?>(null);
-  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
+  String searchQuery = '';
+  String selectedStatus = 'all';
+  String selectedMonth = 'all';
+  int selectedYear = DateTime.now().year;
+  Salary? selectedSalary;
+  String? _currentStatusFilter;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
   // Contrôleurs de formulaire
@@ -48,92 +52,89 @@ class SalaryController extends GetxController {
   final TextEditingController bonusController = TextEditingController();
   final TextEditingController deductionsController = TextEditingController();
   final TextEditingController notesController = TextEditingController();
-  final RxInt selectedEmployeeId = 0.obs;
-  final RxString selectedEmployeeName = ''.obs;
-  final RxString selectedEmployeeEmail = ''.obs;
-  final RxString selectedMonthForm = ''.obs;
-  final RxInt selectedYearForm = DateTime.now().year.obs;
-  final RxDouble netSalary = 0.0.obs; // Salaire net calculé
-  final RxList<Map<String, dynamic>> selectedFiles =
-      <Map<String, dynamic>>[].obs; // Fichiers justificatifs
+  int selectedEmployeeId = 0;
+  String selectedEmployeeName = '';
+  String selectedEmployeeEmail = '';
+  String selectedMonthForm = '';
+  int selectedYearForm = DateTime.now().year;
+  double netSalary = 0.0;
+  final List<Map<String, dynamic>> selectedFiles = [];
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      loadSalaries();
-      loadSalaryStats();
-      loadPendingSalaries();
-      loadEmployees();
-      loadSalaryComponents();
-    });
+  void ensureInitialized() {
+    loadSalaries();
+    loadSalaryStats();
+    loadPendingSalaries();
+    loadEmployees();
+    loadSalaryComponents();
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     employeeSearchController.dispose();
     baseSalaryController.dispose();
     bonusController.dispose();
     deductionsController.dispose();
     notesController.dispose();
-    super.onClose();
   }
 
   // Charger tous les salaires
-  Future<void> loadSalaries({String? statusFilter, int page = 1}) async {
+  Future<void> loadSalaries({String? statusFilter, int page = 1, bool forceRefresh = false}) async {
     try {
       _currentStatusFilter =
           statusFilter ??
-          (selectedStatus.value == 'all' ? null : selectedStatus.value);
+          (selectedStatus == 'all' ? null : selectedStatus);
 
       final cacheKey = 'salaries_${_currentStatusFilter ?? 'all'}';
 
       if (page == 1) {
-        final hiveList = SalaryService.getCachedSalaires();
-        if (hiveList.isNotEmpty) {
-          allSalaries.assignAll(hiveList);
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshSalariesFromApi(cacheKey));
-          return;
+        if (!forceRefresh) {
+          final hiveList = SalaryService.getCachedSalaires();
+          if (hiveList.isNotEmpty) {
+            allSalaries.clear();
+            allSalaries.addAll(hiveList);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshSalariesFromApi(cacheKey));
+            return;
+          }
+          final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
+          if (cachedSalaries != null && cachedSalaries.isNotEmpty) {
+            allSalaries.clear();
+            allSalaries.addAll(cachedSalaries);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshSalariesFromApi(cacheKey));
+            return;
+          }
         }
-        final cachedSalaries = CacheHelper.get<List<Salary>>(cacheKey);
-        if (cachedSalaries != null && cachedSalaries.isNotEmpty) {
-          allSalaries.assignAll(cachedSalaries);
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshSalariesFromApi(cacheKey));
-          return;
-        }
-        allSalaries.value = [];
-        isLoading.value = true;
+        allSalaries.clear();
+        isLoading = true;
       } else if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         // Utiliser la méthode paginée
         final paginatedResponse = await _salaryService.getSalariesPaginated(
           status: _currentStatusFilter,
-          month: selectedMonth.value != 'all' ? selectedMonth.value : null,
-          year: selectedYear.value,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          month: selectedMonth != 'all' ? selectedMonth : null,
+          year: selectedYear,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
           page: page,
-          perPage: perPage.value,
+          perPage: perPage,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          allSalaries.value = paginatedResponse.data;
+          allSalaries.clear();
+          allSalaries.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           allSalaries.addAll(paginatedResponse.data);
@@ -154,7 +155,8 @@ class SalaryController extends GetxController {
         );
         if (loadedSalaries.isNotEmpty) {
           if (page == 1) {
-            allSalaries.value = loadedSalaries;
+            allSalaries.clear();
+            allSalaries.addAll(loadedSalaries);
           } else {
             allSalaries.addAll(loadedSalaries);
           }
@@ -187,7 +189,8 @@ class SalaryController extends GetxController {
       // Si des données sont disponibles, les charger et ne pas afficher d'erreur
       if (hasDataInCache && !hasDataInList) {
         // Charger les données du cache si la liste est vide
-        allSalaries.assignAll(cachedSalaries);
+        allSalaries.clear();
+        allSalaries.addAll(cachedSalaries);
         applyFilters();
         print(
           '✅ [SALARY_CONTROLLER] Données chargées depuis le cache (${cachedSalaries.length} salaires)',
@@ -199,8 +202,8 @@ class SalaryController extends GetxController {
         );
       } else {
         // Vider la liste seulement si aucune donnée n'est disponible
-        allSalaries.value = [];
-        salaries.value = [];
+        allSalaries.clear();
+        salaries.clear();
       }
 
       // Ne pas afficher de message d'erreur si des données sont disponibles (liste ou cache)
@@ -213,10 +216,9 @@ class SalaryController extends GetxController {
             !errorString.contains('unauthorized') &&
             !errorString.contains('impossible de se connecter')) {
           // Ne pas afficher d'erreur pour les erreurs de connexion si des données sont en cache
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les salaires',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.orange,
             colorText: Colors.white,
             duration: const Duration(seconds: 3),
@@ -224,8 +226,8 @@ class SalaryController extends GetxController {
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
@@ -234,25 +236,26 @@ class SalaryController extends GetxController {
   Future<void> _refreshSalariesFromApi(String cacheKey) async {
     try {
       if (_currentStatusFilter !=
-          (selectedStatus.value == 'all' ? null : selectedStatus.value))
+          (selectedStatus == 'all' ? null : selectedStatus))
         return;
       final paginatedResponse = await _salaryService.getSalariesPaginated(
         status: _currentStatusFilter,
-        month: selectedMonth.value != 'all' ? selectedMonth.value : null,
-        year: selectedYear.value,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        month: selectedMonth != 'all' ? selectedMonth : null,
+        year: selectedYear,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
         page: 1,
-        perPage: perPage.value,
+        perPage: perPage,
       );
       if (_currentStatusFilter !=
-          (selectedStatus.value == 'all' ? null : selectedStatus.value))
+          (selectedStatus == 'all' ? null : selectedStatus))
         return;
-      allSalaries.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      allSalaries.clear();
+      allSalaries.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
       applyFilters();
       CacheHelper.set(cacheKey, paginatedResponse.data);
       loadSalaryStats().catchError((_) {});
@@ -260,27 +263,27 @@ class SalaryController extends GetxController {
   }
 
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadSalaries(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value + 1,
+        page: currentPage + 1,
       );
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasPreviousPage && !isLoading && !isLoadingMore) {
       loadSalaries(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value - 1,
+        page: currentPage - 1,
       );
     }
   }
@@ -289,7 +292,8 @@ class SalaryController extends GetxController {
   Future<void> loadPendingSalaries() async {
     try {
       final pending = await _salaryService.getPendingSalaries();
-      pendingSalaries.assignAll(pending);
+      pendingSalaries.clear();
+      pendingSalaries.addAll(pending);
     } catch (e) {
       // Ne pas bloquer l'application si cette méthode échoue
       pendingSalaries.clear();
@@ -305,7 +309,8 @@ class SalaryController extends GetxController {
       final employeesList = await _salaryService.getEmployees();
 
       // Les données sont déjà au format Map<String, dynamic>
-      employees.assignAll(employeesList);
+      employees.clear();
+      employees.addAll(employeesList);
     } catch (e) {
       // Ne pas bloquer l'application si cette méthode échoue
       // L'endpoint peut retourner 403 si le comptable n'a pas accès
@@ -317,7 +322,8 @@ class SalaryController extends GetxController {
   Future<void> loadSalaryComponents() async {
     try {
       final components = await _salaryService.getSalaryComponents();
-      salaryComponents.assignAll(components);
+      salaryComponents.clear();
+      salaryComponents.addAll(components);
     } catch (e) {
       // Ne pas bloquer l'application si cette méthode échoue
       salaryComponents.clear();
@@ -328,7 +334,7 @@ class SalaryController extends GetxController {
   Future<void> loadSalaryStats() async {
     try {
       final stats = await _salaryService.getSalaryStats();
-      salaryStats.value = stats;
+      salaryStats = stats;
     } catch (e) {}
   }
 
@@ -344,36 +350,33 @@ class SalaryController extends GetxController {
   // Créer un salaire
   Future<bool> createSalary() async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Validation des champs obligatoires
-      if (selectedEmployeeId.value == 0) {
-        Get.snackbar(
+      if (selectedEmployeeId == 0) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner un employé',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
         return false;
       }
 
-      if (selectedMonthForm.value.isEmpty) {
-        Get.snackbar(
+      if (selectedMonthForm.isEmpty) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner un mois',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
         return false;
       }
 
-      if (selectedYearForm.value == 0) {
-        Get.snackbar(
+      if (selectedYearForm == 0) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner une année',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -382,10 +385,9 @@ class SalaryController extends GetxController {
 
       final baseSalary = double.tryParse(baseSalaryController.text) ?? 0.0;
       if (baseSalary <= 0) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Le salaire de base doit être supérieur à 0',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -396,15 +398,15 @@ class SalaryController extends GetxController {
       final deductions = double.tryParse(deductionsController.text) ?? 0.0;
       final netSalary = baseSalary + bonus - deductions;
       final salary = Salary(
-        employeeId: selectedEmployeeId.value,
-        employeeName: selectedEmployeeName.value,
-        employeeEmail: selectedEmployeeEmail.value,
+        employeeId: selectedEmployeeId,
+        employeeName: selectedEmployeeName,
+        employeeEmail: selectedEmployeeEmail,
         baseSalary: baseSalary,
         bonus: bonus,
         deductions: deductions,
         netSalary: netSalary,
-        month: selectedMonthForm.value,
-        year: selectedYearForm.value,
+        month: selectedMonthForm,
+        year: selectedYearForm,
         status: 'pending', // Statut par défaut
         notes:
             notesController.text.trim().isEmpty
@@ -445,10 +447,9 @@ class SalaryController extends GetxController {
       }
 
       // Afficher le message de succès immédiatement
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Salaire créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
@@ -487,24 +488,23 @@ class SalaryController extends GetxController {
         return false;
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de créer le salaire: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Mettre à jour un salaire
   Future<bool> updateSalary(Salary salary) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final baseSalary = double.tryParse(baseSalaryController.text) ?? 0.0;
       final bonus = double.tryParse(bonusController.text) ?? 0.0;
@@ -513,15 +513,15 @@ class SalaryController extends GetxController {
 
       final updatedSalary = Salary(
         id: salary.id,
-        employeeId: selectedEmployeeId.value,
-        employeeName: selectedEmployeeName.value,
-        employeeEmail: selectedEmployeeEmail.value,
+        employeeId: selectedEmployeeId,
+        employeeName: selectedEmployeeName,
+        employeeEmail: selectedEmployeeEmail,
         baseSalary: baseSalary,
         bonus: bonus,
         deductions: deductions,
         netSalary: netSalary,
-        month: selectedMonthForm.value,
-        year: selectedYearForm.value,
+        month: selectedMonthForm,
+        year: selectedYearForm,
         status: salary.status,
         notes:
             notesController.text.trim().isEmpty
@@ -544,10 +544,9 @@ class SalaryController extends GetxController {
       await loadSalaries();
       await loadSalaryStats();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Salaire mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
       );
@@ -566,24 +565,23 @@ class SalaryController extends GetxController {
         return false;
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le salaire: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Approuver un salaire
   Future<void> approveSalary(Salary salary) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('salaries_');
@@ -627,10 +625,9 @@ class SalaryController extends GetxController {
           entity: salary,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Salaire approuvé',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
@@ -674,10 +671,9 @@ class SalaryController extends GetxController {
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -689,14 +685,14 @@ class SalaryController extends GetxController {
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Rejeter un salaire
   Future<void> rejectSalary(Salary salary, String reason) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('salaries_');
@@ -738,10 +734,9 @@ class SalaryController extends GetxController {
           entity: salary,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Salaire rejeté',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
@@ -785,10 +780,9 @@ class SalaryController extends GetxController {
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -798,14 +792,14 @@ class SalaryController extends GetxController {
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Marquer comme payé
   Future<void> markSalaryAsPaid(Salary salary) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _salaryService.markSalaryAsPaid(
         salary.id!,
@@ -820,68 +814,65 @@ class SalaryController extends GetxController {
         await loadSalaryStats();
         await loadPendingSalaries();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Salaire marqué comme payé',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors du paiement');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de marquer le salaire comme payé',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Supprimer un salaire
   Future<void> deleteSalary(Salary salary) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _salaryService.deleteSalary(salary.id!);
       if (success) {
         salaries.removeWhere((s) => s.id == salary.id);
         await loadSalaryStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Salaire supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer le salaire',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Remplir le formulaire avec les données d'un salaire
   void fillForm(Salary salary) {
-    selectedEmployeeId.value = salary.employeeId ?? 0;
-    selectedEmployeeName.value = salary.employeeName ?? '';
-    selectedEmployeeEmail.value = salary.employeeEmail ?? '';
+    selectedEmployeeId = salary.employeeId ?? 0;
+    selectedEmployeeName = salary.employeeName ?? '';
+    selectedEmployeeEmail = salary.employeeEmail ?? '';
     baseSalaryController.text = salary.baseSalary.toString();
     bonusController.text = salary.bonus.toString();
     deductionsController.text = salary.deductions.toString();
-    selectedMonthForm.value = salary.month ?? '';
-    selectedYearForm.value = salary.year ?? 0;
+    selectedMonthForm = salary.month ?? '';
+    selectedYearForm = salary.year ?? 0;
     notesController.text = salary.notes ?? '';
-    selectedSalary.value = salary;
+    selectedSalary = salary;
     // Charger les justificatifs existants
-    selectedFiles.value =
+    selectedFiles.clear();
+    selectedFiles.addAll(
         salary.justificatifs
             .map(
               (path) => {
@@ -892,7 +883,7 @@ class SalaryController extends GetxController {
                 'extension': path.split('.').last.toLowerCase(),
               },
             )
-            .toList();
+            .toList());
   }
 
   // Mettre à jour le salaire net calculé
@@ -900,30 +891,31 @@ class SalaryController extends GetxController {
     final baseSalary = double.tryParse(baseSalaryController.text) ?? 0.0;
     final bonus = double.tryParse(bonusController.text) ?? 0.0;
     final deductions = double.tryParse(deductionsController.text) ?? 0.0;
-    netSalary.value = baseSalary + bonus - deductions;
+    netSalary = baseSalary + bonus - deductions;
   }
 
   // Vider le formulaire
   void clearForm() {
-    selectedEmployeeId.value = 0;
-    selectedEmployeeName.value = '';
-    selectedEmployeeEmail.value = '';
+    selectedEmployeeId = 0;
+    selectedEmployeeName = '';
+    selectedEmployeeEmail = '';
     baseSalaryController.clear();
     bonusController.clear();
     deductionsController.clear();
     notesController.clear();
-    selectedMonthForm.value = '';
-    selectedYearForm.value = DateTime.now().year;
-    selectedSalary.value = null;
-    netSalary.value = 0.0;
+    selectedMonthForm = '';
+    selectedYearForm = DateTime.now().year;
+    selectedSalary = null;
+    netSalary = 0.0;
     selectedFiles.clear();
   }
 
   // Sélectionner des fichiers justificatifs
-  Future<void> selectFiles() async {
+  Future<void> selectFiles(BuildContext context) async {
     try {
-      final String? selectionType = await Get.dialog<String>(
-        AlertDialog(
+      final String? selectionType = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
           title: const Text('Sélectionner des justificatifs'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -931,17 +923,17 @@ class SalaryController extends GetxController {
               ListTile(
                 leading: const Icon(Icons.insert_drive_file),
                 title: const Text('Fichiers (PDF, Documents, etc.)'),
-                onTap: () => Get.back(result: 'file'),
+                onTap: () => Navigator.of(ctx).pop('file'),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
                 title: const Text('Image depuis la galerie'),
-                onTap: () => Get.back(result: 'gallery'),
+                onTap: () => Navigator.of(ctx).pop('gallery'),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt),
                 title: const Text('Prendre une photo / Scanner'),
-                onTap: () => Get.back(result: 'camera'),
+                onTap: () => Navigator.of(ctx).pop('camera'),
               ),
             ],
           ),
@@ -963,10 +955,9 @@ class SalaryController extends GetxController {
               final fileSize = await file.length();
 
               if (fileSize > 10 * 1024 * 1024) {
-                Get.snackbar(
+                errorHelperShowSnackbar?.call(
                   'Erreur',
                   'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
-                  snackPosition: SnackPosition.BOTTOM,
                 );
                 continue;
               }
@@ -989,10 +980,9 @@ class SalaryController extends GetxController {
             }
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             '${result.files.length} fichier(s) sélectionné(s)',
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 2),
           );
         }
@@ -1017,10 +1007,9 @@ class SalaryController extends GetxController {
             final fileSize = await imageFile.length();
 
             if (fileSize > 10 * 1024 * 1024) {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Erreur',
                 'Le fichier est trop volumineux (max 10 MB)',
-                snackPosition: SnackPosition.BOTTOM,
                 duration: const Duration(seconds: 3),
               );
               return;
@@ -1030,10 +1019,9 @@ class SalaryController extends GetxController {
             try {
               await cameraService.validateImage(imageFile);
             } catch (e) {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Erreur',
                 'Image invalide: $e',
-                snackPosition: SnackPosition.BOTTOM,
                 duration: const Duration(seconds: 3),
               );
               return;
@@ -1050,10 +1038,9 @@ class SalaryController extends GetxController {
               'extension': extension,
             });
 
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Succès',
               'Fichier sélectionné',
-              snackPosition: SnackPosition.BOTTOM,
               duration: const Duration(seconds: 2),
             );
           }
@@ -1067,19 +1054,17 @@ class SalaryController extends GetxController {
             errorMessage = e.toString().replaceFirst('Exception: ', '');
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             errorMessage,
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 4),
           );
         }
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 4),
       );
     }
@@ -1096,24 +1081,24 @@ class SalaryController extends GetxController {
   void applyFilters() {
     List<Salary> filteredSalaries = List.from(allSalaries);
     // Filtrer par statut
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filteredSalaries =
           filteredSalaries.where((salary) {
-            return salary.status == selectedStatus.value;
+            return salary.status == selectedStatus;
           }).toList();
     }
 
     // Filtrer par mois
-    if (selectedMonth.value != 'all') {
+    if (selectedMonth != 'all') {
       filteredSalaries =
           filteredSalaries.where((salary) {
-            return salary.month == selectedMonth.value;
+            return salary.month == selectedMonth;
           }).toList();
     }
 
     // Filtrer par recherche
-    if (searchQuery.value.isNotEmpty) {
-      final query = searchQuery.value.toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
       filteredSalaries =
           filteredSalaries.where((salary) {
             return (salary.employeeName?.toLowerCase().contains(query) ??
@@ -1122,40 +1107,41 @@ class SalaryController extends GetxController {
           }).toList();
     }
 
-    salaries.assignAll(filteredSalaries);
+    salaries.clear();
+    salaries.addAll(filteredSalaries);
   }
 
   // Rechercher
   void searchSalaries(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     applyFilters();
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     applyFilters();
   }
 
   // Filtrer par mois
   void filterByMonth(String month) {
-    selectedMonth.value = month;
+    selectedMonth = month;
     applyFilters();
   }
 
   // Filtrer par année
   void filterByYear(int year) {
-    selectedYear.value = year;
+    selectedYear = year;
     applyFilters();
   }
 
   // Sélectionner un employé
   void selectEmployee(Map<String, dynamic> employee) {
-    selectedEmployeeId.value = employee['id'];
-    selectedEmployeeName.value =
+    selectedEmployeeId = employee['id'];
+    selectedEmployeeName =
         employee['name'] ??
         '${employee['first_name'] ?? ''} ${employee['last_name'] ?? ''}'.trim();
-    selectedEmployeeEmail.value = employee['email'] ?? '';
+    selectedEmployeeEmail = employee['email'] ?? '';
 
     // Pré-remplir le salaire de base avec le salaire de l'employé
     if (employee['salary'] != null) {
@@ -1173,12 +1159,12 @@ class SalaryController extends GetxController {
 
   // Sélectionner le mois
   void selectMonth(String month) {
-    selectedMonthForm.value = month;
+    selectedMonthForm = month;
   }
 
   // Sélectionner l'année
   void selectYear(int year) {
-    selectedYearForm.value = year;
+    selectedYearForm = year;
   }
 
   // Obtenir les mois
@@ -1205,33 +1191,33 @@ class SalaryController extends GetxController {
 
   // Vérifier les permissions
   bool get canManageSalaries {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole == 1 || userRole == 3; // Admin, Comptable
   }
 
   bool get canApproveSalaries {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole == 1 || userRole == 4; // Admin, Patron
   }
 
   bool get canViewSalaries {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole != null; // Tous les rôles
   }
 
   // Obtenir les salaires par statut
   List<Salary> get salariesByStatus {
-    if (selectedStatus.value == 'all') return salaries;
+    if (selectedStatus == 'all') return salaries;
     return salaries
-        .where((salary) => salary.status == selectedStatus.value)
+        .where((salary) => salary.status == selectedStatus)
         .toList();
   }
 
   // Obtenir les salaires par mois
   List<Salary> get salariesByMonth {
-    if (selectedMonth.value == 'all') return salaries;
+    if (selectedMonth == 'all') return salaries;
     return salaries
-        .where((salary) => salary.month == selectedMonth.value)
+        .where((salary) => salary.month == selectedMonth)
         .toList();
   }
 
@@ -1239,31 +1225,31 @@ class SalaryController extends GetxController {
   List<Salary> get filteredSalaries {
     List<Salary> filtered = salaries;
 
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filtered =
           filtered
-              .where((salary) => salary.status == selectedStatus.value)
+              .where((salary) => salary.status == selectedStatus)
               .toList();
     }
 
-    if (selectedMonth.value != 'all') {
+    if (selectedMonth != 'all') {
       filtered =
           filtered
-              .where((salary) => salary.month == selectedMonth.value)
+              .where((salary) => salary.month == selectedMonth)
               .toList();
     }
 
-    if (searchQuery.value.isNotEmpty) {
+    if (searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (salary) =>
                     (salary.employeeName?.toLowerCase().contains(
-                          searchQuery.value.toLowerCase(),
+                          searchQuery.toLowerCase(),
                         ) ??
                         false) ||
                     (salary.employeeEmail?.toLowerCase().contains(
-                          searchQuery.value.toLowerCase(),
+                          searchQuery.toLowerCase(),
                         ) ??
                         false),
               )

@@ -1,4 +1,3 @@
-import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
@@ -13,55 +12,68 @@ import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class BonDeCommandeFournisseurController extends GetxController
-    with GetSingleTickerProviderStateMixin {
-  late int userId;
-  final BonDeCommandeFournisseurService _service =
-      BonDeCommandeFournisseurService();
+BonDeCommande? _firstWhereBonDeCommandeById(List<BonDeCommande> list, int id) {
+  try {
+    return list.firstWhere((b) => b.id == id);
+  } catch (_) {
+    return null;
+  }
+}
+
+class BonDeCommandeFournisseurController {
+  static final BonDeCommandeFournisseurController _instance = BonDeCommandeFournisseurController._();
+  static BonDeCommandeFournisseurController get to => _instance;
+  factory BonDeCommandeFournisseurController() => _instance;
+  BonDeCommandeFournisseurController._();
+
+  int get userId => int.parse(AuthController.to.userAuth?.id.toString() ?? '0');
+
+  final BonDeCommandeFournisseurService _service = BonDeCommandeFournisseurService();
   final ClientService _clientService = ClientService();
   final SupplierService _supplierService = SupplierService();
 
-  final bonDeCommandes = <BonDeCommande>[].obs;
-  final selectedClient = Rxn<Client>();
-  final selectedSupplier = Rxn<Supplier>();
-  final availableClients = <Client>[].obs;
-  final availableSuppliers = <Supplier>[].obs;
-  final isLoading = false.obs;
-  final isLoadingClients = false.obs;
-  final isLoadingSuppliers = false.obs;
-  final currentBonDeCommande = Rxn<BonDeCommande>();
-  final items = <BonDeCommandeItem>[].obs;
+  final List<BonDeCommande> bonDeCommandes = [];
+  Client? selectedClient;
+  Supplier? selectedSupplier;
+  final List<Client> availableClients = [];
+  final List<Supplier> availableSuppliers = [];
+  bool isLoading = false;
+  bool isLoadingClients = false;
+  bool isLoadingSuppliers = false;
+  BonDeCommande? currentBonDeCommande;
+  final List<BonDeCommandeItem> items = [];
 
   // Référence générée automatiquement
-  final generatedNumeroCommande = ''.obs;
+  String generatedNumeroCommande = '';
 
-  // Gestion des onglets
-  late TabController tabController;
-  final selectedStatus = Rxn<String>();
-  String? _currentStatus; // Mémoriser le statut actuellement chargé
+  // Gestion des onglets : la vue crée le TabController et l'assigne via setTabController
+  TabController? _tabController;
+  String? selectedStatus;
+  String? _currentStatus;
 
   // Statistiques
-  final totalBonDeCommandes = 0.obs;
-  final bonDeCommandesEnAttente = 0.obs;
-  final bonDeCommandesValides = 0.obs;
-  final bonDeCommandesRejetes = 0.obs;
-  final bonDeCommandesLivres = 0.obs;
-  final montantTotal = 0.0.obs;
+  int totalBonDeCommandes = 0;
+  int bonDeCommandesEnAttente = 0;
+  int bonDeCommandesValides = 0;
+  int bonDeCommandesRejetes = 0;
+  int bonDeCommandesLivres = 0;
+  double montantTotal = 0.0;
 
-  @override
-  void onInit() {
-    super.onInit();
-    userId = int.parse(
-      Get.find<AuthController>().userAuth.value!.id.toString(),
-    );
-    tabController = TabController(length: 5, vsync: this);
-    tabController.addListener(_onTabChanged);
-    // Un seul chargement initial : puis init du numéro (évite 2 appels API)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      loadBonDeCommandes().then((_) => initializeGeneratedNumeroCommande());
-      loadSuppliers();
-    });
+  void setTabController(TabController c) {
+    _tabController?.removeListener(_onTabChanged);
+    _tabController = c;
+    _tabController!.addListener(_onTabChanged);
+  }
+
+  /// À appeler au premier affichage (ex: depuis la vue) pour charger les données et les fournisseurs.
+  void ensureInitialized() {
+    loadBonDeCommandes();
+    loadSuppliers();
+    if (generatedNumeroCommande.isEmpty) {
+      initializeGeneratedNumeroCommande();
+    }
   }
 
   // Générer automatiquement le numéro de commande fournisseur
@@ -84,24 +96,23 @@ class BonDeCommandeFournisseurController extends GetxController
 
   // Initialiser le numéro de commande généré
   Future<void> initializeGeneratedNumeroCommande() async {
-    if (generatedNumeroCommande.value.isEmpty) {
-      generatedNumeroCommande.value = await generateNumeroCommande();
+    if (generatedNumeroCommande.isEmpty) {
+      generatedNumeroCommande = await generateNumeroCommande();
     }
   }
 
-  @override
-  void onClose() {
-    tabController.dispose();
-    super.onClose();
+  void dispose() {
+    _tabController?.removeListener(_onTabChanged);
+    _tabController?.dispose();
+    _tabController = null;
   }
 
   void _onTabChanged() {
-    if (tabController.indexIsChanging) {
-      selectedStatus.value =
-          tabController.index == 0
-              ? null
-              : _getStatusFromIndex(tabController.index);
-    }
+    if (_tabController == null || !_tabController!.indexIsChanging) return;
+    selectedStatus =
+        _tabController!.index == 0
+            ? null
+            : _getStatusFromIndex(_tabController!.index);
   }
 
   String _getStatusFromIndex(int index) {
@@ -121,12 +132,12 @@ class BonDeCommandeFournisseurController extends GetxController
 
   List<BonDeCommande> getFilteredBonDeCommandes() {
     // Si aucun statut sélectionné, retourner tous les bons de commande
-    if (selectedStatus.value == null || selectedStatus.value == 'all') {
+    if (selectedStatus == null || selectedStatus == 'all') {
       return bonDeCommandes;
     }
 
     // Filtrer par statut (comparaison insensible à la casse)
-    final statusLower = selectedStatus.value!.toLowerCase().trim();
+    final statusLower = selectedStatus!.toLowerCase().trim();
     return bonDeCommandes.where((bc) {
       final bcStatus = bc.statut.toLowerCase().trim();
       // Gérer les différentes variantes de statuts
@@ -163,9 +174,9 @@ class BonDeCommandeFournisseurController extends GetxController
 
       // Mettre à jour le statut sélectionné
       if (status != null) {
-        selectedStatus.value = status;
+        selectedStatus = status;
       } else {
-        selectedStatus.value = 'all';
+        selectedStatus = 'all';
       }
 
       // Afficher immédiatement les données du cache si disponibles
@@ -175,14 +186,15 @@ class BonDeCommandeFournisseurController extends GetxController
       if (cachedBonDeCommandes != null &&
           cachedBonDeCommandes.isNotEmpty &&
           !forceRefresh) {
-        bonDeCommandes.value = cachedBonDeCommandes;
-        isLoading.value = false; // Permettre l'affichage immédiat
+        bonDeCommandes.clear();
+        bonDeCommandes.addAll(cachedBonDeCommandes);
+        isLoading = false; // Permettre l'affichage immédiat
         AppLogger.debug(
           'Données chargées depuis le cache: ${cachedBonDeCommandes.length} bons de commande',
           tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
         );
       } else {
-        isLoading.value = true;
+        isLoading = true;
       }
 
       AppLogger.debug(
@@ -190,7 +202,8 @@ class BonDeCommandeFournisseurController extends GetxController
         tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
       );
       final loadedBonDeCommandes = await _service.getBonDeCommandes();
-      bonDeCommandes.value = loadedBonDeCommandes;
+      bonDeCommandes.clear();
+      bonDeCommandes.addAll(loadedBonDeCommandes);
       AppLogger.info(
         'loadBonDeCommandes OK: ${loadedBonDeCommandes.length} éléments',
         tag: 'BON_COMMANDE_FOURNISSEUR_CONTROLLER',
@@ -206,83 +219,91 @@ class BonDeCommandeFournisseurController extends GetxController
       if (bonDeCommandes.isEmpty) {
         final fallback = CacheHelper.get<List<BonDeCommande>>(cacheKey);
         if (fallback != null && fallback.isNotEmpty) {
-          bonDeCommandes.value = fallback;
+          bonDeCommandes.clear();
+          bonDeCommandes.addAll(fallback);
         } else {
-          bonDeCommandes.value = [];
+          bonDeCommandes.clear();
           final errorString = e.toString().toLowerCase();
           if (!errorString.contains('session expirée') &&
               !errorString.contains('401') &&
               !errorString.contains('unauthorized')) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Erreur',
               'Impossible de charger les bons de commande',
-              snackPosition: SnackPosition.BOTTOM,
-              backgroundColor: Colors.red,
-              colorText: Colors.white,
               duration: const Duration(seconds: 5),
             );
           }
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   /// Clients validés : cache Hive d'abord, puis API.
   Future<void> loadClients() async {
-    isLoadingClients.value = true;
+    isLoadingClients = true;
     final cached = ClientService.getCachedClients(1);
     if (cached.isNotEmpty) {
-      availableClients.assignAll(cached);
-      isLoadingClients.value = false;
+      availableClients.clear();
+      availableClients.addAll(cached);
+      isLoadingClients = false;
     } else {
-      availableClients.value = [];
+      availableClients.clear();
     }
     try {
       final clients = await _clientService.getClients(status: 1);
-      availableClients.assignAll(clients);
+      availableClients.clear();
+      availableClients.addAll(clients);
     } catch (e) {
       if (availableClients.isEmpty) {
         final fallback = ClientService.getCachedClients(1);
-        if (fallback.isNotEmpty) availableClients.assignAll(fallback);
+        if (fallback.isNotEmpty) {
+          availableClients.clear();
+          availableClients.addAll(fallback);
+        }
       }
     } finally {
-      isLoadingClients.value = false;
+      isLoadingClients = false;
     }
   }
 
   /// Fournisseurs : cache Hive d'abord, puis API.
   Future<void> loadSuppliers() async {
-    isLoadingSuppliers.value = true;
+    isLoadingSuppliers = true;
     final cached = SupplierService.getCachedFournisseurs();
     if (cached.isNotEmpty) {
-      availableSuppliers.assignAll(cached);
-      isLoadingSuppliers.value = false;
+      availableSuppliers.clear();
+      availableSuppliers.addAll(cached);
+      isLoadingSuppliers = false;
     } else {
-      availableSuppliers.value = [];
+      availableSuppliers.clear();
     }
     try {
       final suppliers = await _supplierService.getSuppliers();
-      availableSuppliers.assignAll(suppliers);
+      availableSuppliers.clear();
+      availableSuppliers.addAll(suppliers);
     } catch (e) {
       if (availableSuppliers.isEmpty) {
         final fallback = SupplierService.getCachedFournisseurs();
-        if (fallback.isNotEmpty) availableSuppliers.assignAll(fallback);
+        if (fallback.isNotEmpty) {
+          availableSuppliers.clear();
+          availableSuppliers.addAll(fallback);
+        }
       }
     } finally {
-      isLoadingSuppliers.value = false;
+      isLoadingSuppliers = false;
     }
   }
 
   Future<bool> createBonDeCommande(Map<String, dynamic> data) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      if (selectedSupplier.value == null) {
+      if (selectedSupplier == null) {
         throw Exception('Veuillez sélectionner un fournisseur');
       }
 
-      if (selectedSupplier.value!.id == null) {
+      if (selectedSupplier!.id == null) {
         throw Exception(
           'L\'ID du fournisseur est manquant. Veuillez sélectionner un fournisseur valide.',
         );
@@ -312,13 +333,13 @@ class BonDeCommandeFournisseurController extends GetxController
 
       // Utiliser le numéro généré si disponible, sinon celui fourni
       final numeroCommande =
-          generatedNumeroCommande.value.isNotEmpty
-              ? generatedNumeroCommande.value
+          generatedNumeroCommande.isNotEmpty
+              ? generatedNumeroCommande
               : data['numero_commande'];
 
       final newBonDeCommande = BonDeCommande(
         clientId: null, // Pas de client pour un bon de commande fournisseur
-        fournisseurId: selectedSupplier.value!.id!,
+        fournisseurId: selectedSupplier!.id!,
         numeroCommande: numeroCommande,
         dateCommande: data['date_commande'] ?? DateTime.now(),
         description: data['description'],
@@ -330,7 +351,7 @@ class BonDeCommandeFournisseurController extends GetxController
       );
 
       // Afficher le loader seulement pendant la création
-      isLoading.value = true;
+      isLoading = true;
 
       AppLogger.info(
         'Création du bon de commande fournisseur: $numeroCommande',
@@ -372,18 +393,15 @@ class BonDeCommandeFournisseurController extends GetxController
         );
       }
 
-      isLoading.value = false;
+      isLoading = false;
       Future.microtask(() {
         DashboardRefreshHelper.refreshPatronCounter(
           'bon_de_commande_fournisseur',
         );
       });
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bon de commande créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
       clearForm();
@@ -392,7 +410,7 @@ class BonDeCommandeFournisseurController extends GetxController
       return true;
     } catch (e) {
       // S'assurer que le loader est arrêté en cas d'erreur
-      isLoading.value = false;
+      isLoading = false;
 
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
       final errorStr = e.toString().toLowerCase();
@@ -410,12 +428,9 @@ class BonDeCommandeFournisseurController extends GetxController
         errorMessage = errorMessage.substring(11);
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
       return false;
@@ -426,9 +441,9 @@ class BonDeCommandeFournisseurController extends GetxController
     int bonDeCommandeId,
     Map<String, dynamic> data,
   ) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      isLoading.value = true;
+      isLoading = true;
       final bonDeCommandeToUpdate = bonDeCommandes.firstWhere(
         (b) => b.id == bonDeCommandeId,
       );
@@ -452,53 +467,49 @@ class BonDeCommandeFournisseurController extends GetxController
       );
 
       await _service.updateBonDeCommande(bonDeCommandeId, updatedBonDeCommande);
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bon de commande mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
       );
       loadBonDeCommandes();
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> deleteBonDeCommande(int bonDeCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _service.deleteBonDeCommande(bonDeCommandeId);
       if (success) {
         bonDeCommandes.removeWhere((b) => b.id == bonDeCommandeId);
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> approveBonDeCommande(int bonDeCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
@@ -506,15 +517,14 @@ class BonDeCommandeFournisseurController extends GetxController
       final success = await _service.validateBonDeCommande(bonDeCommandeId);
 
       if (success) {
-        // Rafraîchir les compteurs du dashboard patron
+        // Rafraîchir les compteurs du dashboard patron et commercial
         DashboardRefreshHelper.refreshPatronCounter(
           'bon_de_commande_fournisseur',
         );
+        DashboardRefreshHelper.refreshCommercialDashboard();
 
         // Notifier l'utilisateur concerné de la validation
-        final bonDeCommande = bonDeCommandes.firstWhereOrNull(
-          (b) => b.id == bonDeCommandeId,
-        );
+        final bonDeCommande = _firstWhereBonDeCommandeById(bonDeCommandes, bonDeCommandeId);
         if (bonDeCommande != null) {
           NotificationHelper.notifyValidation(
             entityType: 'bon_de_commande_fournisseur',
@@ -531,12 +541,9 @@ class BonDeCommandeFournisseurController extends GetxController
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande approuvé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
 
         // Recharger les données en arrière-plan avec le statut actuel
@@ -550,10 +557,9 @@ class BonDeCommandeFournisseurController extends GetxController
         // En cas d'échec, recharger pour restaurer l'état
         await loadBonDeCommandes(status: _currentStatus);
         // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Attention',
           'La validation peut avoir réussi. Veuillez vérifier.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
       }
@@ -578,12 +584,9 @@ class BonDeCommandeFournisseurController extends GetxController
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -591,7 +594,7 @@ class BonDeCommandeFournisseurController extends GetxController
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -600,7 +603,7 @@ class BonDeCommandeFournisseurController extends GetxController
     String commentaire,
   ) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
@@ -611,15 +614,14 @@ class BonDeCommandeFournisseurController extends GetxController
       );
 
       if (success) {
-        // Rafraîchir les compteurs du dashboard patron
+        // Rafraîchir les compteurs du dashboard patron et commercial
         DashboardRefreshHelper.refreshPatronCounter(
           'bon_de_commande_fournisseur',
         );
+        DashboardRefreshHelper.refreshCommercialDashboard();
 
         // Notifier l'utilisateur concerné du rejet
-        final bonDeCommande = bonDeCommandes.firstWhereOrNull(
-          (b) => b.id == bonDeCommandeId,
-        );
+        final bonDeCommande = _firstWhereBonDeCommandeById(bonDeCommandes, bonDeCommandeId);
         if (bonDeCommande != null) {
           NotificationHelper.notifyRejection(
             entityType: 'bon_de_commande_fournisseur',
@@ -637,12 +639,9 @@ class BonDeCommandeFournisseurController extends GetxController
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande rejeté avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
         );
 
         // Recharger les données en arrière-plan avec le statut actuel
@@ -678,12 +677,9 @@ class BonDeCommandeFournisseurController extends GetxController
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -691,7 +687,7 @@ class BonDeCommandeFournisseurController extends GetxController
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -713,25 +709,25 @@ class BonDeCommandeFournisseurController extends GetxController
   }
 
   void selectClient(Client? client) {
-    selectedClient.value = client;
+    selectedClient = client;
   }
 
   void selectSupplier(Supplier? supplier) {
-    selectedSupplier.value = supplier;
+    selectedSupplier = supplier;
   }
 
   void clearForm() {
-    selectedClient.value = null;
-    selectedSupplier.value = null;
+    selectedClient = null;
+    selectedSupplier = null;
     items.clear();
-    generatedNumeroCommande.value = '';
+    generatedNumeroCommande = '';
     // Régénérer un nouveau numéro de commande
     initializeGeneratedNumeroCommande();
   }
 
   Future<void> generatePDF(int bonDeCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final bonDeCommande = bonDeCommandes.firstWhere(
         (bc) => bc.id == bonDeCommandeId,
@@ -764,28 +760,24 @@ class BonDeCommandeFournisseurController extends GetxController
         },
         items: itemsData,
         fournisseur: {
-          'nom': selectedSupplier.value?.nom ?? 'N/A',
-          'email': selectedSupplier.value?.email ?? '',
-          'contact': selectedSupplier.value?.telephone ?? '',
-          'adresse': selectedSupplier.value?.adresse ?? '',
+          'nom': selectedSupplier?.nom ?? 'N/A',
+          'email': selectedSupplier?.email ?? '',
+          'contact': selectedSupplier?.telephone ?? '',
+          'adresse': selectedSupplier?.adresse ?? '',
         },
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'PDF généré avec succès',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
       );
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la génération du PDF: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

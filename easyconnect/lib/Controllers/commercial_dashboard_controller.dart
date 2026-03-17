@@ -4,7 +4,6 @@ import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/permissions.dart';
@@ -15,241 +14,139 @@ import 'package:easyconnect/services/bordereau_service.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
 import 'package:easyconnect/services/bon_de_commande_fournisseur_service.dart';
 import 'package:easyconnect/services/task_service.dart';
-import 'package:easyconnect/Controllers/client_controller.dart';
-import 'package:easyconnect/Controllers/devis_controller.dart';
-import 'package:easyconnect/Controllers/bordereau_controller.dart';
-import 'package:easyconnect/Controllers/bon_commande_controller.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:get_storage/get_storage.dart';
 
 class CommercialDashboardController extends BaseDashboardController {
-  var currentSection = 'dashboard'.obs;
-  var selectedPeriod = 'month'.obs;
-  var selectedDepartment = 'all'.obs;
+  String currentSection = 'dashboard';
+  String selectedPeriod = 'month';
+  String selectedDepartment = 'all';
 
-  // Service pour récupérer les données
-  final ClientService _clientService = Get.find<ClientService>();
-  final DevisService _devisService = Get.find<DevisService>();
-  final BordereauService _bordereauService = Get.find<BordereauService>();
-  final BonCommandeService _bonCommandeService = Get.find<BonCommandeService>();
+  final ClientService _clientService = ClientService();
+  final DevisService _devisService = DevisService();
+  final BordereauService _bordereauService = BordereauService();
+  final BonCommandeService _bonCommandeService = BonCommandeService();
   final BonDeCommandeFournisseurService _bonCommandeFournisseurService =
-      Get.find<BonDeCommandeFournisseurService>();
-  final TaskService _taskService = Get.find<TaskService>();
+      BonDeCommandeFournisseurService();
+  final TaskService _taskService = TaskService.to;
 
   List<Filter> get filters =>
       DashboardFilters.getFiltersForRole(Roles.COMMERCIAL);
 
-  // Données des graphiques
-  final revenueData = <ChartData>[].obs;
-  final clientData = <ChartData>[].obs;
-  final devisData = <ChartData>[].obs;
-  final bordereauData = <ChartData>[].obs;
+  final List<ChartData> revenueData = [];
+  final List<ChartData> clientData = [];
+  final List<ChartData> devisData = [];
+  final List<ChartData> bordereauData = [];
 
-  // Nouvelles données pour le dashboard amélioré
-  // Première partie - Entités en attente
-  final pendingClients = 0.obs;
-  final pendingDevis = 0.obs;
-  final pendingBordereaux = 0.obs;
-  final pendingBonCommandes = 0.obs; // Bons de commande entreprise
-  final pendingBonCommandesFournisseur = 0.obs; // Bons de commande fournisseur
-  final pendingTasks = 0.obs;
+  int pendingClients = 0;
+  int pendingDevis = 0;
+  int pendingBordereaux = 0;
+  int pendingBonCommandes = 0;
+  int pendingBonCommandesFournisseur = 0;
+  int pendingTasks = 0;
 
-  // Deuxième partie - Entités validées
-  final validatedClients = 0.obs;
-  final validatedDevis = 0.obs;
-  final validatedBordereaux = 0.obs;
-  final validatedBonCommandes = 0.obs;
+  int validatedClients = 0;
+  int validatedDevis = 0;
+  int validatedBordereaux = 0;
+  int validatedBonCommandes = 0;
 
-  // Troisième partie - Statistiques montants
-  final totalRevenue = 0.0.obs;
-  final pendingDevisAmount = 0.0.obs;
-  final paidBordereauxAmount = 0.0.obs;
+  double totalRevenue = 0.0;
+  double pendingDevisAmount = 0.0;
+  double paidBordereauxAmount = 0.0;
 
-  // Timers pour le rafraîchissement automatique
-  Timer? _setupTimer;
   Timer? _refreshTimer;
-  bool _hasClientListener = false;
-  bool _hasDevisListener = false;
-  bool _hasBordereauListener = false;
-  bool _hasBonCommandeListener = false;
 
-  @override
-  void onInit() {
-    super.onInit();
-    _trySetupListeners();
-
-    // Si les contrôleurs ne sont pas encore disponibles, réessayer périodiquement
-    _setupTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!_hasClientListener ||
-          !_hasDevisListener ||
-          !_hasBordereauListener ||
-          !_hasBonCommandeListener) {
-        _trySetupListeners();
-      } else {
-        // Une fois tous les listeners configurés, annuler le timer
-        _setupTimer?.cancel();
-      }
-    });
-
-    // Ajouter un rafraîchissement périodique automatique toutes les 20 secondes
+  CommercialDashboardController() {
     _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       refreshPendingEntities();
     });
   }
 
-  void _trySetupListeners() {
-    // Écouter les changements dans ClientController
-    if (!_hasClientListener) {
-      try {
-        if (Get.isRegistered<ClientController>()) {
-          final clientController = Get.find<ClientController>();
-          ever(clientController.clients, (_) {
-            refreshPendingEntities();
-          });
-          _hasClientListener = true;
-        }
-      } catch (e) {}
-    }
-
-    // Écouter les changements dans DevisController
-    if (!_hasDevisListener) {
-      try {
-        if (Get.isRegistered<DevisController>()) {
-          final devisController = Get.find<DevisController>();
-          ever(devisController.devis, (_) {
-            refreshPendingEntities();
-          });
-          _hasDevisListener = true;
-        }
-      } catch (e) {}
-    }
-
-    // Écouter les changements dans BordereauxController
-    if (!_hasBordereauListener) {
-      try {
-        if (Get.isRegistered<BordereauxController>()) {
-          final bordereauController = Get.find<BordereauxController>();
-          ever(bordereauController.bordereaux, (_) {
-            refreshPendingEntities();
-          });
-          _hasBordereauListener = true;
-        }
-      } catch (e) {}
-    }
-
-    // Écouter les changements dans BonCommandeController
-    if (!_hasBonCommandeListener) {
-      try {
-        if (Get.isRegistered<BonCommandeController>()) {
-          final bonCommandeController = Get.find<BonCommandeController>();
-          ever(bonCommandeController.bonCommandes, (_) {
-            refreshPendingEntities();
-          });
-          _hasBonCommandeListener = true;
-        }
-      } catch (e) {}
-    }
-  }
-
-  @override
-  void onClose() {
-    _setupTimer?.cancel();
+  void dispose() {
     _refreshTimer?.cancel();
-    super.onClose();
   }
 
-  // Méthode pour recharger uniquement les entités en attente (rafraîchissement silencieux : on ne réinitialise pas les compteurs à 0).
   Future<void> refreshPendingEntities() async {
     try {
-      if (!Get.isRegistered<AuthController>()) {
-        _setupTimer?.cancel();
-        _refreshTimer?.cancel();
-        return;
-      }
-
-      final authController = Get.find<AuthController>();
-      final token = authController.storage.read<String?>('token');
-      final user = authController.userAuth.value;
+      final authController = AuthController.to;
+      final token = GetStorage().read<String?>('token');
+      final user = authController.userAuth;
 
       if (token == null || user == null) {
-        _setupTimer?.cancel();
         _refreshTimer?.cancel();
         return;
       }
 
-      // Indiquer le chargement sans toucher aux valeurs affichées (pattern rafraîchissement silencieux)
-      isLoading.value = true;
+      isLoading = true;
       try {
         await _loadPendingEntities();
         await _loadValidatedEntities();
         await _loadStatistics();
       } finally {
-        isLoading.value = false;
+        isLoading = false;
       }
     } catch (e) {
-      _setupTimer?.cancel();
       _refreshTimer?.cancel();
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Statistiques originales
   List<StatCard> get stats => [
     StatCard(
       title: "Clients",
-      value: validatedClients.value.toString(),
+      value: validatedClients.toString(),
       icon: Icons.people,
       color: Colors.blue,
       requiredPermission: Permissions.MANAGE_CLIENTS,
     ),
     StatCard(
       title: "Devis",
-      value: validatedDevis.value.toString(),
+      value: validatedDevis.toString(),
       icon: Icons.description,
       color: Colors.green,
       requiredPermission: Permissions.VIEW_DEVIS,
     ),
     StatCard(
       title: "Bordereaux",
-      value: validatedBordereaux.value.toString(),
+      value: validatedBordereaux.toString(),
       icon: Icons.assignment_turned_in,
       color: Colors.orange,
       requiredPermission: Permissions.VIEW_SALES,
     ),
     StatCard(
       title: "Bons de Commande",
-      value: validatedBonCommandes.value.toString(),
+      value: validatedBonCommandes.toString(),
       icon: Icons.shopping_cart,
       color: Colors.purple,
       requiredPermission: Permissions.VIEW_SALES,
     ),
   ];
 
-  // Nouvelles statistiques pour le dashboard amélioré
   List<StatCard> get enhancedStats => [
     StatCard(
       title: "Clients en attente",
-      value: pendingClients.value.toString(),
+      value: pendingClients.toString(),
       icon: Icons.people,
       color: Colors.blue,
       requiredPermission: Permissions.MANAGE_CLIENTS,
     ),
     StatCard(
       title: "Devis en attente",
-      value: pendingDevis.value.toString(),
+      value: pendingDevis.toString(),
       icon: Icons.description,
       color: Colors.green,
       requiredPermission: Permissions.MANAGE_DEVIS,
     ),
     StatCard(
       title: "Bordereaux en attente",
-      value: pendingBordereaux.value.toString(),
+      value: pendingBordereaux.toString(),
       icon: Icons.assignment_turned_in,
       color: Colors.orange,
       requiredPermission: Permissions.MANAGE_BORDEREAUX,
     ),
     StatCard(
       title: "Bons en attente",
-      value: pendingBonCommandes.value.toString(),
+      value: pendingBonCommandes.toString(),
       icon: Icons.shopping_cart,
       color: Colors.purple,
       requiredPermission: Permissions.MANAGE_BON_COMMANDES,
@@ -267,103 +164,97 @@ class CommercialDashboardController extends BaseDashboardController {
 
   @override
   void loadCachedData() {
-    // Charger les données depuis le cache pour un affichage instantané
     final cachedPendingClients = CacheHelper.get<int>(
       'dashboard_commercial_pendingClients',
     );
     if (cachedPendingClients != null)
-      pendingClients.value = cachedPendingClients;
+      pendingClients = cachedPendingClients;
 
     final cachedPendingDevis = CacheHelper.get<int>(
       'dashboard_commercial_pendingDevis',
     );
-    if (cachedPendingDevis != null) pendingDevis.value = cachedPendingDevis;
+    if (cachedPendingDevis != null) pendingDevis = cachedPendingDevis;
 
     final cachedPendingBordereaux = CacheHelper.get<int>(
       'dashboard_commercial_pendingBordereaux',
     );
     if (cachedPendingBordereaux != null)
-      pendingBordereaux.value = cachedPendingBordereaux;
+      pendingBordereaux = cachedPendingBordereaux;
 
     final cachedPendingBonCommandes = CacheHelper.get<int>(
       'dashboard_commercial_pendingBonCommandes',
     );
     if (cachedPendingBonCommandes != null)
-      pendingBonCommandes.value = cachedPendingBonCommandes;
+      pendingBonCommandes = cachedPendingBonCommandes;
 
     final cachedValidatedClients = CacheHelper.get<int>(
       'dashboard_commercial_validatedClients',
     );
     if (cachedValidatedClients != null)
-      validatedClients.value = cachedValidatedClients;
+      validatedClients = cachedValidatedClients;
 
     final cachedTotalRevenue = CacheHelper.get<double>(
       'dashboard_commercial_totalRevenue',
     );
-    if (cachedTotalRevenue != null) totalRevenue.value = cachedTotalRevenue;
+    if (cachedTotalRevenue != null) totalRevenue = cachedTotalRevenue;
   }
 
   @override
   Future<void> loadData() async {
-    if (isLoading.value) return;
-    // Ne pas bloquer l'UI - charger en arrière-plan
-    isLoading.value = false; // Permettre l'affichage immédiat
+    if (isLoading) return;
+    isLoading = false;
 
     try {
-      // Charger les données des entités en attente (non-bloquant)
       _loadPendingEntities().catchError((e) {});
-
-      // Charger les données des entités validées (non-bloquant)
       _loadValidatedEntities().catchError((e) {});
-
-      // Charger les statistiques montants (non-bloquant)
       _loadStatistics().catchError((e) {});
 
-      // Simuler le chargement des données des graphiques
-      revenueData.value = [
+      revenueData.clear();
+      revenueData.addAll([
         ChartData(1, 85000, "Janvier"),
         ChartData(2, 92000, "Février"),
         ChartData(3, 88000, "Mars"),
         ChartData(4, 95000, "Avril"),
         ChartData(5, 103000, "Mai"),
         ChartData(6, 110000, "Juin"),
-      ];
+      ]);
 
-      clientData.value = [
+      clientData.clear();
+      clientData.addAll([
         ChartData(1, 35, "Nouveaux"),
         ChartData(2, 25, "Actifs"),
         ChartData(3, 20, "Inactifs"),
         ChartData(4, 10, "Prospects"),
-      ];
+      ]);
 
-      devisData.value = [
+      devisData.clear();
+      devisData.addAll([
         ChartData(1, 45, "En attente"),
         ChartData(2, 15, "Acceptés"),
         ChartData(3, 8, "Refusés"),
         ChartData(4, 2, "Expirés"),
-      ];
+      ]);
 
-      bordereauData.value = [
+      bordereauData.clear();
+      bordereauData.addAll([
         ChartData(1, 12, "En cours"),
         ChartData(2, 15, "Payés"),
         ChartData(3, 8, "En retard"),
         ChartData(4, 10, "Annulés"),
-      ];
+      ]);
 
-      // Mettre à jour les données des graphiques
       updateChartData('revenue', revenueData);
       updateChartData('clients', clientData);
       updateChartData('devis', devisData);
       updateChartData('bordereaux', bordereauData);
     } catch (e) {
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> _loadPendingEntities() async {
     try {
-      // OPTIMISATION : Charger toutes les entités en parallèle
       final results = await Future.wait([
         _clientService.getClients(),
         _devisService.getDevis(),
@@ -375,7 +266,7 @@ class CommercialDashboardController extends BaseDashboardController {
       final clients = results[0] as List;
       final pendingClientsCount =
           clients.where((c) => c.status == 0 || c.status == null).length;
-      pendingClients.value = pendingClientsCount;
+      pendingClients = pendingClientsCount;
       CacheHelper.set(
         'dashboard_commercial_pendingClients',
         pendingClientsCount,
@@ -383,37 +274,34 @@ class CommercialDashboardController extends BaseDashboardController {
 
       final devis = results[1] as List;
       final pendingDevisCount = devis.where((d) => d.status == 1).length;
-      pendingDevis.value = pendingDevisCount;
+      pendingDevis = pendingDevisCount;
       CacheHelper.set('dashboard_commercial_pendingDevis', pendingDevisCount);
 
       final bordereaux = results[2] as List;
       final pendingBordereauxCount =
           bordereaux.where((b) => b.status == 1).length;
-      pendingBordereaux.value = pendingBordereauxCount;
+      pendingBordereaux = pendingBordereauxCount;
       CacheHelper.set(
         'dashboard_commercial_pendingBordereaux',
         pendingBordereauxCount,
       );
 
-      // Bons de commande entreprise (status 1 = en attente)
       final bonCommandes = results[3] as List;
       final pendingBonCommandesCount =
           bonCommandes.where((bc) => bc.status == 1).length;
-      pendingBonCommandes.value = pendingBonCommandesCount;
+      pendingBonCommandes = pendingBonCommandesCount;
       CacheHelper.set(
         'dashboard_commercial_pendingBonCommandes',
         pendingBonCommandesCount,
       );
 
-      // Bons de commande fournisseur (statut 'en_attente' ou 'pending')
       final bonCommandesFournisseur = results[4] as List;
       final pendingBonCommandesFournisseurCount =
           bonCommandesFournisseur.where((bc) {
             final statut = bc.statut?.toString().toLowerCase().trim() ?? '';
             return statut == 'en_attente' || statut == 'pending';
           }).length;
-      pendingBonCommandesFournisseur.value =
-          pendingBonCommandesFournisseurCount;
+      pendingBonCommandesFournisseur = pendingBonCommandesFournisseurCount;
       CacheHelper.set(
         'dashboard_commercial_pendingBonCommandesFournisseur',
         pendingBonCommandesFournisseurCount,
@@ -421,7 +309,7 @@ class CommercialDashboardController extends BaseDashboardController {
 
       await _loadPendingTasks();
     } catch (e) {
-      // Ne pas réinitialiser : garder les anciennes valeurs (rafraîchissement silencieux)
+      // Ne pas réinitialiser
     }
   }
 
@@ -435,16 +323,13 @@ class CommercialDashboardController extends BaseDashboardController {
       if (result['success'] == true) {
         final pagination = result['pagination'] as Map<String, dynamic>? ?? {};
         final count = pagination['total'] as int? ?? 0;
-        pendingTasks.value = count;
+        pendingTasks = count;
       }
-    } catch (e) {
-      // Ne pas réinitialiser : garder l'ancienne valeur
-    }
+    } catch (e) {}
   }
 
   Future<void> _loadValidatedEntities() async {
     try {
-      // OPTIMISATION : Charger toutes les entités en parallèle
       final results = await Future.wait([
         _clientService.getClients(),
         _devisService.getDevis(),
@@ -454,44 +339,39 @@ class CommercialDashboardController extends BaseDashboardController {
 
       final clients = results[0] as List;
       final validatedClientsCount = clients.where((c) => c.status == 1).length;
-      validatedClients.value = validatedClientsCount;
+      validatedClients = validatedClientsCount;
       CacheHelper.set(
         'dashboard_commercial_validatedClients',
         validatedClientsCount,
       );
 
       final devis = results[1] as List;
-      validatedDevis.value = devis.length - pendingDevis.value;
+      validatedDevis = devis.length - pendingDevis;
 
       final bordereaux = results[2] as List;
-      validatedBordereaux.value = bordereaux.length - pendingBordereaux.value;
+      validatedBordereaux = bordereaux.length - pendingBordereaux;
 
       final bonCommandes = results[3] as List;
-      validatedBonCommandes.value =
-          bonCommandes.length - pendingBonCommandes.value;
-    } catch (e) {
-      // Ne pas réinitialiser : garder les anciennes valeurs
-    }
+      validatedBonCommandes =
+          bonCommandes.length - pendingBonCommandes;
+    } catch (e) {}
   }
 
   Future<void> _loadStatistics() async {
     try {
       final allDevis = await _devisService.getDevis();
-      // Chiffre d'affaires commercial = total de tous les devis (somme des totalTTC)
       final revenue = allDevis.fold(0.0, (sum, d) => sum + d.totalTTC);
-      totalRevenue.value = revenue;
+      totalRevenue = revenue;
       CacheHelper.set('dashboard_commercial_totalRevenue', revenue);
 
-      pendingDevisAmount.value = allDevis
+      pendingDevisAmount = allDevis
           .where((d) => d.status == 1)
           .fold(0.0, (sum, d) => sum + d.totalTTC);
 
       final bordereaux = await _bordereauService.getBordereaux();
-      paidBordereauxAmount.value = bordereaux
+      paidBordereauxAmount = bordereaux
           .where((b) => b.status == 2)
           .fold(0.0, (sum, b) => sum + b.montantTTC);
-    } catch (e) {
-      // Ne pas réinitialiser : garder les anciennes valeurs
-    }
+    } catch (e) {}
   }
 }

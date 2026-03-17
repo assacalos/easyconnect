@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 
-class AdminDashboard extends StatelessWidget {
+class AdminDashboard extends ConsumerWidget {
   const AdminDashboard({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authController = Get.find<AuthController>();
-    final user = authController.userAuth.value;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
 
     return Scaffold(
       appBar: AppBar(
@@ -18,8 +18,9 @@ class AdminDashboard extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              authController.logout();
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
             },
           ),
         ],
@@ -77,7 +78,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.people,
                     color: Colors.blue,
                     onTap: () {
-                      Get.toNamed('/admin/users');
+                      context.go('/admin/users');
                     },
                   ),
                 ),
@@ -89,7 +90,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.person_add,
                     color: Colors.green,
                     onTap: () {
-                      Get.toNamed('/admin/users/new');
+                      context.go('/admin/users/new');
                     },
                   ),
                 ),
@@ -107,7 +108,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.admin_panel_settings,
                     color: Colors.orange,
                     onTap: () {
-                      Get.toNamed('/admin/roles');
+                      context.go('/admin/roles');
                     },
                   ),
                 ),
@@ -119,7 +120,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.history,
                     color: Colors.purple,
                     onTap: () {
-                      Get.toNamed('/admin/audit');
+                      context.go('/admin/audit');
                     },
                   ),
                 ),
@@ -144,7 +145,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.settings,
                     color: Colors.grey,
                     onTap: () {
-                      Get.toNamed('/admin/settings');
+                      context.go('/admin/settings');
                     },
                   ),
                 ),
@@ -156,7 +157,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.backup,
                     color: Colors.teal,
                     onTap: () {
-                      Get.toNamed('/admin/backup');
+                      context.go('/admin/backup');
                     },
                   ),
                 ),
@@ -174,7 +175,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.article,
                     color: Colors.red,
                     onTap: () {
-                      Get.toNamed('/admin/logs');
+                      context.go('/admin/logs');
                     },
                   ),
                 ),
@@ -186,7 +187,7 @@ class AdminDashboard extends StatelessWidget {
                     icon: Icons.analytics,
                     color: Colors.indigo,
                     onTap: () {
-                      Get.toNamed('/admin/statistics');
+                      context.go('/admin/statistics');
                     },
                   ),
                 ),

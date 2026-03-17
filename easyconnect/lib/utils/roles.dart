@@ -5,6 +5,7 @@ class Roles {
   static const int RH = 4;
   static const int TECHNICIEN = 5;
   static const int PATRON = 6;
+  static const int CLIENT = 7;
 
   static String getRoleName(int? role) {
     switch (role) {
@@ -20,6 +21,8 @@ class Roles {
         return 'Technicien';
       case PATRON:
         return 'Patron';
+      case CLIENT:
+        return 'Client';
       default:
         return 'Utilisateur';
     }
@@ -33,6 +36,7 @@ class Roles {
       {'id': RH, 'name': 'Ressources Humaines'},
       {'id': TECHNICIEN, 'name': 'Technicien'},
       {'id': PATRON, 'name': 'Patron'},
+      {'id': CLIENT, 'name': 'Client'},
     ];
   }
 
@@ -74,6 +78,13 @@ class Roles {
         'manage_settings',
         'view_analytics',
         'approve_major_decisions',
+      ],
+      CLIENT: [
+        'request_intervention',
+        'view_announcements',
+        'view_catalog',
+        'view_offers',
+        'view_contact',
       ],
     };
   }

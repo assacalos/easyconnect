@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
@@ -65,45 +65,52 @@ class _RegistrationValidationPageState extends State<RegistrationValidationPage>
     try {
       final res = await ApiService.approveRegistration(userId, role);
       if (res['success'] == true) {
-        Get.snackbar(
-          'Succès',
-          'Inscription validée',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Inscription validée'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
         _load();
       } else {
-        Get.snackbar(
-          'Erreur',
-          res['message']?.toString() ?? 'Validation impossible',
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Validation impossible'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        e.toString().replaceFirst('Exception: ', ''),
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _reject(int userId) async {
-    final confirm = await Get.dialog<bool>(
-      AlertDialog(
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter l\'inscription'),
         content: const Text(
           'L\'utilisateur en attente sera supprimé. Confirmer ?',
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Rejeter', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -113,28 +120,34 @@ class _RegistrationValidationPageState extends State<RegistrationValidationPage>
     try {
       final res = await ApiService.rejectRegistration(userId);
       if (res['success'] == true) {
-        Get.snackbar(
-          'Succès',
-          'Inscription rejetée',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Inscription rejetée'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
         _load();
       } else {
-        Get.snackbar(
-          'Erreur',
-          res['message']?.toString() ?? 'Rejet impossible',
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Rejet impossible'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        e.toString().replaceFirst('Exception: ', ''),
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -142,6 +155,7 @@ class _RegistrationValidationPageState extends State<RegistrationValidationPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des inscriptions'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,

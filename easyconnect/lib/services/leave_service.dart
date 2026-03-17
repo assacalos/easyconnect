@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -12,8 +11,11 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 
-class LeaveService extends GetxService {
-  static LeaveService get to => Get.find();
+class LeaveService {
+  static final LeaveService _instance = LeaveService._();
+  static LeaveService get to => _instance;
+  factory LeaveService() => _instance;
+  LeaveService._();
 
   // Créer une demande de congé
   Future<Map<String, dynamic>> createLeaveRequest({

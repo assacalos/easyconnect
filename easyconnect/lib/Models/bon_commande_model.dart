@@ -6,6 +6,7 @@ class BonCommande {
   final int commercialId;
   final List<String> fichiers; // Chemins/URLs des fichiers scannés
   final int status; // 1: soumis, 2: validé, 3: rejeté, 4: livré
+  final String? clientNomEntreprise; // Nom de l'entreprise (client) pour affichage liste
 
   BonCommande({
     this.id,
@@ -13,6 +14,7 @@ class BonCommande {
     required this.commercialId,
     this.fichiers = const [],
     this.status = 1,
+    this.clientNomEntreprise,
   });
 
   String get statusText {
@@ -48,21 +50,21 @@ class BonCommande {
   };
 
   factory BonCommande.fromJson(Map<String, dynamic> json) {
-    // Parser les fichiers (peuvent être une liste ou une chaîne JSON)
+    // Parser les fichiers (API: fichiers_scannes ou fichiers)
     List<String> fichiersList = [];
-    if (json['fichiers'] != null) {
-      if (json['fichiers'] is List) {
+    final rawFichiers = json['fichiers_scannes'] ?? json['fichiers'];
+    if (rawFichiers != null) {
+      if (rawFichiers is List) {
         fichiersList =
-            (json['fichiers'] as List).map((f) => f.toString()).toList();
-      } else if (json['fichiers'] is String) {
+            rawFichiers.map((f) => f.toString()).toList();
+      } else if (rawFichiers is String) {
         try {
-          final parsed = jsonDecode(json['fichiers']);
+          final parsed = jsonDecode(rawFichiers);
           if (parsed is List) {
             fichiersList = parsed.map((f) => f.toString()).toList();
           }
         } catch (e) {
-          // Si ce n'est pas du JSON valide, traiter comme une chaîne simple
-          fichiersList = [json['fichiers']];
+          fichiersList = [rawFichiers];
         }
       }
     }
@@ -82,7 +84,21 @@ class BonCommande {
               : json['user_id'],
       fichiers: fichiersList,
       status: _parseStatus(json['status']),
+      clientNomEntreprise: _clientDisplayName(json['client']),
     );
+  }
+
+  static String? _clientDisplayName(dynamic client) {
+    if (client == null || client is! Map) return null;
+    final c = client as Map<String, dynamic>;
+    final nomEnt = c['nom_entreprise']?.toString().trim();
+    if (nomEnt != null && nomEnt.isNotEmpty) return nomEnt;
+    final display = c['display_name']?.toString().trim();
+    if (display != null && display.isNotEmpty) return display;
+    final nom = (c['nom']?.toString() ?? '').trim();
+    final prenom = (c['prenom']?.toString() ?? '').trim();
+    final full = '$prenom $nom'.trim();
+    return full.isEmpty ? null : full;
   }
 
   static int _parseStatus(dynamic status) {

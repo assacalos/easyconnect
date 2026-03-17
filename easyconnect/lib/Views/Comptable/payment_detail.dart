@@ -1,35 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/payment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/payment_notifier.dart';
 import 'package:easyconnect/Models/payment_model.dart';
-import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class PaymentDetail extends StatelessWidget {
+class PaymentDetail extends ConsumerWidget {
   final int paymentId;
 
   const PaymentDetail({super.key, required this.paymentId});
 
   @override
-  Widget build(BuildContext context) {
-    final PaymentController controller = Get.put(PaymentController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(paymentProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Détails du paiement'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
-        actions: [
-          Builder(
-            builder: (context) {
-              // Cette partie sera gérée dans le body avec FutureBuilder
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
       ),
       body: FutureBuilder<PaymentModel>(
-        future: PaymentService.to.getPaymentById(paymentId),
+        future: notifier.getPaymentById(paymentId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const SkeletonPage(listItemCount: 6);
@@ -45,7 +37,7 @@ class PaymentDetail extends StatelessWidget {
                   Text('Erreur: ${snapshot.error}'),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => Get.back(),
+                    onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Retour'),
                   ),
                 ],
@@ -59,11 +51,11 @@ class PaymentDetail extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeaderCard(controller, payment),
+                _buildHeaderCard(context, notifier, payment),
                 const SizedBox(height: 16),
                 _buildClientCard(payment),
                 const SizedBox(height: 16),
-                _buildPaymentCard(controller, payment),
+                _buildPaymentCard(context, notifier, payment),
                 const SizedBox(height: 16),
                 if (payment.status == 'rejected' &&
                     payment.notes != null &&
@@ -102,12 +94,12 @@ class PaymentDetail extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
                 if (payment.type == 'monthly' && payment.schedule != null) ...[
-                  _buildScheduleCard(controller, payment),
+                  _buildScheduleCard(context, notifier, payment),
                   const SizedBox(height: 16),
                 ],
-                _buildStatusCard(controller, payment),
+                _buildStatusCard(context, notifier, payment),
                 const SizedBox(height: 16),
-                _buildActionsCard(controller, payment),
+                _buildActionsCard(context, notifier, payment),
               ],
             ),
           );
@@ -116,7 +108,11 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderCard(PaymentController controller, PaymentModel payment) {
+  static Widget _buildHeaderCard(
+    BuildContext context,
+    PaymentNotifier notifier,
+    PaymentModel payment,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -150,15 +146,14 @@ class PaymentDetail extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: controller
-                        .getPaymentStatusColor(payment.status)
+                    color: PaymentNotifier.getPaymentStatusColor(payment.status)
                         .withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    controller.getPaymentStatusName(payment.status),
+                    PaymentNotifier.getPaymentStatusName(payment.status),
                     style: TextStyle(
-                      color: controller.getPaymentStatusColor(payment.status),
+                      color: PaymentNotifier.getPaymentStatusColor(payment.status),
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -169,14 +164,12 @@ class PaymentDetail extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  controller.paymentType.value == 'one_time'
-                      ? Icons.payment
-                      : Icons.schedule,
+                  payment.type == 'one_time' ? Icons.payment : Icons.schedule,
                   color: Colors.blue,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  controller.getPaymentTypeName(payment.type),
+                  PaymentNotifier.getPaymentTypeName(payment.type),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -199,7 +192,7 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildClientCard(PaymentModel payment) {
+  static Widget _buildClientCard(PaymentModel payment) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -220,7 +213,11 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildPaymentCard(PaymentController controller, PaymentModel payment) {
+  static Widget _buildPaymentCard(
+    BuildContext context,
+    PaymentNotifier notifier,
+    PaymentModel payment,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -246,7 +243,7 @@ class PaymentDetail extends StatelessWidget {
             _buildInfoRow(
               Icons.credit_card,
               'Méthode de paiement',
-              controller.getPaymentMethodName(payment.paymentMethod),
+              PaymentNotifier.getPaymentMethodName(payment.paymentMethod),
             ),
             if (payment.description != null)
               _buildInfoRow(
@@ -264,8 +261,9 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildScheduleCard(
-    PaymentController controller,
+  static Widget _buildScheduleCard(
+    BuildContext context,
+    PaymentNotifier notifier,
     PaymentModel payment,
   ) {
     final schedule = payment.schedule!;
@@ -322,7 +320,11 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusCard(PaymentController controller, PaymentModel payment) {
+  static Widget _buildStatusCard(
+    BuildContext context,
+    PaymentNotifier notifier,
+    PaymentModel payment,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -355,7 +357,11 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionsCard(PaymentController controller, PaymentModel payment) {
+  static Widget _buildActionsCard(
+    BuildContext context,
+    PaymentNotifier notifier,
+    PaymentModel payment,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -367,11 +373,32 @@ class PaymentDetail extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            if (payment.status == 'draft' && controller.canSubmitPayments) ...[
+            if (payment.status == 'draft' && notifier.canSubmitPayments) ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => controller.submitPaymentToPatron(payment.id),
+                  onPressed: () async {
+                    try {
+                      await notifier.submitPaymentToPatron(payment.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Paiement soumis au patron'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Erreur lors de la soumission du paiement'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
                   icon: const Icon(Icons.send),
                   label: const Text('Soumettre au patron'),
                   style: ElevatedButton.styleFrom(
@@ -383,13 +410,13 @@ class PaymentDetail extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             if (payment.status == 'submitted' &&
-                controller.canApprovePayments) ...[
+                notifier.canApprovePayments) ...[
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed:
-                          () => _showApprovalDialog(controller, payment.id),
+                          () => _showApprovalDialog(context, notifier, payment.id),
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
                       style: ElevatedButton.styleFrom(
@@ -402,7 +429,7 @@ class PaymentDetail extends StatelessWidget {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed:
-                          () => _showRejectionDialog(controller, payment.id),
+                          () => _showRejectionDialog(context, notifier, payment.id),
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
                       style: ElevatedButton.styleFrom(
@@ -419,7 +446,7 @@ class PaymentDetail extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showPaymentDialog(controller, payment.id),
+                  onPressed: () => _showPaymentDialog(context, notifier, payment.id),
                   icon: const Icon(Icons.payment),
                   label: const Text('Marquer comme payé'),
                   style: ElevatedButton.styleFrom(
@@ -434,7 +461,7 @@ class PaymentDetail extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => _showScheduleDialog(controller, payment.id),
+                  onPressed: () => _showScheduleDialog(context, notifier, payment.id),
                   icon: const Icon(Icons.schedule),
                   label: const Text('Gérer le planning'),
                 ),
@@ -445,7 +472,7 @@ class PaymentDetail extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => controller.generatePDF(payment.id),
+                onPressed: () => notifier.generatePDF(payment.id),
                 icon: const Icon(Icons.picture_as_pdf),
                 label: const Text('Générer PDF'),
                 style: ElevatedButton.styleFrom(
@@ -462,7 +489,7 @@ class PaymentDetail extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed:
                       () =>
-                          Get.toNamed('/payments/edit', arguments: payment.id),
+                          context.push('/payments/edit', extra: payment.id),
                   icon: const Icon(Icons.edit),
                   label: const Text('Modifier'),
                 ),
@@ -473,7 +500,7 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  static Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -502,7 +529,7 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusItem(String action, DateTime date, String status) {
+  static Widget _buildStatusItem(String action, DateTime date, String status) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -537,11 +564,16 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  void _showApprovalDialog(PaymentController controller, int paymentId) {
+  static void _showApprovalDialog(
+    BuildContext context,
+    PaymentNotifier notifier,
+    int paymentId,
+  ) {
     final commentsController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver le paiement'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -559,17 +591,19 @@ class PaymentDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.approvePayment(
+            onPressed: () async {
+              await notifier.approvePayment(
                 paymentId,
-                comments:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
+                comments: commentsController.text.trim().isEmpty
+                    ? null
+                    : commentsController.text.trim(),
               );
-              Get.back();
+              if (context.mounted) Navigator.of(ctx).pop();
             },
             child: const Text('Approuver'),
           ),
@@ -578,11 +612,16 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectionDialog(PaymentController controller, int paymentId) {
+  static void _showRejectionDialog(
+    BuildContext context,
+    PaymentNotifier notifier,
+    int paymentId,
+  ) {
     final reasonController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter le paiement'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -600,17 +639,22 @@ class PaymentDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectPayment(
+                await notifier.rejectPayment(
                   paymentId,
                   reason: reasonController.text.trim(),
                 );
-                Get.back();
+                if (context.mounted) Navigator.of(ctx).pop();
               } else {
-                Get.snackbar('Erreur', 'Veuillez saisir une raison');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Veuillez saisir une raison')),
+                );
               }
             },
             child: const Text('Rejeter'),
@@ -620,12 +664,17 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  void _showPaymentDialog(PaymentController controller, int paymentId) {
+  static void _showPaymentDialog(
+    BuildContext context,
+    PaymentNotifier notifier,
+    int paymentId,
+  ) {
     final referenceController = TextEditingController();
     final notesController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Marquer comme payé'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -649,21 +698,22 @@ class PaymentDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.markAsPaid(
+            onPressed: () async {
+              await notifier.markAsPaid(
                 paymentId,
-                paymentReference:
-                    referenceController.text.trim().isEmpty
-                        ? null
-                        : referenceController.text.trim(),
-                notes:
-                    notesController.text.trim().isEmpty
-                        ? null
-                        : notesController.text.trim(),
+                paymentReference: referenceController.text.trim().isEmpty
+                    ? null
+                    : referenceController.text.trim(),
+                notes: notesController.text.trim().isEmpty
+                    ? null
+                    : notesController.text.trim(),
               );
-              Get.back();
+              if (context.mounted) Navigator.of(ctx).pop();
             },
             child: const Text('Confirmer'),
           ),
@@ -672,15 +722,23 @@ class PaymentDetail extends StatelessWidget {
     );
   }
 
-  void _showScheduleDialog(PaymentController controller, int paymentId) {
-    Get.dialog(
-      AlertDialog(
+  static void _showScheduleDialog(
+    BuildContext context,
+    PaymentNotifier notifier,
+    int paymentId,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Gestion du planning'),
         content: const Text(
           'Fonctionnalité de gestion du planning à implémenter',
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Fermer')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Fermer'),
+          ),
         ],
       ),
     );

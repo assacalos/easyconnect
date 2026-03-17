@@ -1,21 +1,27 @@
-import 'package:easyconnect/Views/Components/data_chart.dart';
-import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
-import 'package:easyconnect/utils/permissions.dart';
-import 'package:easyconnect/utils/roles.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/base_dashboard_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Views/Components/interactive_chart.dart';
 import 'package:easyconnect/Views/Components/filter_bar.dart';
 import 'package:easyconnect/Views/Components/stats_grid.dart';
 import 'package:easyconnect/Views/Components/favorites_bar.dart';
 import 'package:easyconnect/Views/Components/paginated_data_view.dart';
 import 'package:easyconnect/Views/Components/user_profile_card.dart';
+import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
+import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/dashboard_entity_colors.dart';
+import 'package:easyconnect/Views/Components/data_chart.dart';
+import 'package:easyconnect/utils/permissions.dart';
 
-abstract class BaseDashboard<T extends BaseDashboardController>
-    extends GetView<T> {
+/// Base dashboard abstrait. Les sous-classes doivent fournir [controller] (objet avec
+/// loadNextPage, hasMoreData, isLoading, chartData, loadInitialData) et les getters
+/// title, primaryColor, etc. Pour une migration complète vers Riverpod, préférez
+/// les dashboards *Enhanced qui utilisent les notifiers Riverpod.
+abstract class BaseDashboard<T> extends ConsumerWidget {
   const BaseDashboard({super.key});
+
+  T get controller;
 
   String get title;
   Color get primaryColor;
@@ -25,54 +31,46 @@ abstract class BaseDashboard<T extends BaseDashboardController>
   Map<String, ChartConfig> get charts;
   Widget buildCustomContent(BuildContext context);
 
-  /// Override to enable pull-to-refresh (e.g. return () => controller.refreshPendingEntities()).
+  bool get hasMoreData;
+  bool get isLoading;
+  List<ChartData> getChartData(String chartKey);
+
+  /// Override to enable pull-to-refresh.
   Future<void> Function()? get onRefresh => null;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final bodyContent = PaginatedDataView(
         scrollController: ScrollController(),
-        onLoadMore: () => controller.loadNextPage(),
-        hasMoreData: controller.hasMoreData.value,
-        isLoading: controller.isLoading.value,
+        onLoadMore: () => (controller as dynamic).loadNextPage(),
+        hasMoreData: hasMoreData,
+        isLoading: isLoading,
         children: [
-          // Profil utilisateur
           UserProfileCard(showPermissions: false),
-
-          // Graphiques - Obx ciblé uniquement sur les données de chaque graphique
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
-              children:
-                  charts.entries.map((entry) {
-                    final chartKey = entry.key;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      // Obx ciblé uniquement sur les données de ce graphique spécifique
-                      child: Obx(() {
-                        final chartData =
-                            controller.chartData[chartKey]?.value ?? [];
-                        final isLoading = controller.isLoading.value;
-                        return InteractiveChart(
-                          title: entry.value.title,
-                          data: chartData,
-                          type: entry.value.type,
-                          color: entry.value.color,
-                          isLoading: isLoading,
-                          subtitle: entry.value.subtitle,
-                          requiredPermission: entry.value.requiredPermission,
-                          enableZoom: entry.value.enableZoom,
-                          showTooltips: entry.value.showTooltips,
-                          showLegend: entry.value.showLegend,
-                          onDataPointTap: entry.value.onDataPointTap,
-                        );
-                      }),
-                    );
-                  }).toList(),
+              children: charts.entries.map((entry) {
+                final chartKey = entry.key;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: InteractiveChart(
+                    title: entry.value.title,
+                    data: getChartData(chartKey),
+                    type: entry.value.type,
+                    color: entry.value.color,
+                    isLoading: isLoading,
+                    subtitle: entry.value.subtitle,
+                    requiredPermission: entry.value.requiredPermission,
+                    enableZoom: entry.value.enableZoom,
+                    showTooltips: entry.value.showTooltips,
+                    showLegend: entry.value.showLegend,
+                    onDataPointTap: entry.value.onDataPointTap,
+                  ),
+                );
+              }).toList(),
             ),
           ),
-
-          // Contenu personnalisé
           buildCustomContent(context),
         ],
       );
@@ -83,31 +81,31 @@ abstract class BaseDashboard<T extends BaseDashboardController>
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: buildAppBarActions(),
+        actions: buildAppBarActions(context),
       ),
-      drawer: buildDrawer(context),
+      drawer: buildDrawer(context, ref),
       body: onRefresh != null
           ? RefreshIndicator(
               onRefresh: onRefresh!,
               child: bodyContent,
             )
           : bodyContent,
-      bottomNavigationBar: buildBottomNavigationBar(),
+      bottomNavigationBar: buildBottomNavigationBar(context),
       floatingActionButton: buildFloatingActionButton(),
     );
   }
 
-  List<Widget> buildAppBarActions() {
+  List<Widget> buildAppBarActions(BuildContext context) {
     return [
       IconButton(
         icon: const Icon(Icons.refresh, color: Colors.white),
-        onPressed: () => controller.loadInitialData(),
+        onPressed: () => (controller as dynamic).loadInitialData(),
         tooltip: 'Actualiser',
       ),
     ];
   }
 
-  Widget? buildBottomNavigationBar() {
+  Widget? buildBottomNavigationBar(BuildContext context) {
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       backgroundColor: Colors.white,
@@ -135,22 +133,22 @@ abstract class BaseDashboard<T extends BaseDashboardController>
             break;
           case 1:
             // Rechercher
-            Get.toNamed('/search');
+            context.go('/search');
             break;
           case 2:
             // Notifications
-            Get.toNamed('/notifications');
+            context.go('/notifications');
             break;
           // case 3:
           //   // Chat
           //   break;
           case 3:
             // Profil
-            Get.toNamed('/profile');
+            context.go('/profile');
             break;
           case 4:
             // Médias
-            Get.toNamed('/media');
+            context.go('/media');
             break;
         }
       },
@@ -159,7 +157,9 @@ abstract class BaseDashboard<T extends BaseDashboardController>
 
   Widget? buildFloatingActionButton() => null;
 
-  Widget buildDrawer(BuildContext context) {
+  Widget buildDrawer(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+
     return Drawer(
       child: Container(
         color: Colors.grey.shade900,
@@ -179,72 +179,62 @@ abstract class BaseDashboard<T extends BaseDashboardController>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Obx(
-                    () => Text(
-                      "Rôle: ${Roles.getRoleName(Get.find<AuthController>().userAuth.value?.role)}",
-                      style: const TextStyle(color: Colors.white70),
-                    ),
+                  Text(
+                    "Rôle: ${Roles.getRoleName(user?.role)}",
+                    style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
             ),
             ...buildDrawerItems(context),
 
-            // Séparateur
             const Divider(color: Colors.white54),
 
-            // Boutons communs
             ListTile(
-              leading: const Icon(Icons.access_time, color: Colors.white70),
+              leading: Icon(Icons.access_time, color: DashboardEntityColors.pointages, size: 22),
               title: const Text(
                 'Pointage',
                 style: TextStyle(color: Colors.white70),
               ),
               onTap: () {
                 Navigator.pop(context);
-                Get.toNamed('/attendance-punch');
+                context.go('/attendance-punch');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.analytics, color: Colors.white70),
+              leading: Icon(Icons.analytics, color: DashboardEntityColors.rapports, size: 22),
               title: const Text(
                 'Reporting',
                 style: TextStyle(color: Colors.white70),
               ),
               onTap: () {
                 Navigator.pop(context);
-                Get.toNamed('/reporting');
+                context.go('/reporting');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.task_alt, color: Colors.white70),
+              leading: Icon(Icons.task_alt, color: DashboardEntityColors.tasks, size: 22),
               title: const Text(
                 'Mes tâches',
                 style: TextStyle(color: Colors.white70),
               ),
               onTap: () {
                 Navigator.pop(context);
-                Get.toNamed('/tasks');
+                context.go('/tasks');
               },
             ),
-            Obx(() {
-              final userRole = Get.find<AuthController>().userAuth.value?.role;
-              // Afficher le bouton paramètres seulement pour les admins
-              if (userRole == 1) {
-                return ListTile(
-                  leading: const Icon(Icons.settings, color: Colors.white70),
-                  title: const Text(
-                    'Paramètres',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed('/admin/settings');
-                  },
-                );
-              }
-              return const SizedBox.shrink();
-            }),
+            if (user?.role == 1)
+              ListTile(
+                leading: Icon(Icons.settings, color: DashboardEntityColors.parametres, size: 22),
+                title: const Text(
+                  'Paramètres',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/settings');
+                },
+              ),
           ],
         ),
       ),

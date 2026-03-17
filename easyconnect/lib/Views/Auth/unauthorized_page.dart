@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 
-class UnauthorizedPage extends StatelessWidget {
-  final AuthController authController = Get.find<AuthController>();
-
-  UnauthorizedPage({super.key});
+class UnauthorizedPage extends ConsumerWidget {
+  const UnauthorizedPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRole = ref.watch(authProvider).user?.role;
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -40,15 +40,12 @@ class UnauthorizedPage extends StatelessWidget {
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Obx(() {
-                  final userRole = authController.userAuth.value?.role;
-                  return Text(
-                    "Votre rôle (${Roles.getRoleName(userRole)}) "
-                    "ne vous permet pas d'accéder à cette page.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.red.shade700),
-                  );
-                }),
+                child: Text(
+                  "Votre rôle (${Roles.getRoleName(userRole)}) "
+                  "ne vous permet pas d'accéder à cette page.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: Colors.red.shade700),
+                ),
               ),
               const SizedBox(height: 32),
               ElevatedButton.icon(
@@ -62,7 +59,7 @@ class UnauthorizedPage extends StatelessWidget {
                     vertical: 12,
                   ),
                 ),
-                onPressed: () => Get.offAllNamed('/'),
+                onPressed: () => context.go('/login'),
               ),
               const SizedBox(height: 16),
               TextButton(
@@ -70,7 +67,7 @@ class UnauthorizedPage extends StatelessWidget {
                   "Se déconnecter",
                   style: TextStyle(color: Colors.red.shade700),
                 ),
-                onPressed: () => authController.logout(),
+                onPressed: () => ref.read(authProvider.notifier).logout(),
               ),
             ],
           ),

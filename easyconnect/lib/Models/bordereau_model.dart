@@ -119,6 +119,7 @@ class Bordereau {
     'etat_livraison': etatLivraison,
     'garantie': garantie,
     'date_livraison': dateLivraison?.toIso8601String(),
+    'client_nom_entreprise': clientNomEntreprise,
   };
 
   factory Bordereau.fromJson(Map<String, dynamic> json) {
@@ -179,7 +180,7 @@ class Bordereau {
         etatLivraison: json['etat_livraison']?.toString(),
         garantie: json['garantie']?.toString(),
         dateLivraison: parseDate(json['date_livraison']),
-        clientNomEntreprise: _clientDisplayName(json['client']),
+        clientNomEntreprise: _clientDisplayName(json['client']) ?? json['client_nom_entreprise']?.toString().trim(),
       );
     } catch (e, stackTrace) {
       print('❌ Bordereau.fromJson: Erreur: $e');

@@ -143,10 +143,20 @@ class PaginationHelper {
           .toList();
     }
 
+    /// Convertir data (List ou Map type objet PHP) en liste
+    List _dataToList(dynamic data) {
+      if (data is List) return data;
+      if (data is Map<String, dynamic>) {
+        final values = data.values.whereType<Map<String, dynamic>>().toList();
+        if (values.isNotEmpty) return values;
+      }
+      return [];
+    }
+
     if (json.containsKey('success') &&
         json.containsKey('data') &&
         json.containsKey('pagination')) {
-      final dataList = json['data'] is List ? json['data'] as List : [];
+      final dataList = _dataToList(json['data']);
       final paginationData = json['pagination'] as Map<String, dynamic>;
       return PaginationResponse<T>(
         data: safeParseList(dataList),
@@ -168,7 +178,7 @@ class PaginationHelper {
 
     if (json.containsKey('data') &&
         (json.containsKey('current_page') || json.containsKey('currentPage'))) {
-      final dataList = json['data'] is List ? json['data'] as List : [];
+      final dataList = _dataToList(json['data']);
       final paginationData =
           json.containsKey('meta') && json['meta'] is Map
               ? json['meta'] as Map<String, dynamic>
@@ -184,7 +194,7 @@ class PaginationHelper {
       if (data is Map<String, dynamic> &&
           (data.containsKey('current_page') ||
               data.containsKey('currentPage'))) {
-        final dataList = data['data'] is List ? data['data'] as List : [];
+        final dataList = _dataToList(data['data']);
         final paginationData =
             data.containsKey('meta') && data['meta'] is Map
                 ? data['meta'] as Map<String, dynamic>
@@ -208,18 +218,20 @@ class PaginationHelper {
       }
     }
 
-    if (json.containsKey('data') && json['data'] is List) {
-      final dataList = json['data'] as List;
-      return PaginationResponse<T>(
-        data: safeParseList(dataList),
-        meta: PaginationMeta(
-          currentPage: 1,
-          lastPage: 1,
-          perPage: 0,
-          total: 0,
-          path: '',
-        ),
-      );
+    if (json.containsKey('data')) {
+      final dataList = _dataToList(json['data']);
+      if (dataList.isNotEmpty || json['data'] is List || json['data'] is Map) {
+        return PaginationResponse<T>(
+          data: safeParseList(dataList),
+          meta: PaginationMeta(
+            currentPage: 1,
+            lastPage: 1,
+            perPage: dataList.length,
+            total: dataList.length,
+            path: '',
+          ),
+        );
+      }
     }
 
     throw Exception('Format de réponse non reconnu pour la pagination');

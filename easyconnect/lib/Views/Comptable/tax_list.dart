@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/tax_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/tax_notifier.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class TaxList extends StatefulWidget {
+class TaxList extends ConsumerStatefulWidget {
   const TaxList({super.key});
 
   @override
-  State<TaxList> createState() => _TaxListState();
+  ConsumerState<TaxList> createState() => _TaxListState();
 }
 
-class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
-  final TaxController controller = Get.find<TaxController>();
+class _TaxListState extends ConsumerState<TaxList>
+    with SingleTickerProviderStateMixin {
+  final ScrollController _scrollController = ScrollController();
   late TabController _tabController;
-  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -24,130 +27,62 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
     _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
-        setState(() {
-          _updateFilter();
-        });
+        _updateFilter();
       }
     });
-    // Charger les données après que le widget soit construit
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadTaxes();
+      ref.read(taxProvider.notifier).loadTaxes(forceRefresh: true);
     });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   void _updateFilter() {
     String status;
     switch (_tabController.index) {
-      case 0: // Tous
+      case 0:
         status = 'all';
         break;
-      case 1: // En attente
+      case 1:
         status = 'en_attente';
         break;
-      case 2: // Validés
+      case 2:
         status = 'valide';
         break;
-      case 3: // Rejetés
+      case 3:
         status = 'rejete';
         break;
-      case 4: // Payés
+      case 4:
         status = 'paid';
         break;
       default:
         status = 'all';
     }
-    controller.filterByStatus(status);
-  }
-
-  List<Tax> get _filteredTaxes {
-    List<Tax> filtered = List<Tax>.from(controller.allTaxes);
-
-    // Filtrer par statut selon l'onglet actif (normalisation vers les 4 statuts)
-    switch (_tabController.index) {
-      case 0: // Tous
-        // Ne pas filtrer, garder toutes les taxes
-        break;
-      case 1: // En attente
-        filtered =
-            filtered.where((t) {
-              final statusLower = t.status.toLowerCase();
-              return t.isPending ||
-                  statusLower == 'en_attente' ||
-                  statusLower == 'pending' ||
-                  statusLower == 'draft' ||
-                  statusLower == 'declared';
-            }).toList();
-        break;
-      case 2: // Validés
-        filtered =
-            filtered.where((t) {
-              final statusLower = t.status.toLowerCase();
-              return t.isValidated ||
-                  statusLower == 'valide' ||
-                  statusLower == 'validated';
-            }).toList();
-        break;
-      case 3: // Rejetés
-        filtered =
-            filtered.where((t) {
-              final statusLower = t.status.toLowerCase();
-              return t.isRejected ||
-                  statusLower == 'rejete' ||
-                  statusLower == 'rejected';
-            }).toList();
-        break;
-      case 4: // Payés
-        filtered =
-            filtered.where((t) {
-              final statusLower = t.status.toLowerCase();
-              return t.isPaid || statusLower == 'paye' || statusLower == 'paid';
-            }).toList();
-        break;
-    }
-
-    // Filtrer par recherche
-    if (_searchQuery.isNotEmpty) {
-      filtered =
-          filtered
-              .where(
-                (tax) =>
-                    tax.name.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    (tax.category?.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ) ??
-                        false) ||
-                    (tax.description?.toLowerCase().contains(
-                          _searchQuery.toLowerCase(),
-                        ) ??
-                        false),
-              )
-              .toList();
-    }
-
-    return filtered;
+    ref.read(taxProvider.notifier).filterByStatus(status);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(taxProvider);
+    final notifier = ref.read(taxProvider.notifier);
     final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Taxes et Impôts'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: controller.loadTaxes,
+            onPressed: () => notifier.loadTaxes(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -164,58 +99,51 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
               decoration: InputDecoration(
                 hintText: 'Rechercher par nom ou description...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchTaxes('');
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
+              controller: _searchController,
+              onChanged: (value) => notifier.searchTaxes(value),
             ),
           ),
-
-          // Liste des taxes
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const SkeletonSearchResults(itemCount: 6);
-              }
-              return _filteredTaxes.isEmpty
-                  ? const Center(child: Text('Aucune taxe trouvée'))
-                  : PaginatedListView(
-                    scrollController: controller.scrollController,
-                    onLoadMore: controller.loadMore,
-                    hasNextPage: controller.hasNextPage.value,
-                    isLoadingMore: controller.isLoadingMore.value,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredTaxes.length,
-                    itemBuilder: (context, index) {
-                      final tax = _filteredTaxes[index];
-                      return _buildTaxCard(tax, formatCurrency);
-                    },
-                  );
-            }),
+            child: state.isLoading && state.taxes.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : state.taxes.isEmpty
+                    ? const Center(child: Text('Aucune taxe trouvée'))
+                    : PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: state.hasNextPage,
+                        isLoadingMore: state.isLoadingMore,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: state.taxes.length,
+                        itemBuilder: (context, index) {
+                          final tax = state.taxes[index];
+                          return _buildTaxCard(tax, formatCurrency, notifier);
+                        },
+                      ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.toNamed('/taxes/new'),
+        onPressed: () => context.go('/taxes/new'),
         tooltip: 'Nouvelle taxe',
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -224,13 +152,14 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildTaxCard(Tax tax, NumberFormat formatCurrency) {
+  Widget _buildTaxCard(
+      Tax tax, NumberFormat formatCurrency, TaxNotifier notifier) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: InkWell(
-        onTap: () => Get.toNamed('/taxes/${tax.id}'),
+        onTap: () => context.go('/taxes/${tax.id}'),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -351,7 +280,7 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
                   TextButton.icon(
                     icon: const Icon(Icons.info_outline, size: 16),
                     label: const Text('Détails'),
-                    onPressed: () => Get.toNamed('/taxes/${tax.id}'),
+                    onPressed: () => context.go('/taxes/${tax.id}'),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
@@ -383,7 +312,7 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
                       icon: const Icon(Icons.payment, size: 16),
                       label: const Text('Payé'),
                       style: TextButton.styleFrom(foregroundColor: Colors.blue),
-                      onPressed: () => _showMarkPaidDialog(tax),
+                      onPressed: () => _showMarkPaidDialog(tax, notifier),
                     ),
                   ],
                   const SizedBox(width: 8),
@@ -428,103 +357,44 @@ class _TaxListState extends State<TaxList> with SingleTickerProviderStateMixin {
   }
 
   void _showEditDialog(Tax tax) {
-    Get.toNamed('/taxes/${tax.id}/edit', arguments: tax);
+    context.go('/taxes/${tax.id}/edit', extra: tax);
   }
 
-  void _showValidateDialog(Tax tax) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Valider la taxe'),
-        content: Text('Valider la taxe "${tax.name}" ?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.validateTax(tax);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectDialog(Tax tax) {
-    final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter la taxe'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Rejeter la taxe "${tax.name}" ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectTax(tax, reasonController.text.trim());
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMarkPaidDialog(Tax tax) {
-    Get.dialog(
-      AlertDialog(
+  void _showMarkPaidDialog(Tax tax, TaxNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Marquer comme payé'),
         content: Text('Marquer la taxe "${tax.name}" comme payée ?'),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.markTaxAsPaid(tax);
-              Get.back();
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await notifier.markTaxAsPaid(tax);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Taxe marquée comme payée avec succès'),
+                        backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
             child: const Text('Confirmer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteDialog(Tax tax) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Supprimer la taxe'),
-        content: Text('Supprimer la taxe "${tax.name}" ?'),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.deleteTax(tax);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Supprimer'),
           ),
         ],
       ),

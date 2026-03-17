@@ -1,23 +1,26 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/recruitment_service.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class RecruitmentController extends GetxController {
+class RecruitmentController {
+  static final RecruitmentController _instance = RecruitmentController._();
+  static RecruitmentController get to => _instance;
+  factory RecruitmentController() => _instance;
+  RecruitmentController._();
+
   final RecruitmentService _recruitmentService = RecruitmentService.to;
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxList<RecruitmentRequest> recruitmentRequests =
-      <RecruitmentRequest>[].obs;
-  final RxList<RecruitmentRequest> filteredRequests =
-      <RecruitmentRequest>[].obs;
-  final Rx<RecruitmentRequest?> selectedRequest = Rx<RecruitmentRequest?>(null);
-  final Rx<RecruitmentStats?> recruitmentStats = Rx<RecruitmentStats?>(null);
-  final RxList<String> departments = <String>[].obs;
-  final RxList<String> positions = <String>[].obs;
+  // Variables
+  bool isLoading = false;
+  final List<RecruitmentRequest> recruitmentRequests = [];
+  final List<RecruitmentRequest> filteredRequests = [];
+  RecruitmentRequest? selectedRequest;
+  RecruitmentStats? recruitmentStats;
+  final List<String> departments = [];
+  final List<String> positions = [];
 
   // Variables pour le formulaire
   final TextEditingController titleController = TextEditingController();
@@ -30,39 +33,26 @@ class RecruitmentController extends GetxController {
   final TextEditingController searchController = TextEditingController();
 
   // Variables de filtrage
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedDepartment = 'all'.obs;
-  final RxString selectedPosition = 'all'.obs;
-  final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
+  String selectedStatus = 'all';
+  String selectedDepartment = 'all';
+  String selectedPosition = 'all';
+  DateTime? selectedStartDate;
+  DateTime? selectedEndDate;
 
   // Variables pour le formulaire de création
-  final RxList<String> selectedDepartmentsForm =
-      <String>[].obs; // Sélection multiple
-  final RxList<String> selectedPositionsForm =
-      <String>[].obs; // Sélection multiple
-  final RxString selectedEmploymentTypeForm = ''.obs;
-  final RxString selectedExperienceLevelForm = ''.obs;
-  final Rx<DateTime?> selectedDeadlineForm = Rx<DateTime?>(null);
-  final RxInt numberOfPositionsForm = 1.obs;
+  final List<String> selectedDepartmentsForm = [];
+  final List<String> selectedPositionsForm = [];
+  String selectedEmploymentTypeForm = '';
+  String selectedExperienceLevelForm = '';
+  DateTime? selectedDeadlineForm;
+  int numberOfPositionsForm = 1;
 
   // Variables pour les permissions
-  final RxBool canManageRecruitment =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canApproveRecruitment =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canViewAllRecruitment =
-      true.obs; // TODO: Implémenter la vérification des permissions
+  bool canManageRecruitment = true;
+  bool canApproveRecruitment = true;
+  bool canViewAllRecruitment = true;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Chargement différé : les données sont chargées par la page (recruitment_list)
-    // au premier affichage pour éviter une avalanche d'appels API au binding.
-  }
-
-  @override
-  void onClose() {
+  void dispose() {
     titleController.dispose();
     descriptionController.dispose();
     requirementsController.dispose();
@@ -70,14 +60,14 @@ class RecruitmentController extends GetxController {
     salaryRangeController.dispose();
     locationController.dispose();
     searchController.dispose();
-    super.onClose();
   }
 
   // Charger les départements
   Future<void> loadDepartments() async {
     try {
       final depts = await _recruitmentService.getDepartments();
-      departments.value = depts;
+      departments.clear();
+      departments.addAll(depts);
     } catch (e) {}
   }
 
@@ -85,56 +75,63 @@ class RecruitmentController extends GetxController {
   Future<void> loadPositions() async {
     try {
       final pos = await _recruitmentService.getPositions();
-      positions.value = pos;
+      positions.clear();
+      positions.addAll(pos);
     } catch (e) {}
   }
 
   bool _isLoadingRecruitmentsInProgress = false;
 
   /// Charge les demandes de recrutement : Hive d'abord (affichage immédiat), puis API dans la même méthode.
-  Future<void> loadRecruitmentRequests() async {
+  Future<void> loadRecruitmentRequests({bool forceRefresh = false}) async {
     if (_isLoadingRecruitmentsInProgress) return;
     _isLoadingRecruitmentsInProgress = true;
 
-    isLoading.value = true;
-    final cached = RecruitmentService.getCachedRecruitments();
-    if (cached.isNotEmpty) {
-      recruitmentRequests.assignAll(cached);
-      applyFilters();
-      isLoading.value = false;
+    isLoading = true;
+    if (!forceRefresh) {
+      final cached = RecruitmentService.getCachedRecruitments();
+      if (cached.isNotEmpty) {
+        recruitmentRequests.clear();
+        recruitmentRequests.addAll(cached);
+        applyFilters();
+        isLoading = false;
+      } else {
+        recruitmentRequests.clear();
+      }
     } else {
-      recruitmentRequests.value = [];
+      recruitmentRequests.clear();
     }
 
     try {
       final requests = await _recruitmentService.getAllRecruitmentRequests(
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-        department: selectedDepartment.value != 'all' ? selectedDepartment.value : null,
-        position: selectedPosition.value != 'all' ? selectedPosition.value : null,
+        status: selectedStatus != 'all' ? selectedStatus : null,
+        department: selectedDepartment != 'all' ? selectedDepartment : null,
+        position: selectedPosition != 'all' ? selectedPosition : null,
       );
 
-      recruitmentRequests.assignAll(requests);
+      recruitmentRequests.clear();
+      recruitmentRequests.addAll(requests);
       applyFilters();
     } catch (e) {
       if (recruitmentRequests.isEmpty) {
         final fallback = RecruitmentService.getCachedRecruitments();
         if (fallback.isNotEmpty) {
-          recruitmentRequests.assignAll(fallback);
+          recruitmentRequests.clear();
+          recruitmentRequests.addAll(fallback);
           applyFilters();
         } else {
           final err = e.toString().toLowerCase();
           if (!err.contains('401') && !err.contains('unauthorized')) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Erreur',
               'Impossible de charger les demandes de recrutement',
-              snackPosition: SnackPosition.BOTTOM,
               duration: const Duration(seconds: 5),
             );
           }
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
       _isLoadingRecruitmentsInProgress = false;
     }
   }
@@ -143,12 +140,12 @@ class RecruitmentController extends GetxController {
   Future<void> loadRecruitmentStats() async {
     try {
       final stats = await _recruitmentService.getRecruitmentStats(
-        startDate: selectedStartDate.value,
-        endDate: selectedEndDate.value,
+        startDate: selectedStartDate,
+        endDate: selectedEndDate,
         department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+            selectedDepartment != 'all' ? selectedDepartment : null,
       );
-      recruitmentStats.value = stats;
+      recruitmentStats = stats;
     } catch (e) {}
   }
 
@@ -169,7 +166,8 @@ class RecruitmentController extends GetxController {
           return true;
         }).toList();
 
-    filteredRequests.value = filtered;
+    filteredRequests.clear();
+    filteredRequests.addAll(filtered);
   }
 
   // Rechercher dans les demandes
@@ -180,26 +178,26 @@ class RecruitmentController extends GetxController {
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadRecruitmentRequests();
   }
 
   // Filtrer par département
   void filterByDepartment(String department) {
-    selectedDepartment.value = department;
+    selectedDepartment = department;
     loadRecruitmentRequests();
   }
 
   // Filtrer par poste
   void filterByPosition(String position) {
-    selectedPosition.value = position;
+    selectedPosition = position;
     loadRecruitmentRequests();
   }
 
   // Filtrer par date
   void filterByDateRange(DateTime? startDate, DateTime? endDate) {
-    selectedStartDate.value = startDate;
-    selectedEndDate.value = endDate;
+    selectedStartDate = startDate;
+    selectedEndDate = endDate;
     loadRecruitmentStats();
   }
 
@@ -208,41 +206,41 @@ class RecruitmentController extends GetxController {
     try {
       // Vérification des champs obligatoires
       final title = titleController.text.trim();
-      final departments = selectedDepartmentsForm; // Liste de départements
-      final positions = selectedPositionsForm; // Liste de postes
+      final departmentsList = selectedDepartmentsForm;
+      final positionsList = selectedPositionsForm;
       final description = descriptionController.text.trim();
       final requirements = requirementsController.text.trim();
       final responsibilities = responsibilitiesController.text.trim();
-      final employmentType = selectedEmploymentTypeForm.value;
-      final experienceLevel = selectedExperienceLevelForm.value;
+      final employmentType = selectedEmploymentTypeForm;
+      final experienceLevel = selectedExperienceLevelForm;
       final salaryRange = salaryRangeController.text.trim();
       final location = locationController.text.trim();
-      final deadline = selectedDeadlineForm.value;
-      final numberOfPositions = numberOfPositionsForm.value;
+      final deadline = selectedDeadlineForm;
+      final numberOfPositions = numberOfPositionsForm;
 
       // Validation des champs obligatoires
       if (title.isEmpty) {
-        Get.snackbar('Erreur', 'Le titre est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'Le titre est obligatoire');
         return false;
       }
 
-      if (departments.isEmpty) {
-        Get.snackbar('Erreur', 'Au moins un département est obligatoire');
+      if (departmentsList.isEmpty) {
+        errorHelperShowSnackbar?.call('Erreur', 'Au moins un département est obligatoire');
         return false;
       }
 
-      if (positions.isEmpty) {
-        Get.snackbar('Erreur', 'Au moins un poste est obligatoire');
+      if (positionsList.isEmpty) {
+        errorHelperShowSnackbar?.call('Erreur', 'Au moins un poste est obligatoire');
         return false;
       }
 
       // Validation de la description (minimum 50 caractères)
       if (description.isEmpty) {
-        Get.snackbar('Erreur', 'La description est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'La description est obligatoire');
         return false;
       }
       if (description.length < 50) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'La description doit contenir au moins 50 caractères (actuellement: ${description.length})',
         );
@@ -251,11 +249,11 @@ class RecruitmentController extends GetxController {
 
       // Validation des exigences (minimum 20 caractères)
       if (requirements.isEmpty) {
-        Get.snackbar('Erreur', 'Les exigences sont obligatoires');
+        errorHelperShowSnackbar?.call('Erreur', 'Les exigences sont obligatoires');
         return false;
       }
       if (requirements.length < 20) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Les exigences doivent contenir au moins 20 caractères (actuellement: ${requirements.length})',
         );
@@ -264,11 +262,11 @@ class RecruitmentController extends GetxController {
 
       // Validation des responsabilités (minimum 20 caractères)
       if (responsibilities.isEmpty) {
-        Get.snackbar('Erreur', 'Les responsabilités sont obligatoires');
+        errorHelperShowSnackbar?.call('Erreur', 'Les responsabilités sont obligatoires');
         return false;
       }
       if (responsibilities.length < 20) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Les responsabilités doivent contenir au moins 20 caractères (actuellement: ${responsibilities.length})',
         );
@@ -276,39 +274,39 @@ class RecruitmentController extends GetxController {
       }
 
       if (employmentType.isEmpty) {
-        Get.snackbar('Erreur', 'Le type d\'emploi est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'Le type d\'emploi est obligatoire');
         return false;
       }
 
       if (experienceLevel.isEmpty) {
-        Get.snackbar('Erreur', 'Le niveau d\'expérience est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'Le niveau d\'expérience est obligatoire');
         return false;
       }
 
       if (salaryRange.isEmpty) {
-        Get.snackbar('Erreur', 'La fourchette salariale est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'La fourchette salariale est obligatoire');
         return false;
       }
 
       if (location.isEmpty) {
-        Get.snackbar('Erreur', 'La localisation est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'La localisation est obligatoire');
         return false;
       }
 
       if (deadline == null) {
-        Get.snackbar('Erreur', 'La date limite est obligatoire');
+        errorHelperShowSnackbar?.call('Erreur', 'La date limite est obligatoire');
         return false;
       }
 
       // Vérifier que la date limite est dans le futur
       if (deadline.isBefore(DateTime.now())) {
-        Get.snackbar('Erreur', 'La date limite doit être dans le futur');
+        errorHelperShowSnackbar?.call('Erreur', 'La date limite doit être dans le futur');
         return false;
       }
 
       // Convertir les listes en chaînes séparées par des virgules pour le backend
-      final departmentString = departments.join(', ');
-      final positionString = positions.join(', ');
+      final departmentString = departmentsList.join(', ');
+      final positionString = positionsList.join(', ');
 
       final result = await _recruitmentService.createRecruitmentRequest(
         title: title,
@@ -349,35 +347,35 @@ class RecruitmentController extends GetxController {
             final publishResult = await _recruitmentService
                 .publishRecruitmentRequest(recruitmentId);
             if (publishResult['success'] == true) {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Succès',
                 'Demande de recrutement créée et publiée avec succès',
               );
             } else {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Succès',
                 'Demande de recrutement créée avec succès (publication en attente)',
               );
             }
           } catch (e) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Succès',
               'Demande de recrutement créée avec succès (publication en attente)',
             );
           }
         } else {
-          Get.snackbar('Succès', 'Demande de recrutement créée avec succès');
+          errorHelperShowSnackbar?.call('Succès', 'Demande de recrutement créée avec succès');
         }
 
         clearForm();
         // Réinitialiser le filtre de statut pour charger tous les recrutements
-        selectedStatus.value = 'all';
+        selectedStatus = 'all';
         await loadRecruitmentRequests();
         await loadRecruitmentStats();
         return true;
       } else {
         final errorMessage = result['message'] ?? 'Erreur lors de la création';
-        Get.snackbar('Erreur', errorMessage);
+        errorHelperShowSnackbar?.call('Erreur', errorMessage);
         return false;
       }
     } catch (e) {
@@ -411,7 +409,7 @@ class RecruitmentController extends GetxController {
         }
       }
 
-      Get.snackbar('Erreur', errorMessage);
+      errorHelperShowSnackbar?.call('Erreur', errorMessage);
       return false;
     }
   }
@@ -424,19 +422,19 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande publiée avec succès');
+        errorHelperShowSnackbar?.call('Succès', 'Demande publiée avec succès');
         // Recharger tous les recrutements pour mettre à jour la liste
-        selectedStatus.value = 'all';
+        selectedStatus = 'all';
         await loadRecruitmentRequests();
         await loadRecruitmentStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la publication',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la publication: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la publication: $e');
     }
   }
 
@@ -463,19 +461,19 @@ class RecruitmentController extends GetxController {
           entity: request,
         );
 
-        Get.snackbar('Succès', 'Demande approuvée avec succès');
+        errorHelperShowSnackbar?.call('Succès', 'Demande approuvée avec succès');
         // Recharger tous les recrutements pour mettre à jour la liste
-        selectedStatus.value = 'all';
+        selectedStatus = 'all';
         await loadRecruitmentRequests();
         await loadRecruitmentStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de l\'approbation',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'approbation: $e');
     }
   }
 
@@ -507,16 +505,16 @@ class RecruitmentController extends GetxController {
           entity: request,
         );
 
-        Get.snackbar('Succès', 'Demande rejetée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande rejetée');
         // Recharger tous les recrutements pour mettre à jour la liste
-        selectedStatus.value = 'all';
+        selectedStatus = 'all';
         await loadRecruitmentRequests();
         await loadRecruitmentStats();
       } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
+        errorHelperShowSnackbar?.call('Erreur', result['message'] ?? 'Erreur lors du rejet');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors du rejet: $e');
     }
   }
 
@@ -528,17 +526,17 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande fermée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande fermée');
         loadRecruitmentRequests();
         loadRecruitmentStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la fermeture',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la fermeture: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la fermeture: $e');
     }
   }
 
@@ -550,17 +548,17 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande annulée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande annulée');
         loadRecruitmentRequests();
         loadRecruitmentStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de l\'annulation',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'annulation: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'annulation: $e');
     }
   }
 
@@ -572,17 +570,17 @@ class RecruitmentController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande supprimée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande supprimée');
         loadRecruitmentRequests();
         loadRecruitmentStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la suppression',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la suppression: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la suppression: $e');
     }
   }
 
@@ -591,13 +589,13 @@ class RecruitmentController extends GetxController {
     final date = await showDatePicker(
       context: context,
       initialDate:
-          selectedDeadlineForm.value ??
+          selectedDeadlineForm ??
           DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date != null) {
-      selectedDeadlineForm.value = date;
+      selectedDeadlineForm = date;
     }
   }
 
@@ -631,12 +629,12 @@ class RecruitmentController extends GetxController {
 
   // Sélectionner un type d'emploi
   void selectEmploymentType(String type) {
-    selectedEmploymentTypeForm.value = type;
+    selectedEmploymentTypeForm = type;
   }
 
   // Sélectionner un niveau d'expérience
   void selectExperienceLevel(String level) {
-    selectedExperienceLevelForm.value = level;
+    selectedExperienceLevelForm = level;
   }
 
   // Réinitialiser le formulaire
@@ -649,19 +647,19 @@ class RecruitmentController extends GetxController {
     locationController.clear();
     selectedDepartmentsForm.clear();
     selectedPositionsForm.clear();
-    selectedEmploymentTypeForm.value = '';
-    selectedExperienceLevelForm.value = '';
-    selectedDeadlineForm.value = null;
-    numberOfPositionsForm.value = 1;
+    selectedEmploymentTypeForm = '';
+    selectedExperienceLevelForm = '';
+    selectedDeadlineForm = null;
+    numberOfPositionsForm = 1;
   }
 
   // Réinitialiser les filtres
   void clearFilters() {
-    selectedStatus.value = 'all';
-    selectedDepartment.value = 'all';
-    selectedPosition.value = 'all';
-    selectedStartDate.value = null;
-    selectedEndDate.value = null;
+    selectedStatus = 'all';
+    selectedDepartment = 'all';
+    selectedPosition = 'all';
+    selectedStartDate = null;
+    selectedEndDate = null;
     searchController.clear();
     loadRecruitmentRequests();
   }

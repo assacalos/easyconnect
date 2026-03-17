@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/recruitment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/recruitment_notifier.dart';
+import 'package:easyconnect/providers/recruitment_state.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
-import 'package:easyconnect/Views/Rh/recruitment_form.dart';
 import 'package:intl/intl.dart';
 
-class RecruitmentDetail extends StatelessWidget {
+class RecruitmentDetail extends ConsumerWidget {
   final RecruitmentRequest request;
 
   const RecruitmentDetail({super.key, required this.request});
 
   @override
-  Widget build(BuildContext context) {
-    final RecruitmentController controller = Get.put(RecruitmentController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(recruitmentProvider);
+    final notifier = ref.read(recruitmentProvider.notifier);
     final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
     final formatDateOnly = DateFormat('dd/MM/yyyy');
 
@@ -22,14 +24,14 @@ class RecruitmentDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageRecruitment.value && request.isDraft)
+          if (state.canManageRecruitment && request.isDraft)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => RecruitmentForm(request: request)),
+              onPressed: () => context.go('/recruitment/${request.id}/edit', extra: request),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareRequest(),
+            onPressed: () => _shareRequest(context),
           ),
         ],
       ),
@@ -38,11 +40,8 @@ class RecruitmentDetail extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec statut
             _buildHeaderCard(),
             const SizedBox(height: 16),
-
-            // Informations de base
             _buildInfoCard('Informations de base', [
               _buildInfoRow(Icons.title, 'Titre', request.title),
               _buildInfoRow(Icons.business, 'Département', request.department),
@@ -59,8 +58,6 @@ class RecruitmentDetail extends StatelessWidget {
                 isOverdue: request.applicationDeadline.isBefore(DateTime.now()),
               ),
             ]),
-
-            // Statut et approbation
             const SizedBox(height: 16),
             _buildInfoCard('Statut et approbation', [
               _buildInfoRow(
@@ -70,70 +67,36 @@ class RecruitmentDetail extends StatelessWidget {
                 statusColor: _getStatusColor(request.statusColor),
               ),
               if (request.publishedAt != null)
-                _buildInfoRow(
-                  Icons.publish,
-                  'Publié le',
-                  formatDate.format(request.publishedAt!),
-                ),
+                _buildInfoRow(Icons.publish, 'Publié le', formatDate.format(request.publishedAt!)),
               if (request.publishedByName != null)
-                _buildInfoRow(
-                  Icons.person,
-                  'Publié par',
-                  request.publishedByName!,
-                ),
+                _buildInfoRow(Icons.person, 'Publié par', request.publishedByName!),
               if (request.approvedAt != null)
-                _buildInfoRow(
-                  Icons.check_circle,
-                  'Approuvé le',
-                  formatDate.format(request.approvedAt!),
-                ),
+                _buildInfoRow(Icons.check_circle, 'Approuvé le', formatDate.format(request.approvedAt!)),
               if (request.approvedByName != null)
-                _buildInfoRow(
-                  Icons.person,
-                  'Approuvé par',
-                  request.approvedByName!,
-                ),
+                _buildInfoRow(Icons.person, 'Approuvé par', request.approvedByName!),
               if (request.rejectionReason != null)
-                _buildInfoRow(
-                  Icons.cancel,
-                  'Raison du rejet',
-                  request.rejectionReason!,
-                  statusColor: Colors.red,
-                ),
+                _buildInfoRow(Icons.cancel, 'Raison du rejet', request.rejectionReason!, statusColor: Colors.red),
             ]),
-
-            // Description du poste
             const SizedBox(height: 16),
             _buildInfoCard('Description du poste', [
               _buildInfoRow(Icons.description, 'Description', request.description),
             ]),
-
-            // Exigences
             const SizedBox(height: 16),
             _buildInfoCard('Exigences et qualifications', [
               _buildInfoRow(Icons.checklist, 'Exigences', request.requirements),
             ]),
-
-            // Responsabilités
             const SizedBox(height: 16),
             _buildInfoCard('Responsabilités principales', [
               _buildInfoRow(Icons.assignment, 'Responsabilités', request.responsibilities),
             ]),
-
-            // Candidatures
             if (request.applications.isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildApplicationsCard(),
             ],
-
-            // Historique
             const SizedBox(height: 16),
             _buildHistoryCard(),
-
             const SizedBox(height: 16),
-
-            // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier, state),
           ],
         ),
       ),
@@ -401,7 +364,7 @@ class RecruitmentDetail extends StatelessWidget {
                 DateFormat('dd/MM/yyyy à HH:mm').format(request.approvedAt!),
                 Colors.green,
               ),
-            if (request.status == 'rejected')
+            if (request.status == 'cancelled')
               _buildHistoryItem(
                 Icons.cancel,
                 'Demande rejetée',
@@ -457,7 +420,12 @@ class RecruitmentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(RecruitmentController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    RecruitmentNotifier notifier,
+    RecruitmentState state,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -476,12 +444,12 @@ class RecruitmentDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (request.isDraft && controller.canManageRecruitment.value) ...[
+                if (request.isDraft && state.canManageRecruitment) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.publish),
                       label: const Text('Publier'),
-                      onPressed: () => _showPublishDialog(controller),
+                      onPressed: () => _showPublishDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -493,7 +461,7 @@ class RecruitmentDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => RecruitmentForm(request: request)),
+                      onPressed: () => context.go('/recruitment/${request.id}/edit', extra: request),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -501,12 +469,12 @@ class RecruitmentDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (request.isPublished && controller.canApproveRecruitment.value) ...[
+                if (request.isPublished && state.canApproveRecruitment) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -518,7 +486,7 @@ class RecruitmentDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -526,13 +494,13 @@ class RecruitmentDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (request.isPublished && controller.canManageRecruitment.value) ...[
+                if (request.isPublished && state.canManageRecruitment) ...[
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Fermer'),
-                      onPressed: () => _showCloseDialog(controller),
+                      onPressed: () => _showCloseDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -546,7 +514,7 @@ class RecruitmentDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.cancel),
                       label: const Text('Annuler'),
-                      onPressed: () => _showCancelDialog(controller),
+                      onPressed: () => _showCancelDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -592,33 +560,39 @@ class RecruitmentDetail extends StatelessWidget {
     }
   }
 
-  void _shareRequest() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareRequest(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fonctionnalité de partage à implémenter')),
     );
   }
 
-  void _showPublishDialog(RecruitmentController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showPublishDialog(BuildContext context, RecruitmentNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Publier la demande'),
         content: const Text('Êtes-vous sûr de vouloir publier cette demande de recrutement ?'),
         actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.publishRecruitmentRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.publishRecruitmentRequest(request);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Demande publiée'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
             child: const Text('Publier'),
           ),
         ],
@@ -626,25 +600,33 @@ class RecruitmentDetail extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(RecruitmentController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showApproveDialog(BuildContext context, RecruitmentNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver la demande'),
         content: const Text('Êtes-vous sûr de vouloir approuver cette demande de recrutement ?'),
         actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.approveRecruitmentRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveRecruitmentRequest(request);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Demande approuvée'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
             child: const Text('Approuver'),
           ),
         ],
@@ -652,11 +634,11 @@ class RecruitmentDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(RecruitmentController controller) {
+  void _showRejectDialog(BuildContext context, RecruitmentNotifier notifier) {
     final reasonController = TextEditingController();
-    
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter la demande'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -674,21 +656,32 @@ class RecruitmentDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectRecruitmentRequest(request, reasonController.text.trim());
-                Get.back();
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Veuillez indiquer la raison du rejet'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectRecruitmentRequest(request, reasonController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Demande rejetée'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('Rejeter'),
           ),
         ],
@@ -696,25 +689,33 @@ class RecruitmentDetail extends StatelessWidget {
     );
   }
 
-  void _showCloseDialog(RecruitmentController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showCloseDialog(BuildContext context, RecruitmentNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Fermer la demande'),
         content: const Text('Êtes-vous sûr de vouloir fermer cette demande de recrutement ?'),
         actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Annuler'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.closeRecruitmentRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.closeRecruitmentRequest(request);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Demande fermée'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
             child: const Text('Fermer'),
           ),
         ],
@@ -722,27 +723,35 @@ class RecruitmentDetail extends StatelessWidget {
     );
   }
 
-  void _showCancelDialog(RecruitmentController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showCancelDialog(BuildContext context, RecruitmentNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Annuler la demande'),
         content: const Text(
           'Êtes-vous sûr de vouloir annuler cette demande ? Cette action est irréversible.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('Non'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Non')),
           ElevatedButton(
-            onPressed: () {
-              controller.cancelRecruitmentRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.cancelRecruitmentRequest(request);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Demande annulée'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('Oui, annuler'),
           ),
         ],

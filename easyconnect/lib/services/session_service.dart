@@ -4,11 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/models/user_model.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/logger.dart';
-import 'package:get/get.dart';
 
 /// Service centralisé pour la gestion de la session utilisateur
 /// Fournit une interface unique pour accéder au token et aux informations utilisateur
@@ -33,9 +30,32 @@ class SessionService {
   static const String _tokenExpiryKey = 'tokenExpiry';
   static const String _loginInProgressKey = 'loginInProgress';
   static const String _lastActivityKey = 'lastActivity';
+  static const String _lastSuccessfulLoginKey = 'lastSuccessfulLoginTime';
 
   // Flag pour éviter les conflits lors de la connexion
   static bool _isLoginInProgress = false;
+
+  /// Timestamp du dernier login réussi (pour période de grâce 401 après connexion)
+  static int? _lastSuccessfulLoginTime;
+
+  /// Période de grâce en millisecondes : ignorer un 401 pendant ce délai après un login réussi
+  /// (2 min pour éviter déconnexion intempestive en local / requêtes parallèles au chargement)
+  static const int _gracePeriodMs = 300000; // 5 min après login : éviter déconnexion automatique sur 401 transitoire
+
+  /// À appeler après un login réussi pour activer la période de grâce
+  static void setLastSuccessfulLoginNow() {
+    _lastSuccessfulLoginTime = DateTime.now().millisecondsSinceEpoch;
+    _storage.write(_lastSuccessfulLoginKey, _lastSuccessfulLoginTime);
+    AppLogger.debug('Période de grâce après login activée', tag: 'SESSION_SERVICE');
+  }
+
+  /// true si on est dans les [_gracePeriodMs] ms suivant le dernier login réussi
+  static bool isWithinGracePeriodAfterLogin() {
+    final t = _lastSuccessfulLoginTime ?? _storage.read<int?>(_lastSuccessfulLoginKey);
+    if (t == null) return false;
+    final elapsed = DateTime.now().millisecondsSinceEpoch - t;
+    return elapsed >= 0 && elapsed < _gracePeriodMs;
+  }
 
   // Timers pour les vérifications périodiques
   static Timer? _validationTimer;
@@ -222,17 +242,8 @@ class SessionService {
     return _storage.read<Map<String, dynamic>>(_userKey);
   }
 
-  /// Récupère l'AuthController si disponible
-  static AuthController? getAuthController() {
-    if (Get.isRegistered<AuthController>()) {
-      try {
-        return Get.find<AuthController>();
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  }
+  /// Récupère l'AuthController si disponible (déprécié : utiliser authProvider en Riverpod).
+  static dynamic getAuthController() => null;
 
   /// Vérifie si l'utilisateur a un rôle spécifique
   static bool hasRole(int role) {
@@ -258,6 +269,8 @@ class SessionService {
       await _storage.remove(_loginInProgressKey);
       await _storage.remove(_lastActivityKey);
       await _storage.remove(_tokenKey);
+      _storage.remove(_lastSuccessfulLoginKey);
+      _lastSuccessfulLoginTime = null;
       _isLoginInProgress = false;
       stopPeriodicValidation();
       stopActivityTracking();
@@ -412,20 +425,7 @@ class SessionService {
           // Mettre à jour les données utilisateur si fournies
           if (responseData['user'] != null) {
             await saveUser(responseData['user'] as Map<String, dynamic>);
-            // Mettre à jour aussi l'AuthController si disponible
-            final authController = getAuthController();
-            if (authController != null) {
-              try {
-                authController.userAuth.value = UserModel.fromJson(
-                  responseData['user'] as Map<String, dynamic>,
-                );
-              } catch (e) {
-                AppLogger.warning(
-                  'Erreur lors de la mise à jour de l\'utilisateur: $e',
-                  tag: 'SESSION_SERVICE',
-                );
-              }
-            }
+            // L'Auth Riverpod sera rafraîchi au prochain accès ou via refreshUserData()
           }
 
           if (newToken != null && newToken.isNotEmpty) {

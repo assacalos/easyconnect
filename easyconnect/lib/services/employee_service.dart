@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -11,8 +10,11 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 
-class EmployeeService extends GetxService {
-  static EmployeeService get to => Get.find();
+class EmployeeService {
+  static final EmployeeService _instance = EmployeeService._();
+  static EmployeeService get to => _instance;
+  factory EmployeeService() => _instance;
+  EmployeeService._();
 
   /// Récupérer les employés avec pagination côté serveur
   ///

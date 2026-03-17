@@ -1,48 +1,49 @@
-import 'package:easyconnect/Controllers/userController.dart';
 import 'package:easyconnect/Models/user_model.dart';
+import 'package:easyconnect/providers/user_management_notifier.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class SecuritySection extends StatelessWidget {
-  final UserController controller = Get.find<UserController>();
+class SecuritySection extends ConsumerWidget {
+  const SecuritySection({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      if (controller.isLoading.value) {
-        return Center(child: CircularProgressIndicator(color: Colors.blueGrey));
-      }
-      if (controller.users.isEmpty) {
-        return Center(child: Text("Aucun utilisateur trouvé"));
-      }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(userManagementProvider);
+    final notifier = ref.read(userManagementProvider.notifier);
 
-      return ListView.builder(
-        itemCount: controller.users.length,
-        itemBuilder: (context, index) {
-          final user = controller.users[index];
-          return Card(
-            margin: EdgeInsets.symmetric(vertical: 8),
-            child: ListTile(
-              title: Text("${user.nom} ${user.prenom}"),
-              subtitle: Text("${user.email} • Rôle: ${user.role}"),
-              trailing: Switch(
-                value: user.isActive,
-                onChanged: (value) {
-                  final updatedUser = UserModel(
-                    id: user.id,
-                    nom: user.nom,
-                    prenom: user.prenom,
-                    email: user.email,
-                    role: user.role,
-                    isActive: value,
-                  );
-                  controller.updateUser(updatedUser);
-                },
-              ),
+    if (state.isLoading && state.users.isEmpty) {
+      return Center(child: CircularProgressIndicator(color: Colors.blueGrey));
+    }
+    if (state.users.isEmpty) {
+      return const Center(child: Text("Aucun utilisateur trouvé"));
+    }
+
+    return ListView.builder(
+      itemCount: state.users.length,
+      itemBuilder: (context, index) {
+        final user = state.users[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          child: ListTile(
+            title: Text("${user.nom} ${user.prenom}"),
+            subtitle: Text("${user.email} • Rôle: ${user.role}"),
+            trailing: Switch(
+              value: user.isActive,
+              onChanged: (value) {
+                final updatedUser = UserModel(
+                  id: user.id,
+                  nom: user.nom,
+                  prenom: user.prenom,
+                  email: user.email,
+                  role: user.role,
+                  isActive: value,
+                );
+                notifier.toggleUserStatus(user.id, value);
+              },
             ),
-          );
-        },
-      );
-    });
+          ),
+        );
+      },
+    );
   }
 }

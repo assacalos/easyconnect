@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/services/bordereau_service.dart';
@@ -15,74 +14,78 @@ import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/app_config.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class BordereauxController extends GetxController {
-  late int userId;
+Bordereau? _firstWhereBordereauById(List<Bordereau> list, int id) {
+  try {
+    return list.firstWhere((b) => b.id == id);
+  } catch (_) {
+    return null;
+  }
+}
+
+class BordereauxController {
+  static final BordereauxController _instance = BordereauxController._();
+  static BordereauxController get to => _instance;
+  factory BordereauxController() => _instance;
+  BordereauxController._();
+
+  int get userId => int.parse(AuthController.to.userAuth?.id.toString() ?? '0');
+
   final BordereauService _bordereauService = BordereauService();
   final ClientService _clientService = ClientService();
   final DevisService _devisService = DevisService();
 
-  final bordereaux = <Bordereau>[].obs;
-  final selectedClient = Rxn<Client>();
-  final availableClients = <Client>[].obs;
-  final isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final isLoadingClients = false.obs;
-  final currentBordereau = Rxn<Bordereau>();
-  final items = <BordereauItem>[].obs;
+  final List<Bordereau> bordereaux = [];
+  final List<Client> availableClients = [];
+  Client? selectedClient;
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool isLoadingClients = false;
+  Bordereau? currentBordereau;
+  final List<BordereauItem> items = [];
 
-  // Variables pour la gestion des devis
-  final availableDevis = <Devis>[].obs;
-  final selectedDevis = Rxn<Devis>();
-  final isLoadingDevis = false.obs;
+  final List<Devis> availableDevis = [];
+  Devis? selectedDevis;
+  bool isLoadingDevis = false;
 
-  // Référence générée automatiquement
-  final generatedReference = ''.obs;
+  String generatedReference = '';
 
   int? _currentStatus;
   bool _isLoadingInProgress = false;
 
-  // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
-  final RxString searchQuery = ''.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
+  String searchQuery = '';
   final ScrollController scrollController = ScrollController();
   Timer? _searchDebounceTimer;
 
-  // Statistiques
-  final totalBordereaux = 0.obs;
-  final bordereauEnvoyes = 0.obs;
-  final bordereauAcceptes = 0.obs;
-  final bordereauRefuses = 0.obs;
-  final montantTotal = 0.0.obs;
+  int totalBordereaux = 0;
+  int bordereauEnvoyes = 0;
+  int bordereauAcceptes = 0;
+  int bordereauRefuses = 0;
+  double montantTotal = 0.0;
 
-  @override
-  void onInit() {
-    super.onInit();
-    userId = int.parse(
-      Get.find<AuthController>().userAuth.value!.id.toString(),
-    );
-    ever(searchQuery, (_) {
-      _searchDebounceTimer?.cancel();
-      _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-        AppLogger.debug(
-          'Bordereaux recherche (debounce): rechargement statut=$_currentStatus, query="${searchQuery.value}"',
-          tag: 'BORDEREAU_CONTROLLER',
-        );
-        loadBordereaux(status: _currentStatus, forceRefresh: true);
-      });
+  void setSearchQuery(String q) {
+    if (searchQuery == q) return;
+    searchQuery = q;
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      AppLogger.debug(
+        'Bordereaux recherche (debounce): rechargement statut=$_currentStatus, query="$searchQuery"',
+        tag: 'BORDEREAU_CONTROLLER',
+      );
+      loadBordereaux(status: _currentStatus, forceRefresh: true);
     });
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     _searchDebounceTimer?.cancel();
     scrollController.dispose();
-    super.onClose();
   }
 
   Future<void> loadBordereaux({
@@ -97,7 +100,7 @@ class BordereauxController extends GetxController {
     if (!forceRefresh &&
         bordereaux.isNotEmpty &&
         _currentStatus == status &&
-        currentPage.value == page &&
+        currentPage == page &&
         page == 1) {
       AppLogger.debug('Données déjà chargées', tag: 'BORDEREAU_CONTROLLER');
       return;
@@ -107,28 +110,33 @@ class BordereauxController extends GetxController {
     final entityKey = 'bordereaux_${status ?? 'all'}';
 
     if (page == 1) {
-      isLoading.value = true;
-      final cachedData = BordereauService.getCachedBordereaux(status);
-      if (cachedData.isNotEmpty) {
-        bordereaux.assignAll(cachedData);
-        isLoading.value = false;
-        AppLogger.debug(
-          '[Hive] statut=$status, ${cachedData.length} bordereau(x) → affichage instantané',
-          tag: 'BORDEREAU_CONTROLLER',
-        );
+      isLoading = true;
+      if (!forceRefresh) {
+        final cachedData = BordereauService.getCachedBordereaux(status);
+        if (cachedData.isNotEmpty) {
+          bordereaux.clear();
+          bordereaux.addAll(cachedData);
+          isLoading = false;
+          AppLogger.debug(
+            '[Hive] statut=$status, ${cachedData.length} bordereau(x) → affichage instantané',
+            tag: 'BORDEREAU_CONTROLLER',
+          );
+        } else {
+          bordereaux.clear();
+        }
       } else {
-        bordereaux.value = [];
+        bordereaux.clear();
       }
     } else {
-      isLoadingMore.value = true;
+      isLoadingMore = true;
     }
 
     try {
       final response = await _bordereauService.getBordereauxPaginated(
         status: status,
         page: page,
-        perPage: perPage.value,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        perPage: perPage,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
       );
 
       if (_currentStatus != status) {
@@ -137,10 +145,11 @@ class BordereauxController extends GetxController {
       }
 
       if (page == 1) {
-        bordereaux.assignAll(response.data);
+        bordereaux.clear();
+        bordereaux.addAll(response.data);
         CacheHelper.set(entityKey, response.data);
         BordereauService.saveBordereauxToHive(response.data, status);
-        currentPage.value = 1;
+        currentPage = 1;
         AppLogger.debug(
           '[API] page 1 → ${response.data.length} bordereau(x), Hive mis à jour',
           tag: 'BORDEREAU_CONTROLLER',
@@ -149,11 +158,11 @@ class BordereauxController extends GetxController {
         bordereaux.addAll(response.data);
       }
 
-      totalPages.value = response.meta.lastPage;
-      totalItems.value = response.meta.total;
-      hasNextPage.value = response.hasNextPage;
-      hasPreviousPage.value = response.hasPreviousPage;
-      if (page > 1) currentPage.value = response.meta.currentPage;
+      totalPages = response.meta.lastPage;
+      totalItems = response.meta.total;
+      hasNextPage = response.hasNextPage;
+      hasPreviousPage = response.hasPreviousPage;
+      if (page > 1) currentPage = response.meta.currentPage;
     } catch (e) {
       if (AuthErrorHandler.shouldIgnoreError(e)) return;
       final err = e.toString().toLowerCase();
@@ -162,26 +171,26 @@ class BordereauxController extends GetxController {
       if (bordereaux.isEmpty) {
         final fallback = BordereauService.getCachedBordereaux(status);
         if (fallback.isNotEmpty) {
-          bordereaux.assignAll(fallback);
+          bordereaux.clear();
+          bordereaux.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les bordereaux. Vérifiez votre connexion ou réessayez.',
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 3),
           );
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       _isLoadingInProgress = false;
     }
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
@@ -194,15 +203,15 @@ class BordereauxController extends GetxController {
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadBordereaux(status: _currentStatus, page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      loadBordereaux(status: _currentStatus, page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadBordereaux(status: _currentStatus, page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading && !isLoadingMore) {
+      loadBordereaux(status: _currentStatus, page: currentPage - 1);
     }
   }
 
@@ -219,8 +228,8 @@ class BordereauxController extends GetxController {
         final paginatedResponse = await _bordereauService.getBordereauxPaginated(
           status: status,
           page: 1,
-          perPage: perPage.value,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          perPage: perPage,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
         );
         AppLogger.debug(
           '[Retour API] statut=$status, ${paginatedResponse.data.length} bordereau(x) reçu(s)',
@@ -236,12 +245,13 @@ class BordereauxController extends GetxController {
         final newData = paginatedResponse.data;
         final different = _bordereauxDataDifferent(bordereaux, newData);
         if (different || newData.isEmpty) {
-          bordereaux.value = newData;
-          totalPages.value = paginatedResponse.meta.lastPage;
-          totalItems.value = paginatedResponse.meta.total;
-          hasNextPage.value = paginatedResponse.hasNextPage;
-          hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-          currentPage.value = 1;
+          bordereaux.clear();
+          bordereaux.addAll(newData);
+          totalPages = paginatedResponse.meta.lastPage;
+          totalItems = paginatedResponse.meta.total;
+          hasNextPage = paginatedResponse.hasNextPage;
+          hasPreviousPage = paginatedResponse.hasPreviousPage;
+          currentPage = 1;
           CacheHelper.set(cacheKey, newData);
           BordereauService.saveBordereauxToHive(newData, status);
           AppLogger.debug(
@@ -254,12 +264,13 @@ class BordereauxController extends GetxController {
         // Fallback : utiliser /api/bordereaux-list
         final list = await _bordereauService.getBordereaux(status: status);
         if (_currentStatus != status) return;
-        bordereaux.value = list;
-        totalPages.value = list.isEmpty ? 1 : 1;
-        totalItems.value = list.length;
-        hasNextPage.value = false;
-        hasPreviousPage.value = false;
-        currentPage.value = 1;
+        bordereaux.clear();
+        bordereaux.addAll(list);
+        totalPages = list.isEmpty ? 1 : 1;
+        totalItems = list.length;
+        hasNextPage = false;
+        hasPreviousPage = false;
+        currentPage = 1;
         CacheHelper.set(cacheKey, list);
         return;
       }
@@ -269,24 +280,23 @@ class BordereauxController extends GetxController {
         tag: 'BORDEREAU_CONTROLLER',
       );
       if (AuthErrorHandler.shouldIgnoreError(e)) {
-        isLoading.value = false;
+        isLoading = false;
         return;
       }
       final err = e.toString().toLowerCase();
       if (err.contains('401') || err.contains('unauthorized') || err.contains('non autorisé')) {
-        isLoading.value = false;
+        isLoading = false;
         return;
       }
       if (bordereaux.isEmpty) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Connexion',
           'Impossible de charger les bordereaux. Vérifiez votre connexion ou réessayez.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 3),
         );
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
       _isLoadingInProgress = false;
     }
   }
@@ -304,20 +314,20 @@ class BordereauxController extends GetxController {
   Future<void> loadStats() async {
     try {
       final stats = await _bordereauService.getBordereauStats();
-      totalBordereaux.value = stats['total'] ?? 0;
-      bordereauEnvoyes.value = stats['envoyes'] ?? 0;
-      bordereauAcceptes.value = stats['acceptes'] ?? 0;
-      bordereauRefuses.value = stats['refuses'] ?? 0;
-      montantTotal.value = stats['montant_total'] ?? 0.0;
+      totalBordereaux = stats['total'] ?? 0;
+      bordereauEnvoyes = stats['envoyes'] ?? 0;
+      bordereauAcceptes = stats['acceptes'] ?? 0;
+      bordereauRefuses = stats['refuses'] ?? 0;
+      montantTotal = stats['montant_total'] ?? 0.0;
     } catch (e) {}
   }
 
   Future<bool> createBordereau(Map<String, dynamic> data) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     print('🔵 [BORDEREAU] Début de createBordereau');
     try {
       // Vérifications
-      if (selectedClient.value == null) {
+      if (selectedClient == null) {
         print('❌ [BORDEREAU] Erreur: Aucun client sélectionné');
         throw Exception('Aucun client sélectionné');
       }
@@ -327,12 +337,12 @@ class BordereauxController extends GetxController {
       }
 
       print('✅ [BORDEREAU] Validations OK, démarrage du chargement');
-      isLoading.value = true;
+      isLoading = true;
 
       // Utiliser la référence générée si un devis est sélectionné, sinon utiliser celle fournie
       final reference =
-          selectedDevis.value != null && generatedReference.value.isNotEmpty
-              ? generatedReference.value
+          selectedDevis != null && generatedReference.isNotEmpty
+              ? generatedReference
               : data['reference'];
 
       DateTime? parseDateLivraison(dynamic v) {
@@ -347,8 +357,8 @@ class BordereauxController extends GetxController {
       }
 
       final newBordereau = Bordereau(
-        clientId: selectedClient.value!.id!,
-        devisId: selectedDevis.value?.id,
+        clientId: selectedClient!.id!,
+        devisId: selectedDevis?.id,
         reference: reference,
         titre: data['titre']?.toString(),
         dateCreation: DateTime.now(),
@@ -398,8 +408,9 @@ class BordereauxController extends GetxController {
       );
 
       CacheHelper.clearByPrefix('bordereaux_');
+      await BordereauService.clearBordereauxHiveCache();
 
-      // Insertion locale uniquement si le statut correspond à l'onglet actuel (ou tous). Nouveau bordereau = statut 1 (en attente).
+      // Insertion locale uniquement si le statut correspond
       const newBordereauStatus = 1;
       final shouldInsert = _currentStatus == null || _currentStatus == newBordereauStatus;
       if (shouldInsert) {
@@ -427,18 +438,15 @@ class BordereauxController extends GetxController {
         );
       }
 
-      isLoading.value = false;
+      isLoading = false;
       Future.microtask(() {
         DashboardRefreshHelper.refreshPatronCounter('bordereau');
       });
       clearForm();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bordereau créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
       // Pas de loadBordereaux(forceRefresh: true) pour ne pas écraser l'insertion par d'anciennes données
@@ -446,7 +454,7 @@ class BordereauxController extends GetxController {
       return true;
     } catch (e) {
       // S'assurer que le loader est arrêté en cas d'erreur
-      isLoading.value = false;
+      isLoading = false;
 
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
       final errorStr = e.toString().toLowerCase();
@@ -471,16 +479,10 @@ class BordereauxController extends GetxController {
         error: e,
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
         duration: const Duration(seconds: 8),
-        maxWidth: 400,
-        isDismissible: true,
-        shouldIconPulse: true,
       );
       return false;
     }
@@ -490,9 +492,9 @@ class BordereauxController extends GetxController {
     int bordereauId,
     Map<String, dynamic> data,
   ) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      isLoading.value = true;
+      isLoading = true;
       final bordereauToUpdate = bordereaux.firstWhere(
         (b) => b.id == bordereauId,
       );
@@ -528,10 +530,9 @@ class BordereauxController extends GetxController {
       await _bordereauService.updateBordereau(updatedBordereau);
 
       // Si la mise à jour réussit, afficher le message de succès
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bordereau mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
       );
 
       // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
@@ -544,53 +545,48 @@ class BordereauxController extends GetxController {
 
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le bordereau',
-        snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> deleteBordereau(int bordereauId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bordereauService.deleteBordereau(bordereauId);
       if (success) {
         bordereaux.removeWhere((b) => b.id == bordereauId);
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bordereau supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer le bordereau',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> submitBordereau(int bordereauId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bordereauService.submitBordereau(bordereauId);
       if (success) {
         await loadBordereaux();
 
         // Notifier de manière asynchrone (non-bloquant)
-        final bordereau = bordereaux.firstWhereOrNull(
-          (b) => b.id == bordereauId,
-        );
+        final bordereau = _firstWhereBordereauById(bordereaux, bordereauId);
         if (bordereau != null) {
           NotificationHelper.notifySubmission(
             entityType: 'bordereau',
@@ -606,34 +602,33 @@ class BordereauxController extends GetxController {
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bordereau soumis avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la soumission');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de soumettre le bordereau',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> approveBordereau(int bordereauId) async {
     bool validationSucceeded = false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bordereaux_');
+      await BordereauService.clearBordereauxHiveCache();
 
-      // Mise à jour optimiste de l'UI - mettre à jour immédiatement le statut
+      // Mise à jour optimiste de l'UI
       final bordereauIndex = bordereaux.indexWhere((b) => b.id == bordereauId);
       Bordereau? originalBordereau;
       if (bordereauIndex != -1) {
@@ -665,13 +660,12 @@ class BordereauxController extends GetxController {
         if (success) {
           validationSucceeded = true; // Marquer que la validation a réussi
 
-          // Rafraîchir les compteurs du dashboard patron
+          // Rafraîchir les compteurs du dashboard patron et commercial
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
+          DashboardRefreshHelper.refreshCommercialDashboard();
 
           // Notifier de manière asynchrone (non-bloquant)
-          final bordereau = bordereaux.firstWhereOrNull(
-            (b) => b.id == bordereauId,
-          );
+          final bordereau = _firstWhereBordereauById(bordereaux, bordereauId);
           if (bordereau != null) {
             NotificationHelper.notifyValidation(
               entityType: 'bordereau',
@@ -688,12 +682,9 @@ class BordereauxController extends GetxController {
             );
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             'Bordereau approuvé avec succès',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.green,
-            colorText: Colors.white,
           );
 
           // Recharger les données en arrière-plan après un court délai
@@ -738,23 +729,20 @@ class BordereauxController extends GetxController {
       // Ne pas afficher le message d'erreur si la validation a réussi
       // (les erreurs peuvent venir des opérations asynchrones comme les notifications)
       if (!validationSucceeded) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Impossible d\'approuver le bordereau: $e',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
           duration: const Duration(seconds: 5),
         );
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> rejectBordereau(int bordereauId, String commentaire) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       // Mise à jour optimiste : retirer ou mettre à jour le bordereau dans la liste
       final bordereauIndex = bordereaux.indexWhere((b) => b.id == bordereauId);
       Bordereau? originalBordereau;
@@ -790,16 +778,17 @@ class BordereauxController extends GetxController {
         );
 
         if (success) {
+          await BordereauService.clearBordereauxHiveCache();
           // Sync en arrière-plan (pas d'await pour ne pas bloquer l'UI)
           loadBordereaux(status: _currentStatus).catchError((e) {});
 
-          // Rafraîchir les compteurs du dashboard patron
+          // Rafraîchir les compteurs du dashboard patron et commercial
           DashboardRefreshHelper.refreshPatronCounter('bordereau');
+          DashboardRefreshHelper.refreshCommercialDashboard();
 
           // Notifier de manière asynchrone (non-bloquant)
-          final bordereau = bordereaux.firstWhereOrNull(
-            (b) => b.id == bordereauId,
-          ) ?? originalBordereau;
+          final bordereau = _firstWhereBordereauById(bordereaux, bordereauId)
+              ?? originalBordereau;
           if (bordereau != null) {
             NotificationHelper.notifyRejection(
               entityType: 'bordereau',
@@ -817,12 +806,9 @@ class BordereauxController extends GetxController {
             );
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             'Bordereau rejeté avec succès',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
           );
         } else {
           throw Exception(
@@ -854,12 +840,9 @@ class BordereauxController extends GetxController {
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -867,7 +850,7 @@ class BordereauxController extends GetxController {
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -890,33 +873,35 @@ class BordereauxController extends GetxController {
 
   // Chargement des clients validés : cache Hive d'abord (affichage immédiat), puis API.
   Future<void> loadValidatedClients() async {
-    isLoadingClients.value = true;
+    isLoadingClients = true;
     // Afficher tout de suite les clients validés en cache (évite liste vide au premier affichage)
     final cached = ClientService.getCachedClients(1);
     if (cached.isNotEmpty) {
-      availableClients.assignAll(cached);
-      isLoadingClients.value = false;
+      availableClients.clear();
+      availableClients.addAll(cached);
+      isLoadingClients = false;
     } else {
-      availableClients.value = [];
+      availableClients.clear();
     }
     try {
       final clients = await _clientService.getClients(status: 1);
-      availableClients.assignAll(clients);
+      availableClients.clear();
+      availableClients.addAll(clients);
     } catch (e) {
       if (availableClients.isEmpty) {
         final fallback = ClientService.getCachedClients(1);
         if (fallback.isNotEmpty) {
-          availableClients.assignAll(fallback);
+          availableClients.clear();
+          availableClients.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les clients validés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoadingClients.value = false;
+      isLoadingClients = false;
     }
   }
 
@@ -931,54 +916,56 @@ class BordereauxController extends GetxController {
   }
 
   void selectClient(Client client) {
-    selectedClient.value = client;
+    selectedClient = client;
     // Charger les devis validés pour ce client
     onClientChanged(client);
   }
 
   void clearSelectedClient() {
-    selectedClient.value = null;
+    selectedClient = null;
   }
 
   /// Effacer toutes les données du formulaire
   void clearForm() {
-    selectedClient.value = null;
-    selectedDevis.value = null;
+    selectedClient = null;
+    selectedDevis = null;
     availableDevis.clear();
     items.clear();
   }
 
   // Chargement des devis validés pour le client sélectionné : cache Hive d'abord (status 2 = validé), puis API.
   Future<void> loadValidatedDevisForClient(int clientId) async {
-    isLoadingDevis.value = true;
+    isLoadingDevis = true;
     final cached = DevisService.getCachedDevis(2);
     final cachedForClient = cached.where((d) => d.clientId == clientId).toList();
     if (cachedForClient.isNotEmpty) {
-      availableDevis.assignAll(cachedForClient);
-      isLoadingDevis.value = false;
+      availableDevis.clear();
+      availableDevis.addAll(cachedForClient);
+      isLoadingDevis = false;
     } else {
-      availableDevis.value = [];
+      availableDevis.clear();
     }
     try {
       final devis = await _devisService.getDevis(status: 2, clientId: clientId);
-      availableDevis.assignAll(devis);
+      availableDevis.clear();
+      availableDevis.addAll(devis);
     } catch (e) {
       if (availableDevis.isEmpty) {
         final fallback = DevisService.getCachedDevis(2)
             .where((d) => d.clientId == clientId)
             .toList();
         if (fallback.isNotEmpty) {
-          availableDevis.assignAll(fallback);
+          availableDevis.clear();
+          availableDevis.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les devis validés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoadingDevis.value = false;
+      isLoadingDevis = false;
     }
   }
 
@@ -990,7 +977,7 @@ class BordereauxController extends GetxController {
     }
 
     // Trouver le devis sélectionné
-    final devis = selectedDevis.value;
+    final devis = selectedDevis;
     if (devis == null) {
       return 'BL-${DateTime.now().millisecondsSinceEpoch}';
     }
@@ -1009,11 +996,11 @@ class BordereauxController extends GetxController {
 
   // Sélection d'un devis
   Future<void> selectDevis(Devis devis) async {
-    selectedDevis.value = devis;
+    selectedDevis = devis;
 
     // Générer automatiquement la référence
     final ref = await generateBordereauReference(devis.id);
-    generatedReference.value = ref;
+    generatedReference = ref;
     print('📋 [BORDEREAU] Référence générée: $ref');
 
     // Pré-remplir les items du bordereau avec les items du devis (sans les prix)
@@ -1032,8 +1019,8 @@ class BordereauxController extends GetxController {
 
   // Effacer la sélection du devis
   void clearSelectedDevis() {
-    selectedDevis.value = null;
-    generatedReference.value = '';
+    selectedDevis = null;
+    generatedReference = '';
     items.clear();
   }
 
@@ -1043,7 +1030,7 @@ class BordereauxController extends GetxController {
       loadValidatedDevisForClient(client.id!);
     } else {
       availableDevis.clear();
-      selectedDevis.value = null;
+      selectedDevis = null;
       items.clear();
     }
   }
@@ -1051,7 +1038,7 @@ class BordereauxController extends GetxController {
   /// Générer un PDF pour un bordereau
   Future<void> generatePDF(int bordereauId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Trouver le bordereau
       final bordereau = bordereaux.firstWhere(
@@ -1099,21 +1086,17 @@ class BordereauxController extends GetxController {
         commercial: {'nom': 'Commercial', 'prenom': '', 'email': ''},
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'PDF généré avec succès',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
       );
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la génération du PDF: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

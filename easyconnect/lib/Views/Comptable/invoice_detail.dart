@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
-import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:easyconnect/providers/invoice_notifier.dart';
 
-class InvoiceDetail extends StatelessWidget {
+class InvoiceDetail extends ConsumerWidget {
   final InvoiceModel invoice;
 
   const InvoiceDetail({super.key, required this.invoice});
 
   @override
-  Widget build(BuildContext context) {
-    final InvoiceController controller = Get.put(InvoiceController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(invoiceProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -19,10 +20,13 @@ class InvoiceDetail extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           PopupMenuButton<String>(
-            onSelected: (value) => _handleMenuAction(value, controller),
+            onSelected: (value) =>
+                _handleMenuAction(context, value, invoice, notifier),
             itemBuilder:
                 (context) => [
-                  if (invoice.status == 'en_attente') ...[
+                  if (invoice.status == 'en_attente' ||
+                      invoice.status == 'draft' ||
+                      invoice.status == 'pending_approval') ...[
                     const PopupMenuItem(
                       value: 'edit',
                       child: ListTile(
@@ -38,7 +42,11 @@ class InvoiceDetail extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (invoice.status == 'valide' || invoice.status == 'rejete')
+                  if (invoice.status == 'valide' ||
+                      invoice.status == 'rejete' ||
+                      invoice.status == 'rejetee' ||
+                      invoice.status == 'sent' ||
+                      invoice.status == 'paid')
                     const PopupMenuItem(
                       value: 'generate_pdf',
                       child: ListTile(
@@ -56,7 +64,7 @@ class InvoiceDetail extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // En-tête de la facture
-            _buildInvoiceHeader(),
+            _buildInvoiceHeader(notifier),
             const SizedBox(height: 20),
 
             // Informations client
@@ -83,7 +91,7 @@ class InvoiceDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildInvoiceHeader() {
+  Widget _buildInvoiceHeader(InvoiceNotifier notifier) {
     return Card(
       elevation: 4,
       child: Padding(
@@ -116,14 +124,17 @@ class InvoiceDetail extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: _getStatusColor().withOpacity(0.1),
+                    color: notifier
+                        .getInvoiceStatusColor(invoice.status)
+                        .withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _getStatusColor()),
+                    border: Border.all(
+                        color: notifier.getInvoiceStatusColor(invoice.status)),
                   ),
                   child: Text(
-                    _getStatusText(),
+                    notifier.getInvoiceStatusText(invoice.status),
                     style: TextStyle(
-                      color: _getStatusColor(),
+                      color: notifier.getInvoiceStatusColor(invoice.status),
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -462,32 +473,6 @@ class InvoiceDetail extends StatelessWidget {
     );
   }
 
-  String _getStatusText() {
-    switch (invoice.status) {
-      case 'en_attente':
-        return 'En attente';
-      case 'valide':
-        return 'Validée';
-      case 'rejete':
-        return 'Rejetée';
-      default:
-        return 'Inconnu';
-    }
-  }
-
-  Color _getStatusColor() {
-    switch (invoice.status) {
-      case 'en_attente':
-        return Colors.orange;
-      case 'valide':
-        return Colors.green;
-      case 'rejete':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
   String _getPaymentMethodText(String method) {
     switch (method) {
       case 'bank_transfer':
@@ -503,148 +488,37 @@ class InvoiceDetail extends StatelessWidget {
     }
   }
 
-  void _handleMenuAction(String action, InvoiceController controller) {
+  void _handleMenuAction(
+    BuildContext context,
+    String action,
+    InvoiceModel invoice,
+    InvoiceNotifier notifier,
+  ) {
     switch (action) {
       case 'edit':
-        // Naviguer vers le formulaire de modification
-        controller.loadInvoiceForEdit(invoice.id);
-        Get.toNamed('/invoices/edit', arguments: invoice.id);
+        context.push('/invoices/edit', extra: invoice.id);
         break;
       case 'generate_pdf':
-        controller.generatePDF(invoice.id);
+        notifier.generatePDF(invoice.id).then((_) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('PDF généré avec succès'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }).catchError((e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        });
         break;
     }
-  }
-
-  void _showApprovalDialog(InvoiceController controller) {
-    final commentsController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Approuver la facture'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Êtes-vous sûr de vouloir approuver cette facture ?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: commentsController,
-              decoration: const InputDecoration(
-                labelText: 'Commentaires (optionnel)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.approveInvoice(
-                invoice.id,
-                comments:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
-            },
-            child: const Text('Approuver'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectionDialog(InvoiceController controller) {
-    final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter la facture'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Veuillez indiquer la raison du rejet :'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectInvoice(
-                  invoice.id,
-                  reasonController.text.trim(),
-                );
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSendEmailDialog(InvoiceController controller) {
-    final emailController = TextEditingController(text: invoice.clientEmail);
-    final messageController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Envoyer par email'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: messageController,
-              decoration: const InputDecoration(
-                labelText: 'Message (optionnel)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              // Implémenter l'envoi d'email
-              Get.snackbar('Succès', 'Email envoyé');
-              Get.back();
-            },
-            child: const Text('Envoyer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMarkPaidDialog(InvoiceController controller) {
-    // Implémenter le dialogue de marquage comme payée
-    Get.snackbar('Info', 'Fonctionnalité à implémenter');
   }
 }

@@ -19,7 +19,7 @@ val flutter_key_keyPassword = localProperties.getProperty("keyPassword")
 
 android {
     namespace = "com.easyconnect.app"
-    compileSdk = 35  // requis par plusieurs plugins (flutter_plugin_android_lifecycle, geolocator_android, etc.)
+    compileSdk = 36  // requis par flutter_secure_storage 10+ et autres plugins
     ndkVersion = "28.2.13676358"
 
     signingConfigs {
@@ -47,7 +47,7 @@ android {
         applicationId = "com.easyconnect.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23  // Android 6.0 (Marshmallow) - Requis par Firebase Messaging 25.0.1+
+        minSdk = 24  // Android 7.0 - requis par flutter_secure_storage 10+
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -84,8 +84,8 @@ android {
 }
 
 dependencies {
-    // Core library desugaring pour flutter_local_notifications
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // Core library desugaring pour flutter_local_notifications (requis >= 2.1.4)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-analytics")

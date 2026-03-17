@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
+import 'package:easyconnect/providers/notification_notifier.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 
 /// Widget qui écoute le cycle de vie de l'application
 /// et gère le rafraîchissement des données au retour au premier plan
-class AppLifecycleWrapper extends StatefulWidget {
+class AppLifecycleWrapper extends ConsumerStatefulWidget {
   final Widget child;
 
   const AppLifecycleWrapper({super.key, required this.child});
 
   @override
-  State<AppLifecycleWrapper> createState() => _AppLifecycleWrapperState();
+  ConsumerState<AppLifecycleWrapper> createState() =>
+      _AppLifecycleWrapperState();
 }
 
-class _AppLifecycleWrapperState extends State<AppLifecycleWrapper>
+class _AppLifecycleWrapperState extends ConsumerState<AppLifecycleWrapper>
     with WidgetsBindingObserver {
   bool _wasInBackground = false;
 
@@ -42,13 +43,10 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper>
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      // L'application passe en arrière-plan : mettre à jour le badge sur l'icône
       _wasInBackground = true;
-      if (Get.isRegistered<NotificationController>()) {
-        try {
-          Get.find<NotificationController>().refreshUnreadCount();
-        } catch (_) {}
-      }
+      try {
+        ref.read(notificationProvider.notifier).refreshUnreadCount();
+      } catch (_) {}
     } else if (state == AppLifecycleState.resumed) {
       // Dès qu'on rentre dans l'app : retirer le badge (nombre) sur l'icône
       try {
@@ -65,47 +63,31 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper>
 
   /// Gère le retour de l'application au premier plan
   void _handleAppResumed() async {
-    // Mettre à jour l'activité utilisateur
     SessionService.updateLastActivity();
 
-    // Vérifier que l'utilisateur est toujours connecté
-    if (Get.isRegistered<AuthController>()) {
-      final authController = Get.find<AuthController>();
+    final authState = ref.read(authProvider);
+    final user = authState.user;
+    final token = await SessionService.getToken();
 
-      // Vérifier si l'utilisateur a toujours un token valide
-      final token = await SessionService.getToken();
-      final user = authController.userAuth.value;
-
-      if (token == null || user == null) {
-        // L'utilisateur n'a plus de session valide, déconnecter silencieusement
-        authController.logout(silent: true);
-        return;
-      }
-
-      // ⚠️ VALIDATION D'EXPIRATION SUPPRIMÉE : Les tokens n'expirent jamais côté frontend
-      // Si le backend invalide un token, il retournera une erreur 401 gérée par AuthErrorHandler
-
-      // OPTIMISATION : Vérifier si les données utilisateur sont toujours valides
-      // (rôle changé, compte désactivé, etc.)
-      try {
-        await authController.refreshUserData();
-      } catch (e) {
-        // Si erreur 401, AuthErrorHandler déconnectera automatiquement
-        // Sinon, ignorer l'erreur (problème réseau temporaire)
-      }
-
-      // Rafraîchir le compteur de notifications non lues pour mettre à jour
-      // le badge sur l'icône de l'app (menu du téléphone)
-      if (Get.isRegistered<NotificationController>()) {
-        try {
-          await Get.find<NotificationController>().refreshUnreadCount();
-        } catch (_) {}
-      }
+    if (token == null || user == null) {
+      ref.read(authProvider.notifier).logout(silent: true);
+      return;
     }
+
+    try {
+      await ref.read(authProvider.notifier).refreshUserData();
+    } catch (e) {
+      // Si erreur 401, AuthErrorHandler déconnectera automatiquement
+    }
+
+    try {
+      await ref.read(notificationProvider.notifier).refreshUnreadCount();
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(notificationProvider);
     return widget.child;
   }
 }

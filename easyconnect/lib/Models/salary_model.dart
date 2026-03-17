@@ -21,6 +21,12 @@ class Salary {
   final String? paidAt;
   final String? rejectionReason;
   final List<String> justificatifs; // Fichiers justificatifs
+  /// Cotisation CNPS part employeur (Côte d'Ivoire), fournie par l'API
+  final double? cnpsEmployeur;
+  /// Cotisation CNPS part salarié (Côte d'Ivoire), fournie par l'API
+  final double? cnpsSalarie;
+  /// Impôt sur le revenu, fourni par l'API
+  final double? impotRevenu;
 
   Salary({
     this.id,
@@ -43,6 +49,9 @@ class Salary {
     this.paidAt,
     this.rejectionReason,
     this.justificatifs = const [],
+    this.cnpsEmployeur,
+    this.cnpsSalarie,
+    this.impotRevenu,
   });
 
   factory Salary.fromJson(Map<String, dynamic> json) {
@@ -116,6 +125,24 @@ class Salary {
                     ? [json['justificatifs']]
                     : [])
                 : [],
+        cnpsEmployeur:
+            json['cnps_employeur'] != null
+                ? (json['cnps_employeur'] is num
+                    ? (json['cnps_employeur'] as num).toDouble()
+                    : double.tryParse(json['cnps_employeur'].toString()))
+                : null,
+        cnpsSalarie:
+            json['cnps_salarie'] != null
+                ? (json['cnps_salarie'] is num
+                    ? (json['cnps_salarie'] as num).toDouble()
+                    : double.tryParse(json['cnps_salarie'].toString()))
+                : null,
+        impotRevenu:
+            json['impot_revenu'] != null
+                ? (json['impot_revenu'] is num
+                    ? (json['impot_revenu'] as num).toDouble()
+                    : double.tryParse(json['impot_revenu'].toString()))
+                : null,
       );
     } catch (e) {
       print('❌ Salary.fromJson: Erreur lors du parsing: $e');
@@ -146,6 +173,9 @@ class Salary {
       'paid_at': paidAt,
       'rejection_reason': rejectionReason,
       'justificatifs': justificatifs,
+      'cnps_employeur': cnpsEmployeur,
+      'cnps_salarie': cnpsSalarie,
+      'impot_revenu': impotRevenu,
     };
   }
 

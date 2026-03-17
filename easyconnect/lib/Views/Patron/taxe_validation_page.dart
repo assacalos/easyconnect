@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/tax_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/tax_notifier.dart';
+import 'package:easyconnect/providers/tax_state.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class TaxeValidationPage extends StatefulWidget {
+class TaxeValidationPage extends ConsumerStatefulWidget {
   const TaxeValidationPage({super.key});
 
   @override
-  State<TaxeValidationPage> createState() => _TaxeValidationPageState();
+  ConsumerState<TaxeValidationPage> createState() =>
+      _TaxeValidationPageState();
 }
 
-class _TaxeValidationPageState extends State<TaxeValidationPage>
+class _TaxeValidationPageState extends ConsumerState<TaxeValidationPage>
     with SingleTickerProviderStateMixin {
-  final TaxController controller = Get.find<TaxController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -43,41 +45,47 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
   }
 
   Future<void> _loadTaxes() async {
-    String? status;
+    String status;
     switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
+      case 0:
+        status = 'all';
         break;
-      case 1: // En attente
+      case 1:
         status = 'en_attente';
         break;
-      case 2: // Validés
+      case 2:
         status = 'valide';
         break;
-      case 3: // Rejetés
+      case 3:
         status = 'rejete';
         break;
-      case 4: // Payés
+      case 4:
         status = 'paid';
         break;
+      default:
+        status = 'all';
     }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadTaxes();
+    final notifier = ref.read(taxProvider.notifier);
+    notifier.filterByStatus(status);
+    await notifier.loadTaxes();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(taxProvider);
+    final notifier = ref.read(taxProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Taxes'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadTaxes();
+            onPressed: () async {
+              await ref.read(taxProvider.notifier).loadTaxes(forceRefresh: true);
             },
             tooltip: 'Actualiser',
           ),
@@ -129,24 +137,20 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
           ),
           // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildTaxList(),
-            ),
+            child: state.isLoading && state.taxes.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildTaxList(state, notifier),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTaxList() {
-    // Filtrer les taxes selon la recherche
+  Widget _buildTaxList(TaxState state, TaxNotifier notifier) {
     final filteredTaxes =
         _searchQuery.isEmpty
-            ? controller.taxes
-            : controller.taxes
+            ? state.taxes
+            : state.taxes
                 .where(
                   (tax) => tax.name.toLowerCase().contains(
                     _searchQuery.toLowerCase(),
@@ -190,12 +194,12 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final tax = filteredTaxes[index];
-        return _buildTaxCard(context, tax);
+        return _buildTaxCard(context, tax, notifier);
       },
     );
   }
 
-  Widget _buildTaxCard(BuildContext context, Tax tax) {
+  Widget _buildTaxCard(BuildContext context, Tax tax, TaxNotifier notifier) {
     final formatDate = DateFormat('dd/MM/yyyy');
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
@@ -280,7 +284,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(tax, statusColor),
+                _buildActionButtons(tax, statusColor, notifier),
               ],
             ),
           ),
@@ -289,7 +293,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Tax tax, Color statusColor) {
+  Widget _buildActionButtons(Tax tax, Color statusColor, TaxNotifier notifier) {
     if (tax.isPending) {
       // En attente - Afficher boutons Valider/Rejeter
       return Column(
@@ -298,7 +302,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(tax),
+                onPressed: () => _showApproveConfirmation(tax, notifier),
                 icon: const Icon(Icons.check),
                 label: const Text('Valider'),
                 style: ElevatedButton.styleFrom(
@@ -307,7 +311,7 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(tax),
+                onPressed: () => _showRejectDialog(tax, notifier),
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
                 style: ElevatedButton.styleFrom(
@@ -440,55 +444,103 @@ class _TaxeValidationPageState extends State<TaxeValidationPage>
     return Tax(status: status, baseAmount: 0).statusText;
   }
 
-  void _showApproveConfirmation(Tax tax) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider cette taxe ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.validateTax(tax);
-        _loadTaxes();
-      },
-    );
-  }
-
-  void _showRejectDialog(Tax tax) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter la taxe',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(Tax tax, TaxNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider cette taxe ?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await notifier.validateTax(tax);
+                _loadTaxes();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Taxe validée'),
+                        backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectTax(tax, commentController.text);
-        _loadTaxes();
-      },
+    );
+  }
+
+  void _showRejectDialog(Tax tax, TaxNotifier notifier) {
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter la taxe'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez entrer un motif de rejet')),
+                );
+                return;
+              }
+              Navigator.of(ctx).pop();
+              try {
+                await notifier.rejectTax(tax, commentController.text.trim());
+                _loadTaxes();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Taxe rejetée'),
+                        backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

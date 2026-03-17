@@ -1,124 +1,110 @@
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/services/user_service.dart';
-import 'package:get/get.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class UserController extends GetxController {
-  var users = <UserModel>[].obs;
-  var isLoading = false.obs;
+class UserController {
+  static final UserController _instance = UserController._();
+  static UserController get to => _instance;
+  factory UserController() => _instance;
+  UserController._();
 
+  final List<UserModel> users = [];
+  bool isLoading = false;
   final UserService service = UserService();
 
-  // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
-  final RxString searchQuery = ''.obs;
-
-  @override
-  void onInit() {
-    super.onInit();
-    fetchUsers();
-  }
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
+  String searchQuery = '';
 
   void fetchUsers({int page = 1}) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       try {
-        // Utiliser la méthode paginée
         final paginatedResponse = await service.getUsersPaginated(
           page: page,
-          perPage: perPage.value,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          perPage: perPage,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
         );
-
-        // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
-
-        // Mettre à jour la liste
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
         if (page == 1) {
-          users.value = paginatedResponse.data;
+          users.clear();
+          users.addAll(paginatedResponse.data);
         } else {
-          // Pour les pages suivantes, ajouter les données
           users.addAll(paginatedResponse.data);
         }
       } catch (e) {
-        // En cas d'erreur, essayer la méthode non-paginée en fallback
         final usersList = await service.getUsers();
         if (page == 1) {
-          users.value = usersList;
+          users.clear();
+          users.addAll(usersList);
         } else {
           users.addAll(usersList);
         }
       }
     } catch (e) {
-      Get.snackbar("Erreur", e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
-      fetchUsers(page: currentPage.value + 1);
-    }
+    if (hasNextPage && !isLoading) fetchUsers(page: currentPage + 1);
   }
 
-  /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
-      fetchUsers(page: currentPage.value - 1);
-    }
+    if (hasPreviousPage && !isLoading) fetchUsers(page: currentPage - 1);
   }
 
   Future<bool> addUser(UserModel user, String password) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final newUser = await service.createUser(user, password);
       users.add(newUser);
-      Get.snackbar("Succès", "Utilisateur créé avec succès");
+      ErrorHelper.showSuccess('Utilisateur créé avec succès');
       return true;
     } catch (e) {
-      Get.snackbar("Erreur", e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<bool> updateUser(UserModel user) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final updated = await service.updateUser(user);
-      int index = users.indexWhere((u) => u.id == updated.id);
+      final index = users.indexWhere((u) => u.id == updated.id);
       if (index != -1) users[index] = updated;
-      Get.snackbar("Succès", "Utilisateur mis à jour");
+      ErrorHelper.showSuccess('Utilisateur mis à jour');
       return true;
     } catch (e) {
-      Get.snackbar("Erreur", e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   void deleteUser(String id) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       await service.deleteUser(int.parse(id));
       users.removeWhere((u) => u.id == id);
-      Get.snackbar("Succès", "Utilisateur supprimé");
+      ErrorHelper.showSuccess('Utilisateur supprimé');
     } catch (e) {
-      Get.snackbar("Erreur", e.toString());
+      errorHelperShowSnackbar?.call('Erreur', e.toString());
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

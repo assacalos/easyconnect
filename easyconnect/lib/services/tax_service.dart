@@ -11,6 +11,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 
 class TaxService {
   final storage = GetStorage();
@@ -43,7 +44,8 @@ class TaxService {
     int perPage = 15,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       String url = '${AppConfig.baseUrl}/taxes';
       List<String> params = [];
 

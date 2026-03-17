@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bordereau_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/bordereau_notifier.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BordereauValidationPage extends StatefulWidget {
+class BordereauValidationPage extends ConsumerStatefulWidget {
   const BordereauValidationPage({super.key});
 
   @override
-  State<BordereauValidationPage> createState() =>
+  ConsumerState<BordereauValidationPage> createState() =>
       _BordereauValidationPageState();
 }
 
-class _BordereauValidationPageState extends State<BordereauValidationPage>
+class _BordereauValidationPageState extends ConsumerState<BordereauValidationPage>
     with SingleTickerProviderStateMixin {
-  late final BordereauxController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -23,17 +23,13 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
   @override
   void initState() {
     super.initState();
-    // Vérifier et initialiser le contrôleur
-    if (!Get.isRegistered<BordereauxController>()) {
-      Get.put(BordereauxController(), permanent: true);
-    }
-    controller = Get.find<BordereauxController>();
-
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       _onTabChanged();
     });
-    _loadBordereaux();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBordereaux(forceRefresh: true);
+    });
   }
 
   @override
@@ -49,39 +45,40 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     }
   }
 
-  Future<void> _loadBordereaux() async {
+  Future<void> _loadBordereaux({bool forceRefresh = false}) async {
     int? status;
     switch (_tabController.index) {
-      case 0: // Tous
+      case 0:
         status = null;
         break;
-      case 1: // En attente
+      case 1:
         status = 1;
         break;
-      case 2: // Validés
+      case 2:
         status = 2;
         break;
-      case 3: // Rejetés
+      case 3:
         status = 3;
         break;
     }
-
-    await controller.loadBordereaux(status: status);
+    await ref.read(bordereauProvider.notifier).loadBordereaux(status: status, forceRefresh: forceRefresh);
   }
 
   @override
   Widget build(BuildContext context) {
+    final bordereauState = ref.watch(bordereauProvider);
+    final notifier = ref.read(bordereauProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Bordereaux'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadBordereaux();
-            },
+            onPressed: () => _loadBordereaux(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -100,7 +97,6 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -114,47 +110,35 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
+                            setState(() => _searchQuery = '');
                           },
                         )
                         : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildBordereauList(),
-            ),
+            child: bordereauState.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildBordereauList(bordereauState.bordereaux, _searchQuery, notifier),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBordereauList() {
-    // Filtrer les bordereaux selon la recherche
-    final filteredBordereaux =
-        _searchQuery.isEmpty
-            ? controller.bordereaux
-            : controller.bordereaux
-                .where(
-                  (bordereau) => bordereau.reference.toLowerCase().contains(
-                    _searchQuery.toLowerCase(),
-                  ),
-                )
-                .toList();
+  Widget _buildBordereauList(List<Bordereau> bordereaux, String searchQuery, BordereauNotifier notifier) {
+    final filteredBordereaux = searchQuery.isEmpty
+        ? bordereaux
+        : bordereaux
+            .where(
+              (bordereau) => bordereau.reference.toLowerCase().contains(
+                searchQuery.toLowerCase(),
+              ),
+            )
+            .toList();
 
     if (filteredBordereaux.isEmpty) {
       return Center(
@@ -164,19 +148,17 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
             Icon(Icons.receipt_long, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              _searchQuery.isEmpty
+              searchQuery.isEmpty
                   ? 'Aucun bordereau trouvé'
-                  : 'Aucun bordereau correspondant à "$_searchQuery"',
+                  : 'Aucun bordereau correspondant à "$searchQuery"',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-            if (_searchQuery.isNotEmpty) ...[
+            if (searchQuery.isNotEmpty) ...[
               const SizedBox(height: 8),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  setState(() => _searchQuery = '');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -192,12 +174,12 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final bordereau = filteredBordereaux[index];
-        return _buildBordereauCard(context, bordereau);
+        return _buildBordereauCard(context, ref, bordereau, notifier);
       },
     );
   }
 
-  Widget _buildBordereauCard(BuildContext context, Bordereau bordereau) {
+  Widget _buildBordereauCard(BuildContext context, WidgetRef ref, Bordereau bordereau, BordereauNotifier notifier) {
     final formatDate = DateFormat('dd/MM/yyyy');
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
@@ -221,15 +203,34 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor),
         ),
-        title: Text(
-          bordereau.reference,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              bordereau.clientNomEntreprise?.isNotEmpty == true
+                  ? bordereau.clientNomEntreprise!
+                  : 'Client #${bordereau.clientId}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              bordereau.reference,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Client ID: ${bordereau.clientId}'),
             Text('Date: ${formatDate.format(bordereau.dateCreation)}'),
             Text('Total: ${formatCurrency.format(totalTTC)}'),
             const SizedBox(height: 4),
@@ -343,7 +344,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(bordereau, statusColor),
+                _buildActionButtons(context, ref, bordereau, notifier),
               ],
             ),
           ),
@@ -391,7 +392,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Bordereau bordereau, Color statusColor) {
+  Widget _buildActionButtons(BuildContext context, WidgetRef ref, Bordereau bordereau, BordereauNotifier notifier) {
     switch (bordereau.status) {
       case 1: // En attente - Afficher boutons Valider/Rejeter
         return Column(
@@ -400,7 +401,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => _showApproveConfirmation(bordereau),
+                  onPressed: () => _showApproveConfirmation(context, ref, bordereau, notifier),
                   icon: const Icon(Icons.check),
                   label: const Text('Valider'),
                   style: ElevatedButton.styleFrom(
@@ -409,7 +410,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () => _showRejectDialog(bordereau),
+                  onPressed: () => _showRejectDialog(context, ref, bordereau, notifier),
                   icon: const Icon(Icons.close),
                   label: const Text('Rejeter'),
                   style: ElevatedButton.styleFrom(
@@ -448,7 +449,7 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bordereau.id!),
+              onPressed: () => _generatePdf(context, ref, bordereau.id!, notifier),
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('Générer PDF'),
               style: ElevatedButton.styleFrom(
@@ -546,55 +547,108 @@ class _BordereauValidationPageState extends State<BordereauValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Bordereau bordereau) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce bordereau ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveBordereau(bordereau.id!);
-        _loadBordereaux();
-      },
-    );
+  Future<void> _generatePdf(BuildContext context, WidgetRef ref, int id, BordereauNotifier notifier) async {
+    try {
+      await notifier.generatePDF(id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF généré avec succès'), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur PDF: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
-  void _showRejectDialog(Bordereau bordereau) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le bordereau',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(BuildContext context, WidgetRef ref, Bordereau bordereau, BordereauNotifier notifier) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce bordereau ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await notifier.approveBordereau(bordereau.id!);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Bordereau approuvé avec succès'), backgroundColor: Colors.green),
+                );
+                _loadBordereaux();
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectBordereau(bordereau.id!, commentController.text);
-        _loadBordereaux();
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, WidgetRef ref, Bordereau bordereau, BordereauNotifier notifier) {
+    final commentController = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le bordereau'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Veuillez entrer un motif de rejet'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              Navigator.of(ctx).pop();
+              try {
+                await notifier.rejectBordereau(bordereau.id!, commentController.text.trim());
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Bordereau rejeté avec succès'), backgroundColor: Colors.orange),
+                );
+                _loadBordereaux();
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

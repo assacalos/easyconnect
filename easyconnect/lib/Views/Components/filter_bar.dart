@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class FilterBar extends StatelessWidget {
   final List<Filter> filters;
-  final Function(Filter) onFilterChanged;
-  final RxList<Filter> activeFilters;
+  final List<Filter> activeFilters;
+  final void Function(Filter filter, bool selected) onFilterChanged;
+  final VoidCallback? onClear;
 
   const FilterBar({
     super.key,
     required this.filters,
-    required this.onFilterChanged,
     required this.activeFilters,
+    required this.onFilterChanged,
+    this.onClear,
   });
 
   @override
@@ -29,13 +30,9 @@ class FilterBar extends StatelessWidget {
                   'Filtres',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                Obx(
-                  () => TextButton(
-                    onPressed: activeFilters.isEmpty
-                        ? null
-                        : () => activeFilters.clear(),
-                    child: const Text('Réinitialiser'),
-                  ),
+                TextButton(
+                  onPressed: activeFilters.isEmpty ? null : onClear,
+                  child: const Text('Réinitialiser'),
                 ),
               ],
             ),
@@ -44,20 +41,13 @@ class FilterBar extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: filters.map((filter) {
-                return Obx(
-                  () => FilterChip(
-                    label: Text(filter.label),
-                    selected: activeFilters.contains(filter),
-                    onSelected: (selected) {
-                      if (selected) {
-                        activeFilters.add(filter);
-                      } else {
-                        activeFilters.remove(filter);
-                      }
-                      onFilterChanged(filter);
-                    },
-                    avatar: filter.icon != null ? Icon(filter.icon) : null,
-                  ),
+                return FilterChip(
+                  label: Text(filter.label),
+                  selected: activeFilters.contains(filter),
+                  onSelected: (selected) {
+                    onFilterChanged(filter, selected);
+                  },
+                  avatar: filter.icon != null ? Icon(filter.icon) : null,
                 );
               }).toList(),
             ),

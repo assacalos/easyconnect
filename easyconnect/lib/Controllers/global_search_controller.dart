@@ -1,38 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/services/client_service.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/services/payment_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/services/stock_service.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class GlobalSearchController extends GetxController {
+class GlobalSearchController {
+  static final GlobalSearchController _instance = GlobalSearchController._();
+  static GlobalSearchController get to => _instance;
+  factory GlobalSearchController() => _instance;
+  GlobalSearchController._();
+
   final TextEditingController searchController = TextEditingController();
-  final RxString searchQuery = ''.obs;
-  final RxBool isSearching = false.obs;
-  final RxBool hasNoResults = false.obs;
+  String searchQuery = '';
+  bool isSearching = false;
+  bool hasNoResults = false;
 
-  // Résultats de recherche
-  final RxList<dynamic> clientsResults = <dynamic>[].obs;
-  final RxList<dynamic> invoicesResults = <dynamic>[].obs;
-  final RxList<dynamic> paymentsResults = <dynamic>[].obs;
-  final RxList<dynamic> employeesResults = <dynamic>[].obs;
-  final RxList<dynamic> suppliersResults = <dynamic>[].obs;
-  final RxList<dynamic> stocksResults = <dynamic>[].obs;
+  final List<dynamic> clientsResults = [];
+  final List<dynamic> invoicesResults = [];
+  final List<dynamic> paymentsResults = [];
+  final List<dynamic> employeesResults = [];
+  final List<dynamic> suppliersResults = [];
+  final List<dynamic> stocksResults = [];
 
-  // Services
-  final ClientService _clientService = Get.find<ClientService>();
-  final InvoiceService _invoiceService = Get.find<InvoiceService>();
-  final PaymentService _paymentService = Get.find<PaymentService>();
-  final EmployeeService _employeeService = Get.find<EmployeeService>();
-  final SupplierService _supplierService = Get.find<SupplierService>();
-  final StockService _stockService = Get.find<StockService>();
+  final ClientService _clientService = ClientService();
+  final InvoiceService _invoiceService = InvoiceService.to;
+  final PaymentService _paymentService = PaymentService.to;
+  final EmployeeService _employeeService = EmployeeService.to;
+  final SupplierService _supplierService = SupplierService.to;
+  final StockService _stockService = StockService.to;
 
-  @override
-  void onClose() {
+  void dispose() {
     searchController.dispose();
-    super.onClose();
   }
 
   Future<void> performSearch(String query) async {
@@ -41,11 +42,10 @@ class GlobalSearchController extends GetxController {
       return;
     }
 
-    isSearching.value = true;
-    hasNoResults.value = false;
+    isSearching = true;
+    hasNoResults = false;
 
     try {
-      // Recherche parallèle dans toutes les entités
       await Future.wait([
         _searchClients(query),
         _searchInvoices(query),
@@ -55,7 +55,6 @@ class GlobalSearchController extends GetxController {
         _searchStocks(query),
       ]);
 
-      // Vérifier s'il y a des résultats
       final totalResults =
           clientsResults.length +
           invoicesResults.length +
@@ -64,15 +63,11 @@ class GlobalSearchController extends GetxController {
           suppliersResults.length +
           stocksResults.length;
 
-      hasNoResults.value = totalResults == 0;
+      hasNoResults = totalResults == 0;
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la recherche: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      ErrorHelper.showError('Erreur lors de la recherche: $e', title: 'Erreur');
     } finally {
-      isSearching.value = false;
+      isSearching = false;
     }
   }
 
@@ -80,7 +75,8 @@ class GlobalSearchController extends GetxController {
     try {
       final clients = await _clientService.getClients();
       final queryLower = query.toLowerCase();
-      clientsResults.value =
+      clientsResults.clear();
+      clientsResults.addAll(
           clients
               .where((client) {
                 final nomEntreprise =
@@ -89,15 +85,14 @@ class GlobalSearchController extends GetxController {
                 final prenom = (client.prenom ?? '').toLowerCase();
                 final email = (client.email ?? '').toLowerCase();
                 final contact = (client.contact ?? '').toLowerCase();
-                // Prioriser la recherche dans nom entreprise
                 return nomEntreprise.contains(queryLower) ||
                     nom.contains(queryLower) ||
                     prenom.contains(queryLower) ||
                     email.contains(queryLower) ||
                     contact.contains(queryLower);
               })
-              .take(10) // Limiter à 10 résultats
-              .toList();
+              .take(10)
+              .toList());
     } catch (e) {
       clientsResults.clear();
     }
@@ -107,7 +102,8 @@ class GlobalSearchController extends GetxController {
     try {
       final invoices = await _invoiceService.getAllInvoices();
       final queryLower = query.toLowerCase();
-      invoicesResults.value =
+      invoicesResults.clear();
+      invoicesResults.addAll(
           invoices
               .where((invoice) {
                 final invoiceNumber = invoice.invoiceNumber.toLowerCase();
@@ -116,7 +112,7 @@ class GlobalSearchController extends GetxController {
                     clientName.contains(queryLower);
               })
               .take(10)
-              .toList();
+              .toList());
     } catch (e) {
       invoicesResults.clear();
     }
@@ -126,7 +122,8 @@ class GlobalSearchController extends GetxController {
     try {
       final payments = await _paymentService.getAllPayments();
       final queryLower = query.toLowerCase();
-      paymentsResults.value =
+      paymentsResults.clear();
+      paymentsResults.addAll(
           payments
               .where((payment) {
                 final reference = payment.reference?.toLowerCase() ?? '';
@@ -135,7 +132,7 @@ class GlobalSearchController extends GetxController {
                     clientName.contains(queryLower);
               })
               .take(10)
-              .toList();
+              .toList());
     } catch (e) {
       paymentsResults.clear();
     }
@@ -145,7 +142,8 @@ class GlobalSearchController extends GetxController {
     try {
       final employees = await _employeeService.getEmployees();
       final queryLower = query.toLowerCase();
-      employeesResults.value =
+      employeesResults.clear();
+      employeesResults.addAll(
           employees
               .where((employee) {
                 final firstName = employee.firstName.toLowerCase();
@@ -156,7 +154,7 @@ class GlobalSearchController extends GetxController {
                     email.contains(queryLower);
               })
               .take(10)
-              .toList();
+              .toList());
     } catch (e) {
       employeesResults.clear();
     }
@@ -166,7 +164,8 @@ class GlobalSearchController extends GetxController {
     try {
       final suppliers = await _supplierService.getSuppliers();
       final queryLower = query.toLowerCase();
-      suppliersResults.value =
+      suppliersResults.clear();
+      suppliersResults.addAll(
           suppliers
               .where((supplier) {
                 final nom = supplier.nom.toLowerCase();
@@ -177,7 +176,7 @@ class GlobalSearchController extends GetxController {
                     telephone.contains(queryLower);
               })
               .take(10)
-              .toList();
+              .toList());
     } catch (e) {
       suppliersResults.clear();
     }
@@ -187,7 +186,8 @@ class GlobalSearchController extends GetxController {
     try {
       final stocks = await _stockService.getStocks();
       final queryLower = query.toLowerCase();
-      stocksResults.value =
+      stocksResults.clear();
+      stocksResults.addAll(
           stocks
               .where((stock) {
                 final name = stock.name.toLowerCase();
@@ -198,7 +198,7 @@ class GlobalSearchController extends GetxController {
                     category.contains(queryLower);
               })
               .take(10)
-              .toList();
+              .toList());
     } catch (e) {
       stocksResults.clear();
     }
@@ -211,6 +211,6 @@ class GlobalSearchController extends GetxController {
     employeesResults.clear();
     suppliersResults.clear();
     stocksResults.clear();
-    hasNoResults.value = false;
+    hasNoResults = false;
   }
 }

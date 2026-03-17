@@ -1,27 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/services/leave_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class LeaveController extends GetxController {
+class LeaveController {
+  static final LeaveController _instance = LeaveController._();
+  static LeaveController get to => _instance;
+  factory LeaveController() => _instance;
+  LeaveController._();
+
   final LeaveService _leaveService = LeaveService.to;
   final EmployeeService _employeeService = EmployeeService.to;
-  final AuthController _authController = Get.find<AuthController>();
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxList<LeaveRequest> leaveRequests = <LeaveRequest>[].obs;
-  final RxList<LeaveRequest> filteredRequests = <LeaveRequest>[].obs;
-  final Rx<LeaveRequest?> selectedRequest = Rx<LeaveRequest?>(null);
-  final Rx<LeaveStats?> leaveStats = Rx<LeaveStats?>(null);
-  final RxList<LeaveType> leaveTypes = <LeaveType>[].obs;
-  final RxList<Map<String, dynamic>> employees = <Map<String, dynamic>>[].obs;
+  // Variables
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  final List<LeaveRequest> leaveRequests = [];
+  final List<LeaveRequest> filteredRequests = [];
+  LeaveRequest? selectedRequest;
+  LeaveStats? leaveStats;
+  final List<LeaveType> leaveTypes = [];
+  final List<Map<String, dynamic>> employees = [];
 
-  // Variables pour le formulaire
+  // Contrôleurs de formulaire
   final TextEditingController reasonController = TextEditingController();
   final TextEditingController commentsController = TextEditingController();
   final TextEditingController rejectionReasonController =
@@ -29,59 +33,49 @@ class LeaveController extends GetxController {
   final TextEditingController searchController = TextEditingController();
 
   // Variables de filtrage
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedLeaveType = 'all'.obs;
-  final RxString selectedEmployee = 'all'.obs;
-  final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
+  String selectedStatus = 'all';
+  String selectedLeaveType = 'all';
+  String selectedEmployee = 'all';
+  DateTime? selectedStartDate;
+  DateTime? selectedEndDate;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire de création
-  final RxString selectedEmployeeForm = ''.obs;
-  final RxString selectedLeaveTypeForm = ''.obs;
-  final Rx<DateTime?> selectedStartDateForm = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedEndDateForm = Rx<DateTime?>(null);
-  final RxList<String> selectedAttachments = <String>[].obs;
+  String selectedEmployeeForm = '';
+  String selectedLeaveTypeForm = '';
+  DateTime? selectedStartDateForm;
+  DateTime? selectedEndDateForm;
+  final List<String> selectedAttachments = [];
 
-  // Variables pour les permissions
-  final RxBool canManageLeaves =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canApproveLeaves =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canViewAllLeaves =
-      true.obs; // TODO: Implémenter la vérification des permissions
+  // Permissions
+  bool canManageLeaves = true;
+  bool canApproveLeaves = true;
+  bool canViewAllLeaves = true;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Chargement différé : les données sont chargées par la page (leave_list)
-    // au premier affichage pour éviter une avalanche d'appels API au binding.
-  }
+  void ensureInitialized() {}
 
-  @override
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     reasonController.dispose();
     commentsController.dispose();
     rejectionReasonController.dispose();
     searchController.dispose();
-    super.onClose();
   }
 
   // Charger les types de congés
   Future<void> loadLeaveTypes() async {
     try {
       final types = await _leaveService.getLeaveTypes();
-      leaveTypes.value = types;
+      leaveTypes.clear();
+      leaveTypes.addAll(types);
     } catch (e) {}
   }
 
@@ -94,14 +88,15 @@ class LeaveController extends GetxController {
         limit: 50, // Limite réduite pour éviter les réponses trop grandes
         page: 1,
       );
-      employees.value =
+      employees.clear();
+      employees.addAll(
           employeesList.map((employee) {
             return {
               'id': employee.id,
               'name': '${employee.firstName} ${employee.lastName}',
               'email': employee.email,
             };
-          }).toList();
+          }).toList());
 
       // Si la liste est toujours vide après le chargement, essayer de recharger avec une limite plus petite
       if (employees.isEmpty) {
@@ -115,14 +110,15 @@ class LeaveController extends GetxController {
             limit: 30,
             page: 1,
           );
-          employees.value =
+          employees.clear();
+          employees.addAll(
               retryList.map((employee) {
                 return {
                   'id': employee.id,
                   'name': '${employee.firstName} ${employee.lastName}',
                   'email': employee.email,
                 };
-              }).toList();
+              }).toList());
         } catch (retryError) {
           print(
             '❌ [LEAVE_CONTROLLER] Erreur lors de la nouvelle tentative: $retryError',
@@ -143,72 +139,77 @@ class LeaveController extends GetxController {
             limit: 30,
             page: 1,
           );
-          employees.value =
+          employees.clear();
+          employees.addAll(
               employeesList.map((employee) {
                 return {
                   'id': employee.id,
                   'name': '${employee.firstName} ${employee.lastName}',
                   'email': employee.email,
                 };
-              }).toList();
+              }).toList());
         } catch (retryError) {
           print(
             '❌ [LEAVE_CONTROLLER] Erreur même avec limite réduite: $retryError',
           );
-          employees.value = [];
+          employees.clear();
         }
       } else {
         // En cas d'autre erreur, laisser la liste vide
-        employees.value = [];
+        employees.clear();
       }
     }
   }
 
   // Charger les demandes de congés
-  Future<void> loadLeaveRequests({int page = 1}) async {
+  Future<void> loadLeaveRequests({int page = 1, bool forceRefresh = false}) async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
 
       if (page == 1) {
-        final hiveList = LeaveService.getCachedLeaves();
-        if (hiveList.isNotEmpty) {
-          leaveRequests.value = hiveList;
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshLeavesFromApi());
-          return;
+        if (!forceRefresh) {
+          final hiveList = LeaveService.getCachedLeaves();
+          if (hiveList.isNotEmpty) {
+            leaveRequests.clear();
+        leaveRequests.addAll(hiveList);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshLeavesFromApi());
+            return;
+          }
         }
-        isLoading.value = true;
+        isLoading = true;
       }
       if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         final paginatedResponse = await _leaveService.getLeaveRequestsPaginated(
-          startDate: selectedStartDate.value,
-          endDate: selectedEndDate.value,
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-          leaveType:
-              selectedLeaveType.value != 'all' ? selectedLeaveType.value : null,
-          employeeId: canViewAllLeaves.value ? null : user.id,
-          page: page,
-          perPage: perPage.value,
-          search:
-              searchController.text.isNotEmpty ? searchController.text : null,
+        startDate: selectedStartDate,
+        endDate: selectedEndDate,
+        status: selectedStatus != 'all' ? selectedStatus : null,
+        leaveType:
+            selectedLeaveType != 'all' ? selectedLeaveType : null,
+        employeeId: canViewAllLeaves ? null : user.id,
+        page: page,
+        perPage: perPage,
+        search:
+            searchController.text.isNotEmpty ? searchController.text : null,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          leaveRequests.value = paginatedResponse.data;
+          leaveRequests.clear();
+          leaveRequests.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           leaveRequests.addAll(paginatedResponse.data);
@@ -217,20 +218,21 @@ class LeaveController extends GetxController {
       } catch (e) {
         // En cas d'erreur, essayer la méthode non-paginée en fallback
         List<LeaveRequest> requests;
-        if (canViewAllLeaves.value) {
+        if (canViewAllLeaves) {
           requests = await _leaveService.getAllLeaveRequests(
-            startDate: selectedStartDate.value,
-            endDate: selectedEndDate.value,
+            startDate: selectedStartDate,
+            endDate: selectedEndDate,
           );
         } else {
           requests = await _leaveService.getEmployeeLeaveRequests(
             employeeId: user.id,
-            startDate: selectedStartDate.value,
-            endDate: selectedEndDate.value,
+            startDate: selectedStartDate,
+            endDate: selectedEndDate,
           );
         }
         if (page == 1) {
-          leaveRequests.value = requests;
+          leaveRequests.clear();
+          leaveRequests.addAll(requests);
         } else {
           leaveRequests.addAll(requests);
         }
@@ -244,63 +246,63 @@ class LeaveController extends GetxController {
           !errorString.contains('401') &&
           !errorString.contains('unauthorized')) {
         if (leaveRequests.isEmpty) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les demandes de congés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+        isLoadingMore = false;
     }
   }
 
   /// Rafraîchit les demandes de congé depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
   Future<void> _refreshLeavesFromApi() async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
       final paginatedResponse = await _leaveService.getLeaveRequestsPaginated(
-        startDate: selectedStartDate.value,
-        endDate: selectedEndDate.value,
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
-        leaveType:
-            selectedLeaveType.value != 'all' ? selectedLeaveType.value : null,
-        employeeId: canViewAllLeaves.value ? null : user.id,
-        page: 1,
-        perPage: perPage.value,
-        search: searchController.text.isNotEmpty ? searchController.text : null,
-      );
-      leaveRequests.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      startDate: selectedStartDate,
+      endDate: selectedEndDate,
+      status: selectedStatus != 'all' ? selectedStatus : null,
+      leaveType:
+          selectedLeaveType != 'all' ? selectedLeaveType : null,
+      employeeId: canViewAllLeaves ? null : user.id,
+      page: 1,
+      perPage: perPage,
+      search: searchController.text.isNotEmpty ? searchController.text : null,
+    );
+    leaveRequests.clear();
+    leaveRequests.addAll(paginatedResponse.data);
+    totalPages = paginatedResponse.meta.lastPage;
+    totalItems = paginatedResponse.meta.total;
+    hasNextPage = paginatedResponse.hasNextPage;
+    hasPreviousPage = paginatedResponse.hasPreviousPage;
+    currentPage = 1;
       applyFilters();
     } catch (_) {}
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadLeaveRequests(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      loadLeaveRequests(page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadLeaveRequests(page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading && !isLoadingMore) {
+      loadLeaveRequests(page: currentPage - 1);
     }
   }
 
@@ -308,10 +310,10 @@ class LeaveController extends GetxController {
   Future<void> loadLeaveStats() async {
     try {
       final stats = await _leaveService.getLeaveStats(
-        startDate: selectedStartDate.value,
-        endDate: selectedEndDate.value,
+        startDate: selectedStartDate,
+        endDate: selectedEndDate,
       );
-      leaveStats.value = stats;
+      leaveStats = stats;
     } catch (e) {}
   }
 
@@ -320,20 +322,20 @@ class LeaveController extends GetxController {
     List<LeaveRequest> filtered =
         leaveRequests.where((request) {
           // Filtre par statut
-          if (selectedStatus.value != 'all' &&
-              request.status != selectedStatus.value) {
+          if (selectedStatus != 'all' &&
+              request.status != selectedStatus) {
             return false;
           }
 
           // Filtre par type de congé
-          if (selectedLeaveType.value != 'all' &&
-              request.leaveType != selectedLeaveType.value) {
+          if (selectedLeaveType != 'all' &&
+              request.leaveType != selectedLeaveType) {
             return false;
           }
 
           // Filtre par employé
-          if (selectedEmployee.value != 'all' &&
-              request.employeeId.toString() != selectedEmployee.value) {
+          if (selectedEmployee != 'all' &&
+              request.employeeId.toString() != selectedEmployee) {
             return false;
           }
 
@@ -349,7 +351,8 @@ class LeaveController extends GetxController {
           return true;
         }).toList();
 
-    filteredRequests.value = filtered;
+    filteredRequests.clear();
+    filteredRequests.addAll(filtered);
   }
 
   // Rechercher dans les demandes
@@ -360,26 +363,26 @@ class LeaveController extends GetxController {
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     applyFilters();
   }
 
   // Filtrer par type de congé
   void filterByLeaveType(String leaveType) {
-    selectedLeaveType.value = leaveType;
+    selectedLeaveType = leaveType;
     applyFilters();
   }
 
   // Filtrer par employé
   void filterByEmployee(String employeeId) {
-    selectedEmployee.value = employeeId;
+    selectedEmployee = employeeId;
     applyFilters();
   }
 
   // Filtrer par date
   void filterByDateRange(DateTime? startDate, DateTime? endDate) {
-    selectedStartDate.value = startDate;
-    selectedEndDate.value = endDate;
+    selectedStartDate = startDate;
+    selectedEndDate = endDate;
     loadLeaveRequests();
   }
 
@@ -387,12 +390,12 @@ class LeaveController extends GetxController {
   Future<bool> createLeaveRequest() async {
     try {
       // Validation des champs obligatoires
-      if (selectedEmployeeForm.value.isEmpty ||
-          selectedLeaveTypeForm.value.isEmpty ||
-          selectedStartDateForm.value == null ||
-          selectedEndDateForm.value == null ||
+      if (selectedEmployeeForm.isEmpty ||
+          selectedLeaveTypeForm.isEmpty ||
+          selectedStartDateForm == null ||
+          selectedEndDateForm == null ||
           reasonController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+        errorHelperShowSnackbar?.call('Erreur', 'Veuillez remplir tous les champs obligatoires');
         return false;
       }
 
@@ -403,8 +406,8 @@ class LeaveController extends GetxController {
         second: 0,
         millisecond: 0,
       );
-      if (selectedStartDateForm.value!.isBefore(today)) {
-        Get.snackbar(
+      if (selectedStartDateForm!.isBefore(today)) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'La date de début doit être aujourd\'hui ou dans le futur',
         );
@@ -412,11 +415,11 @@ class LeaveController extends GetxController {
       }
 
       // Validation de end_date (doit être après start_date)
-      if (selectedEndDateForm.value!.isBefore(selectedStartDateForm.value!) ||
-          selectedEndDateForm.value!.isAtSameMomentAs(
-            selectedStartDateForm.value!,
+      if (selectedEndDateForm!.isBefore(selectedStartDateForm!) ||
+          selectedEndDateForm!.isAtSameMomentAs(
+            selectedStartDateForm!,
           )) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'La date de fin doit être après la date de début',
         );
@@ -426,14 +429,14 @@ class LeaveController extends GetxController {
       // Validation de reason (min 10 caractères, max 1000 caractères)
       final reasonText = reasonController.text.trim();
       if (reasonText.length < 10) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'La raison doit contenir au moins 10 caractères (actuellement: ${reasonText.length})',
         );
         return false;
       }
       if (reasonText.length > 1000) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'La raison ne doit pas dépasser 1000 caractères (actuellement: ${reasonText.length})',
         );
@@ -443,7 +446,7 @@ class LeaveController extends GetxController {
       // Validation de comments (max 2000 caractères)
       final commentsText = commentsController.text.trim();
       if (commentsText.length > 2000) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Les commentaires ne doivent pas dépasser 2000 caractères (actuellement: ${commentsText.length})',
         );
@@ -451,10 +454,10 @@ class LeaveController extends GetxController {
       }
 
       final result = await _leaveService.createLeaveRequest(
-        employeeId: int.parse(selectedEmployeeForm.value),
-        leaveType: selectedLeaveTypeForm.value,
-        startDate: selectedStartDateForm.value!,
-        endDate: selectedEndDateForm.value!,
+        employeeId: int.parse(selectedEmployeeForm),
+        leaveType: selectedLeaveTypeForm,
+        startDate: selectedStartDateForm!,
+        endDate: selectedEndDateForm!,
         reason: reasonController.text.trim(),
         comments:
             commentsController.text.trim().isEmpty
@@ -482,13 +485,13 @@ class LeaveController extends GetxController {
           );
         }
 
-        Get.snackbar('Succès', 'Demande de congé créée avec succès');
+        errorHelperShowSnackbar?.call('Succès', 'Demande de congé créée avec succès');
         clearForm();
         loadLeaveRequests();
         loadLeaveStats();
         return true;
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la création',
         );
@@ -506,7 +509,7 @@ class LeaveController extends GetxController {
         return false;
       }
 
-      Get.snackbar('Erreur', 'Erreur lors de la création de la demande: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la création de la demande: $e');
       return false;
     }
   }
@@ -535,11 +538,11 @@ class LeaveController extends GetxController {
           entity: request,
         );
 
-        Get.snackbar('Succès', 'Demande approuvée avec succès');
+        errorHelperShowSnackbar?.call('Succès', 'Demande approuvée avec succès');
         loadLeaveRequests();
         loadLeaveStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de l\'approbation',
         );
@@ -552,7 +555,7 @@ class LeaveController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'approbation: $e');
       }
     }
   }
@@ -561,7 +564,7 @@ class LeaveController extends GetxController {
   Future<void> rejectLeaveRequest(LeaveRequest request) async {
     try {
       if (rejectionReasonController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+        errorHelperShowSnackbar?.call('Erreur', 'Veuillez indiquer la raison du rejet');
         return;
       }
 
@@ -584,12 +587,12 @@ class LeaveController extends GetxController {
           entity: request,
         );
 
-        Get.snackbar('Succès', 'Demande rejetée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande rejetée');
         rejectionReasonController.clear();
         loadLeaveRequests();
         loadLeaveStats();
       } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
+        errorHelperShowSnackbar?.call('Erreur', result['message'] ?? 'Erreur lors du rejet');
       }
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -599,7 +602,7 @@ class LeaveController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur lors du rejet: $e');
       }
     }
   }
@@ -610,17 +613,17 @@ class LeaveController extends GetxController {
       final result = await _leaveService.cancelLeaveRequest(request.id!);
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande annulée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande annulée');
         loadLeaveRequests();
         loadLeaveStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de l\'annulation',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'annulation: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'annulation: $e');
     }
   }
 
@@ -630,17 +633,17 @@ class LeaveController extends GetxController {
       final result = await _leaveService.deleteLeaveRequest(request.id!);
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Demande supprimée');
+        errorHelperShowSnackbar?.call('Succès', 'Demande supprimée');
         loadLeaveRequests();
         loadLeaveStats();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la suppression',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la suppression: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la suppression: $e');
     }
   }
 
@@ -648,16 +651,16 @@ class LeaveController extends GetxController {
   Future<void> selectStartDate(BuildContext context) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: selectedStartDateForm.value ?? DateTime.now(),
+      initialDate: selectedStartDateForm ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date != null) {
-      selectedStartDateForm.value = date;
+      selectedStartDateForm = date;
       // Ajuster la date de fin si elle est antérieure
-      if (selectedEndDateForm.value != null &&
-          selectedEndDateForm.value!.isBefore(date)) {
-        selectedEndDateForm.value = date;
+      if (selectedEndDateForm != null &&
+          selectedEndDateForm!.isBefore(date)) {
+        selectedEndDateForm = date;
       }
     }
   }
@@ -667,33 +670,33 @@ class LeaveController extends GetxController {
     final date = await showDatePicker(
       context: context,
       initialDate:
-          selectedEndDateForm.value ??
-          selectedStartDateForm.value ??
+          selectedEndDateForm ??
+          selectedStartDateForm ??
           DateTime.now(),
-      firstDate: selectedStartDateForm.value ?? DateTime.now(),
+      firstDate: selectedStartDateForm ?? DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date != null) {
-      selectedEndDateForm.value = date;
+      selectedEndDateForm = date;
     }
   }
 
   // Sélectionner un employé
   void selectEmployee(String employeeId) {
-    selectedEmployeeForm.value = employeeId;
+    selectedEmployeeForm = employeeId;
   }
 
   // Sélectionner un type de congé
   void selectLeaveType(String leaveType) {
-    selectedLeaveTypeForm.value = leaveType;
+    selectedLeaveTypeForm = leaveType;
   }
 
   // Calculer le nombre de jours
   int calculateTotalDays() {
-    if (selectedStartDateForm.value != null &&
-        selectedEndDateForm.value != null) {
-      return selectedEndDateForm.value!
-              .difference(selectedStartDateForm.value!)
+    if (selectedStartDateForm != null &&
+        selectedEndDateForm != null) {
+      return selectedEndDateForm!
+              .difference(selectedStartDateForm!)
               .inDays +
           1;
     }
@@ -702,17 +705,17 @@ class LeaveController extends GetxController {
 
   // Vérifier les conflits
   Future<bool> checkConflicts() async {
-    if (selectedEmployeeForm.value.isEmpty ||
-        selectedStartDateForm.value == null ||
-        selectedEndDateForm.value == null) {
+    if (selectedEmployeeForm.isEmpty ||
+        selectedStartDateForm == null ||
+        selectedEndDateForm == null) {
       return false;
     }
 
     try {
       final result = await _leaveService.checkLeaveConflicts(
-        employeeId: int.parse(selectedEmployeeForm.value),
-        startDate: selectedStartDateForm.value!,
-        endDate: selectedEndDateForm.value!,
+        employeeId: int.parse(selectedEmployeeForm),
+        startDate: selectedStartDateForm!,
+        endDate: selectedEndDateForm!,
       );
       return result['has_conflicts'] == true;
     } catch (e) {
@@ -722,10 +725,10 @@ class LeaveController extends GetxController {
 
   // Réinitialiser le formulaire
   void clearForm() {
-    selectedEmployeeForm.value = '';
-    selectedLeaveTypeForm.value = '';
-    selectedStartDateForm.value = null;
-    selectedEndDateForm.value = null;
+    selectedEmployeeForm = '';
+    selectedLeaveTypeForm = '';
+    selectedStartDateForm = null;
+    selectedEndDateForm = null;
     reasonController.clear();
     commentsController.clear();
     selectedAttachments.clear();
@@ -733,11 +736,11 @@ class LeaveController extends GetxController {
 
   // Réinitialiser les filtres
   void clearFilters() {
-    selectedStatus.value = 'all';
-    selectedLeaveType.value = 'all';
-    selectedEmployee.value = 'all';
-    selectedStartDate.value = null;
-    selectedEndDate.value = null;
+    selectedStatus = 'all';
+    selectedLeaveType = 'all';
+    selectedEmployee = 'all';
+    selectedStartDate = null;
+    selectedEndDate = null;
     searchController.clear();
     applyFilters();
   }

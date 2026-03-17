@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/models/user_model.dart';
-import 'package:easyconnect/routes/app_routes.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/services/websocket_service.dart';
 import 'package:easyconnect/utils/logger.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
@@ -25,34 +24,26 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeApp() async {
     await Future.delayed(const Duration(milliseconds: 350));
-
     if (!mounted) return;
+
+    ref.read(authProvider);
+    var user = ref.read(authProvider).user;
 
     try {
       final loggedIn = await SessionService.isLoggedIn();
-      AppLogger.info(
-        'Splash: SessionService.isLoggedIn = $loggedIn',
-        tag: 'SPLASH',
-      );
+      AppLogger.info('Splash: SessionService.isLoggedIn = $loggedIn', tag: 'SPLASH');
 
-      final authController = Get.find<AuthController>();
-      var userRole = authController.userAuth.value?.role ?? SessionService.getUserRole();
-
-      // Redirection instantanée si token + rôle en cache (connexion permanente)
-      if (loggedIn && userRole != null) {
-        final initialRoute = AppRoutes.getInitialRoute(userRole);
-        Get.offAllNamed(initialRoute);
-        _runBackgroundInit(authController);
+      if (loggedIn && user != null) {
+        _runBackgroundInit();
+        if (mounted) context.go(initialRouteForRole(user.role));
         return;
       }
 
-      // Pas de token → écran d'accueil
       if (!loggedIn) {
-        Get.offAllNamed('/welcome');
+        if (mounted) context.go('/welcome');
         return;
       }
 
-      // Token présent mais pas de rôle en cache : tenter de récupérer l'utilisateur (sans déconnecter en cas d'échec)
       try {
         final result = await ApiService.getUser().timeout(
           const Duration(seconds: 5),
@@ -61,27 +52,25 @@ class _SplashScreenState extends State<SplashScreen> {
         if (result['success'] == true && result['data'] != null) {
           final userData = Map<String, dynamic>.from(result['data'] as Map);
           await SessionService.saveUser(userData);
-          authController.userAuth.value = UserModel.fromJson(userData);
-          userRole = authController.userAuth.value?.role ?? SessionService.getUserRole();
+          await ref.read(authProvider.notifier).refreshUserData();
+          user = ref.read(authProvider).user;
         }
       } catch (_) {}
-      // Ne jamais faire clearSession() ici : timeout ou erreur réseau → accès avec données de cache
-      userRole ??= SessionService.getUserRole();
+      if (user == null) user = ref.read(authProvider).user;
 
-      if (userRole != null) {
-        Get.offAllNamed(AppRoutes.getInitialRoute(userRole));
-        _runBackgroundInit(authController);
-      } else {
-        Get.offAllNamed('/welcome');
+      if (user != null) {
+        _runBackgroundInit();
+        if (mounted) context.go(initialRouteForRole(user.role));
+        return;
       }
+      if (mounted) context.go('/welcome');
     } catch (e) {
       AppLogger.warning('Splash: erreur redirection: $e', tag: 'SPLASH');
-      Get.offAllNamed('/welcome');
+      if (mounted) context.go('/welcome');
     }
   }
 
-  /// Tâches post-redirection : FCM, WebSocket (non bloquant). Pas de déconnexion ici : un 401 sera géré par l'Interceptor global.
-  void _runBackgroundInit(AuthController authController) {
+  void _runBackgroundInit() {
     Future(() async {
       try {
         final result = await ApiService.getUser().timeout(
@@ -90,10 +79,11 @@ class _SplashScreenState extends State<SplashScreen> {
         );
         if (result['timeout'] == true) return;
         if (result['success'] == true && result['data'] != null) {
-          await SessionService.saveUser(Map<String, dynamic>.from(result['data'] as Map));
-          authController.userAuth.value = UserModel.fromJson(result['data'] as Map<String, dynamic>);
+          await SessionService.saveUser(
+            Map<String, dynamic>.from(result['data'] as Map),
+          );
+          ref.read(authProvider.notifier).refreshUserData();
         }
-        // En cas de 401 : ne pas faire clearSession ici ; l'Interceptor global déconnectera au prochain appel API
       } catch (_) {}
 
       try {
@@ -110,13 +100,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(authProvider);
     return Scaffold(
       backgroundColor: Colors.deepPurple,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo Flutter ou de l'application
             Container(
               width: 120,
               height: 120,

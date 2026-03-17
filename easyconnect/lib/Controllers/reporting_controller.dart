@@ -1,61 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:easyconnect/router/app_router.dart' show rootGoRouter;
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/services/reporting_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class ReportingController extends GetxController {
-  final ReportingService _reportingService = Get.find<ReportingService>();
-  final AuthController _authController = Get.find<AuthController>();
+ReportingModel? _firstWhereReportById(List<ReportingModel> list, int id) {
+  try {
+    return list.firstWhere((r) => r.id == id);
+  } catch (_) {
+    return null;
+  }
+}
 
-  // Observables
-  var isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  var reports = <ReportingModel>[].obs;
-  var currentReport = Rxn<ReportingModel>(); // rapport en cours d'édition
-  var selectedDate = DateTime.now().obs;
-  var selectedUserRole = Rxn<String>();
-  var startDate = DateTime.now().subtract(const Duration(days: 30)).obs;
-  var endDate = DateTime.now().obs;
+class ReportingController {
+  static final ReportingController _instance = ReportingController._();
+  static ReportingController get to => _instance;
+  factory ReportingController() => _instance;
+  ReportingController._();
 
-  // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 10.obs;
+  final ReportingService _reportingService = ReportingService.to;
+  final AuthController _authController = AuthController.to;
+
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  final List<ReportingModel> reports = [];
+  ReportingModel? currentReport;
+  DateTime selectedDate = DateTime.now();
+  String? selectedUserRole;
+  DateTime startDate = DateTime.now().subtract(const Duration(days: 30));
+  DateTime endDate = DateTime.now();
+
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 10;
   final ScrollController scrollController = ScrollController();
-
-  // Clé de formulaire pour la validation
   final formKey = GlobalKey<FormState>();
 
-  // Nouveaux champs du formulaire
-  var nature = ''.obs;
+  String nature = '';
   final nomSocieteController = TextEditingController();
   final contactSocieteController = TextEditingController();
   final nomPersonneController = TextEditingController();
   final contactPersonneController = TextEditingController();
-  var moyenContact = ''.obs;
+  String moyenContact = '';
   final produitDemarcheController = TextEditingController();
   final commentaireController = TextEditingController();
-  var typeRelance = ''.obs;
-  var relanceDateHeure = Rxn<DateTime>();
-
-  // Anciens champs (conservés pour compatibilité)
+  String typeRelance = '';
+  DateTime? relanceDateHeure;
   final commentsController = TextEditingController();
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Ne pas charger automatiquement - laisser les pages décider quand charger
-    // loadReports(); // Désactivé pour éviter les chargements inutiles
-  }
-
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     nomSocieteController.dispose();
     contactSocieteController.dispose();
@@ -64,7 +63,6 @@ class ReportingController extends GetxController {
     produitDemarcheController.dispose();
     commentaireController.dispose();
     commentsController.dispose();
-    super.onClose();
   }
 
   bool _isLoadingReportsInProgress = false;
@@ -73,30 +71,31 @@ class ReportingController extends GetxController {
   Future<void> loadReports({int page = 1, bool forceRefresh = false}) async {
     if (_isLoadingReportsInProgress) return;
     _isLoadingReportsInProgress = true;
-    final userRole = _authController.userAuth.value?.role;
-    final userId = _authController.userAuth.value?.id;
+    final userRole = _authController.userAuth?.role;
+    final userId = _authController.userAuth?.id;
 
     if (page == 1) {
-      isLoading.value = true;
+      isLoading = true;
       final hiveList = ReportingService.getCachedReporting();
       if (hiveList.isNotEmpty && !forceRefresh) {
-        reports.assignAll(hiveList);
-        isLoading.value = false;
+        reports.clear();
+        reports.addAll(hiveList);
+        isLoading = false;
       } else {
-        reports.value = [];
+        reports.clear();
       }
     } else {
-      isLoadingMore.value = true;
+      isLoadingMore = true;
     }
 
     try {
       final paginatedResponse = await _reportingService.getReportsPaginated(
-        startDate: startDate.value,
-        endDate: endDate.value,
-        userRole: selectedUserRole.value,
+        startDate: startDate,
+        endDate: endDate,
+        userRole: selectedUserRole,
         userId: (userRole == Roles.ADMIN || userRole == Roles.PATRON) ? null : userId,
         page: page,
-        perPage: perPage.value,
+        perPage: perPage,
       );
 
       List<ReportingModel> filteredData = paginatedResponse.data;
@@ -105,39 +104,42 @@ class ReportingController extends GetxController {
       }
 
       if (page == 1) {
-        reports.assignAll(filteredData);
-        ReportingService.saveCachedReporting(filteredData);
+        reports.clear();
+        reports.addAll(filteredData);
+        ReportingService.saveCachedReporting(reports.toList());
       } else {
         reports.addAll(filteredData);
       }
 
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = paginatedResponse.meta.currentPage;
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = paginatedResponse.meta.currentPage;
     } catch (e) {
       try {
         if (page == 1 && (userRole == Roles.ADMIN || userRole == Roles.PATRON)) {
           final allReports = await _reportingService.getAllReports(
-            startDate: startDate.value,
-            endDate: endDate.value,
-            userRole: selectedUserRole.value,
+            startDate: startDate,
+            endDate: endDate,
+            userRole: selectedUserRole,
           );
-          reports.assignAll(allReports);
-          totalItems.value = allReports.length;
-          totalPages.value = 1;
+          reports.clear();
+          reports.addAll(allReports);
+          totalItems = allReports.length;
+          totalPages = 1;
           if (allReports.isNotEmpty) ReportingService.saveCachedReporting(allReports);
         } else if (page == 1 && userId != null) {
           final userReports = await _reportingService.getUserReports(
             userId: userId,
-            startDate: startDate.value,
-            endDate: endDate.value,
+            startDate: startDate,
+            endDate: endDate,
           );
           final filtered = userReports.where((r) => r.userId == userId).toList();
-          reports.assignAll(filtered);
-          totalItems.value = filtered.length;
-          totalPages.value = 1;
+          reports.clear();
+          reports.addAll(filtered);
+          totalItems = filtered.length;
+          totalPages = 1;
           if (filtered.isNotEmpty) ReportingService.saveCachedReporting(filtered);
         } else {
           throw e;
@@ -146,36 +148,35 @@ class ReportingController extends GetxController {
         if (reports.isEmpty) {
           final fallback = ReportingService.getCachedReporting();
           if (fallback.isNotEmpty) {
-            reports.assignAll(fallback);
+            reports.clear();
+            reports.addAll(fallback);
           } else {
-            Get.snackbar('Erreur', 'Erreur lors du chargement des rapports', snackPosition: SnackPosition.BOTTOM);
+            errorHelperShowSnackbar?.call('Erreur', 'Erreur lors du chargement des rapports');
           }
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       _isLoadingReportsInProgress = false;
     }
   }
 
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
-  /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadReports(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      loadReports(page: currentPage + 1);
     }
   }
 
-  /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadReports(page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading && !isLoadingMore) {
+      loadReports(page: currentPage - 1);
     }
   }
 
@@ -183,39 +184,37 @@ class ReportingController extends GetxController {
   Future<void> createReport() async {
     // Valider le formulaire
     if (formKey.currentState?.validate() != true) {
-      Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      errorHelperShowSnackbar?.call('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
     try {
-      isLoading.value = true;
+      isLoading = true;
 
-      final userRole = _authController.userAuth.value?.role;
-      final userId = _authController.userAuth.value?.id;
+      final userRole = _authController.userAuth?.role;
+      final userId = _authController.userAuth?.id;
 
       final response = await _reportingService.createReport(
         userId: userId!,
         userRole: Roles.getRoleName(userRole),
-        reportDate: selectedDate.value,
-        nature: nature.value,
+        reportDate: selectedDate,
+        nature: nature,
         nomSociete: nomSocieteController.text,
         contactSociete: contactSocieteController.text,
         nomPersonne: nomPersonneController.text,
         contactPersonne: contactPersonneController.text,
-        moyenContact: moyenContact.value,
+        moyenContact: moyenContact,
         produitDemarche: produitDemarcheController.text,
         commentaire: commentaireController.text,
-        typeRelance: typeRelance.value.isEmpty ? null : typeRelance.value,
-        relanceDateHeure: relanceDateHeure.value,
+        typeRelance: typeRelance.isEmpty ? null : typeRelance,
+        relanceDateHeure: relanceDateHeure,
       );
 
-      // Extraire le reporting créé de la réponse
       ReportingModel? createdReport;
       try {
         final data = response['data'] as Map<String, dynamic>?;
         if (data != null) {
-          // Construire le nom d'utilisateur
-          final user = _authController.userAuth.value;
+          final user = _authController.userAuth;
           final userName =
               user != null
                   ? '${user.prenom ?? ''} ${user.nom ?? ''}'.trim()
@@ -239,18 +238,18 @@ class ReportingController extends GetxController {
             userName: data['user_name'] as String? ?? userName,
             userRole:
                 data['user_role'] as String? ?? Roles.getRoleName(userRole),
-            reportDate: selectedDate.value,
+            reportDate: selectedDate,
             status: data['status'] as String? ?? 'submitted',
-            nature: data['nature'] as String? ?? nature.value,
+            nature: data['nature'] as String? ?? nature,
             nomSociete: data['nom_societe'] as String? ?? nomSocieteController.text,
             contactSociete: data['contact_societe'] as String? ?? contactSocieteController.text,
             nomPersonne: data['nom_personne'] as String? ?? nomPersonneController.text,
             contactPersonne: data['contact_personne'] as String? ?? contactPersonneController.text,
-            moyenContact: data['moyen_contact'] as String? ?? moyenContact.value,
+            moyenContact: data['moyen_contact'] as String? ?? moyenContact,
             produitDemarche: data['produit_demarche'] as String? ?? produitDemarcheController.text,
             commentaire: data['commentaire'] as String? ?? commentaireController.text,
-            typeRelance: data['type_relance'] as String? ?? (typeRelance.value.isEmpty ? null : typeRelance.value),
-            relanceDateHeure: relanceDateHeure.value,
+            typeRelance: data['type_relance'] as String? ?? (typeRelance.isEmpty ? null : typeRelance),
+            relanceDateHeure: relanceDateHeure,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           );
@@ -267,13 +266,13 @@ class ReportingController extends GetxController {
         ReportingService.saveCachedReporting(reports.toList());
       }
 
-      isLoading.value = false;
+      isLoading = false;
       clearForm();
 
-      Get.snackbar('Succès', 'Rapport créé avec succès');
+      ErrorHelper.showSuccess('Rapport créé avec succès');
 
       // Navigation automatique vers la page de liste des reportings
-      Get.offNamed('/reporting');
+      rootGoRouter?.go('/reporting');
       // Pas de loadReports(forceRefresh: true) pour ne pas écraser l'insertion
     } catch (e) {
       String errorMessage = 'Erreur lors de la création du rapport';
@@ -284,26 +283,25 @@ class ReportingController extends GetxController {
       } else if (e.toString().isNotEmpty) {
         errorMessage = e.toString().replaceFirst('Exception: ', '');
       }
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Soumettre un rapport
   Future<void> submitReport(int reportId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       await _reportingService.submitReport(reportId);
 
       // Notifier le patron de la soumission
-      final report = reports.firstWhereOrNull((r) => r.id == reportId);
+      final report = _firstWhereReportById(reports, reportId);
       if (report != null) {
         // Inclure le nom de l'utilisateur dans le message
         final userName =
@@ -326,12 +324,12 @@ class ReportingController extends GetxController {
         );
       }
 
-      Get.snackbar('Succès', 'Rapport soumis avec succès');
+      ErrorHelper.showSuccess('Rapport soumis avec succès');
       loadReports();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la soumission du rapport: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la soumission du rapport: $e');
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -339,7 +337,7 @@ class ReportingController extends GetxController {
   Future<void> approveReport(int reportId, {String? patronNote}) async {
     bool actionSuccess = false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final result = await _reportingService.approveReport(
         reportId,
@@ -356,7 +354,7 @@ class ReportingController extends GetxController {
         actionSuccess = true;
 
         // Notifier l'utilisateur concerné de la validation
-        final report = reports.firstWhereOrNull((r) => r.id == reportId);
+        final report = _firstWhereReportById(reports, reportId);
         if (report != null) {
           NotificationHelper.notifyValidation(
             entityType: 'report',
@@ -373,7 +371,7 @@ class ReportingController extends GetxController {
           );
         }
 
-        Get.snackbar('Succès', 'Rapport approuvé avec succès');
+        ErrorHelper.showSuccess('Rapport approuvé avec succès');
 
         // Rafraîchir les données en arrière-plan (non-bloquant)
         loadReports().catchError((e) {
@@ -395,7 +393,7 @@ class ReportingController extends GetxController {
           errorStr.contains('403') ||
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
-        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur d\'authentification: $e');
       } else {
         // Pour les autres erreurs, vérifier si c'est un problème de parsing
         if (errorStr.contains('format') ||
@@ -406,11 +404,11 @@ class ReportingController extends GetxController {
           // Probablement un problème de parsing après un succès
           // Ne rien afficher
         } else {
-          Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+          errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'approbation: $e');
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -418,7 +416,7 @@ class ReportingController extends GetxController {
   Future<void> rejectReport(int reportId, {String? reason}) async {
     bool actionSuccess = false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final result = await _reportingService.rejectReport(
         reportId,
@@ -435,7 +433,7 @@ class ReportingController extends GetxController {
         actionSuccess = true;
 
         // Notifier l'utilisateur concerné du rejet
-        final report = reports.firstWhereOrNull((r) => r.id == reportId);
+        final report = _firstWhereReportById(reports, reportId);
         if (report != null) {
           NotificationHelper.notifyRejection(
             entityType: 'report',
@@ -453,7 +451,7 @@ class ReportingController extends GetxController {
           );
         }
 
-        Get.snackbar('Succès', 'Rapport rejeté avec succès');
+        ErrorHelper.showSuccess('Rapport rejeté avec succès');
 
         // Rafraîchir les données en arrière-plan (non-bloquant)
         loadReports().catchError((e) {
@@ -475,7 +473,7 @@ class ReportingController extends GetxController {
           errorStr.contains('403') ||
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
-        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur d\'authentification: $e');
       } else {
         // Pour les autres erreurs, vérifier si c'est un problème de parsing
         if (errorStr.contains('format') ||
@@ -486,106 +484,101 @@ class ReportingController extends GetxController {
           // Probablement un problème de parsing après un succès
           // Ne rien afficher
         } else {
-          Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+          errorHelperShowSnackbar?.call('Erreur', 'Erreur lors du rejet: $e');
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Méthodes obsolètes - conservées pour compatibilité mais non utilisées dans le nouveau système
-  // Ces méthodes peuvent être supprimées si elles ne sont plus nécessaires
+  // Méthodes obsolètes
 
   // Vider le formulaire
   void clearForm() {
-    currentReport.value = null;
-    nature.value = '';
+    currentReport = null;
+    nature = '';
     nomSocieteController.clear();
     contactSocieteController.clear();
     nomPersonneController.clear();
     contactPersonneController.clear();
-    moyenContact.value = '';
+    moyenContact = '';
     produitDemarcheController.clear();
     commentaireController.clear();
-    typeRelance.value = '';
-    relanceDateHeure.value = null;
+    typeRelance = '';
+    relanceDateHeure = null;
     commentsController.clear();
   }
 
   /// Remplir le formulaire pour éditer un rapport (soumis uniquement, backend canBeEdited)
   void loadReportForEdit(ReportingModel report) {
-    currentReport.value = report;
-    selectedDate.value = report.reportDate;
-    nature.value = report.nature ?? '';
+    currentReport = report;
+    selectedDate = report.reportDate;
+    nature = report.nature ?? '';
     nomSocieteController.text = report.nomSociete ?? '';
     contactSocieteController.text = report.contactSociete ?? '';
     nomPersonneController.text = report.nomPersonne ?? '';
     contactPersonneController.text = report.contactPersonne ?? '';
-    moyenContact.value = report.moyenContact ?? '';
+    moyenContact = report.moyenContact ?? '';
     produitDemarcheController.text = report.produitDemarche ?? '';
     commentaireController.text = report.commentaire ?? '';
-    typeRelance.value = report.typeRelance ?? '';
-    relanceDateHeure.value = report.relanceDateHeure;
+    typeRelance = report.typeRelance ?? '';
+    relanceDateHeure = report.relanceDateHeure;
     commentsController.text = report.commentaire ?? '';
   }
 
   /// Mettre à jour un rapport existant (statut submitted uniquement côté backend)
   Future<void> updateReport() async {
-    final report = currentReport.value;
+    final report = currentReport;
     if (report == null) return;
     if (formKey.currentState?.validate() != true) {
-      Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      errorHelperShowSnackbar?.call('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
     try {
-      isLoading.value = true;
+      isLoading = true;
       await _reportingService.updateReport(
         reportId: report.id,
-        nature: nature.value.isEmpty ? null : nature.value,
+        nature: nature.isEmpty ? null : nature,
         nomSociete: nomSocieteController.text.trim().isEmpty ? null : nomSocieteController.text.trim(),
         contactSociete: contactSocieteController.text.trim().isEmpty ? null : contactSocieteController.text.trim(),
         nomPersonne: nomPersonneController.text.trim().isEmpty ? null : nomPersonneController.text.trim(),
         contactPersonne: contactPersonneController.text.trim().isEmpty ? null : contactPersonneController.text.trim(),
-        moyenContact: moyenContact.value.isEmpty ? null : moyenContact.value,
+        moyenContact: moyenContact.isEmpty ? null : moyenContact,
         produitDemarche: produitDemarcheController.text.trim().isEmpty ? null : produitDemarcheController.text.trim(),
         commentaire: commentaireController.text.trim().isEmpty ? null : commentaireController.text.trim(),
-        typeRelance: typeRelance.value.isEmpty ? null : typeRelance.value,
-        relanceDateHeure: relanceDateHeure.value,
+        typeRelance: typeRelance.isEmpty ? null : typeRelance,
+        relanceDateHeure: relanceDateHeure,
       );
       clearForm();
-      Get.snackbar('Succès', 'Rapport mis à jour avec succès');
-      Get.offNamed('/reporting');
+      ErrorHelper.showSuccess('Rapport mis à jour avec succès');
+      rootGoRouter?.go('/reporting');
       loadReports(forceRefresh: true);
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         e.toString().replaceFirst('Exception: ', ''),
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Changer la période de filtrage
   void updateDateRange(DateTime start, DateTime end) {
-    startDate.value = start;
-    endDate.value = end;
+    startDate = start;
+    endDate = end;
     loadReports();
   }
 
-  // Filtrer par rôle utilisateur
   void filterByUserRole(String? role) {
-    selectedUserRole.value = role;
+    selectedUserRole = role;
     loadReports();
   }
 
-  // Ajouter ou modifier la note du patron sur un rapport
   Future<void> addPatronNote(int reportId, {String? note}) async {
     bool actionSuccess = false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final result = await _reportingService.addPatronNote(
         reportId,
@@ -600,8 +593,7 @@ class ReportingController extends GetxController {
 
       if (isSuccess) {
         actionSuccess = true;
-        Get.snackbar(
-          'Succès',
+        ErrorHelper.showSuccess(
           note != null && note.isNotEmpty
               ? 'Note enregistrée avec succès'
               : 'Note supprimée avec succès',
@@ -629,7 +621,7 @@ class ReportingController extends GetxController {
           errorStr.contains('403') ||
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
-        Get.snackbar('Erreur', 'Erreur d\'authentification: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur d\'authentification: $e');
       } else {
         // Pour les autres erreurs, vérifier si c'est un problème de parsing
         if (errorStr.contains('format') ||
@@ -640,14 +632,14 @@ class ReportingController extends GetxController {
           // Probablement un problème de parsing après un succès
           // Ne rien afficher
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Erreur lors de l\'enregistrement de la note: $e',
           );
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

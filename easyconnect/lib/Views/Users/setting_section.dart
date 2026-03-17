@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class SettingsSection extends StatefulWidget {
   @override
@@ -43,7 +42,9 @@ class _SettingsSectionState extends State<SettingsSection> {
           ElevatedButton(
             onPressed: () {
               if (_formKey.currentState!.validate()) {
-                Get.snackbar("Succès", "Paramètres sauvegardés");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Paramètres sauvegardés')),
+                );
               }
             },
             child: Text("Sauvegarder"),

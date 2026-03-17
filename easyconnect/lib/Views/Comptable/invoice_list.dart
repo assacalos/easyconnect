@@ -1,85 +1,96 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
-import 'package:easyconnect/Views/Comptable/invoice_form.dart';
+import 'package:easyconnect/providers/invoice_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Views/Comptable/invoice_detail.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class InvoiceList extends StatefulWidget {
+class InvoiceList extends ConsumerStatefulWidget {
   final int? clientId;
 
   const InvoiceList({super.key, this.clientId});
 
   @override
-  State<InvoiceList> createState() => _InvoiceListState();
+  ConsumerState<InvoiceList> createState() => _InvoiceListState();
 }
 
-class _InvoiceListState extends State<InvoiceList> {
+class _InvoiceListState extends ConsumerState<InvoiceList> {
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (!mounted) return;
-        try {
-          Get.find<InvoiceController>().loadInvoices();
-        } catch (_) {}
+        ref.read(invoiceProvider.notifier).loadInvoices(forceRefresh: true);
       });
     });
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  bool _canApproveInvoices(int? role) =>
+      role == Roles.ADMIN || role == Roles.PATRON;
+  bool _canSubmitInvoices(int? role) => role == Roles.COMPTABLE;
+
+  @override
   Widget build(BuildContext context) {
-    final InvoiceController controller = Get.put(InvoiceController());
+    final state = ref.watch(invoiceProvider);
+    final notifier = ref.read(invoiceProvider.notifier);
+    final user = ref.read(authProvider).user;
+    final role = user?.role;
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Gestion des factures'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: () => _showFilterDialog(controller),
+            onPressed: () => _showFilterDialog(context, state, notifier),
           ),
         ],
       ),
       body: Stack(
         children: [
-          Obx(() {
-            if (controller.isLoading.value) {
-              return const SkeletonSearchResults(itemCount: 6);
-            }
-
-            if (controller.invoices.isEmpty) {
-              return const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.receipt_long, size: 64, color: Colors.grey),
-                    SizedBox(height: 16),
-                    Text(
-                      'Aucune facture trouvée',
-                      style: TextStyle(fontSize: 18, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return Column(
+          if (state.isLoading)
+            const SkeletonSearchResults(itemCount: 6)
+          else if (state.invoices.isEmpty)
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.receipt_long, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'Aucune facture trouvée',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
               children: [
-                // Barre de recherche
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextField(
-                    onChanged:
-                        (value) => controller.filterInvoices(search: value),
+                    onChanged: (value) =>
+                        notifier.filterInvoices(search: value),
                     decoration: const InputDecoration(
                       hintText: 'Rechercher une facture...',
                       prefixIcon: Icon(Icons.search),
@@ -87,54 +98,44 @@ class _InvoiceListState extends State<InvoiceList> {
                     ),
                   ),
                 ),
-
-                // Liste des factures
                 Expanded(
                   child: Builder(
                     builder: (context) {
-                      // Récupérer clientId depuis les arguments
-                      final args = Get.arguments as Map<String, dynamic>?;
-                      final filterClientId =
-                          widget.clientId ?? args?['clientId'] as int?;
-
-                      // Filtrer les factures par clientId si fourni
-                      var filteredInvoices = controller.invoices;
-                      if (filterClientId != null) {
-                        filteredInvoices =
-                            filteredInvoices
-                                .where(
-                                  (invoice) =>
-                                      invoice.clientId == filterClientId,
-                                )
-                                .toList()
-                                .obs;
+                      var filteredInvoices = state.invoices;
+                      if (widget.clientId != null) {
+                        filteredInvoices = filteredInvoices
+                            .where((invoice) =>
+                                invoice.clientId == widget.clientId)
+                            .toList();
                       }
-
-                      return Obx(() => PaginatedListView(
-                        scrollController: controller.scrollController,
-                        onLoadMore: controller.loadMore,
-                        hasNextPage: controller.hasNextPage.value,
-                        isLoadingMore: controller.isLoadingMore.value,
+                      return PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: state.hasNextPage,
+                        isLoadingMore: state.isLoadingMore,
                         itemCount: filteredInvoices.length,
                         itemBuilder: (context, index) {
                           final invoice = filteredInvoices[index];
-                          return _buildInvoiceCard(invoice, controller);
+                          return _buildInvoiceCard(
+                            context,
+                            invoice,
+                            notifier,
+                            role,
+                          );
                         },
-                      ));
+                      );
                     },
                   ),
                 ),
               ],
-            );
-          }),
-          // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
+            ),
           Positioned(
             bottom: 80,
             right: 16,
             child: RoleBasedWidget(
               allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
               child: UniformAddButton(
-                onPressed: () => Get.to(() => const InvoiceForm()),
+                onPressed: () => context.push('/invoices/new'),
                 label: 'Nouvelle Facture',
                 icon: Icons.receipt,
               ),
@@ -145,20 +146,29 @@ class _InvoiceListState extends State<InvoiceList> {
     );
   }
 
-  Widget _buildInvoiceCard(InvoiceModel invoice, InvoiceController controller) {
+  Widget _buildInvoiceCard(
+    BuildContext context,
+    InvoiceModel invoice,
+    InvoiceNotifier notifier,
+    int? role,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: InkWell(
-        onTap: () => Get.to(() => InvoiceDetail(invoice: invoice)),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InvoiceDetail(invoice: invoice),
+          ),
+        ),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec numéro et statut
               Row(
                 children: [
                   Expanded(
@@ -176,20 +186,20 @@ class _InvoiceListState extends State<InvoiceList> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: controller
+                      color: notifier
                           .getInvoiceStatusColor(invoice.status)
                           .withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: controller
+                        color: notifier
                             .getInvoiceStatusColor(invoice.status)
                             .withOpacity(0.5),
                       ),
                     ),
                     child: Text(
-                      controller.getInvoiceStatusText(invoice.status),
+                      notifier.getInvoiceStatusText(invoice.status),
                       style: TextStyle(
-                        color: controller.getInvoiceStatusColor(invoice.status),
+                        color: notifier.getInvoiceStatusColor(invoice.status),
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -198,8 +208,6 @@ class _InvoiceListState extends State<InvoiceList> {
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Informations client
               Row(
                 children: [
                   Icon(Icons.person, size: 16, color: Colors.grey[600]),
@@ -213,8 +221,6 @@ class _InvoiceListState extends State<InvoiceList> {
                 ],
               ),
               const SizedBox(height: 4),
-
-              // Date
               Row(
                 children: [
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
@@ -226,8 +232,6 @@ class _InvoiceListState extends State<InvoiceList> {
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Montant
               Row(
                 children: [
                   Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
@@ -242,17 +246,14 @@ class _InvoiceListState extends State<InvoiceList> {
                   ),
                 ],
               ),
-
-              // Actions selon le statut
-              if (invoice.status == 'draft' &&
-                  controller.canSubmitInvoices) ...[
+              if (invoice.status == 'draft' && _canSubmitInvoices(role)) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed:
-                            () => controller.submitInvoiceToPatron(invoice.id),
+                        onPressed: () =>
+                            notifier.submitInvoiceToPatron(invoice.id),
                         icon: const Icon(Icons.send, size: 16),
                         label: const Text('Soumettre'),
                         style: ElevatedButton.styleFrom(
@@ -265,16 +266,18 @@ class _InvoiceListState extends State<InvoiceList> {
                   ],
                 ),
               ],
-
               if (invoice.status == 'pending_approval' &&
-                  controller.canApproveInvoices) ...[
+                  _canApproveInvoices(role)) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed:
-                            () => _showApprovalDialog(controller, invoice.id),
+                        onPressed: () => _showApprovalDialog(
+                          context,
+                          notifier,
+                          invoice.id,
+                        ),
                         icon: const Icon(Icons.check, size: 16),
                         label: const Text('Approuver'),
                         style: ElevatedButton.styleFrom(
@@ -287,8 +290,11 @@ class _InvoiceListState extends State<InvoiceList> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed:
-                            () => _showRejectionDialog(controller, invoice.id),
+                        onPressed: () => _showRejectionDialog(
+                          context,
+                          notifier,
+                          invoice.id,
+                        ),
                         icon: const Icon(Icons.close, size: 16),
                         label: const Text('Rejeter'),
                         style: ElevatedButton.styleFrom(
@@ -301,15 +307,13 @@ class _InvoiceListState extends State<InvoiceList> {
                   ],
                 ),
               ],
-
-              // Bouton PDF pour les factures validées (sent, paid)
               if (invoice.status == 'sent' || invoice.status == 'paid') ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => controller.generatePDF(invoice.id),
+                        onPressed: () => notifier.generatePDF(invoice.id),
                         icon: const Icon(Icons.picture_as_pdf, size: 16),
                         label: const Text('Générer PDF'),
                         style: ElevatedButton.styleFrom(
@@ -329,109 +333,131 @@ class _InvoiceListState extends State<InvoiceList> {
     );
   }
 
-  void _showFilterDialog(InvoiceController controller) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Filtrer les factures'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              value: controller.selectedStatus.value,
-              decoration: const InputDecoration(labelText: 'Statut'),
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('Tous')),
-                DropdownMenuItem(value: 'draft', child: Text('Brouillon')),
-                DropdownMenuItem(value: 'sent', child: Text('Envoyée')),
-                DropdownMenuItem(value: 'paid', child: Text('Payée')),
-                DropdownMenuItem(value: 'overdue', child: Text('En retard')),
-                DropdownMenuItem(
-                  value: 'pending_approval',
-                  child: Text('En attente'),
-                ),
-              ],
-              onChanged:
-                  (value) => controller.selectedStatus.value = value ?? 'all',
-            ),
-            const SizedBox(height: 16),
-            Row(
+  void _showFilterDialog(
+    BuildContext context,
+    dynamic state,
+    InvoiceNotifier notifier,
+  ) {
+    String selectedStatus = state.selectedStatus;
+    DateTime? startDate = state.startDate;
+    DateTime? endDate = state.endDate;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Filtrer les factures'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () async {
-                      final date = await showDatePicker(
-                        context: Get.context!,
-                        initialDate:
-                            controller.startDate.value ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        controller.startDate.value = date;
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      controller.startDate.value != null
-                          ? '${controller.startDate.value!.day}/${controller.startDate.value!.month}'
-                          : 'Date début',
+                DropdownButtonFormField<String>(
+                  value: selectedStatus,
+                  decoration: const InputDecoration(labelText: 'Statut'),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('Tous')),
+                    DropdownMenuItem(value: 'draft', child: Text('Brouillon')),
+                    DropdownMenuItem(value: 'sent', child: Text('Envoyée')),
+                    DropdownMenuItem(value: 'paid', child: Text('Payée')),
+                    DropdownMenuItem(value: 'overdue', child: Text('En retard')),
+                    DropdownMenuItem(
+                      value: 'pending_approval',
+                      child: Text('En attente'),
                     ),
-                  ),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedStatus = value ?? 'all');
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () async {
-                      final date = await showDatePicker(
-                        context: Get.context!,
-                        initialDate: controller.endDate.value ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        controller.endDate.value = date;
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      controller.endDate.value != null
-                          ? '${controller.endDate.value!.day}/${controller.endDate.value!.month}'
-                          : 'Date fin',
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: startDate ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+                          if (date != null) {
+                            setDialogState(() => startDate = date);
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          startDate != null
+                              ? '${startDate!.day}/${startDate!.month}'
+                              : 'Date début',
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: endDate ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+                          if (date != null) {
+                            setDialogState(() => endDate = date);
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          endDate != null
+                              ? '${endDate!.day}/${endDate!.month}'
+                              : 'Date fin',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.filterInvoices(
-                status: controller.selectedStatus.value,
-                start: controller.startDate.value,
-                end: controller.endDate.value,
-              );
-              Get.back();
-            },
-            child: const Text('Appliquer'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  notifier.filterInvoices(
+                    status: selectedStatus,
+                    start: startDate,
+                    end: endDate,
+                  );
+                  Navigator.pop(context);
+                },
+                child: const Text('Appliquer'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  void _showApprovalDialog(InvoiceController controller, int invoiceId) {
+  void _showApprovalDialog(
+    BuildContext context,
+    InvoiceNotifier notifier,
+    int invoiceId,
+  ) {
     final commentsController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver la facture'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Êtes-vous sûr de vouloir approuver cette facture ?'),
+            const Text(
+                'Êtes-vous sûr de vouloir approuver cette facture ?'),
             const SizedBox(height: 16),
             TextField(
               controller: commentsController,
@@ -444,17 +470,38 @@ class _InvoiceListState extends State<InvoiceList> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.approveInvoice(
-                invoiceId,
-                comments:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
+            onPressed: () async {
+              try {
+                await notifier.approveInvoice(
+                  invoiceId,
+                  comments: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Facture approuvée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Approuver'),
           ),
@@ -463,11 +510,16 @@ class _InvoiceListState extends State<InvoiceList> {
     );
   }
 
-  void _showRejectionDialog(InvoiceController controller, int invoiceId) {
+  void _showRejectionDialog(
+    BuildContext context,
+    InvoiceNotifier notifier,
+    int invoiceId,
+  ) {
     final reasonController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter la facture'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -485,17 +537,44 @@ class _InvoiceListState extends State<InvoiceList> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectInvoice(
-                  invoiceId,
-                  reasonController.text.trim(),
-                );
-                Get.back();
+                try {
+                  await notifier.rejectInvoice(
+                    invoiceId,
+                    reasonController.text.trim(),
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Facture rejetée'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez indiquer la raison du rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

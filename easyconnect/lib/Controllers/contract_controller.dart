@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/services/contract_service.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
+import 'package:collection/collection.dart';
 
-class ContractController extends GetxController {
+class ContractController {
+  static final ContractController _instance = ContractController._();
+  static ContractController get to => _instance;
+  factory ContractController() => _instance;
+
   final ContractService _contractService = ContractService.to;
   final EmployeeService _employeeService = EmployeeService.to;
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxList<Contract> contracts = <Contract>[].obs;
-  final RxList<Contract> filteredContracts = <Contract>[].obs;
-  final Rx<Contract?> selectedContract = Rx<Contract?>(null);
-  final Rx<ContractStats?> contractStats = Rx<ContractStats?>(null);
-  final RxList<Employee> employees = <Employee>[].obs;
-  final RxList<String> departments = <String>[].obs;
-  final RxList<ContractTemplate> contractTemplates = <ContractTemplate>[].obs;
+  // Variables (plain types)
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  final List<Contract> contracts = [];
+  final List<Contract> filteredContracts = [];
+  Contract? selectedContract;
+  ContractStats? contractStats;
+  final List<Employee> employees = [];
+  final List<String> departments = [];
+  final List<ContractTemplate> contractTemplates = [];
 
   // Variables pour le formulaire
   final TextEditingController contractNumberController =
@@ -53,53 +58,42 @@ class ContractController extends GetxController {
   final TextEditingController attachmentsController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
 
-  // Liste des fichiers sélectionnés pour les pièces jointes
-  final RxList<Map<String, dynamic>> selectedAttachments =
-      <Map<String, dynamic>>[].obs;
+  final List<Map<String, dynamic>> selectedAttachments = [];
 
   // Variables de filtrage
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedContractType = 'all'.obs;
-  final RxString selectedDepartment = 'all'.obs;
-  final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
+  String selectedStatus = 'all';
+  String selectedContractType = 'all';
+  String selectedDepartment = 'all';
+  DateTime? selectedStartDate;
+  DateTime? selectedEndDate;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire de création
-  final RxInt selectedEmployeeId = 0.obs;
-  final Rx<Employee?> selectedEmployee = Rx<Employee?>(null);
-  final RxString selectedDepartmentForm = ''.obs;
-  final RxString selectedContractTypeForm = 'all'.obs;
-  final RxString selectedPaymentFrequency = 'monthly'.obs;
-  final RxString selectedProbationPeriod = 'none'.obs;
+  int selectedEmployeeId = 0;
+  Employee? selectedEmployee;
+  String selectedDepartmentForm = '';
+  String selectedContractTypeForm = 'all';
+  String selectedPaymentFrequency = 'monthly';
+  String selectedProbationPeriod = 'none';
 
   // Variables pour les permissions
-  final RxBool canManageContracts =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canApproveContracts =
-      true.obs; // TODO: Implémenter la vérification des permissions
-  final RxBool canViewAllContracts =
-      true.obs; // TODO: Implémenter la vérification des permissions
+  bool canManageContracts = true;
+  bool canApproveContracts = true;
+  bool canViewAllContracts = true;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Chargement différé : les données sont chargées par la page (contract_list)
-    // au premier affichage pour éviter une avalanche d'appels API au binding.
+  ContractController._() {
     generateContractNumber();
   }
 
-  @override
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     jobTitleController.dispose();
     jobDescriptionController.dispose();
@@ -108,7 +102,6 @@ class ContractController extends GetxController {
     netSalaryController.dispose();
     notesController.dispose();
     searchController.dispose();
-    super.onClose();
   }
 
   // Charger les employés
@@ -133,7 +126,8 @@ class ContractController extends GetxController {
         );
       }
 
-      employees.value = emp;
+      employees.clear();
+      employees.addAll(emp);
       print(
         '📝 [CONTRACT_CONTROLLER] Liste mise à jour: ${employees.length} employés',
       );
@@ -160,19 +154,15 @@ class ContractController extends GetxController {
           print(
             '✅ [CONTRACT_CONTROLLER] Cache trouvé: ${cached.length} employés',
           );
-          employees.value = cached;
+          employees.clear();
+          employees.addAll(cached);
           return;
         }
         print('⚠️ [CONTRACT_CONTROLLER] Aucun cache trouvé');
 
         // Afficher l'erreur seulement si vraiment nécessaire
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
-            'Erreur',
-            'Impossible de charger les employés. Veuillez réessayer.',
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 3),
-          );
+          ErrorHelper.showError('Impossible de charger les employés. Veuillez réessayer.', title: 'Erreur');
         });
       } else {
         print(
@@ -186,17 +176,19 @@ class ContractController extends GetxController {
   Future<void> loadDepartments() async {
     try {
       final depts = await _employeeService.getDepartments();
-      departments.value = depts;
+      departments.clear();
+      departments.addAll(depts);
     } catch (e) {
       // En cas d'erreur, utiliser les départements par défaut
-      departments.value = [
+      departments.clear();
+      departments.addAll([
         'Ressources Humaines',
         'Commercial',
         'Comptabilité',
         'Technique',
         'Support',
         'Direction',
-      ];
+      ]);
     }
   }
 
@@ -204,7 +196,8 @@ class ContractController extends GetxController {
   Future<void> loadContractTemplates() async {
     try {
       final templates = await _contractService.getContractTemplates();
-      contractTemplates.value = templates;
+      contractTemplates.clear();
+      contractTemplates.addAll(templates);
     } catch (e) {}
   }
 
@@ -217,50 +210,54 @@ class ContractController extends GetxController {
   }
 
   // Charger les contrats
-  Future<void> loadContracts({int page = 1}) async {
+  Future<void> loadContracts({int page = 1, bool forceRefresh = false}) async {
     try {
       if (page == 1) {
-        final hiveList = ContractService.getCachedContracts();
-        if (hiveList.isNotEmpty) {
-          contracts.value = hiveList;
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshContractsFromApi());
-          return;
+        if (!forceRefresh) {
+          final hiveList = ContractService.getCachedContracts();
+          if (hiveList.isNotEmpty) {
+            contracts.clear();
+            contracts.addAll(hiveList);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshContractsFromApi());
+            return;
+          }
         }
-        isLoading.value = true;
+        isLoading = true;
       }
       if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         final paginatedResponse = await _contractService.getContractsPaginated(
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          status: selectedStatus != 'all' ? selectedStatus : null,
           contractType:
-              selectedContractType.value != 'all'
-                  ? selectedContractType.value
+              selectedContractType != 'all'
+                  ? selectedContractType
                   : null,
           department:
-              selectedDepartment.value != 'all'
-                  ? selectedDepartment.value
+              selectedDepartment != 'all'
+                  ? selectedDepartment
                   : null,
           search:
               searchController.text.isNotEmpty ? searchController.text : null,
           page: page,
-          perPage: perPage.value,
+          perPage: perPage,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          contracts.value = paginatedResponse.data;
+          contracts.clear();
+          contracts.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           contracts.addAll(paginatedResponse.data);
@@ -269,18 +266,19 @@ class ContractController extends GetxController {
       } catch (e) {
         // En cas d'erreur, essayer la méthode non-paginée en fallback
         final contractsList = await _contractService.getAllContracts(
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          status: selectedStatus != 'all' ? selectedStatus : null,
           contractType:
-              selectedContractType.value != 'all'
-                  ? selectedContractType.value
+              selectedContractType != 'all'
+                  ? selectedContractType
                   : null,
           department:
-              selectedDepartment.value != 'all'
-                  ? selectedDepartment.value
+              selectedDepartment != 'all'
+                  ? selectedDepartment
                   : null,
         );
         if (page == 1) {
-          contracts.value = contractsList;
+          contracts.clear();
+        contracts.addAll(contractsList);
         } else {
           contracts.addAll(contractsList);
         }
@@ -294,16 +292,12 @@ class ContractController extends GetxController {
           !errorString.contains('401') &&
           !errorString.contains('unauthorized')) {
         if (contracts.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Impossible de charger les contrats',
-            snackPosition: SnackPosition.BOTTOM,
-          );
+          ErrorHelper.showError('Impossible de charger les contrats', title: 'Erreur');
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
@@ -311,45 +305,46 @@ class ContractController extends GetxController {
   Future<void> _refreshContractsFromApi() async {
     try {
       final paginatedResponse = await _contractService.getContractsPaginated(
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+        status: selectedStatus != 'all' ? selectedStatus : null,
         contractType:
-            selectedContractType.value != 'all'
-                ? selectedContractType.value
+            selectedContractType != 'all'
+                ? selectedContractType
                 : null,
         department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+            selectedDepartment != 'all' ? selectedDepartment : null,
         search: searchController.text.isNotEmpty ? searchController.text : null,
         page: 1,
-        perPage: perPage.value,
+        perPage: perPage,
       );
-      contracts.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      contracts.clear();
+      contracts.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
       applyFilters();
     } catch (_) {}
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadContracts(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      loadContracts(page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
-      loadContracts(page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading) {
+      loadContracts(page: currentPage - 1);
     }
   }
 
@@ -357,16 +352,16 @@ class ContractController extends GetxController {
   Future<void> loadContractStats() async {
     try {
       final stats = await _contractService.getContractStats(
-        startDate: selectedStartDate.value,
-        endDate: selectedEndDate.value,
+        startDate: selectedStartDate,
+        endDate: selectedEndDate,
         department:
-            selectedDepartment.value != 'all' ? selectedDepartment.value : null,
+            selectedDepartment != 'all' ? selectedDepartment : null,
         contractType:
-            selectedContractType.value != 'all'
-                ? selectedContractType.value
+            selectedContractType != 'all'
+                ? selectedContractType
                 : null,
       );
-      contractStats.value = stats;
+      contractStats = stats;
     } catch (e) {}
   }
 
@@ -388,7 +383,8 @@ class ContractController extends GetxController {
           return true;
         }).toList();
 
-    filteredContracts.value = filtered;
+    filteredContracts.clear();
+    filteredContracts.addAll(filtered);
   }
 
   // Rechercher dans les contrats
@@ -399,26 +395,26 @@ class ContractController extends GetxController {
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadContracts();
   }
 
   // Filtrer par type de contrat
   void filterByContractType(String type) {
-    selectedContractType.value = type;
+    selectedContractType = type;
     loadContracts();
   }
 
   // Filtrer par département
   void filterByDepartment(String department) {
-    selectedDepartment.value = department;
+    selectedDepartment = department;
     loadContracts();
   }
 
   // Filtrer par date
   void filterByDateRange(DateTime? startDate, DateTime? endDate) {
-    selectedStartDate.value = startDate;
-    selectedEndDate.value = endDate;
+    selectedStartDate = startDate;
+    selectedEndDate = endDate;
     loadContractStats();
   }
 
@@ -427,118 +423,97 @@ class ContractController extends GetxController {
     try {
       // Validation des champs obligatoires
       final department =
-          selectedDepartmentForm.value.isNotEmpty
-              ? selectedDepartmentForm.value
+          selectedDepartmentForm.isNotEmpty
+              ? selectedDepartmentForm
               : departmentController.text.trim();
 
-      if (selectedEmployeeId.value == 0) {
-        Get.snackbar('Erreur', 'Veuillez sélectionner un employé');
+      if (selectedEmployeeId == 0) {
+        ErrorHelper.showValidationError('Veuillez sélectionner un employé');
         return false;
       }
 
-      if (selectedContractTypeForm.value.isEmpty ||
-          selectedContractTypeForm.value == 'all') {
-        Get.snackbar('Erreur', 'Veuillez sélectionner un type de contrat');
+      if (selectedContractTypeForm.isEmpty ||
+          selectedContractTypeForm == 'all') {
+        ErrorHelper.showValidationError('Veuillez sélectionner un type de contrat');
         return false;
       }
 
       // Validation spéciale pour les contrats fixed_term : end_date est obligatoire
-      if (selectedContractTypeForm.value == 'fixed_term') {
+      if (selectedContractTypeForm == 'fixed_term') {
         if (endDateController.text.trim().isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'La date de fin est obligatoire pour les contrats à durée déterminée (CDD)',
-          );
+          ErrorHelper.showValidationError('La date de fin est obligatoire pour les contrats à durée déterminée (CDD)');
           return false;
         }
       }
 
       if (department.isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez sélectionner un département');
+        ErrorHelper.showValidationError('Veuillez sélectionner un département');
         return false;
       }
 
       if (jobTitleController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Le poste est obligatoire');
+        ErrorHelper.showValidationError('Le poste est obligatoire');
         return false;
       }
 
       // Validation de longueur pour job_title et position (max 100 caractères)
       // Note: position et job_title utilisent la même valeur (jobTitleController)
       if (jobTitleController.text.trim().length > 100) {
-        Get.snackbar(
-          'Erreur',
-          'Le poste ne doit pas dépasser 100 caractères (actuellement: ${jobTitleController.text.trim().length})',
-        );
+        ErrorHelper.showValidationError('Le poste ne doit pas dépasser 100 caractères (actuellement: ${jobTitleController.text.trim().length})');
         return false;
       }
 
       // Validation de longueur pour department (max 100 caractères)
       if (department.length > 100) {
-        Get.snackbar(
-          'Erreur',
-          'Le département ne doit pas dépasser 100 caractères (actuellement: ${department.length})',
-        );
+        ErrorHelper.showValidationError('Le département ne doit pas dépasser 100 caractères (actuellement: ${department.length})');
         return false;
       }
 
       if (jobDescriptionController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'La description du poste est obligatoire');
+        ErrorHelper.showValidationError('La description du poste est obligatoire');
         return false;
       }
 
       if (jobDescriptionController.text.trim().length < 50) {
-        Get.snackbar(
-          'Erreur',
-          'La description du poste doit contenir au moins 50 caractères (actuellement: ${jobDescriptionController.text.trim().length})',
-        );
+        ErrorHelper.showValidationError('La description du poste doit contenir au moins 50 caractères (actuellement: ${jobDescriptionController.text.trim().length})');
         return false;
       }
 
       if (grossSalaryController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Le salaire brut est obligatoire');
+        ErrorHelper.showValidationError('Le salaire brut est obligatoire');
         return false;
       }
 
-      if (selectedPaymentFrequency.value.isEmpty) {
-        Get.snackbar(
-          'Erreur',
-          'Veuillez sélectionner une fréquence de paiement',
-        );
+      if (selectedPaymentFrequency.isEmpty) {
+        ErrorHelper.showValidationError('Veuillez sélectionner une fréquence de paiement');
         return false;
       }
 
       if (startDateController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'La date de début est obligatoire');
+        ErrorHelper.showValidationError('La date de début est obligatoire');
         return false;
       }
 
       if (workLocationController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Le lieu de travail est obligatoire');
+        ErrorHelper.showValidationError('Le lieu de travail est obligatoire');
         return false;
       }
 
       // Validation de longueur pour work_location (max 255 caractères)
       if (workLocationController.text.trim().length > 255) {
-        Get.snackbar(
-          'Erreur',
-          'Le lieu de travail ne doit pas dépasser 255 caractères (actuellement: ${workLocationController.text.trim().length})',
-        );
+        ErrorHelper.showValidationError('Le lieu de travail ne doit pas dépasser 255 caractères (actuellement: ${workLocationController.text.trim().length})');
         return false;
       }
 
       if (workScheduleController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'L\'horaire de travail est obligatoire');
+        ErrorHelper.showValidationError('L\'horaire de travail est obligatoire');
         return false;
       }
 
       // Vérifier que work_schedule est une valeur valide
       final validWorkSchedules = ['full_time', 'part_time', 'flexible'];
       if (!validWorkSchedules.contains(workScheduleController.text.trim())) {
-        Get.snackbar(
-          'Erreur',
-          'L\'horaire de travail doit être : Temps plein, Temps partiel ou Flexible',
-        );
+        ErrorHelper.showValidationError('L\'horaire de travail doit être : Temps plein, Temps partiel ou Flexible');
         return false;
       }
 
@@ -546,33 +521,24 @@ class ContractController extends GetxController {
       final weeklyHours = double.tryParse(weeklyHoursController.text) ?? 40.0;
 
       if (grossSalary == null) {
-        Get.snackbar(
-          'Erreur',
-          'Le montant du salaire doit être un nombre valide',
-        );
+        ErrorHelper.showValidationError('Le montant du salaire doit être un nombre valide');
         return false;
       }
 
       if (grossSalary < 0) {
-        Get.snackbar(
-          'Erreur',
-          'Le salaire brut doit être supérieur ou égal à 0',
-        );
+        ErrorHelper.showValidationError('Le salaire brut doit être supérieur ou égal à 0');
         return false;
       }
 
       // Validation de weekly_hours (1-168)
       final weeklyHoursInt = weeklyHours.toInt();
       if (weeklyHoursInt < 1 || weeklyHoursInt > 168) {
-        Get.snackbar(
-          'Erreur',
-          'Les heures hebdomadaires doivent être entre 1 et 168 (actuellement: $weeklyHoursInt)',
-        );
+        ErrorHelper.showValidationError('Les heures hebdomadaires doivent être entre 1 et 168 (actuellement: $weeklyHoursInt)');
         return false;
       }
 
       // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
-      final String probationPeriod = selectedProbationPeriod.value;
+      final String probationPeriod = selectedProbationPeriod;
 
       // Parser la date de début (format dd/MM/yyyy)
       DateTime startDate;
@@ -594,10 +560,7 @@ class ContractController extends GetxController {
           startDate = DateTime.parse(startDateController.text);
         }
       } catch (e) {
-        Get.snackbar(
-          'Erreur',
-          'Format de date de début invalide: ${startDateController.text}',
-        );
+        ErrorHelper.showValidationError('Format de date de début invalide: ${startDateController.text}');
         return false;
       }
 
@@ -624,17 +587,11 @@ class ContractController extends GetxController {
 
           // Vérifier que end_date est après start_date
           if (endDate.isBefore(startDate)) {
-            Get.snackbar(
-              'Erreur',
-              'La date de fin doit être après la date de début',
-            );
+            ErrorHelper.showValidationError('La date de fin doit être après la date de début');
             return false;
           }
         } catch (e) {
-          Get.snackbar(
-            'Erreur',
-            'Format de date de fin invalide: ${endDateController.text}',
-          );
+          ErrorHelper.showValidationError('Format de date de fin invalide: ${endDateController.text}');
           return false;
         }
       }
@@ -647,8 +604,8 @@ class ContractController extends GetxController {
       }
 
       final result = await _contractService.createContract(
-        employeeId: selectedEmployeeId.value,
-        contractType: selectedContractTypeForm.value,
+        employeeId: selectedEmployeeId,
+        contractType: selectedContractTypeForm,
         position: jobTitleController.text.trim(),
         department: department,
         jobTitle: jobTitleController.text.trim(),
@@ -656,7 +613,7 @@ class ContractController extends GetxController {
         grossSalary: grossSalary,
         netSalary: grossSalary * 0.8, // Calcul automatique du salaire net
         salaryCurrency: 'FCFA',
-        paymentFrequency: selectedPaymentFrequency.value,
+        paymentFrequency: selectedPaymentFrequency,
         startDate: startDate,
         endDate: endDate,
         durationMonths: durationMonths,
@@ -689,14 +646,14 @@ class ContractController extends GetxController {
           );
         }
 
-        Get.snackbar('Succès', 'Contrat créé avec succès');
+        ErrorHelper.showSuccess('Contrat créé avec succès');
         clearForm();
         loadContracts();
         loadContractStats();
         return true;
       } else {
         final errorMessage = result['message'] ?? 'Erreur lors de la création';
-        Get.snackbar('Erreur', errorMessage);
+        ErrorHelper.showError(errorMessage, title: 'Erreur');
         return false;
       }
     } catch (e) {
@@ -711,7 +668,7 @@ class ContractController extends GetxController {
         return false;
       }
 
-      Get.snackbar('Erreur', 'Erreur lors de la création du contrat: $e');
+      ErrorHelper.showError('Erreur lors de la création du contrat: $e', title: 'Erreur');
       return false;
     }
   }
@@ -736,14 +693,11 @@ class ContractController extends GetxController {
           ),
         );
 
-        Get.snackbar('Succès', 'Contrat soumis avec succès');
+        ErrorHelper.showSuccess('Contrat soumis avec succès');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de la soumission',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de la soumission', title: 'Erreur');
       }
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -753,7 +707,7 @@ class ContractController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
+        ErrorHelper.showError('Erreur lors de la soumission: $e', title: 'Erreur');
       }
     }
   }
@@ -782,14 +736,11 @@ class ContractController extends GetxController {
           entity: contract,
         );
 
-        Get.snackbar('Succès', 'Contrat approuvé avec succès');
+        ErrorHelper.showSuccess('Contrat approuvé avec succès');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de l\'approbation',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de l\'approbation', title: 'Erreur');
       }
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -799,7 +750,7 @@ class ContractController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+        ErrorHelper.showError('Erreur lors de l\'approbation: $e', title: 'Erreur');
       }
     }
   }
@@ -829,11 +780,11 @@ class ContractController extends GetxController {
           entity: contract,
         );
 
-        Get.snackbar('Succès', 'Contrat rejeté');
+        ErrorHelper.showSuccess('Contrat rejeté');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar('Erreur', result['message'] ?? 'Erreur lors du rejet');
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors du rejet', title: 'Erreur');
       }
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -843,7 +794,7 @@ class ContractController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+        ErrorHelper.showError('Erreur lors du rejet: $e', title: 'Erreur');
       }
     }
   }
@@ -866,17 +817,14 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Contrat résilié');
+        ErrorHelper.showSuccess('Contrat résilié');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de la résiliation',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de la résiliation', title: 'Erreur');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la résiliation: $e');
+      ErrorHelper.showError('Erreur lors de la résiliation: $e', title: 'Erreur');
     }
   }
 
@@ -889,17 +837,14 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Contrat annulé');
+        ErrorHelper.showSuccess('Contrat annulé');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de l\'annulation',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de l\'annulation', title: 'Erreur');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'annulation: $e');
+      ErrorHelper.showError('Erreur lors de l\'annulation: $e', title: 'Erreur');
     }
   }
 
@@ -909,17 +854,14 @@ class ContractController extends GetxController {
       final result = await _contractService.deleteContract(contract.id!);
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Contrat supprimé');
+        ErrorHelper.showSuccess('Contrat supprimé');
         loadContracts();
         loadContractStats();
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de la suppression',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de la suppression', title: 'Erreur');
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la suppression: $e');
+      ErrorHelper.showError('Erreur lors de la suppression: $e', title: 'Erreur');
     }
   }
 
@@ -952,25 +894,25 @@ class ContractController extends GetxController {
   // Sélectionner un employé
   void setEmployee(int? employeeId) {
     if (employeeId == null) {
-      selectedEmployeeId.value = 0;
-      selectedEmployee.value = null;
+      selectedEmployeeId = 0;
+      selectedEmployee = null;
       employeeNameController.clear();
       employeeEmailController.clear();
       employeePhoneController.clear();
       return;
     }
 
-    selectedEmployeeId.value = employeeId;
+    selectedEmployeeId = employeeId;
     // Mettre à jour les informations de l'employé
     final employee = employees.firstWhereOrNull((e) => e.id == employeeId);
     if (employee != null) {
-      selectedEmployee.value = employee;
+      selectedEmployee = employee;
       employeeNameController.text = employee.fullName;
       employeeEmailController.text = employee.email;
       employeePhoneController.text = employee.phone ?? '';
       // Pré-remplir le département si disponible
       if (employee.department != null && employee.department!.isNotEmpty) {
-        selectedDepartmentForm.value = employee.department!;
+        selectedDepartmentForm = employee.department!;
         departmentController.text = employee.department!;
       }
       // Pré-remplir le poste si disponible
@@ -982,12 +924,12 @@ class ContractController extends GetxController {
 
   // Sélectionner un type de contrat
   void setContractType(String type) {
-    selectedContractTypeForm.value = type;
+    selectedContractTypeForm = type;
   }
 
   // Sélectionner une fréquence de paiement
   void setPaymentFrequency(String frequency) {
-    selectedPaymentFrequency.value = frequency;
+    selectedPaymentFrequency = frequency;
   }
 
   // Sélectionner un horaire de travail
@@ -1012,19 +954,19 @@ class ContractController extends GetxController {
 
   // Sélectionner un département
   void setDepartment(String department) {
-    selectedDepartmentForm.value = department;
+    selectedDepartmentForm = department;
     departmentController.text = department;
   }
 
   // Réinitialiser le formulaire
   void clearForm() {
-    selectedEmployeeId.value = 0;
-    selectedEmployee.value = null;
-    selectedDepartmentForm.value = '';
-    selectedContractTypeForm.value = '';
-    selectedPaymentFrequency.value =
+    selectedEmployeeId = 0;
+    selectedEmployee = null;
+    selectedDepartmentForm = '';
+    selectedContractTypeForm = '';
+    selectedPaymentFrequency =
         'monthly'; // Réinitialiser à la valeur par défaut
-    selectedProbationPeriod.value = 'none';
+    selectedProbationPeriod = 'none';
     startDateController.clear();
     endDateController.clear();
     contractNumberController.clear();
@@ -1058,17 +1000,9 @@ class ContractController extends GetxController {
       // Pour l'instant, on utilise image_picker comme solution temporaire
       // TODO: Ajouter file_picker pour sélectionner tous types de fichiers
 
-      Get.snackbar(
-        'Info',
-        'Fonctionnalité de sélection de fichiers en cours de développement',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      ErrorHelper.showInfo('Fonctionnalité de sélection de fichiers en cours de développement');
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la sélection des fichiers: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      ErrorHelper.showError('Erreur lors de la sélection des fichiers: $e', title: 'Erreur');
     }
   }
 
@@ -1094,11 +1028,11 @@ class ContractController extends GetxController {
 
   // Réinitialiser les filtres
   void clearFilters() {
-    selectedStatus.value = 'all';
-    selectedContractType.value = 'all';
-    selectedDepartment.value = 'all';
-    selectedStartDate.value = null;
-    selectedEndDate.value = null;
+    selectedStatus = 'all';
+    selectedContractType = 'all';
+    selectedDepartment = 'all';
+    selectedStartDate = null;
+    selectedEndDate = null;
     searchController.clear();
     loadContracts();
   }
@@ -1155,7 +1089,7 @@ class ContractController extends GetxController {
   void fillForm(Contract contract) {
     contractNumberController.text = contract.contractNumber;
     departmentController.text = contract.department;
-    selectedDepartmentForm.value = contract.department;
+    selectedDepartmentForm = contract.department;
     jobTitleController.text = contract.jobTitle;
     jobDescriptionController.text = contract.jobDescription;
     workLocationController.text = contract.workLocation;
@@ -1164,7 +1098,7 @@ class ContractController extends GetxController {
     grossSalaryController.text = contract.grossSalary.toString();
     netSalaryController.text = contract.netSalary.toString();
     weeklyHoursController.text = contract.weeklyHours.toString();
-    selectedProbationPeriod.value = contract.probationPeriod;
+    selectedProbationPeriod = contract.probationPeriod;
     probationPeriodController.text = contract.probationPeriod;
     startDateController.text =
         contract.startDate.toIso8601String().split('T')[0];
@@ -1182,22 +1116,22 @@ class ContractController extends GetxController {
         .map((a) => a.fileName)
         .join(', ');
 
-    selectedContractTypeForm.value = contract.contractType;
-    selectedPaymentFrequency.value = contract.paymentFrequency;
+    selectedContractTypeForm = contract.contractType;
+    selectedPaymentFrequency = contract.paymentFrequency;
   }
 
   // Mettre à jour un contrat
   Future<bool> updateContract(Contract contract) async {
     try {
-      if (selectedEmployeeId.value == 0 ||
-          selectedContractTypeForm.value.isEmpty ||
+      if (selectedEmployeeId == 0 ||
+          selectedContractTypeForm.isEmpty ||
           departmentController.text.trim().isEmpty ||
           jobTitleController.text.trim().isEmpty ||
           grossSalaryController.text.trim().isEmpty ||
-          selectedPaymentFrequency.value.isEmpty ||
+          selectedPaymentFrequency.isEmpty ||
           startDateController.text.trim().isEmpty ||
           workLocationController.text.trim().isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez remplir tous les champs obligatoires');
+        ErrorHelper.showValidationError('Veuillez remplir tous les champs obligatoires');
         return false;
       }
 
@@ -1205,19 +1139,16 @@ class ContractController extends GetxController {
       final weeklyHours = double.tryParse(weeklyHoursController.text) ?? 40.0;
 
       if (grossSalary == null) {
-        Get.snackbar(
-          'Erreur',
-          'Le montant du salaire doit être un nombre valide',
-        );
+        ErrorHelper.showValidationError('Le montant du salaire doit être un nombre valide');
         return false;
       }
 
       // Utiliser la valeur sélectionnée pour la période d'essai (enum: 'none', '1_month', '3_months', '6_months')
-      final String probationPeriod = selectedProbationPeriod.value;
+      final String probationPeriod = selectedProbationPeriod;
 
       final result = await _contractService.updateContract(
         id: contract.id!,
-        contractType: selectedContractTypeForm.value,
+        contractType: selectedContractTypeForm,
         position: jobTitleController.text.trim(),
         department: departmentController.text.trim(),
         jobTitle: jobTitleController.text.trim(),
@@ -1225,7 +1156,7 @@ class ContractController extends GetxController {
         grossSalary: grossSalary,
         netSalary: grossSalary * 0.8, // Calcul automatique du salaire net
         salaryCurrency: 'FCFA',
-        paymentFrequency: selectedPaymentFrequency.value,
+        paymentFrequency: selectedPaymentFrequency,
         startDate: DateTime.parse(startDateController.text),
         endDate:
             endDateController.text.isNotEmpty
@@ -1242,20 +1173,17 @@ class ContractController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Contrat mis à jour avec succès');
+        ErrorHelper.showSuccess('Contrat mis à jour avec succès');
         clearForm();
         loadContracts();
         loadContractStats();
         return true;
       } else {
-        Get.snackbar(
-          'Erreur',
-          result['message'] ?? 'Erreur lors de la mise à jour',
-        );
+        ErrorHelper.showError(result['message'] ?? 'Erreur lors de la mise à jour', title: 'Erreur');
         return false;
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la mise à jour du contrat: $e');
+      ErrorHelper.showError('Erreur lors de la mise à jour du contrat: $e', title: 'Erreur');
       return false;
     }
   }

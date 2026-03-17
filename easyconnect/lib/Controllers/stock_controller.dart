@@ -1,43 +1,48 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class StockController extends GetxController {
-  late final StockService _stockService;
+class StockController {
+  static final StockController _instance = StockController._();
+  static StockController get to => _instance;
+  factory StockController() => _instance;
+  StockController._();
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxBool isCreating = false.obs;
-  final RxBool isUpdating = false.obs;
-  final RxBool isDeleting = false.obs;
-  final RxList<Stock> allStocks = <Stock>[].obs; // Tous les stocks
-  final RxList<Stock> stocks = <Stock>[].obs; // Stocks filtrés
-  final RxList<StockCategory> categories = <StockCategory>[].obs;
-  final RxList<StockAlert> alerts = <StockAlert>[].obs;
-  final Rx<StockStats?> stockStats = Rx<StockStats?>(null);
-  final Rx<Stock?> selectedStock = Rx<Stock?>(null);
+  final StockService _stockService = StockService.to;
+
+  // Variables
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool isCreating = false;
+  bool isUpdating = false;
+  bool isDeleting = false;
+  final List<Stock> allStocks = [];
+  final List<Stock> stocks = [];
+  final List<StockCategory> categories = [];
+  final List<StockAlert> alerts = [];
+  StockStats? stockStats;
+  Stock? selectedStock;
 
   // Variables pour la recherche et les filtres
-  final RxString searchQuery = ''.obs;
-  final RxString selectedCategoryFilter = 'all'.obs; // Pour filtrer la liste
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedSortBy = 'name'.obs;
-  final RxBool sortAscending = true.obs;
-  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
+  String searchQuery = '';
+  String selectedCategoryFilter = 'all';
+  String selectedStatus = 'all';
+  String selectedSortBy = 'name';
+  bool sortAscending = true;
+  String? _currentStatusFilter;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
   // Variables pour le formulaire
@@ -58,14 +63,11 @@ class StockController extends GetxController {
   final TextEditingController supplierController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
 
-  // Variables pour les sélections (formulaire)
-  final RxString selectedCategoryForm =
-      ''.obs; // Catégorie sélectionnée dans le formulaire
-  final RxString selectedUnit =
-      'pièce'.obs; // Unité sélectionnée dans le formulaire
+  String selectedCategoryForm = '';
+  String selectedUnit = 'pièce';
 
   // Variables pour les mouvements de stock
-  final RxString selectedMovementType = 'in'.obs;
+  String selectedMovementType = 'in';
   final TextEditingController movementQuantityController =
       TextEditingController();
   final TextEditingController movementReasonController =
@@ -74,7 +76,6 @@ class StockController extends GetxController {
       TextEditingController();
   final TextEditingController movementNotesController = TextEditingController();
 
-  // Variables pour l'ajustement de stock
   final TextEditingController adjustmentQuantityController =
       TextEditingController();
   final TextEditingController adjustmentReasonController =
@@ -141,26 +142,14 @@ class StockController extends GetxController {
     {'value': 'updated_at', 'label': 'Dernière modification'},
   ];
 
-  @override
-  void onInit() {
-    super.onInit();
-    try {
-      _stockService = Get.find<StockService>();
-    } catch (e) {
-      // Essayer de créer le service s'il n'existe pas
-      _stockService = Get.put(StockService(), permanent: true);
-    }
-    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      loadStocks();
-      loadCategories();
-      loadStockStats();
-      loadStockAlerts();
-    });
+  void ensureInitialized() {
+    loadStocks();
+    loadCategories();
+    loadStockStats();
+    loadStockAlerts();
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     nameController.dispose();
     descriptionController.dispose();
@@ -185,11 +174,10 @@ class StockController extends GetxController {
     adjustmentQuantityController.dispose();
     adjustmentReasonController.dispose();
     adjustmentNotesController.dispose();
-    super.onClose();
   }
 
   // Charger les stocks
-  Future<void> loadStocks({String? statusFilter, int page = 1}) async {
+  Future<void> loadStocks({String? statusFilter, int page = 1, bool forceRefresh = false}) async {
     try {
       _currentStatusFilter = statusFilter;
       AppLogger.info(
@@ -198,48 +186,54 @@ class StockController extends GetxController {
       );
 
       if (page == 1) {
-        final hiveList = StockService.getCachedStocks();
-        if (hiveList.isNotEmpty) {
-          allStocks.assignAll(hiveList);
-          stocks.assignAll(hiveList);
-          isLoading.value = false;
-          Future.microtask(() => _refreshStocksFromApi());
-          return;
+        if (!forceRefresh) {
+          final hiveList = StockService.getCachedStocks();
+          if (hiveList.isNotEmpty) {
+            allStocks.clear();
+            allStocks.addAll(hiveList);
+            stocks.clear();
+            stocks.addAll(hiveList);
+            isLoading = false;
+            Future.microtask(() => _refreshStocksFromApi());
+            return;
+          }
         }
-        allStocks.value = [];
-        stocks.value = [];
-        isLoading.value = true;
+        allStocks.clear();
+        stocks.clear();
+        isLoading = true;
       }
       if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         final paginatedResponse = await _stockService.getStocksPaginated(
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
           category:
-              selectedCategoryFilter.value != 'all'
-                  ? selectedCategoryFilter.value
+              selectedCategoryFilter != 'all'
+                  ? selectedCategoryFilter
                   : null,
           status:
               statusFilter != null && statusFilter != 'all'
                   ? statusFilter
                   : null,
           page: page,
-          perPage: perPage.value,
+          perPage: perPage,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          allStocks.value = paginatedResponse.data;
-          stocks.value = paginatedResponse.data;
+          allStocks.clear();
+          allStocks.addAll(paginatedResponse.data);
+          stocks.clear();
+          stocks.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           allStocks.addAll(paginatedResponse.data);
@@ -253,10 +247,9 @@ class StockController extends GetxController {
 
         // Afficher un message de succès si des stocks sont trouvés (seulement page 1)
         if (paginatedResponse.data.isNotEmpty && page == 1) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             '${paginatedResponse.data.length} stocks chargés avec succès',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.green,
             colorText: Colors.white,
             duration: const Duration(seconds: 2),
@@ -273,21 +266,25 @@ class StockController extends GetxController {
           category: null,
           status: null,
         );
-        allStocks.assignAll(loadedStocks);
-        stocks.assignAll(loadedStocks);
+        allStocks.clear();
+        allStocks.addAll(loadedStocks);
+        stocks.clear();
+        stocks.addAll(loadedStocks);
       }
     } catch (e) {
       // Ne pas vider la liste si des données sont déjà affichées (Hive/cache)
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       if (allStocks.isEmpty && stocks.isEmpty) {
         final hiveList = StockService.getCachedStocks();
         if (hiveList.isNotEmpty) {
-          allStocks.value = hiveList;
-          stocks.value = hiveList;
+          allStocks.clear();
+          allStocks.addAll(hiveList);
+          stocks.clear();
+          stocks.addAll(hiveList);
         } else {
-          allStocks.value = [];
-          stocks.value = [];
+          allStocks.clear();
+          stocks.clear();
         }
       }
 
@@ -337,23 +334,24 @@ class StockController extends GetxController {
             errorMessage = 'Erreur lors du chargement des stocks: $e';
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             errorMessage,
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red,
             colorText: Colors.white,
             duration: const Duration(seconds: 5),
           );
         } else {
           // Charger les données du cache si disponibles
-          allStocks.assignAll(cachedStocks);
-          stocks.assignAll(cachedStocks);
+          allStocks.clear();
+          allStocks.addAll(cachedStocks);
+          stocks.clear();
+          stocks.addAll(cachedStocks);
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
@@ -361,51 +359,53 @@ class StockController extends GetxController {
   Future<void> _refreshStocksFromApi() async {
     try {
       final paginatedResponse = await _stockService.getStocksPaginated(
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
         category:
-            selectedCategoryFilter.value != 'all'
-                ? selectedCategoryFilter.value
+            selectedCategoryFilter != 'all'
+                ? selectedCategoryFilter
                 : null,
         status:
             _currentStatusFilter != null && _currentStatusFilter != 'all'
                 ? _currentStatusFilter
                 : null,
         page: 1,
-        perPage: perPage.value,
+        perPage: perPage,
       );
-      allStocks.value = paginatedResponse.data;
-      stocks.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      allStocks.clear();
+      allStocks.addAll(paginatedResponse.data);
+      stocks.clear();
+      stocks.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
     } catch (_) {}
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadStocks(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value + 1,
+        page: currentPage + 1,
       );
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasPreviousPage && !isLoading && !isLoadingMore) {
       loadStocks(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value - 1,
+        page: currentPage - 1,
       );
     }
   }
@@ -414,10 +414,11 @@ class StockController extends GetxController {
   Future<void> loadCategories() async {
     try {
       final categoriesList = await _stockService.getStockCategories();
-      categories.value = categoriesList;
+      categories.clear();
+      categories.addAll(categoriesList);
     } catch (e) {
       // Laisser la liste vide en cas d'erreur
-      categories.value = [];
+      categories.clear();
     }
   }
 
@@ -425,14 +426,14 @@ class StockController extends GetxController {
   Future<void> loadStockStats() async {
     try {
       final stats = await _stockService.getStockStats();
-      stockStats.value = stats;
+      stockStats = stats;
     } catch (e) {
       // Calculer les statistiques à partir des stocks chargés
       final totalValue = allStocks.fold(
         0.0,
         (sum, stock) => sum + stock.totalValue,
       );
-      stockStats.value = StockStats(
+      stockStats = StockStats(
         totalProducts: allStocks.length,
         activeProducts: allStocks.where((s) => s.isActive).length,
         lowStockProducts: allStocks.where((s) => s.isLowStock).length,
@@ -453,7 +454,8 @@ class StockController extends GetxController {
   Future<void> loadStockAlerts() async {
     try {
       final alertsList = await _stockService.getStockAlerts();
-      alerts.value = alertsList;
+      alerts.clear();
+      alerts.addAll(alertsList);
     } catch (e) {
       // Laisser la liste vide en cas d'erreur
       alerts.clear();
@@ -465,36 +467,36 @@ class StockController extends GetxController {
     List<Stock> filteredStocks = List.from(allStocks);
 
     // Filtrer par statut
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filteredStocks =
           filteredStocks.where((stock) {
             // Comparer avec le statut réel du stock
             final stockStatus = stock.status.toLowerCase();
             final matches =
-                stockStatus == selectedStatus.value.toLowerCase() ||
-                (selectedStatus.value == 'en_attente' &&
+                stockStatus == selectedStatus.toLowerCase() ||
+                (selectedStatus == 'en_attente' &&
                     stockStatus == 'pending') ||
-                (selectedStatus.value == 'valide' &&
+                (selectedStatus == 'valide' &&
                     stockStatus == 'approved') ||
-                (selectedStatus.value == 'rejete' && stockStatus == 'rejected');
+                (selectedStatus == 'rejete' && stockStatus == 'rejected');
             if (!matches) {}
             return matches;
           }).toList();
     } else {}
 
     // Filtrer par catégorie
-    if (selectedCategoryFilter.value != 'all') {
+    if (selectedCategoryFilter != 'all') {
       filteredStocks =
           filteredStocks.where((stock) {
-            final matches = stock.category == selectedCategoryFilter.value;
+            final matches = stock.category == selectedCategoryFilter;
             if (!matches) {}
             return matches;
           }).toList();
     } else {}
 
     // Filtrer par recherche
-    if (searchQuery.value.isNotEmpty) {
-      final query = searchQuery.value.toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
       filteredStocks =
           filteredStocks.where((stock) {
             final matches =
@@ -506,34 +508,35 @@ class StockController extends GetxController {
           }).toList();
     } else {}
 
-    stocks.assignAll(filteredStocks);
+    stocks.clear();
+    stocks.addAll(filteredStocks);
   }
 
   // Rechercher des stocks
   void searchStocks(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     applyFilters();
   }
 
   // Filtrer par catégorie
   void filterByCategory(String category) {
-    selectedCategoryFilter.value = category;
+    selectedCategoryFilter = category;
     loadStocks();
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadStocks();
   }
 
   // Trier les stocks
   void sortStocks(String sortBy) {
-    if (selectedSortBy.value == sortBy) {
-      sortAscending.value = !sortAscending.value;
+    if (selectedSortBy == sortBy) {
+      sortAscending = !sortAscending;
     } else {
-      selectedSortBy.value = sortBy;
-      sortAscending.value = true;
+      selectedSortBy = sortBy;
+      sortAscending = true;
     }
     _applySorting();
   }
@@ -542,7 +545,7 @@ class StockController extends GetxController {
   void _applySorting() {
     stocks.sort((a, b) {
       int comparison = 0;
-      switch (selectedSortBy.value) {
+      switch (selectedSortBy) {
         case 'name':
           comparison = a.name.compareTo(b.name);
           break;
@@ -563,7 +566,7 @@ class StockController extends GetxController {
           );
           break;
       }
-      return sortAscending.value ? comparison : -comparison;
+      return sortAscending ? comparison : -comparison;
     });
   }
 
@@ -571,35 +574,35 @@ class StockController extends GetxController {
   List<Stock> get filteredStocks {
     List<Stock> filtered = stocks;
 
-    if (searchQuery.value.isNotEmpty) {
+    if (searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (stock) =>
                     stock.name.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     stock.sku.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     (stock.description?.toLowerCase() ?? '').contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ),
               )
               .toList();
     }
 
-    if (selectedCategoryFilter.value != 'all') {
+    if (selectedCategoryFilter != 'all') {
       filtered =
           filtered
-              .where((stock) => stock.category == selectedCategoryFilter.value)
+              .where((stock) => stock.category == selectedCategoryFilter)
               .toList();
     }
 
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filtered =
           filtered
-              .where((stock) => stock.stockStatus == selectedStatus.value)
+              .where((stock) => stock.stockStatus == selectedStatus)
               .toList();
     }
 
@@ -609,11 +612,11 @@ class StockController extends GetxController {
   // Créer un nouveau stock
   Future<bool> createStock() async {
     try {
-      isCreating.value = true;
+      isCreating = true;
 
       // Valider que category est fourni
-      if (selectedCategoryForm.value.isEmpty) {
-        Get.snackbar(
+      if (selectedCategoryForm.isEmpty) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner une catégorie',
           backgroundColor: Colors.red,
@@ -624,7 +627,7 @@ class StockController extends GetxController {
 
       // Valider que le nom n'est pas vide
       if (nameController.text.trim().isEmpty) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez saisir un nom pour le produit',
           backgroundColor: Colors.red,
@@ -635,7 +638,7 @@ class StockController extends GetxController {
 
       // Valider que le SKU n'est pas vide
       if (skuController.text.trim().isEmpty) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez saisir un SKU pour le produit',
           backgroundColor: Colors.red,
@@ -645,7 +648,7 @@ class StockController extends GetxController {
       }
 
       final stock = Stock(
-        category: selectedCategoryForm.value,
+        category: selectedCategoryForm,
         name: nameController.text.trim(),
         description:
             descriptionController.text.trim().isNotEmpty
@@ -690,7 +693,7 @@ class StockController extends GetxController {
         );
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Stock créé avec succès',
         backgroundColor: Colors.green,
@@ -717,7 +720,7 @@ class StockController extends GetxController {
         errorMessage = errorMessage.substring(11);
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la création du stock: $errorMessage',
         backgroundColor: Colors.red,
@@ -726,18 +729,18 @@ class StockController extends GetxController {
       );
       return false;
     } finally {
-      isCreating.value = false;
+      isCreating = false;
     }
   }
 
   // Mettre à jour un stock
   Future<bool> updateStock(Stock stock) async {
     try {
-      isUpdating.value = true;
+      isUpdating = true;
 
       // Valider que category est fourni
-      if (selectedCategoryForm.value.isEmpty) {
-        Get.snackbar(
+      if (selectedCategoryForm.isEmpty) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner une catégorie',
           backgroundColor: Colors.red,
@@ -747,7 +750,7 @@ class StockController extends GetxController {
       }
 
       final updatedStock = stock.copyWith(
-        category: selectedCategoryForm.value,
+        category: selectedCategoryForm,
         name: nameController.text.trim(),
         description:
             descriptionController.text.trim().isNotEmpty
@@ -769,7 +772,7 @@ class StockController extends GetxController {
 
       await _stockService.updateStock(updatedStock);
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Stock mis à jour avec succès',
         backgroundColor: Colors.green,
@@ -781,7 +784,7 @@ class StockController extends GetxController {
       loadStockStats();
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la mise à jour du stock: $e',
         backgroundColor: Colors.red,
@@ -790,24 +793,24 @@ class StockController extends GetxController {
       );
       return false;
     } finally {
-      isUpdating.value = false;
+      isUpdating = false;
     }
   }
 
   // Supprimer un stock
   Future<void> deleteStock(Stock stock) async {
     try {
-      isDeleting.value = true;
+      isDeleting = true;
 
       await _stockService.deleteStock(stock.id!);
 
-      Get.snackbar('Succès', 'Stock supprimé avec succès');
+      errorHelperShowSnackbar?.call('Succès', 'Stock supprimé avec succès');
       loadStocks();
       loadStockStats();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la suppression du stock: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la suppression du stock: $e');
     } finally {
-      isDeleting.value = false;
+      isDeleting = false;
     }
   }
 
@@ -815,7 +818,7 @@ class StockController extends GetxController {
   void fillForm(Stock stock) {
     nameController.text = stock.name;
     descriptionController.text = stock.description ?? '';
-    selectedCategoryForm.value = stock.category;
+    selectedCategoryForm = stock.category;
     skuController.text = stock.sku;
     // unit n'est plus dans le formulaire
     quantityController.text = stock.quantity.toString();
@@ -829,8 +832,8 @@ class StockController extends GetxController {
   void clearForm() {
     nameController.clear();
     descriptionController.clear();
-    selectedCategoryForm.value = '';
-    selectedUnit.value = 'pièce';
+    selectedCategoryForm = '';
+    selectedUnit = 'pièce';
     skuController.clear();
     quantityController.clear();
     minQuantityController.clear();
@@ -844,7 +847,7 @@ class StockController extends GetxController {
     try {
       await _stockService.addStockMovement(
         stockId: stock.id!,
-        type: selectedMovementType.value,
+        type: selectedMovementType,
         quantity: double.parse(movementQuantityController.text),
         reason:
             movementReasonController.text.trim().isNotEmpty
@@ -860,12 +863,12 @@ class StockController extends GetxController {
                 : null,
       );
 
-      Get.snackbar('Succès', 'Mouvement de stock ajouté');
+      errorHelperShowSnackbar?.call('Succès', 'Mouvement de stock ajouté');
       clearMovementForm();
       loadStocks();
       loadStockStats();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'ajout du mouvement: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'ajout du mouvement: $e');
     }
   }
 
@@ -882,18 +885,18 @@ class StockController extends GetxController {
                 : null,
       );
 
-      Get.snackbar('Succès', 'Stock ajusté avec succès');
+      errorHelperShowSnackbar?.call('Succès', 'Stock ajusté avec succès');
       clearAdjustmentForm();
       loadStocks();
       loadStockStats();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de l\'ajustement du stock: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'ajustement du stock: $e');
     }
   }
 
   // Vider le formulaire de mouvement
   void clearMovementForm() {
-    selectedMovementType.value = 'in';
+    selectedMovementType = 'in';
     movementQuantityController.clear();
     movementReasonController.clear();
     movementReferenceController.clear();
@@ -909,22 +912,22 @@ class StockController extends GetxController {
 
   // Sélectionner une catégorie (pour le formulaire)
   void selectCategory(String category) {
-    selectedCategoryForm.value = category;
+    selectedCategoryForm = category;
   }
 
   // Sélectionner une unité
   void selectUnit(String unit) {
-    selectedUnit.value = unit;
+    selectedUnit = unit;
   }
 
   // Sélectionner un type de mouvement
   void selectMovementType(String type) {
-    selectedMovementType.value = type;
+    selectedMovementType = type;
   }
 
   // Sélectionner un stock
   void selectStock(Stock stock) {
-    selectedStock.value = stock;
+    selectedStock = stock;
   }
 
   // Approuver/Valider un stock
@@ -984,7 +987,7 @@ class StockController extends GetxController {
         entity: stock,
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Stock approuvé avec succès',
         backgroundColor: Colors.green,
@@ -1001,7 +1004,7 @@ class StockController extends GetxController {
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadStocks(statusFilter: _currentStatusFilter);
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de l\'approbation: $e',
         backgroundColor: Colors.red,
@@ -1068,7 +1071,7 @@ class StockController extends GetxController {
         entity: stock,
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Stock rejeté avec succès',
         backgroundColor: Colors.orange,
@@ -1085,7 +1088,7 @@ class StockController extends GetxController {
     } catch (e) {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadStocks(statusFilter: _currentStatusFilter);
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors du rejet: $e',
         backgroundColor: Colors.red,
@@ -1096,7 +1099,7 @@ class StockController extends GetxController {
 
   // Filtrage par statut d'approbation
   void filterByApprovalStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     applyFilters();
   }
 

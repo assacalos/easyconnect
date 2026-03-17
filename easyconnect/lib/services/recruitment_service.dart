@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/constant.dart';
 
-class RecruitmentService extends GetxService {
-  static RecruitmentService get to => Get.find();
+class RecruitmentService {
+  static final RecruitmentService _instance = RecruitmentService._();
+  static RecruitmentService get to => _instance;
+  factory RecruitmentService() => _instance;
+  RecruitmentService._();
 
   // Créer une demande de recrutement
   Future<Map<String, dynamic>> createRecruitmentRequest({

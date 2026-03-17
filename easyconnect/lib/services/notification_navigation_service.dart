@@ -1,4 +1,4 @@
-import 'package:get/get.dart';
+import 'package:easyconnect/router/app_router.dart' show rootGoRouter;
 import '../Models/notification_model.dart';
 import '../utils/logger.dart';
 
@@ -233,25 +233,25 @@ class NotificationNavigationService {
       for (final prefix in _detailRoutesNeedingObject) {
         if (route.startsWith(prefix) && route.length > prefix.length) {
           final listRoute = prefix.replaceAll('/', '');
-          Get.toNamed('/$listRoute');
+          rootGoRouter?.go('/$listRoute');
           return;
         }
       }
 
       if (route == '/payments/detail' && entityId != null) {
-        Get.toNamed(route, arguments: entityId);
+        rootGoRouter?.go(route, extra: entityId);
         return;
       }
 
       if (route.contains('/') && !route.endsWith('/')) {
         final parts = route.split('/');
         if (parts.length >= 3 && int.tryParse(parts.last) != null) {
-          Get.toNamed(route);
+          rootGoRouter?.go(route);
           return;
         }
       }
 
-      Get.toNamed(route);
+      rootGoRouter?.go(route);
     } catch (e, stackTrace) {
       AppLogger.error(
         'Erreur lors de la navigation vers $route: $e',
@@ -270,7 +270,7 @@ class NotificationNavigationService {
       tag: 'NOTIFICATION_NAV',
     );
     try {
-      Get.toNamed('/notifications');
+      rootGoRouter?.go('/notifications');
     } catch (e) {
       AppLogger.error(
         'Erreur lors de la navigation vers /notifications: $e',

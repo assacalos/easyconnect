@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/leave_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/leave_notifier.dart';
+import 'package:easyconnect/providers/leave_state.dart';
 import 'package:easyconnect/Models/leave_model.dart';
-import 'package:easyconnect/Views/Rh/leave_form.dart';
 import 'package:intl/intl.dart';
 
-class LeaveDetail extends StatelessWidget {
+class LeaveDetail extends ConsumerWidget {
   final LeaveRequest request;
 
   const LeaveDetail({super.key, required this.request});
 
   @override
-  Widget build(BuildContext context) {
-    final LeaveController controller = Get.put(LeaveController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final leaveState = ref.watch(leaveProvider);
+    final notifier = ref.read(leaveProvider.notifier);
     final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
     final formatDateOnly = DateFormat('dd/MM/yyyy');
 
@@ -22,14 +24,15 @@ class LeaveDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageLeaves.value && request.isPending)
+          if (leaveState.canManageLeaves && request.isPending)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => LeaveForm(request: request)),
+              onPressed: () =>
+                  context.go('/leaves/${request.id}/edit', extra: request),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareRequest(),
+            onPressed: () => _shareRequest(context),
           ),
         ],
       ),
@@ -38,11 +41,8 @@ class LeaveDetail extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec statut
             _buildHeaderCard(),
             const SizedBox(height: 16),
-
-            // Informations de base
             _buildInfoCard('Informations de base', [
               _buildInfoRow(Icons.person, 'Employé', request.employeeName),
               _buildInfoRow(
@@ -62,8 +62,6 @@ class LeaveDetail extends StatelessWidget {
               ),
               _buildInfoRow(Icons.help_outline, 'Raison', request.reason),
             ]),
-
-            // Statut et approbation
             const SizedBox(height: 16),
             _buildInfoCard('Statut et approbation', [
               _buildInfoRow(
@@ -92,29 +90,20 @@ class LeaveDetail extends StatelessWidget {
                   statusColor: Colors.red,
                 ),
             ]),
-
-            // Commentaires
             if (request.comments != null && request.comments!.isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildInfoCard('Commentaires', [
                 _buildInfoRow(Icons.comment, 'Commentaires', request.comments!),
               ]),
             ],
-
-            // Justificatifs
             if (request.attachments.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _buildAttachmentsCard(),
+              _buildAttachmentsCard(context),
             ],
-
-            // Historique
             const SizedBox(height: 16),
             _buildHistoryCard(),
-
             const SizedBox(height: 16),
-
-            // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier, leaveState),
           ],
         ),
       ),
@@ -130,9 +119,8 @@ class LeaveDetail extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 30,
-              backgroundColor: _getStatusColor(
-                request.statusColor,
-              ).withOpacity(0.1),
+              backgroundColor:
+                  _getStatusColor(request.statusColor).withOpacity(0.1),
               child: Icon(
                 _getStatusIcon(request.status),
                 size: 30,
@@ -265,7 +253,7 @@ class LeaveDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildAttachmentsCard() {
+  Widget _buildAttachmentsCard(BuildContext context) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -282,24 +270,23 @@ class LeaveDetail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            if (request.attachments.isEmpty)
-              const Text('Aucun justificatif')
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: request.attachments.length,
-                itemBuilder: (context, index) {
-                  return _buildAttachmentItem(request.attachments[index]);
-                },
-              ),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: request.attachments.length,
+              itemBuilder: (context, index) {
+                return _buildAttachmentItem(
+                    context, request.attachments[index]);
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAttachmentItem(LeaveAttachment attachment) {
+  Widget _buildAttachmentItem(
+      BuildContext context, LeaveAttachment attachment) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -329,7 +316,7 @@ class LeaveDetail extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.download),
-            onPressed: () => _downloadAttachment(attachment),
+            onPressed: () => _downloadAttachment(context, attachment),
           ),
         ],
       ),
@@ -415,7 +402,12 @@ class LeaveDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(LeaveController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    LeaveNotifier notifier,
+    LeaveState leaveState,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -434,12 +426,12 @@ class LeaveDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (request.isPending && controller.canApproveLeaves.value) ...[
+                if (request.isPending && leaveState.canApproveLeaves) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, ref, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -451,7 +443,7 @@ class LeaveDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, ref, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -459,14 +451,14 @@ class LeaveDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (request.isPending && controller.canManageLeaves.value) ...[
+                if (request.isPending && leaveState.canManageLeaves) ...[
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(() => LeaveForm(request: request)),
+                      onPressed: () =>
+                          context.go('/leaves/${request.id}/edit', extra: request),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -480,7 +472,7 @@ class LeaveDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.cancel),
                       label: const Text('Annuler'),
-                      onPressed: () => _showCancelDialog(controller),
+                      onPressed: () => _showCancelDialog(context, ref, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -546,35 +538,41 @@ class LeaveDetail extends StatelessWidget {
     }
   }
 
-  void _shareRequest() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareRequest(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _downloadAttachment(LeaveAttachment attachment) {
-    Get.snackbar(
-      'Téléchargement',
-      'Téléchargement de ${attachment.fileName}',
-      snackPosition: SnackPosition.BOTTOM,
+  void _downloadAttachment(BuildContext context, LeaveAttachment attachment) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Téléchargement de ${attachment.fileName}'),
+      ),
     );
   }
 
-  void _showApproveDialog(LeaveController controller) {
-    controller.commentsController.clear();
+  void _showApproveDialog(
+    BuildContext context,
+    WidgetRef ref,
+    LeaveNotifier notifier,
+  ) {
+    final commentsController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver la demande'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Êtes-vous sûr de vouloir approuver cette demande ?'),
+            const Text(
+                'Êtes-vous sûr de vouloir approuver cette demande ?'),
             const SizedBox(height: 16),
             TextField(
-              controller: controller.commentsController,
+              controller: commentsController,
               decoration: const InputDecoration(
                 labelText: 'Commentaires (optionnel)',
                 border: OutlineInputBorder(),
@@ -584,11 +582,38 @@ class LeaveDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.approveLeaveRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveLeaveRequest(
+                  request,
+                  comments: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Demande approuvée avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -601,19 +626,25 @@ class LeaveDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(LeaveController controller) {
-    controller.rejectionReasonController.clear();
+  void _showRejectDialog(
+    BuildContext context,
+    WidgetRef ref,
+    LeaveNotifier notifier,
+  ) {
+    final rejectionReasonController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter la demande'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Êtes-vous sûr de vouloir rejeter cette demande ?'),
+            const Text(
+                'Êtes-vous sûr de vouloir rejeter cette demande ?'),
             const SizedBox(height: 16),
             TextField(
-              controller: controller.rejectionReasonController,
+              controller: rejectionReasonController,
               decoration: const InputDecoration(
                 labelText: 'Raison du rejet *',
                 border: OutlineInputBorder(),
@@ -623,11 +654,45 @@ class LeaveDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.rejectLeaveRequest(request);
-              Get.back();
+            onPressed: () async {
+              if (rejectionReasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez indiquer la raison du rejet'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectLeaveRequest(
+                  request,
+                  rejectionReasonController.text.trim(),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Demande rejetée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -640,19 +705,46 @@ class LeaveDetail extends StatelessWidget {
     );
   }
 
-  void _showCancelDialog(LeaveController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showCancelDialog(
+    BuildContext context,
+    WidgetRef ref,
+    LeaveNotifier notifier,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Annuler la demande'),
         content: const Text(
           'Êtes-vous sûr de vouloir annuler cette demande ? Cette action est irréversible.',
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Non')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Non'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.cancelLeaveRequest(request);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.cancelLeaveRequest(request);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Demande annulée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,

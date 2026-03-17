@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -12,8 +11,11 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 
-class ContractService extends GetxService {
-  static ContractService get to => Get.find();
+class ContractService {
+  static final ContractService _instance = ContractService._();
+  static ContractService get to => _instance;
+  factory ContractService() => _instance;
+  ContractService._();
 
   // Créer un contrat
   Future<Map<String, dynamic>> createContract({

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -12,8 +11,11 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 
-class ReportingService extends GetxService {
-  static ReportingService get to => Get.find();
+class ReportingService {
+  static final ReportingService _instance = ReportingService._();
+  static ReportingService get to => _instance;
+  factory ReportingService() => _instance;
+  ReportingService._();
 
   /// Convertit le type relance de l'app (relance_telephonique, relance_mail, relance_rdv)
   /// vers le format API backend (telephonique, mail, rdv).

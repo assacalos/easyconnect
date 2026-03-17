@@ -1,14 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/user_management_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/user_management_notifier.dart';
+import 'package:easyconnect/providers/user_management_state.dart';
+import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
-class UserManagementPage extends StatelessWidget {
+class UserManagementPage extends ConsumerStatefulWidget {
   const UserManagementPage({super.key});
 
   @override
+  ConsumerState<UserManagementPage> createState() => _UserManagementPageState();
+}
+
+class _UserManagementPageState extends ConsumerState<UserManagementPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(userManagementProvider.notifier).loadUsers();
+      ref.read(userManagementProvider.notifier).loadUserStats();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final controller = Get.find<UserManagementController>();
+    final state = ref.watch(userManagementProvider);
+    final notifier = ref.read(userManagementProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -18,15 +36,11 @@ class UserManagementPage extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              controller.loadUsers();
-            },
+            onPressed: () => notifier.loadUsers(),
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () {
-              Get.toNamed('/admin/users/new');
-            },
+            onPressed: () => context.go('/admin/users/new'),
           ),
         ],
       ),
@@ -35,126 +49,73 @@ class UserManagementPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Statistiques rapides
-            Obx(
-              () => Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      title: 'Total utilisateurs',
-                      value: controller.totalUsers.value.toString(),
-                      icon: Icons.people,
-                      color: Colors.blue,
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    title: 'Total utilisateurs',
+                    value: state.totalUsers.toString(),
+                    icon: Icons.people,
+                    color: Colors.blue,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildStatCard(
-                      title: 'Utilisateurs actifs',
-                      value: controller.activeUsers.value.toString(),
-                      icon: Icons.person,
-                      color: Colors.green,
-                    ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
+                    title: 'Utilisateurs actifs',
+                    value: state.activeUsers.toString(),
+                    icon: Icons.person,
+                    color: Colors.green,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildStatCard(
-                      title: 'Nouveaux ce mois',
-                      value: controller.newUsersThisMonth.value.toString(),
-                      icon: Icons.person_add,
-                      color: Colors.orange,
-                    ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
+                    title: 'Nouveaux ce mois',
+                    value: state.newUsersThisMonth.toString(),
+                    icon: Icons.person_add,
+                    color: Colors.orange,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-
             const SizedBox(height: 24),
-
-            // Barre de recherche et filtres
-            Obx(
-              () => Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (value) {
-                        controller.searchQuery.value = value;
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Rechercher un utilisateur...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onChanged: (value) => notifier.setSearchQuery(value),
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher un utilisateur...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  DropdownButton<String>(
-                    value: controller.selectedRole.value,
-                    hint: const Text('Tous les rôles'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'all',
-                        child: Text('Tous les rôles'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'admin',
-                        child: Text('Administrateur'),
-                      ),
-                      DropdownMenuItem(value: 'patron', child: Text('Patron')),
-                      DropdownMenuItem(
-                        value: 'commercial',
-                        child: Text('Commercial'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'comptable',
-                        child: Text('Comptable'),
-                      ),
-                      DropdownMenuItem(value: 'rh', child: Text('RH')),
-                      DropdownMenuItem(
-                        value: 'technicien',
-                        child: Text('Technicien'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        controller.selectedRole.value = value;
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Liste des utilisateurs
-            Expanded(
-              child: Obx(() {
-                if (controller.isLoading.value) {
-                  return const SkeletonSearchResults(itemCount: 6);
-                }
-
-                final filteredUsers = controller.getFilteredUsers();
-
-                if (filteredUsers.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'Aucun utilisateur trouvé',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: filteredUsers.length,
-                  itemBuilder: (context, index) {
-                    final user = filteredUsers[index];
-                    return _buildUserCard(user: user, controller: controller);
+                ),
+                const SizedBox(width: 16),
+                DropdownButton<String>(
+                  value: state.selectedRole,
+                  hint: const Text('Tous les rôles'),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('Tous les rôles')),
+                    DropdownMenuItem(value: 'admin', child: Text('Administrateur')),
+                    DropdownMenuItem(value: 'patron', child: Text('Patron')),
+                    DropdownMenuItem(value: 'commercial', child: Text('Commercial')),
+                    DropdownMenuItem(value: 'comptable', child: Text('Comptable')),
+                    DropdownMenuItem(value: 'rh', child: Text('RH')),
+                    DropdownMenuItem(value: 'technicien', child: Text('Technicien')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) notifier.setSelectedRole(value);
                   },
-                );
-              }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: _buildUserList(context, state, notifier),
             ),
           ],
         ),
@@ -189,13 +150,37 @@ class UserManagementPage extends StatelessWidget {
     );
   }
 
-  Widget _buildUserCard({
-    required dynamic user,
-    required UserManagementController controller,
-  }) {
+  Widget _buildUserList(
+    BuildContext context,
+    UserManagementState state,
+    UserManagementNotifier notifier,
+  ) {
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
+    final filteredUsers = notifier.getFilteredUsers();
+    if (filteredUsers.isEmpty) {
+      return const Center(
+        child: Text('Aucun utilisateur trouvé', style: TextStyle(fontSize: 16)),
+      );
+    }
+    return ListView.builder(
+      itemCount: filteredUsers.length,
+      itemBuilder: (context, index) {
+        final user = filteredUsers[index];
+        return _buildUserCard(context, user, notifier);
+      },
+    );
+  }
+
+  Widget _buildUserCard(
+    BuildContext context,
+    UserModel user,
+    UserManagementNotifier notifier,
+  ) {
     final fullName = '${user.nom ?? ''} ${user.prenom ?? ''}'.trim();
-    final roleName = controller.getRoleName(user.role);
-    final roleColor = controller.getRoleColor(user.role);
+    final roleName = UserManagementState.getRoleName(user.role);
+    final roleColor = UserManagementState.getRoleColor(user.role);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -225,57 +210,93 @@ class UserManagementPage extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             PopupMenuButton<String>(
-              onSelected: (value) {
+              onSelected: (value) async {
                 switch (value) {
                   case 'edit':
-                    Get.toNamed('/admin/users/${user.id}/edit');
+                    context.go('/admin/users/${user.id}/edit');
                     break;
                   case 'toggle':
-                    controller.toggleUserStatus(user.id, !user.isActive);
+                    final ok = await notifier.toggleUserStatus(user.id, !user.isActive);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(ok
+                              ? 'Statut modifié avec succès'
+                              : 'Erreur lors de la modification'),
+                          backgroundColor: ok ? Colors.green : Colors.red,
+                        ),
+                      );
+                    }
                     break;
                   case 'delete':
-                    controller.deleteUser(user.id);
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Confirmer la suppression'),
+                        content: const Text(
+                          'Êtes-vous sûr de vouloir supprimer cet utilisateur ?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Annuler'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                            child: const Text('Supprimer'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      final ok = await notifier.deleteUser(user.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok
+                                ? 'Utilisateur supprimé'
+                                : 'Erreur lors de la suppression'),
+                            backgroundColor: ok ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
+                    }
                     break;
                 }
               },
-              itemBuilder:
-                  (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit),
-                          SizedBox(width: 8),
-                          Text('Modifier'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'toggle',
-                      child: Row(
-                        children: [
-                          Icon(
-                            user.isActive ? Icons.block : Icons.check_circle,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(user.isActive ? 'Désactiver' : 'Activer'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text(
-                            'Supprimer',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit),
+                      SizedBox(width: 8),
+                      Text('Modifier'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'toggle',
+                  child: Row(
+                    children: [
+                      Icon(user.isActive ? Icons.block : Icons.check_circle),
+                      const SizedBox(width: 8),
+                      Text(user.isActive ? 'Désactiver' : 'Activer'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Supprimer', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

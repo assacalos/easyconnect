@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/utils/app_config.dart';
 
 class AppSettingsPage extends StatefulWidget {
@@ -127,7 +127,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Get.toNamed('/admin/push-test');
+                    context.go('/admin/push-test');
                   },
                 ),
               ],
@@ -147,7 +147,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   leading: const Icon(Icons.lock),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Get.toNamed('/admin/change-password');
+                    context.go('/admin/change-password');
                   },
                 ),
                 const Divider(),
@@ -157,7 +157,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   leading: const Icon(Icons.devices),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Get.toNamed('/admin/sessions');
+                    context.go('/admin/sessions');
                   },
                 ),
                 const Divider(),
@@ -212,7 +212,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   leading: const Icon(Icons.restore),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Get.toNamed('/admin/restore');
+                    context.go('/admin/restore');
                   },
                 ),
               ],
@@ -242,7 +242,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   leading: const Icon(Icons.article),
                   trailing: const Icon(Icons.arrow_forward_ios),
                   onTap: () {
-                    Get.toNamed('/admin/logs');
+                    context.go('/admin/logs');
                   },
                 ),
                 const Divider(),
@@ -413,11 +413,11 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Get.snackbar(
-                    'Succès',
-                    'Sauvegarde créée avec succès',
-                    backgroundColor: Colors.green,
-                    colorText: Colors.white,
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sauvegarde créée avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
                   );
                 },
                 child: const Text('Sauvegarder'),
@@ -444,11 +444,11 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  Get.snackbar(
-                    'Succès',
-                    'Cache nettoyé avec succès',
-                    backgroundColor: Colors.green,
-                    colorText: Colors.white,
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cache nettoyé avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
                   );
                 },
                 child: const Text('Nettoyer'),
@@ -520,20 +520,21 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   final newUrl = _apiUrlController.text.trim();
                   if (newUrl.isNotEmpty) {
                     await AppConfig.setBaseUrl(newUrl);
+                    if (!context.mounted) return;
                     Navigator.pop(context);
                     setState(() {});
-                    Get.snackbar(
-                      'Succès',
-                      'URL de l\'API mise à jour avec succès',
-                      backgroundColor: Colors.green,
-                      colorText: Colors.white,
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('URL de l\'API mise à jour avec succès'),
+                        backgroundColor: Colors.green,
+                      ),
                     );
                   } else {
-                    Get.snackbar(
-                      'Erreur',
-                      'L\'URL ne peut pas être vide',
-                      backgroundColor: Colors.red,
-                      colorText: Colors.white,
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('L\'URL ne peut pas être vide'),
+                        backgroundColor: Colors.red,
+                      ),
                     );
                   }
                 },
@@ -561,13 +562,14 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               ElevatedButton(
                 onPressed: () async {
                   await AppConfig.resetBaseUrl();
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   setState(() {});
-                  Get.snackbar(
-                    'Succès',
-                    'URL de l\'API réinitialisée avec succès',
-                    backgroundColor: Colors.green,
-                    colorText: Colors.white,
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('URL de l\'API réinitialisée avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
                   );
                 },
                 child: const Text('Réinitialiser'),
@@ -578,11 +580,11 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 
   void _saveSettings() {
-    Get.snackbar(
-      'Succès',
-      'Paramètres sauvegardés avec succès',
-      backgroundColor: Colors.green,
-      colorText: Colors.white,
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Paramètres sauvegardés avec succès'),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 }

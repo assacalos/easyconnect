@@ -1,25 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/stock_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/stock_notifier.dart';
 import 'package:easyconnect/Models/stock_model.dart';
-import 'package:easyconnect/Views/Comptable/stock_form.dart';
-import 'package:easyconnect/Views/Comptable/stock_detail.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class StockList extends StatefulWidget {
+class StockList extends ConsumerStatefulWidget {
   const StockList({super.key});
 
   @override
-  State<StockList> createState() => _StockListState();
+  ConsumerState<StockList> createState() => _StockListState();
 }
 
-class _StockListState extends State<StockList>
+class _StockListState extends ConsumerState<StockList>
     with SingleTickerProviderStateMixin {
-  final StockController controller = Get.put(StockController());
   late TabController _tabController;
-  String _searchQuery = '';
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+
+  static String _statusForIndex(int index) {
+    switch (index) {
+      case 0: return 'all';
+      case 1: return 'en_attente';
+      case 2: return 'valide';
+      case 3: return 'rejete';
+      default: return 'all';
+    }
+  }
 
   @override
   void initState() {
@@ -27,35 +37,45 @@ class _StockListState extends State<StockList>
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
-        // Rebuild quand l'onglet change pour mettre à jour le filtre
-        setState(() {});
+        ref.read(stockProvider.notifier).filterByStatus(
+          _statusForIndex(_tabController.index),
+        );
       }
     });
-    controller.loadStocks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(stockProvider.notifier).loadStocks(forceRefresh: true);
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
+    final state = ref.watch(stockProvider);
+    final notifier = ref.read(stockProvider.notifier);
+    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Stock'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.inventory_2),
+            onPressed: () => context.go('/comptable/inventaire'),
+            tooltip: 'Inventaire physique',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: controller.loadStocks,
+            onPressed: () => notifier.loadStocks(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -71,130 +91,56 @@ class _StockListState extends State<StockList>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Rechercher par nom, SKU ou description...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchStocks('');
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
+              onChanged: (value) => notifier.searchStocks(value),
             ),
           ),
-
-          // Liste des stocks
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const SkeletonSearchResults(itemCount: 6);
-              }
-
-              // Filtrer directement ici pour que Obx détecte les changements
-              List<Stock> filtered = List.from(controller.allStocks);
-
-              // Filtrer par statut selon l'onglet actif
-              switch (_tabController.index) {
-                case 0: // Tous
-                  break;
-                case 1: // En attente
-                  filtered =
-                      filtered
-                          .where(
-                            (s) =>
-                                s.status == 'en_attente' ||
-                                s.status == 'pending',
-                          )
-                          .toList();
-                  break;
-                case 2: // Validés/Approuvés
-                  filtered =
-                      filtered
-                          .where(
-                            (s) =>
-                                s.status == 'valide' || s.status == 'approved',
-                          )
-                          .toList();
-                  break;
-                case 3: // Rejetés
-                  filtered =
-                      filtered
-                          .where(
-                            (s) =>
-                                s.status == 'rejete' || s.status == 'rejected',
-                          )
-                          .toList();
-                  break;
-              }
-
-              // Filtrer par recherche
-              if (_searchQuery.isNotEmpty) {
-                filtered =
-                    filtered
-                        .where(
-                          (stock) =>
-                              stock.name.toLowerCase().contains(
-                                _searchQuery.toLowerCase(),
-                              ) ||
-                              (stock.description?.toLowerCase() ?? '').contains(
-                                _searchQuery.toLowerCase(),
-                              ) ||
-                              stock.sku.toLowerCase().contains(
-                                _searchQuery.toLowerCase(),
-                              ),
-                        )
-                        .toList();
-              }
-
-              return filtered.isEmpty
-                  ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Aucun produit trouvé'),
-                        Text(
-                          'Total stocks chargés: ${controller.allStocks.length}',
-                        ),
-                        Text('Onglet: ${_tabController.index}'),
-                      ],
-                    ),
-                  )
-                  : PaginatedListView(
-                    scrollController: controller.scrollController,
-                    onLoadMore: controller.loadMore,
-                    hasNextPage: controller.hasNextPage.value,
-                    isLoadingMore: controller.isLoadingMore.value,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final stock = filtered[index];
-                      return _buildStockCard(stock, formatCurrency);
-                    },
-                  );
-            }),
+            child: state.isLoading && state.stocks.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : state.stocks.isEmpty
+                    ? const Center(child: Text('Aucun produit trouvé'))
+                    : PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: state.hasNextPage,
+                        isLoadingMore: state.isLoadingMore,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: state.stocks.length,
+                        itemBuilder: (context, index) {
+                          final stock = state.stocks[index];
+                          return _buildStockCard(
+                            context,
+                            stock,
+                            formatCurrency,
+                            notifier,
+                          );
+                        },
+                      ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Get.to(() => const StockForm());
-          // Recharger les stocks après retour du formulaire
-          controller.loadStocks();
-        },
+        onPressed: () => context.go('/stocks/new'),
         tooltip: 'Nouveau produit',
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -203,20 +149,27 @@ class _StockListState extends State<StockList>
     );
   }
 
-  Widget _buildStockCard(Stock stock, NumberFormat formatCurrency) {
+  Widget _buildStockCard(
+    BuildContext context,
+    Stock stock,
+    NumberFormat formatCurrency,
+    StockNotifier notifier,
+  ) {
+    final statusColor = _getStatusColor(stock.status);
+    final statusLabel = _getStatusLabel(stock.status);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: InkWell(
-        onTap: () => Get.to(() => StockDetail(stock: stock)),
+        onTap: () => context.go('/stocks/${stock.id}', extra: stock),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec nom et statut
               Row(
                 children: [
                   Expanded(
@@ -229,21 +182,16 @@ class _StockListState extends State<StockList>
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(stock.status).withOpacity(0.1),
+                      color: statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getStatusColor(stock.status).withOpacity(0.5),
-                      ),
+                      border: Border.all(color: statusColor.withOpacity(0.5)),
                     ),
                     child: Text(
-                      _getStatusLabel(stock.status),
+                      statusLabel,
                       style: TextStyle(
-                        color: _getStatusColor(stock.status),
+                        color: statusColor,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -252,8 +200,6 @@ class _StockListState extends State<StockList>
                 ],
               ),
               const SizedBox(height: 8),
-
-              // SKU
               Row(
                 children: [
                   Icon(Icons.qr_code, size: 16, color: Colors.grey[600]),
@@ -265,8 +211,6 @@ class _StockListState extends State<StockList>
                 ],
               ),
               const SizedBox(height: 4),
-
-              // Quantité
               Row(
                 children: [
                   Icon(Icons.inventory, size: 16, color: Colors.grey[600]),
@@ -278,8 +222,6 @@ class _StockListState extends State<StockList>
                 ],
               ),
               const SizedBox(height: 4),
-
-              // Prix unitaire
               Row(
                 children: [
                   Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
@@ -291,8 +233,6 @@ class _StockListState extends State<StockList>
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Valeur totale
               Row(
                 children: [
                   Icon(Icons.calculate, size: 16, color: Colors.green[700]),
@@ -307,8 +247,6 @@ class _StockListState extends State<StockList>
                   ),
                 ],
               ),
-
-              // Raison du rejet si rejeté
               if ((stock.status == 'rejete' || stock.status == 'rejected') &&
                   stock.commentaire != null &&
                   stock.commentaire!.isNotEmpty) ...[
@@ -327,8 +265,6 @@ class _StockListState extends State<StockList>
                   ],
                 ),
               ],
-
-              // Actions
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -336,18 +272,16 @@ class _StockListState extends State<StockList>
                   TextButton.icon(
                     icon: const Icon(Icons.info_outline, size: 16),
                     label: const Text('Détails'),
-                    onPressed: () => Get.to(() => StockDetail(stock: stock)),
+                    onPressed: () =>
+                        context.go('/stocks/${stock.id}', extra: stock),
                   ),
-                  if (stock.status == 'en_attente' ||
-                      stock.status == 'pending') ...[
+                  if (stock.status == 'en_attente' || stock.status == 'pending') ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Modifier'),
-                      onPressed: () async {
-                        await Get.to(() => StockForm(stock: stock));
-                        controller.loadStocks();
-                      },
+                      onPressed: () =>
+                          context.go('/stocks/${stock.id}/edit', extra: stock),
                     ),
                   ],
                 ],

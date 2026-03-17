@@ -1,13 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/besoin_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/besoin_notifier.dart';
 
-class BesoinFormPage extends StatelessWidget {
+class BesoinFormPage extends ConsumerStatefulWidget {
   const BesoinFormPage({super.key});
 
   @override
+  ConsumerState<BesoinFormPage> createState() => _BesoinFormPageState();
+}
+
+class _BesoinFormPageState extends ConsumerState<BesoinFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  String _reminderFrequency = 'weekly';
+
+  static const List<Map<String, String>> reminderOptions = [
+    {'value': 'daily', 'label': 'Tous les jours'},
+    {'value': 'every_2_days', 'label': 'Tous les 2 jours'},
+    {'value': 'weekly', 'label': 'Toutes les semaines'},
+  ];
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final controller = Get.put(BesoinController());
+    final state = ref.watch(besoinProvider);
+    final notifier = ref.read(besoinProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nouveau besoin / Rappel patron'),
@@ -17,6 +43,7 @@ class BesoinFormPage extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
+          key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -26,21 +53,18 @@ class BesoinFormPage extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               TextFormField(
-                controller: controller.titleController,
+                controller: _titleController,
                 decoration: const InputDecoration(
                   labelText: 'Titre *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.title),
                 ),
-                validator:
-                    (v) =>
-                        v == null || v.trim().isEmpty
-                            ? 'Le titre est obligatoire'
-                            : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Le titre est obligatoire' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                controller: controller.descriptionController,
+                controller: _descriptionController,
                 decoration: const InputDecoration(
                   labelText: 'Description (optionnel)',
                   border: OutlineInputBorder(),
@@ -55,42 +79,35 @@ class BesoinFormPage extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Obx(
-                () => Column(
-                  children:
-                      BesoinController.reminderOptions.map((opt) {
-                        final value = opt['value']!;
-                        final label = opt['label']!;
-                        return RadioListTile<String>(
-                          title: Text(label),
-                          value: value,
-                          groupValue: controller.reminderFrequency.value,
-                          onChanged: (v) => controller.setReminderFrequency(v!),
-                        );
-                      }).toList(),
-                ),
-              ),
+              ...reminderOptions.map((opt) {
+                final value = opt['value']!;
+                final label = opt['label']!;
+                return RadioListTile<String>(
+                  title: Text(label),
+                  value: value,
+                  groupValue: _reminderFrequency,
+                  onChanged: (v) {
+                    if (v != null) setState(() => _reminderFrequency = v);
+                  },
+                );
+              }),
               const SizedBox(height: 32),
-              Obx(
-                () => ElevatedButton.icon(
-                  onPressed:
-                      controller.isLoading.value
-                          ? null
-                          : () => controller.createBesoin(),
-                  icon:
-                      controller.isLoading.value
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.send),
-                  label: const Text('Envoyer au patron'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
+              ElevatedButton.icon(
+                onPressed: state.isLoading
+                    ? null
+                    : () => _submit(notifier),
+                icon: state.isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send),
+                label: const Text('Envoyer au patron'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ],
@@ -98,5 +115,42 @@ class BesoinFormPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _submit(BesoinNotifier notifier) async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le titre est obligatoire')),
+      );
+      return;
+    }
+    final success = await notifier.createBesoin(
+      title: title,
+      description: _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim(),
+      reminderFrequency: _reminderFrequency,
+    );
+    if (!mounted) return;
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Besoin enregistré. Le patron sera rappelé automatiquement.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+      context.go('/besoins');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur lors de l\'enregistrement'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

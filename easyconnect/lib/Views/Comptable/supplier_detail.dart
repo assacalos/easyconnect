@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/supplier_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/supplier_notifier.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
-import 'package:easyconnect/Views/Comptable/supplier_form.dart';
 import 'package:intl/intl.dart';
 
-class SupplierDetail extends StatelessWidget {
+class SupplierDetail extends ConsumerWidget {
   final Supplier supplier;
 
   const SupplierDetail({super.key, required this.supplier});
 
   @override
-  Widget build(BuildContext context) {
-    final SupplierController controller = Get.put(SupplierController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(supplierProvider.notifier);
+    const canCreate = true;
+    const canApprove = true;
 
     return Scaffold(
       appBar: AppBar(
@@ -20,14 +22,15 @@ class SupplierDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canCreateSuppliers)
+          if (canCreate)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => SupplierForm(supplier: supplier)),
+              onPressed: () =>
+                  context.go('/suppliers/${supplier.id}/edit', extra: supplier),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareSupplier(),
+            onPressed: () => _shareSupplier(context),
           ),
         ],
       ),
@@ -36,27 +39,19 @@ class SupplierDetail extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête avec statut
             _buildHeaderCard(),
             const SizedBox(height: 16),
-
-            // Informations de base
             _buildInfoCard('Informations de base', [
               _buildInfoRow(Icons.business, 'Nom', supplier.nom),
               _buildInfoRow(Icons.email, 'Email', supplier.email),
               _buildInfoRow(Icons.phone, 'Téléphone', supplier.telephone),
             ]),
-
             const SizedBox(height: 16),
-
-            // Adresse
             _buildInfoCard('Adresse', [
               _buildInfoRow(Icons.location_on, 'Adresse', supplier.adresse),
               _buildInfoRow(Icons.location_city, 'Ville', supplier.ville),
               _buildInfoRow(Icons.public, 'Pays', supplier.pays),
             ]),
-
-            // Description si disponible
             if (supplier.description != null &&
                 supplier.description!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -68,8 +63,6 @@ class SupplierDetail extends StatelessWidget {
                 ),
               ]),
             ],
-
-            // Commentaires si disponibles
             if (supplier.commentaires != null &&
                 supplier.commentaires!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -81,33 +74,23 @@ class SupplierDetail extends StatelessWidget {
                 ),
               ]),
             ],
-
-            // Note d'évaluation si disponible
             if (supplier.noteEvaluation != null) ...[
               const SizedBox(height: 16),
               _buildRatingCard(),
             ],
-
-            // Historique des actions
             const SizedBox(height: 16),
             _buildHistoryCard(),
-
             const SizedBox(height: 16),
-
-            // Entités associées
+            _buildAssociatedEntities(context),
             const SizedBox(height: 16),
-            _buildAssociatedEntities(),
-
-            // Actions
-            const SizedBox(height: 16),
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier, canCreate, canApprove),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAssociatedEntities() {
+  Widget _buildAssociatedEntities(BuildContext context) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -129,10 +112,8 @@ class SupplierDetail extends StatelessWidget {
               label: 'Bons de commande',
               color: Colors.deepPurple,
               onTap: () {
-                Get.toNamed(
-                  '/bons-de-commande-fournisseur',
-                  arguments: {'supplierId': supplier.id},
-                );
+                context.go(
+                    '/bons-de-commande-fournisseur?supplierId=${supplier.id}');
               },
             ),
           ],
@@ -432,7 +413,13 @@ class SupplierDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(SupplierController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    SupplierNotifier notifier,
+    bool canCreate,
+    bool canApprove,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -451,12 +438,13 @@ class SupplierDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (controller.canCreateSuppliers) ...[
+                if (canCreate) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.send),
                       label: const Text('Soumettre'),
-                      onPressed: () => _showSubmitDialog(controller),
+                      onPressed: () =>
+                          _showSubmitDialog(context, supplier, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
@@ -465,12 +453,13 @@ class SupplierDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (supplier.isPending && controller.canApproveSuppliers) ...[
+                if (supplier.isPending && canApprove) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () =>
+                          _showApproveDialog(context, supplier, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -482,7 +471,8 @@ class SupplierDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () =>
+                          _showRejectDialog(context, supplier, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -495,7 +485,8 @@ class SupplierDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.star),
                       label: const Text('Évaluer'),
-                      onPressed: () => _showRatingDialog(controller),
+                      onPressed: () =>
+                          _showRatingDialog(context, supplier, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.amber,
                         foregroundColor: Colors.white,
@@ -541,28 +532,53 @@ class SupplierDetail extends StatelessWidget {
     }
   }
 
-  void _shareSupplier() {
-    // Implémentation du partage
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareSupplier(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showSubmitDialog(SupplierController controller) {
-    Get.dialog(
-      AlertDialog(
+  void _showSubmitDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Soumettre le fournisseur'),
         content: const Text(
           'Êtes-vous sûr de vouloir soumettre ce fournisseur au patron pour approbation ?',
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.submitSupplier(supplier);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final ok = await notifier.submitSupplier(supplier);
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text(ok
+                          ? 'Fournisseur soumis avec succès'
+                          : 'Erreur lors de la soumission'),
+                      backgroundColor: ok ? Colors.green : Colors.red,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Soumettre'),
           ),
@@ -571,11 +587,12 @@ class SupplierDetail extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(SupplierController controller) {
+  void _showApproveDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final commentsController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver le fournisseur'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -593,17 +610,40 @@ class SupplierDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              controller.approveSupplier(
-                supplier,
-                validationComment:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final ok = await notifier.approveSupplier(
+                  supplier,
+                  validationComment: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text(ok
+                          ? 'Fournisseur validé avec succès'
+                          : 'La validation a échoué'),
+                      backgroundColor: ok ? Colors.green : Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Approuver'),
           ),
@@ -612,12 +652,13 @@ class SupplierDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(SupplierController controller) {
+  void _showRejectDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final reasonController = TextEditingController();
     final commentController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter le fournisseur'),
         content: SingleChildScrollView(
           child: Column(
@@ -648,27 +689,47 @@ class SupplierDetail extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectSupplier(
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Le motif du rejet est obligatoire'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectSupplier(
                   supplier,
                   rejectionReason: reasonController.text.trim(),
-                  rejectionComment:
-                      commentController.text.trim().isEmpty
-                          ? null
-                          : commentController.text.trim(),
+                  rejectionComment: commentController.text.trim().isEmpty
+                      ? null
+                      : commentController.text.trim(),
                 );
-                Get.back();
-              } else {
-                Get.snackbar(
-                  'Erreur',
-                  'Le motif du rejet est obligatoire',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
-                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Fournisseur rejeté'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -682,16 +743,18 @@ class SupplierDetail extends StatelessWidget {
     );
   }
 
-  void _showRatingDialog(SupplierController controller) {
+  void _showRatingDialog(
+      BuildContext context, Supplier supplier, SupplierNotifier notifier) {
     final commentsController = TextEditingController();
     double rating = supplier.noteEvaluation ?? 0.0;
 
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Évaluer le fournisseur'),
-        content: StatefulBuilder(
-          builder: (context, setState) {
-            return Column(
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Évaluer le fournisseur'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Note (1-5 étoiles) :'),
@@ -701,15 +764,14 @@ class SupplierDetail extends StatelessWidget {
                   children: List.generate(5, (index) {
                     return IconButton(
                       icon: Icon(
-                        index < rating ? Icons.star : Icons.star_border,
+                        index < rating.round()
+                            ? Icons.star
+                            : Icons.star_border,
                         color: Colors.amber,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          rating = index + 1.0;
-                        });
-                      },
+                      onPressed: () =>
+                          setState(() => rating = index + 1.0),
                     );
                   }),
                 ),
@@ -725,26 +787,47 @@ class SupplierDetail extends StatelessWidget {
                   maxLines: 3,
                 ),
               ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.rateSupplier(
-                supplier,
-                rating,
-                comments:
-                    commentsController.text.trim().isEmpty
-                        ? null
-                        : commentsController.text.trim(),
-              );
-              Get.back();
-            },
-            child: const Text('Évaluer'),
-          ),
-        ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await notifier.rateSupplier(
+                      supplier,
+                      rating,
+                      comments: commentsController.text.trim().isEmpty
+                          ? null
+                          : commentsController.text.trim(),
+                    );
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('Fournisseur évalué avec succès'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Évaluer'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

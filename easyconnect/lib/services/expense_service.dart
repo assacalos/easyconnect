@@ -10,6 +10,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 
 class ExpenseService {
   final storage = GetStorage();
@@ -23,7 +24,8 @@ class ExpenseService {
     int perPage = 15,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 

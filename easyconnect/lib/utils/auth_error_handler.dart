@@ -1,31 +1,52 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:easyconnect/utils/logger.dart';
 
 /// Helper centralisé pour gérer les erreurs d'authentification
+/// Utilise des callbacks pour la déconnexion et l'affichage (plus de Get).
 class AuthErrorHandler {
   static bool _isHandlingLogout = false;
+  static int? _lastSessionExpiredShownAt;
+  static const int _sessionExpiredDebounceMs = 60000; // 1 min entre deux messages "session expirée"
 
-  /// Vérifie si une réponse HTTP contient une erreur d'authentification
-  /// et déconnecte automatiquement l'utilisateur si nécessaire
-  /// [skipRefresh] : Si true, ne tente pas de rafraîchir le token avant de déconnecter
+  /// Callback pour effectuer la déconnexion (à définir par l'app, ex: ref.read(authProvider.notifier).logout).
+  static Future<void> Function({bool silent, String? redirectTo})? logoutCallback;
+
+  /// Callback pour récupérer la route actuelle (ex: go_router).
+  static String Function()? currentRouteCallback;
+
+  /// Callback pour afficher un snackbar (ex: ScaffoldMessenger).
+  static void Function(String title, String message, {Duration? duration})? showSnackbarCallback;
+
   static Future<void> handleHttpResponse(
     http.Response response, {
     bool skipRefresh = false,
   }) async {
     if (response.statusCode == 401) {
-      // Si on ne doit pas sauter le rafraîchissement, essayer de rafraîchir d'abord
+      if (SessionService.isWithinGracePeriodAfterLogin()) {
+        AppLogger.info(
+          '401 ignoré (période de grâce après connexion)',
+          tag: 'AUTH_ERROR_HANDLER',
+        );
+        return;
+      }
       if (!skipRefresh) {
         try {
-          final refreshed = await SessionService.refreshToken();
+          bool refreshed = await SessionService.refreshToken();
           if (refreshed) {
-            // Si le rafraîchissement réussit, ne pas déconnecter
             AppLogger.info(
               'Token rafraîchi avec succès après erreur 401',
+              tag: 'AUTH_ERROR_HANDLER',
+            );
+            return;
+          }
+          // Un autre appel peut être en train de rafraîchir : attendre un peu puis réessayer une fois
+          await Future.delayed(const Duration(milliseconds: 800));
+          refreshed = await SessionService.refreshToken();
+          if (refreshed) {
+            AppLogger.info(
+              'Token rafraîchi après second essai (401)',
               tag: 'AUTH_ERROR_HANDLER',
             );
             return;
@@ -37,83 +58,69 @@ class AuthErrorHandler {
           );
         }
       }
-
-      // Si le rafraîchissement échoue ou est ignoré, déconnecter
       await _handleUnauthorized();
     }
   }
 
-  /// Vérifie si une exception contient une erreur d'authentification
   static Future<void> handleException(dynamic error) async {
     final errorString = error.toString().toLowerCase();
     if (errorString.contains('401') ||
         errorString.contains('unauthorized') ||
         errorString.contains('non autorisé')) {
+      if (SessionService.isWithinGracePeriodAfterLogin()) {
+        AppLogger.info(
+          'Erreur auth ignorée (période de grâce après connexion)',
+          tag: 'AUTH_ERROR_HANDLER',
+        );
+        return;
+      }
       await _handleUnauthorized();
     }
   }
 
-  /// Gère la déconnexion automatique en cas d'erreur 401
-  /// [showMessage] : Si false, ne pas afficher de message (par défaut: seulement en debug)
   static Future<void> _handleUnauthorized({bool? showMessage}) async {
-    // Éviter les déconnexions multiples simultanées
-    if (_isHandlingLogout) {
-      return;
-    }
-
+    if (_isHandlingLogout) return;
     _isHandlingLogout = true;
 
     try {
-      // Attendre un peu pour éviter les conflits
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 50));
 
-      // Récupérer le contrôleur d'authentification
-      if (Get.isRegistered<AuthController>()) {
-        final authController = Get.find<AuthController>();
+      final route = currentRouteCallback?.call() ?? '';
+      final isOnAuthPage = route == '/welcome' ||
+          route == '/login' ||
+          route == '/register' ||
+          route.contains('welcome') ||
+          route.contains('login') ||
+          route.contains('register');
+      final isOnSplash = route == '/splash' || route.contains('splash');
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final canShowMessage = _lastSessionExpiredShownAt == null ||
+          (now - _lastSessionExpiredShownAt!) > _sessionExpiredDebounceMs;
+      final shouldShowMessage = !isOnAuthPage &&
+          (showMessage ?? kDebugMode) &&
+          canShowMessage &&
+          showSnackbarCallback != null;
 
-        // Logger l'événement
+      if (shouldShowMessage) {
+        _lastSessionExpiredShownAt = now;
+        showSnackbarCallback!(
+          'Session expirée',
+          'Votre session a expiré. Veuillez vous reconnecter.',
+          duration: const Duration(seconds: 3),
+        );
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+
+      final String? redirectTo = isOnAuthPage
+          ? null
+          : (isOnSplash ? '/welcome' : '/login');
+
+      if (logoutCallback != null) {
         AppLogger.warning(
-          'Session expirée - Déconnexion automatique',
+          'Session expirée - Déconnexion automatique (redirectTo=$redirectTo, route=$route)',
           tag: 'AUTH_ERROR_HANDLER',
         );
-
-        // Ne pas afficher "Session expirée" ni rediriger si l'utilisateur est sur une page
-        // publique (accueil, connexion, inscription) — un ancien token peut provoquer des 401
-        final route = Get.currentRoute;
-        final isOnAuthPage = route == '/welcome' ||
-            route == '/login' ||
-            route == '/register' ||
-            route.contains('welcome') ||
-            route.contains('login') ||
-            route.contains('register');
-        final isOnSplash = route == '/splash' || route.contains('splash');
-        final shouldShowMessage = isOnAuthPage
-            ? false
-            : (showMessage ?? kDebugMode);
-
-        if (shouldShowMessage) {
-          Get.snackbar(
-            'Session expirée',
-            'Votre session a expiré. Veuillez vous reconnecter.',
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
-            icon: const Icon(Icons.warning, color: Colors.white),
-          );
-
-          // Attendre un peu pour que l'utilisateur voie le message
-          await Future.delayed(const Duration(milliseconds: 500));
-        }
-
-        // Déconnexion : pas de redirection si déjà sur welcome/login ; depuis splash → welcome
-        final String? redirectTo = isOnAuthPage
-            ? null
-            : (isOnSplash ? '/welcome' : '/login');
-        await authController.logout(
-          silent: !shouldShowMessage,
-          redirectTo: redirectTo,
-        );
+        await logoutCallback!(silent: !shouldShowMessage, redirectTo: redirectTo);
       }
     } catch (e, stackTrace) {
       AppLogger.error(
@@ -123,31 +130,25 @@ class AuthErrorHandler {
         stackTrace: stackTrace,
       );
     } finally {
-      // Réinitialiser le flag après un délai
       Future.delayed(const Duration(seconds: 2), () {
         _isHandlingLogout = false;
       });
     }
   }
 
-  /// Vérifie si une erreur doit être ignorée (pour éviter les messages multiples)
-  static bool shouldIgnoreError(dynamic error) {
-    if (_isHandlingLogout) {
-      return true;
-    }
-    return false;
+  /// À appeler après un login réussi pour permettre à nouveau l'affichage du message "session expirée" si besoin.
+  static void resetSessionExpiredDebounce() {
+    _lastSessionExpiredShownAt = null;
   }
 
-  /// Wrapper pour gérer automatiquement les erreurs d'authentification dans les réponses HTTP
-  /// Retourne true si la réponse est valide (200-299), false sinon
-  /// Gère automatiquement les erreurs 401
+  static bool shouldIgnoreError(dynamic error) =>
+      _isHandlingLogout;
+
   static Future<bool> checkResponse(http.Response response) async {
     await handleHttpResponse(response);
     return response.statusCode >= 200 && response.statusCode < 300;
   }
 
-  /// Wrapper pour gérer les exceptions avec gestion automatique des erreurs 401
-  /// Retourne true si l'erreur est une erreur d'authentification (déjà gérée)
   static Future<bool> handleError(dynamic error) async {
     await handleException(error);
     return shouldIgnoreError(error);

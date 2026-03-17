@@ -1,24 +1,24 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../Models/attendance_punch_model.dart';
 import '../../services/attendance_punch_service.dart';
-import '../../Controllers/auth_controller.dart';
+import '../../providers/auth_notifier.dart';
 import '../../utils/roles.dart';
 import '../../Views/Components/skeleton_loaders.dart';
 import '../../utils/map_helper.dart';
 
-class AttendanceValidationPage extends StatefulWidget {
+class AttendanceValidationPage extends ConsumerStatefulWidget {
   const AttendanceValidationPage({super.key});
 
   @override
-  State<AttendanceValidationPage> createState() =>
+  ConsumerState<AttendanceValidationPage> createState() =>
       _AttendanceValidationPageState();
 }
 
-class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
+class _AttendanceValidationPageState extends ConsumerState<AttendanceValidationPage> {
   final AttendancePunchService _punchService = AttendancePunchService();
-  final AuthController _authController = Get.find<AuthController>();
 
   List<AttendancePunchModel> _attendances = [];
   bool _isLoading = false;
@@ -34,38 +34,29 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
     setState(() => _isLoading = true);
 
     try {
-      final user = _authController.userAuth.value;
+      final user = ref.read(authProvider).user;
       if (user == null) {
-        print('⚠️ [ATTENDANCE_VALIDATION_PAGE] Utilisateur non connecté');
         setState(() => _isLoading = false);
         return;
       }
 
       List<AttendancePunchModel> attendances;
 
-      // Si c'est un patron, charger tous les pointages
-      // Sinon, charger uniquement les pointages de l'utilisateur connecté
       if (user.role == Roles.PATRON) {
-        print(
-          '📋 [ATTENDANCE_VALIDATION_PAGE] Chargement de tous les pointages (Patron)',
-        );
         attendances = await _punchService.getAttendances();
       } else {
-        print(
-          '📋 [ATTENDANCE_VALIDATION_PAGE] Chargement des pointages pour utilisateur: ${user.id}, rôle: ${user.role}',
-        );
         attendances = await _punchService.getAttendances(userId: user.id);
       }
 
       setState(() {
         _attendances = attendances;
       });
-      print(
-        '📋 [ATTENDANCE_VALIDATION_PAGE] Pointages chargés: ${attendances.length}',
-      );
     } catch (e) {
-      print('❌ [ATTENDANCE_VALIDATION_PAGE] Erreur lors du chargement: $e');
-      Get.snackbar('Erreur', 'Impossible de charger les pointages: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Impossible de charger les pointages: $e')),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -103,7 +94,7 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () => Get.toNamed('/attendance-punch'),
+            onPressed: () => context.go('/attendance-punch'),
             tooltip: 'Nouveau pointage',
           ),
           IconButton(
@@ -196,7 +187,7 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
   String _getDisplayName(AttendancePunchModel attendance) {
     final userName = attendance.userName ?? '';
     if (userName.toLowerCase().contains('comptable')) {
-      final user = _authController.userAuth.value;
+      final user = ref.read(authProvider).user;
       if (user != null) {
         final displayName = '${user.prenom ?? ''} ${user.nom ?? ''}'.trim();
         if (displayName.isNotEmpty) {
@@ -378,11 +369,11 @@ class _AttendanceValidationPageState extends State<AttendanceValidationPage> {
         label: attendance.address,
       );
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'ouvrir Google Maps: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Impossible d\'ouvrir Google Maps: $e')),
+        );
+      }
     }
   }
 }

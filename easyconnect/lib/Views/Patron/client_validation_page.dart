@@ -1,36 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/client_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/client_notifier.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class ClientValidationPage extends StatefulWidget {
+class ClientValidationPage extends ConsumerStatefulWidget {
   const ClientValidationPage({super.key});
 
   @override
-  State<ClientValidationPage> createState() => _ClientValidationPageState();
+  ConsumerState<ClientValidationPage> createState() =>
+      _ClientValidationPageState();
 }
 
-class _ClientValidationPageState extends State<ClientValidationPage>
+class _ClientValidationPageState extends ConsumerState<ClientValidationPage>
     with SingleTickerProviderStateMixin {
-  final ClientController controller = Get.find<ClientController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  bool _isLoading = false; // Protection contre les appels multiples
-  int? _lastLoadedStatus; // Mémoriser le dernier statut chargé
+  bool _isLoading = false;
+  int? _lastLoadedStatus;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        // Charger seulement quand le changement d'onglet est terminé
-        _onTabChanged();
-      }
+      if (!_tabController.indexIsChanging) _onTabChanged();
     });
-    // Charger toutes les données une fois au démarrage
+    // Charger toutes les données une fois au démarrage (forceRefresh pour que le patron voie les nouveaux clients)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAllClients();
     });
@@ -52,7 +50,8 @@ class _ClientValidationPageState extends State<ClientValidationPage>
 
     // Ne pas recharger si on charge le même statut
     final currentStatus = _getStatusForTab(_tabController.index);
-    if (_lastLoadedStatus == currentStatus && controller.clients.isNotEmpty) {
+    if (_lastLoadedStatus == currentStatus &&
+        ref.read(clientProvider).clients.isNotEmpty) {
       return;
     }
 
@@ -66,10 +65,13 @@ class _ClientValidationPageState extends State<ClientValidationPage>
     try {
       _isLoading = true;
       // Charger tous les clients une fois, le filtrage se fera côté client
-      await controller.loadClients(status: null, forceRefresh: false);
+      await ref.read(clientProvider.notifier).loadClients(
+            status: null,
+            forceRefresh: true,
+          );
       _lastLoadedStatus = null; // null = tous les clients
     } catch (e) {
-      print('❌ [CLIENT_VALIDATION] Erreur lors du chargement initial: $e');
+      debugPrint('❌ [CLIENT_VALIDATION] Erreur lors du chargement initial: $e');
     } finally {
       _isLoading = false;
     }
@@ -84,23 +86,26 @@ class _ClientValidationPageState extends State<ClientValidationPage>
 
       // Charger tous les clients une fois, le filtrage se fera côté client
       // Cela évite les rechargements multiples lors du changement d'onglet
-      if (_lastLoadedStatus == null && controller.clients.isNotEmpty) {
-        // Les données sont déjà chargées, pas besoin de recharger
+      if (_lastLoadedStatus == null &&
+          ref.read(clientProvider).clients.isNotEmpty) {
         _isLoading = false;
         return;
       }
 
-      await controller.loadClients(status: null, forceRefresh: false);
+      await ref.read(clientProvider.notifier).loadClients(
+            status: null,
+            forceRefresh: false,
+          );
       _lastLoadedStatus = null;
     } catch (e) {
-      print('❌ [CLIENT_VALIDATION] Erreur lors du chargement: $e');
-      // Ne pas afficher d'erreur si des données sont déjà disponibles
-      if (controller.clients.isEmpty) {
-        Get.snackbar(
-          'Erreur',
-          'Impossible de charger les clients. Vérifiez votre connexion.',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
+      debugPrint('❌ [CLIENT_VALIDATION] Erreur lors du chargement: $e');
+      if (ref.read(clientProvider).clients.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Impossible de charger les clients. Vérifiez votre connexion.'),
+            duration: Duration(seconds: 3),
+          ),
         );
       }
     } finally {
@@ -127,6 +132,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Clients'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -134,7 +140,7 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              _loadClients();
+              _loadAllClients();
             },
             tooltip: 'Actualiser',
           ),
@@ -185,12 +191,9 @@ class _ClientValidationPageState extends State<ClientValidationPage>
           ),
           // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildClientList(),
-            ),
+            child: ref.watch(clientProvider).isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildClientList(),
           ),
         ],
       ),
@@ -198,11 +201,14 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   }
 
   Widget _buildClientList() {
-    // Filtrer par onglet (0=en attente, 1=validé, 2=rejeté) puis par recherche
     final statusForTab = _getStatusForTab(_tabController.index);
     var list = statusForTab == null
-        ? controller.clients
-        : controller.clients.where((c) => c.status == statusForTab).toList();
+        ? ref.read(clientProvider).clients
+        : ref
+            .read(clientProvider)
+            .clients
+            .where((c) => c.status == statusForTab)
+            .toList();
     final filteredClients =
         _searchQuery.isEmpty
             ? list
@@ -504,66 +510,94 @@ class _ClientValidationPageState extends State<ClientValidationPage>
   }
 
   void _showApproveConfirmation(Client client) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce client ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        final id = client.id;
-        if (id == null) return;
-        Get.back();
-        try {
-          await controller.approveClient(id);
-          _loadAllClients().catchError((_) {});
-        } catch (e) {
-          rethrow;
-        }
-      },
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce client ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final id = client.id;
+              if (id == null) return;
+              Navigator.of(ctx).pop();
+              try {
+                await ref.read(clientProvider.notifier).approveClient(id);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Client validé avec succès')),
+                  );
+                }
+                _loadAllClients().catchError((_) {});
+              } catch (e) {
+                rethrow;
+              }
+            },
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
     );
   }
 
   void _showRejectDialog(Client client) {
     final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le client',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le client'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez entrer un motif de rejet')),
+                );
+                return;
+              }
+              final id = client.id;
+              if (id == null) return;
+              Navigator.of(ctx).pop();
+              try {
+                await ref
+                    .read(clientProvider.notifier)
+                    .rejectClient(id, commentController.text.trim());
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Client rejeté avec succès')),
+                  );
+                }
+                _loadAllClients().catchError((_) {});
+              } catch (e) {
+                rethrow;
+              }
+            },
+            child: const Text('Rejeter'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        if (commentController.text.trim().isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        final id = client.id;
-        if (id == null) return;
-        Get.back();
-        try {
-          await controller.rejectClient(id, commentController.text.trim());
-          _loadAllClients().catchError((_) {});
-        } catch (e) {
-          rethrow;
-        }
-      },
     );
   }
 }

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -11,9 +10,13 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 
-class InvoiceService extends GetxService {
-  static InvoiceService get to => Get.find();
+class InvoiceService {
+  static final InvoiceService _instance = InvoiceService._();
+  static InvoiceService get to => _instance;
+  factory InvoiceService() => _instance;
+  InvoiceService._();
 
   // Créer une facture
   Future<Map<String, dynamic>> createInvoice({
@@ -310,6 +313,7 @@ class InvoiceService extends GetxService {
     String? search,
   }) async {
     try {
+      await SessionService.ensureValidToken();
       final queryParams = <String, String>{
         'page': page.toString(),
         'per_page': perPage.toString(),

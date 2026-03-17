@@ -1,36 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/bon_de_commande_fournisseur_controller.dart';
+import 'package:easyconnect/providers/bon_de_commande_fournisseur_notifier.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
 
-class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
+class BonDeCommandeFournisseurDetailPage extends ConsumerStatefulWidget {
   final int bonDeCommandeId;
 
-  BonDeCommandeFournisseurDetailPage({
+  const BonDeCommandeFournisseurDetailPage({
     super.key,
     required this.bonDeCommandeId,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final BonDeCommandeFournisseurController controller =
-        Get.find<BonDeCommandeFournisseurController>();
-    final bon = controller.bonDeCommandes.firstWhereOrNull(
-      (b) => b.id == bonDeCommandeId,
-    );
-    final formatDate = DateFormat('dd/MM/yyyy');
-    final nf = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
+  ConsumerState<BonDeCommandeFournisseurDetailPage> createState() =>
+      _BonDeCommandeFournisseurDetailPageState();
+}
 
+class _BonDeCommandeFournisseurDetailPageState
+    extends ConsumerState<BonDeCommandeFournisseurDetailPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
+      if (notifier.getBonDeCommandeById(widget.bonDeCommandeId) == null) {
+        notifier.loadBonDeCommandes().then((_) {
+          notifier.loadBonDeCommandeById(widget.bonDeCommandeId);
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(bonDeCommandeFournisseurProvider);
+    final notifier = ref.read(bonDeCommandeFournisseurProvider.notifier);
+    BonDeCommande? bon = notifier.getBonDeCommandeById(widget.bonDeCommandeId);
+    if (bon == null && state.currentBonDeCommande?.id == widget.bonDeCommandeId) {
+      bon = state.currentBonDeCommande;
+    }
     if (bon == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Détails du bon de commande')),
-        body: const Center(child: Text('Bon de commande introuvable')),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
       );
     }
+    final bonData = bon;
+
+    final formatDate = DateFormat('dd/MM/yyyy');
+    final nf = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
 
     Color statusColor;
-    switch (bon.statut.toLowerCase()) {
+    switch (bonData.statut.toLowerCase()) {
       case 'en_attente':
         statusColor = Colors.orange;
         break;
@@ -48,48 +72,49 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Bon ${bon.numeroCommande}')),
+      appBar: AppBar(title: Text('Bon ${bonData.numeroCommande}')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(bon, nf, statusColor),
+            _header(bonData, nf, statusColor),
             const SizedBox(height: 16),
             _card('Informations', [
               _row(
                 Icons.calendar_today,
                 'Date de commande',
-                formatDate.format(bon.dateCommande),
+                formatDate.format(bonData.dateCommande),
               ),
-              _row(Icons.info, 'Statut', bon.statusText),
-              if (bon.description != null && bon.description!.isNotEmpty)
-                _row(Icons.description, 'Description', bon.description!),
-              if (bon.conditionsPaiement != null &&
-                  bon.conditionsPaiement!.isNotEmpty)
+              _row(Icons.info, 'Statut', bonData.statusText),
+              if (bonData.description != null &&
+                  bonData.description!.isNotEmpty)
+                _row(Icons.description, 'Description', bonData.description!),
+              if (bonData.conditionsPaiement != null &&
+                  bonData.conditionsPaiement!.isNotEmpty)
                 _row(
                   Icons.payment,
                   'Conditions de paiement',
-                  bon.conditionsPaiement!,
+                  bonData.conditionsPaiement!,
                 ),
-              if (bon.delaiLivraison != null)
+              if (bonData.delaiLivraison != null)
                 _row(
                   Icons.schedule,
                   'Délai de livraison',
-                  '${bon.delaiLivraison} jours',
+                  '${bonData.delaiLivraison} jours',
                 ),
             ]),
             const SizedBox(height: 16),
             _card('Articles', [
-              if (bon.items.isEmpty)
+              if (bonData.items.isEmpty)
                 const Text('Aucun article')
               else
                 ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: bon.items.length,
+                  itemCount: bonData.items.length,
                   itemBuilder: (context, index) {
-                    return _buildItemRow(bon.items[index], nf);
+                    return _buildItemRow(bonData.items[index], nf);
                   },
                 ),
             ]),
@@ -98,20 +123,42 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
               _row(
                 Icons.calculate,
                 'Montant total',
-                nf.format(bon.montantTotalCalcule),
+                nf.format(bonData.montantTotalCalcule),
                 bold: true,
               ),
             ]),
-            if (bon.statut == 'rejete' &&
-                bon.commentaire != null &&
-                bon.commentaire!.isNotEmpty) ...[
+            if (bonData.statut == 'rejete' &&
+                bonData.commentaire != null &&
+                bonData.commentaire!.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _rejection('Motif du rejet', bon.commentaire!),
+              _rejection('Motif du rejet', bonData.commentaire!),
             ],
-            if (bon.statut == 'valide') ...[
+            if (bonData.statut == 'valide') ...[
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => controller.generatePDF(bon.id!),
+                onPressed: () {
+                  final id = bonData.id;
+                  if (id == null) return;
+                  notifier.generatePDF(id).then((_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('PDF généré avec succès'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  }).catchError((e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Erreur: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  });
+                },
                 icon: const Icon(Icons.picture_as_pdf),
                 label: const Text('Générer PDF'),
                 style: ElevatedButton.styleFrom(
@@ -176,7 +223,10 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
             ),
             Text(
               nf.format(b.montantTotalCalcule),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
           ],
         ),
@@ -208,7 +258,10 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 12),
             ...children,
@@ -218,7 +271,12 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _row(IconData icon, String label, String value, {bool bold = false}) {
+  Widget _row(
+    IconData icon,
+    String label,
+    String value, {
+    bool bold = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -315,7 +373,10 @@ class BonDeCommandeFournisseurDetailPage extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
             const SizedBox(height: 12),
             Row(

@@ -1,65 +1,58 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:easyconnect/providers/notification_notifier.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/utils/encoding_helper.dart' show fixUtf8Mojibake;
 
-/// Page de liste des notifications
-class NotificationsPage extends StatelessWidget {
+/// Page de liste des notifications (Riverpod).
+class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
 
   @override
+  ConsumerState<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends ConsumerState<NotificationsPage> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Utiliser l'instance existante si disponible, sinon en créer une nouvelle
-    final isRegistered = Get.isRegistered<NotificationController>();
-    final controller = isRegistered
-        ? Get.find<NotificationController>()
-        : Get.put(NotificationController());
-    
-    // Log pour déboguer
-    if (isRegistered) {
-      print('[NOTIFICATIONS_PAGE] NotificationController trouvé (instance existante)');
-    } else {
-      print('[NOTIFICATIONS_PAGE] NotificationController créé (nouvelle instance)');
-    }
-    
-    // Ne PAS forcer le rechargement au premier affichage si le controller est déjà initialisé
-    // Le controller se charge déjà automatiquement via onInit() et le polling
-    // Cela évite de déclencher des notifications sonores quand on entre dans la page
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Seulement rafraîchir si la liste est vide (première fois)
-      if (controller.notifications.isEmpty && !controller.isLoading.value) {
-        controller.loadNotifications(forceRefresh: true);
-      }
-    });
+    final state = ref.watch(notificationProvider);
+    final notifier = ref.read(notificationProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          // Filtre non lues seulement
           IconButton(
             icon: Icon(
-              controller.unreadOnly.value
-                  ? Icons.filter_list
-                  : Icons.filter_list_off,
+              state.unreadOnly ? Icons.filter_list : Icons.filter_list_off,
             ),
             tooltip: 'Filtrer les non lues',
-            onPressed: () => controller.toggleUnreadOnly(),
+            onPressed: () => notifier.toggleUnreadOnly(),
           ),
-          // Marquer toutes comme lues
-          if (controller.unreadCount.value > 0)
+          if (state.unreadCount > 0)
             TextButton(
               onPressed: () async {
-                await controller.markAllAsRead();
-                Get.snackbar(
-                  'Succès',
-                  'Toutes les notifications ont été marquées comme lues',
-                  snackPosition: SnackPosition.BOTTOM,
-                  duration: const Duration(seconds: 2),
-                );
+                await notifier.markAllAsRead();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Toutes les notifications ont été marquées comme lues',
+                      ),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               },
               child: const Text(
                 'Tout marquer comme lu',
@@ -68,62 +61,104 @@ class NotificationsPage extends StatelessWidget {
             ),
         ],
       ),
-      body: Obx(() {
-        if (controller.isLoading.value && controller.notifications.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (controller.notifications.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.notifications_none,
-                  size: 64,
-                  color: Colors.grey[400],
+      body: state.isLoading && state.notifications.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : state.notifications.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.notifications_none,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        state.unreadOnly
+                            ? 'Aucune notification non lue'
+                            : 'Aucune notification',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: () =>
+                      notifier.loadNotifications(forceRefresh: true),
+                  child: PaginatedListView(
+                    scrollController: _scrollController,
+                    onLoadMore: notifier.loadMore,
+                    hasNextPage: state.hasNextPage,
+                    isLoadingMore: state.isLoadingMore,
+                    padding: const EdgeInsets.all(8),
+                    itemCount: state.notifications.length,
+                    itemBuilder: (context, index) {
+                      final notification = state.notifications[index];
+                      return NotificationItemWidget(
+                        notification: notification,
+                        onTap: () =>
+                            notifier.handleNotificationTap(notification),
+                        onLongPress: () => _showDeleteDialog(
+                          context,
+                          notifier,
+                          notification,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  controller.unreadOnly.value
-                      ? 'Aucune notification non lue'
-                      : 'Aucune notification',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          );
-        }
+    );
+  }
 
-        return RefreshIndicator(
-          onRefresh: () => controller.loadNotifications(forceRefresh: true),
-          child: PaginatedListView(
-            scrollController: controller.scrollController,
-            onLoadMore: controller.loadMore,
-            hasNextPage: controller.hasNextPage.value,
-            isLoadingMore: controller.isLoadingMore.value,
-            padding: const EdgeInsets.all(8),
-            itemCount: controller.notifications.length,
-            itemBuilder: (context, index) {
-              final notification = controller.notifications[index];
-              return NotificationItemWidget(notification: notification);
-            },
+  void _showDeleteDialog(
+    BuildContext context,
+    NotificationNotifier notifier,
+    AppNotification notification,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer la notification'),
+        content: const Text(
+          'Êtes-vous sûr de vouloir supprimer cette notification ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annuler'),
           ),
-        );
-      }),
+          TextButton(
+            onPressed: () {
+              notifier.deleteNotification(notification.id);
+              Navigator.of(context).pop();
+            },
+            child: const Text(
+              'Supprimer',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// Widget pour afficher un élément de notification
+/// Widget pour afficher un élément de notification.
 class NotificationItemWidget extends StatelessWidget {
   final AppNotification notification;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
-  const NotificationItemWidget({super.key, required this.notification});
+  const NotificationItemWidget({
+    super.key,
+    required this.notification,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<NotificationController>();
     final color = _getColorFromHex(notification.colorHex);
     final icon = _getIconFromName(notification.iconName);
 
@@ -185,21 +220,20 @@ class NotificationItemWidget extends StatelessWidget {
             ),
           ],
         ),
-        trailing:
-            notification.isRead
-                ? null
-                : const Icon(Icons.circle, color: Colors.blue, size: 8),
-        onTap: () => controller.handleNotificationTap(notification),
-        onLongPress: () => _showDeleteDialog(context, controller),
+        trailing: notification.isRead
+            ? null
+            : const Icon(Icons.circle, color: Colors.blue, size: 8),
+        onTap: onTap,
+        onLongPress: onLongPress,
       ),
     );
   }
 
-  Color _getColorFromHex(String hex) {
+  static Color _getColorFromHex(String hex) {
     return Color(int.parse(hex.replaceAll('#', '0xFF')));
   }
 
-  IconData _getIconFromName(String name) {
+  static IconData _getIconFromName(String name) {
     switch (name) {
       case 'check_circle':
         return Icons.check_circle;
@@ -214,10 +248,9 @@ class NotificationItemWidget extends StatelessWidget {
     }
   }
 
-  String _formatDate(DateTime date) {
+  static String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
         return 'Il y a ${difference.inMinutes} min';
@@ -231,55 +264,18 @@ class NotificationItemWidget extends StatelessWidget {
       return DateFormat('dd/MM/yyyy').format(date);
     }
   }
-
-  void _showDeleteDialog(
-    BuildContext context,
-    NotificationController controller,
-  ) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Supprimer la notification'),
-            content: const Text(
-              'Êtes-vous sûr de vouloir supprimer cette notification ?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Get.back(),
-                child: const Text('Annuler'),
-              ),
-              TextButton(
-                onPressed: () {
-                  controller.deleteNotification(notification.id);
-                  Get.back();
-                },
-                child: const Text(
-                  'Supprimer',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
 }
 
-/// Widget badge pour afficher le compteur de notifications non lues
-class NotificationBadge extends StatelessWidget {
+/// Widget badge pour afficher le compteur de notifications non lues.
+class NotificationBadge extends ConsumerWidget {
   final Widget child;
 
   const NotificationBadge({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context) {
-    final controller = Get.find<NotificationController>();
-
-    return Obx(() {
-      final count = controller.unreadCount.value;
-      if (count == 0) return child;
-
-      return Badge(label: Text('$count'), child: child);
-    });
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(notificationProvider).unreadCount;
+    if (count == 0) return child;
+    return Badge(label: Text('$count'), child: child);
   }
 }

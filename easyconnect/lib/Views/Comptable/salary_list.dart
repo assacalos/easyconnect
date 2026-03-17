@@ -1,25 +1,41 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/salary_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/salary_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/salary_model.dart';
-import 'package:easyconnect/Views/Comptable/salary_form.dart';
-import 'package:easyconnect/Views/Comptable/salary_detail.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:easyconnect/Views/Components/export_dialog.dart';
+import 'package:easyconnect/utils/export_data_builder.dart';
+import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/services/pdf_service.dart';
 
-class SalaryList extends StatefulWidget {
+class SalaryList extends ConsumerStatefulWidget {
   const SalaryList({super.key});
 
   @override
-  State<SalaryList> createState() => _SalaryListState();
+  ConsumerState<SalaryList> createState() => _SalaryListState();
 }
 
-class _SalaryListState extends State<SalaryList>
+class _SalaryListState extends ConsumerState<SalaryList>
     with SingleTickerProviderStateMixin {
-  final SalaryController controller = Get.put(SalaryController());
   late TabController _tabController;
-  String _searchQuery = '';
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+
+  static String _statusForIndex(int index) {
+    switch (index) {
+      case 0: return 'all';
+      case 1: return 'pending';
+      case 2: return 'approved';
+      case 3: return 'paid';
+      case 4: return 'rejected';
+      default: return 'all';
+    }
+  }
 
   @override
   void initState() {
@@ -27,89 +43,57 @@ class _SalaryListState extends State<SalaryList>
     _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
-        // Rafraîchir l'interface quand l'onglet change
-        setState(() {});
+        ref.read(salaryProvider.notifier).filterByStatus(
+          _statusForIndex(_tabController.index),
+        );
       }
     });
-    // Charger les données après que le widget soit construit
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadSalaries();
+      ref.read(salaryProvider.notifier).loadSalaries(forceRefresh: true);
     });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
-  }
-
-  List<Salary> get _filteredSalaries {
-    List<Salary> filtered = controller.salaries;
-
-    // Filtrer par statut selon l'onglet actif
-    switch (_tabController.index) {
-      case 0: // Tous
-        break;
-      case 1: // En attente (inclut 'pending' et 'draft')
-        filtered =
-            filtered.where((s) {
-              final status = s.status?.toLowerCase() ?? '';
-              return status == 'pending' || status == 'draft';
-            }).toList();
-        break;
-      case 2: // Approuvés
-        filtered =
-            filtered
-                .where((s) => s.status?.toLowerCase() == 'approved')
-                .toList();
-        break;
-      case 3: // Payés
-        filtered =
-            filtered.where((s) => s.status?.toLowerCase() == 'paid').toList();
-        break;
-      case 4: // Rejetés
-        filtered =
-            filtered
-                .where((s) => s.status?.toLowerCase() == 'rejected')
-                .toList();
-        break;
-    }
-
-    // Filtrer par recherche
-    if (_searchQuery.isNotEmpty) {
-      filtered =
-          filtered
-              .where(
-                (salary) =>
-                    (salary.employeeName ?? '').toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    (salary.employeeEmail ?? '').toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
-
-    return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
+    final state = ref.watch(salaryProvider);
+    final notifier = ref.read(salaryProvider.notifier);
+    final userRole = ref.watch(authProvider).user?.role;
+    final canManage = userRole == Roles.ADMIN || userRole == Roles.COMPTABLE;
+    final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Salaires'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Exporter',
+            onPressed: () {
+              final list = state.salaries;
+              if (list.isEmpty) return;
+              showExportDialog(
+                context: context,
+                title: 'Exporter les salaires',
+                fileName: 'salaires_${DateTime.now().millisecondsSinceEpoch}',
+                headers: ExportDataBuilder.salaryHeaders,
+                rows: ExportDataBuilder.salariesToRows(list),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: controller.loadSalaries,
+            onPressed: () => notifier.loadSalaries(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -127,57 +111,54 @@ class _SalaryListState extends State<SalaryList>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Rechercher par employé...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                        : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchSalaries('');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
+              onChanged: (value) => notifier.searchSalaries(value),
             ),
           ),
-
-          // Liste des salaires
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const SkeletonSearchResults(itemCount: 6);
-              }
-              return _filteredSalaries.isEmpty
-                  ? const Center(child: Text('Aucun salaire trouvé'))
-                  : PaginatedListView(
-                    scrollController: controller.scrollController,
-                    onLoadMore: controller.loadMore,
-                    hasNextPage: controller.hasNextPage.value,
-                    isLoadingMore: controller.isLoadingMore.value,
-                    itemCount: _filteredSalaries.length,
-                    itemBuilder: (context, index) {
-                      final salary = _filteredSalaries[index];
-                      return _buildSalaryCard(salary, formatCurrency);
-                    },
-                  );
-            }),
+            child: state.isLoading && state.salaries.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : state.salaries.isEmpty
+                    ? const Center(child: Text('Aucun salaire trouvé'))
+                    : PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: state.hasNextPage,
+                        isLoadingMore: state.isLoadingMore,
+                        itemCount: state.salaries.length,
+                        itemBuilder: (context, index) {
+                          final salary = state.salaries[index];
+                          return _buildSalaryCard(
+                            context,
+                            salary,
+                            formatCurrency,
+                            canManage,
+                            notifier,
+                          );
+                        },
+                      ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.to(() => const SalaryForm()),
+        onPressed: () => context.go('/salaries/new'),
         tooltip: 'Nouveau salaire',
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -186,19 +167,27 @@ class _SalaryListState extends State<SalaryList>
     );
   }
 
-  Widget _buildSalaryCard(Salary salary, NumberFormat formatCurrency) {
+  Widget _buildSalaryCard(
+    BuildContext context,
+    Salary salary,
+    NumberFormat formatCurrency,
+    bool canManage,
+    SalaryNotifier notifier,
+  ) {
+    final status = salary.status ?? 'pending';
+    final statusColor = _getStatusColor(status);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
       child: InkWell(
-        onTap: () => Get.to(() => SalaryDetail(salary: salary)),
+        onTap: () => context.go('/salaries/${salary.id}', extra: salary),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec nom et statut
               Row(
                 children: [
                   Expanded(
@@ -211,25 +200,16 @@ class _SalaryListState extends State<SalaryList>
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(
-                        salary.status ?? 'pending',
-                      ).withOpacity(0.1),
+                      color: statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getStatusColor(
-                          salary.status ?? 'pending',
-                        ).withOpacity(0.5),
-                      ),
+                      border: Border.all(color: statusColor.withOpacity(0.5)),
                     ),
                     child: Text(
-                      _getStatusLabel(salary.status ?? 'pending'),
+                      _getStatusLabel(status),
                       style: TextStyle(
-                        color: _getStatusColor(salary.status ?? 'pending'),
+                        color: statusColor,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
@@ -238,8 +218,6 @@ class _SalaryListState extends State<SalaryList>
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Email si disponible
               if (salary.employeeEmail != null) ...[
                 Row(
                   children: [
@@ -255,8 +233,6 @@ class _SalaryListState extends State<SalaryList>
                 ),
                 const SizedBox(height: 4),
               ],
-
-              // Période
               Row(
                 children: [
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
@@ -268,8 +244,6 @@ class _SalaryListState extends State<SalaryList>
                 ],
               ),
               const SizedBox(height: 8),
-
-              // Salaire net
               Row(
                 children: [
                   Icon(Icons.attach_money, size: 16, color: Colors.green[700]),
@@ -284,8 +258,6 @@ class _SalaryListState extends State<SalaryList>
                   ),
                 ],
               ),
-
-              // Raison du rejet si rejeté
               if (salary.status == 'rejected' &&
                   salary.rejectionReason != null &&
                   salary.rejectionReason!.isNotEmpty) ...[
@@ -304,56 +276,33 @@ class _SalaryListState extends State<SalaryList>
                   ],
                 ),
               ],
-
-              // Actions
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    label: const Text('Générer bulletin'),
+                    onPressed: () => _generateBulletin(context, salary),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
                     icon: const Icon(Icons.info_outline, size: 16),
                     label: const Text('Détails'),
-                    onPressed: () => Get.to(() => SalaryDetail(salary: salary)),
+                    onPressed: () =>
+                        context.go('/salaries/${salary.id}', extra: salary),
                   ),
-                  if (salary.status == 'pending' &&
-                      controller.canManageSalaries) ...[
+                  if (salary.status == 'pending' && canManage) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => SalaryForm(salary: salary)),
-                    ),
-                  ],
-                  /* if (salary.status == 'pending' &&
-                      controller.canApproveSalaries) ...[
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Approuver'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.green,
+                      onPressed: () => context.go(
+                        '/salaries/${salary.id}/edit',
+                        extra: salary,
                       ),
-                      onPressed: () => _showApproveDialog(salary),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Rejeter'),
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => _showRejectDialog(salary),
                     ),
                   ],
-                  if (salary.status == 'approved' &&
-                      controller.canApproveSalaries) ...[
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      icon: const Icon(Icons.payment, size: 16),
-                      label: const Text('Marquer payé'),
-                      style: TextButton.styleFrom(foregroundColor: Colors.blue),
-                      onPressed: () => _showMarkPaidDialog(salary),
-                    ),
-                  ], */
-                  // Note: Pas de méthode generatePDF pour les salaires
                 ],
               ),
             ],
@@ -393,104 +342,20 @@ class _SalaryListState extends State<SalaryList>
     }
   }
 
-  /*  void _showApproveDialog(Salary salary) {
-    final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Approuver le salaire'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Approuver le salaire de ${salary.employeeName ?? 'l\'employé'} ?',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optionnel)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveSalary(salary);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Approuver'),
-          ),
-        ],
-      ),
-    );
-  } */
-
-  /*  void _showRejectDialog(Salary salary) {
-    final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Rejeter le salaire'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Veuillez indiquer la raison du rejet :'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Raison du rejet *',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectSalary(salary, reasonController.text.trim());
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
-    );
-  } */
-
-  void _showMarkPaidDialog(Salary salary) {
-    Get.dialog(
-      AlertDialog(
-        title: const Text('Marquer comme payé'),
-        content: Text(
-          'Marquer le salaire de ${salary.employeeName ?? 'l\'employé'} comme payé ?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              controller.markSalaryAsPaid(salary);
-              Get.back();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: const Text('Confirmer'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _generateBulletin(BuildContext context, Salary salary) async {
+    try {
+      await PdfService().generateBulletinPaiePdf(bulletin: salary.toJson());
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bulletin de paie généré')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e')),
+        );
+      }
+    }
   }
 }

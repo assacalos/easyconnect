@@ -1,13 +1,13 @@
-import 'package:easyconnect/Controllers/host_controller.dart';
+import 'package:easyconnect/providers/host_provider.dart';
 import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class BottomBarItem {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final bool showBadge; // Indique si on doit afficher un badge (pour les notifications)
+  final bool showBadge;
 
   BottomBarItem({
     required this.icon,
@@ -17,47 +17,38 @@ class BottomBarItem {
   });
 }
 
-class BottomBarWidget extends StatelessWidget {
+class BottomBarWidget extends ConsumerWidget {
   final List<BottomBarItem> items;
-  final HostController hostController = Get.find();
 
-  BottomBarWidget({required this.items, Key? key}) : super(key: key);
+  const BottomBarWidget({super.key, required this.items});
 
   @override
-  Widget build(BuildContext context) {
-    return Obx(
-      () => BottomNavigationBar(
-        currentIndex: hostController.currentIndex.value,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blueGrey.shade800,
-        unselectedItemColor: Colors.grey,
-        items:
-            items
-                .map(
-                  (item) {
-                    // Si c'est l'item de notifications et qu'on doit afficher un badge
-                    if (item.showBadge && item.icon == Icons.notifications) {
-                      return BottomNavigationBarItem(
-                        icon: const NotificationBadgeIcon(),
-                        label: item.label,
-                      );
-                    }
-                    
-                    return BottomNavigationBarItem(
-                      icon: Icon(item.icon),
-                      label: item.label,
-                    );
-                  },
-                )
-                .toList(),
-        onTap: (index) {
-          hostController.currentIndex.value = index;
-          if (items[index].onTap != null) {
-            items[index].onTap!();
-          }
-        },
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentIndex = ref.watch(hostIndexProvider);
+
+    return BottomNavigationBar(
+      currentIndex: currentIndex,
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: Colors.blueGrey.shade800,
+      unselectedItemColor: Colors.grey,
+      items: items.map((item) {
+        if (item.showBadge && item.icon == Icons.notifications) {
+          return BottomNavigationBarItem(
+            icon: const NotificationBadgeIcon(),
+            label: item.label,
+          );
+        }
+        return BottomNavigationBarItem(
+          icon: Icon(item.icon),
+          label: item.label,
+        );
+      }).toList(),
+      onTap: (index) {
+        ref.read(hostIndexProvider.notifier).state = index;
+        if (items[index].onTap != null) {
+          items[index].onTap!();
+        }
+      },
     );
   }
-
 }

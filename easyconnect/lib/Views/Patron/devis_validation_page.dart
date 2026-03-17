@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/devis_notifier.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class DevisValidationPage extends StatefulWidget {
+class DevisValidationPage extends ConsumerStatefulWidget {
   const DevisValidationPage({super.key});
 
   @override
-  State<DevisValidationPage> createState() => _DevisValidationPageState();
+  ConsumerState<DevisValidationPage> createState() => _DevisValidationPageState();
 }
 
-class _DevisValidationPageState extends State<DevisValidationPage>
+class _DevisValidationPageState extends ConsumerState<DevisValidationPage>
     with SingleTickerProviderStateMixin {
-  late final DevisController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -22,17 +22,11 @@ class _DevisValidationPageState extends State<DevisValidationPage>
   @override
   void initState() {
     super.initState();
-    // Vérifier et initialiser le contrôleur
-    if (!Get.isRegistered<DevisController>()) {
-      Get.put(DevisController(), permanent: true);
-    }
-    controller = Get.find<DevisController>();
-
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (!_tabController.indexIsChanging) _loadDevis();
     });
-    _loadDevis();
+    ref.read(devisProvider.notifier).loadDevis(status: null, forceRefresh: true);
   }
 
   @override
@@ -42,22 +36,15 @@ class _DevisValidationPageState extends State<DevisValidationPage>
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadDevis();
-    }
-  }
-
-  /// Charge toujours tous les devis ; le filtrage par onglet se fait côté client.
-  /// Évite l'incohérence (ex. 2 en attente dans "Tous" et 1 dans "En attente").
   Future<void> _loadDevis({bool forceRefresh = false}) async {
-    await controller.loadDevis(status: null, forceRefresh: forceRefresh);
+    await ref.read(devisProvider.notifier).loadDevis(status: null, forceRefresh: forceRefresh);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Devis'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -65,7 +52,7 @@ class _DevisValidationPageState extends State<DevisValidationPage>
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              _loadDevis();
+              _loadDevis(forceRefresh: true);
             },
             tooltip: 'Actualiser',
           ),
@@ -116,12 +103,9 @@ class _DevisValidationPageState extends State<DevisValidationPage>
           ),
           // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildDevisList(),
-            ),
+            child: ref.watch(devisProvider).isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildDevisList(),
           ),
         ],
       ),
@@ -145,8 +129,8 @@ class _DevisValidationPageState extends State<DevisValidationPage>
         break;
     }
     var list = statusFilter != null
-        ? controller.devis.where((d) => d.status == statusFilter).toList()
-        : controller.devis.toList();
+        ? ref.watch(devisProvider).devis.where((d) => d.status == statusFilter).toList()
+        : ref.watch(devisProvider).devis.toList();
     // Puis filtrer par recherche
     final filteredDevis =
         _searchQuery.isEmpty
@@ -217,15 +201,34 @@ class _DevisValidationPageState extends State<DevisValidationPage>
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor),
         ),
-        title: Text(
-          devis.reference,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              devis.clientNomEntreprise?.isNotEmpty == true
+                  ? devis.clientNomEntreprise!
+                  : 'Client #${devis.clientId}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              devis.reference,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Client ID: ${devis.clientId}'),
             Text('Date: ${formatDate.format(devis.dateCreation)}'),
             Text('Montant: ${formatCurrency.format(devis.totalTTC)}'),
             const SizedBox(height: 4),
@@ -456,7 +459,14 @@ class _DevisValidationPageState extends State<DevisValidationPage>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => controller.generatePDF(devis.id!),
+                onPressed: () async {
+                  try {
+                    await ref.read(devisProvider.notifier).generatePDF(devis.id!);
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF généré'), backgroundColor: Colors.green));
+                  } catch (e) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+                  }
+                },
                 icon: const Icon(Icons.picture_as_pdf, size: 24),
                 label: const Text(
                   'Générer PDF',
@@ -581,60 +591,71 @@ class _DevisValidationPageState extends State<DevisValidationPage>
   }
 
   void _showApproveConfirmation(Devis devis) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce devis ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        Get.back();
-        await controller.acceptDevis(devis.id!);
-        // Recharger la liste après validation pour voir le changement de statut
-        // Forcer le rafraîchissement pour s'assurer que les données sont à jour
-        await Future.delayed(const Duration(milliseconds: 800));
-        await _loadDevis(forceRefresh: true);
-      },
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce devis ?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await ref.read(devisProvider.notifier).acceptDevis(devis.id!);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Devis accepté')));
+                await _loadDevis(forceRefresh: true);
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+              }
+            },
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
     );
   }
 
   void _showRejectDialog(Devis devis) {
     final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le devis',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le devis'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez entrer un motif de rejet')));
+                return;
+              }
+              Navigator.of(ctx).pop();
+              try {
+                await ref.read(devisProvider.notifier).rejectDevis(devis.id!, commentController.text.trim());
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Devis rejeté')));
+                await _loadDevis(forceRefresh: true);
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+              }
+            },
+            child: const Text('Rejeter'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectDevis(devis.id!, commentController.text);
-        // Attendre un peu avant de recharger pour laisser le temps au serveur
-        Future.delayed(const Duration(milliseconds: 800), () {
-          _loadDevis(forceRefresh: true);
-        });
-      },
     );
   }
 }

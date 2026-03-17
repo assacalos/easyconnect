@@ -1,124 +1,109 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/services/user_service.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class UserManagementController extends GetxController {
+class UserManagementController {
+  static final UserManagementController _instance = UserManagementController._();
+  static UserManagementController get to => _instance;
+  factory UserManagementController() => _instance;
+  UserManagementController._();
+
   final UserService _userService = UserService();
 
-  // Observables
-  final RxList<UserModel> users = <UserModel>[].obs;
-  final RxBool isLoading = false.obs;
-  final RxString searchQuery = ''.obs;
-  final RxString selectedRole = 'all'.obs;
-  final RxBool showActiveOnly = true.obs;
+  final List<UserModel> users = [];
+  bool isLoading = false;
+  String searchQuery = '';
+  String selectedRole = 'all';
+  bool showActiveOnly = true;
 
-  // Statistiques
-  final RxInt totalUsers = 0.obs;
-  final RxInt activeUsers = 0.obs;
-  final RxInt newUsersThisMonth = 0.obs;
+  int totalUsers = 0;
+  int activeUsers = 0;
+  int newUsersThisMonth = 0;
 
-  // Contrôleurs de formulaire
   final TextEditingController nomController = TextEditingController();
   final TextEditingController prenomController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final RxInt selectedRoleId = 1.obs;
-  final RxBool isCreating = false.obs;
+  int selectedRoleId = 1;
+  bool isCreating = false;
 
-  @override
-  void onInit() {
-    super.onInit();
-    loadUsers();
-    loadUserStats();
-  }
-
-  @override
-  void onClose() {
+  void dispose() {
     nomController.dispose();
     prenomController.dispose();
     emailController.dispose();
     passwordController.dispose();
-    super.onClose();
   }
 
-  /// Charger tous les utilisateurs
   Future<void> loadUsers() async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final loadedUsers = await _userService.getUsers();
-      users.value = loadedUsers;
+      users.clear();
+      users.addAll(loadedUsers);
     } catch (e) {
-      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('session expirée') &&
           !errorString.contains('401') &&
-          !errorString.contains('unauthorized')) {
-        if (users.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Impossible de charger les utilisateurs: $e',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-          );
-        }
+          !errorString.contains('unauthorized') &&
+          users.isEmpty) {
+        errorHelperShowSnackbar?.call(
+          'Erreur',
+          'Impossible de charger les utilisateurs: $e',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Charger les statistiques des utilisateurs
   Future<void> loadUserStats() async {
     try {
       final stats = await _userService.getUserStats();
-      totalUsers.value = stats['total'] ?? 0;
-      activeUsers.value = stats['active'] ?? 0;
-      newUsersThisMonth.value = stats['new_this_month'] ?? 0;
+      totalUsers = stats['total'] ?? 0;
+      activeUsers = stats['active'] ?? 0;
+      newUsersThisMonth = stats['new_this_month'] ?? 0;
     } catch (e) {}
   }
 
-  /// Créer un nouvel utilisateur
+  static bool _isEmail(String s) {
+    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(s);
+  }
+
   Future<bool> createUser() async {
     try {
-      isCreating.value = true;
+      isCreating = true;
 
-      // Validation des champs
       if (nomController.text.isEmpty ||
           prenomController.text.isEmpty ||
           emailController.text.isEmpty ||
           passwordController.text.isEmpty) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez remplir tous les champs',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
         return false;
       }
 
-      // Validation de l'email
-      if (!GetUtils.isEmail(emailController.text)) {
-        Get.snackbar(
+      if (!_isEmail(emailController.text)) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez saisir un email valide',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
         return false;
       }
 
-      // Validation du mot de passe
       if (passwordController.text.length < 6) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Le mot de passe doit contenir au moins 6 caractères',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -126,91 +111,72 @@ class UserManagementController extends GetxController {
       }
 
       final newUser = UserModel(
-        id: 0, // Sera généré par le serveur
+        id: 0,
         nom: nomController.text.trim(),
         prenom: prenomController.text.trim(),
         email: emailController.text.trim(),
-        role: selectedRoleId.value,
+        role: selectedRoleId,
         isActive: true,
       );
 
       await _userService.createUser(newUser, passwordController.text);
 
-      // Recharger la liste
       await loadUsers();
       await loadUserStats();
-
-      // Réinitialiser le formulaire
       clearForm();
 
-      Get.snackbar(
-        'Succès',
-        'Utilisateur créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
-
+      ErrorHelper.showSuccess('Utilisateur créé avec succès');
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de créer l\'utilisateur: $e',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
       return false;
     } finally {
-      isCreating.value = false;
+      isCreating = false;
     }
   }
 
-  /// Mettre à jour un utilisateur
   Future<bool> updateUser(UserModel user) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       await _userService.updateUser(user);
       await loadUsers();
 
-      Get.snackbar(
-        'Succès',
-        'Utilisateur mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
+      ErrorHelper.showSuccess('Utilisateur mis à jour avec succès');
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour l\'utilisateur: $e',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Supprimer un utilisateur
-  Future<void> deleteUser(int userId) async {
+  Future<void> deleteUser(BuildContext context, int userId) async {
     try {
-      final confirmed = await Get.dialog<bool>(
-        AlertDialog(
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
           title: const Text('Confirmer la suppression'),
           content: const Text(
             'Êtes-vous sûr de vouloir supprimer cet utilisateur ?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Get.back(result: false),
+              onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Annuler'),
             ),
             ElevatedButton(
-              onPressed: () => Get.back(result: true),
+              onPressed: () => Navigator.of(ctx).pop(true),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Supprimer'),
             ),
@@ -219,111 +185,85 @@ class UserManagementController extends GetxController {
       );
 
       if (confirmed == true) {
-        isLoading.value = true;
+        isLoading = true;
         final success = await _userService.deleteUser(userId);
 
         if (success) {
           await loadUsers();
           await loadUserStats();
-
-          Get.snackbar(
-            'Succès',
-            'Utilisateur supprimé avec succès',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.green,
-            colorText: Colors.white,
-          );
+          ErrorHelper.showSuccess('Utilisateur supprimé avec succès');
         } else {
           throw Exception('Erreur lors de la suppression');
         }
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer l\'utilisateur: $e',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Activer/Désactiver un utilisateur
   Future<void> toggleUserStatus(int userId, bool isActive) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _userService.toggleUserStatus(userId, isActive);
 
       if (success) {
         await loadUsers();
         await loadUserStats();
-
-        Get.snackbar(
-          'Succès',
-          'Statut de l\'utilisateur modifié avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        ErrorHelper.showSuccess('Statut de l\'utilisateur modifié avec succès');
       } else {
         throw Exception('Erreur lors de la modification du statut');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de modifier le statut: $e',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Filtrer les utilisateurs
   List<UserModel> getFilteredUsers() {
-    List<UserModel> filteredUsers = users;
+    List<UserModel> filteredUsers = List.from(users);
 
-    // Filtre par recherche
-    if (searchQuery.value.isNotEmpty) {
-      filteredUsers =
-          filteredUsers.where((user) {
-            final fullName =
-                '${user.nom ?? ''} ${user.prenom ?? ''}'.toLowerCase();
-            final email = user.email?.toLowerCase() ?? '';
-            final query = searchQuery.value.toLowerCase();
-            return fullName.contains(query) || email.contains(query);
-          }).toList();
+    if (searchQuery.isNotEmpty) {
+      filteredUsers = filteredUsers.where((user) {
+        final fullName = '${user.nom ?? ''} ${user.prenom ?? ''}'.toLowerCase();
+        final email = user.email?.toLowerCase() ?? '';
+        final query = searchQuery.toLowerCase();
+        return fullName.contains(query) || email.contains(query);
+      }).toList();
     }
 
-    // Filtre par rôle
-    if (selectedRole.value != 'all') {
-      final roleId = _getRoleIdFromName(selectedRole.value);
-      filteredUsers =
-          filteredUsers.where((user) => user.role == roleId).toList();
+    if (selectedRole != 'all') {
+      final roleId = _getRoleIdFromName(selectedRole);
+      filteredUsers = filteredUsers.where((user) => user.role == roleId).toList();
     }
 
-    // Filtre par statut actif
-    if (showActiveOnly.value) {
+    if (showActiveOnly) {
       filteredUsers = filteredUsers.where((user) => user.isActive).toList();
     }
 
     return filteredUsers;
   }
 
-  /// Réinitialiser le formulaire
   void clearForm() {
     nomController.clear();
     prenomController.clear();
     emailController.clear();
     passwordController.clear();
-    selectedRoleId.value = 1;
+    selectedRoleId = 1;
   }
 
-  /// Obtenir le nom du rôle
   String getRoleName(int? role) {
     switch (role) {
       case Roles.ADMIN:
@@ -343,7 +283,6 @@ class UserManagementController extends GetxController {
     }
   }
 
-  /// Obtenir la couleur du rôle
   Color getRoleColor(int? role) {
     switch (role) {
       case Roles.ADMIN:
@@ -363,7 +302,6 @@ class UserManagementController extends GetxController {
     }
   }
 
-  /// Obtenir l'ID du rôle à partir du nom
   int _getRoleIdFromName(String roleName) {
     switch (roleName) {
       case 'admin':
@@ -383,7 +321,6 @@ class UserManagementController extends GetxController {
     }
   }
 
-  /// Obtenir la liste des rôles pour le dropdown
   List<Map<String, dynamic>> getRolesList() {
     return [
       {'id': Roles.ADMIN, 'name': 'Administrateur'},

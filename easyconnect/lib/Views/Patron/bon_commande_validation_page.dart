@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bon_commande_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/bon_commande_notifier.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BonCommandeValidationPage extends StatefulWidget {
+class BonCommandeValidationPage extends ConsumerStatefulWidget {
   const BonCommandeValidationPage({super.key});
 
   @override
-  State<BonCommandeValidationPage> createState() =>
+  ConsumerState<BonCommandeValidationPage> createState() =>
       _BonCommandeValidationPageState();
 }
 
-class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
+class _BonCommandeValidationPageState extends ConsumerState<BonCommandeValidationPage>
     with SingleTickerProviderStateMixin {
-  late final BonCommandeController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -22,17 +22,11 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
   @override
   void initState() {
     super.initState();
-    // Vérifier et initialiser le contrôleur
-    if (!Get.isRegistered<BonCommandeController>()) {
-      Get.put(BonCommandeController(), permanent: true);
-    }
-    controller = Get.find<BonCommandeController>();
-
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (_tabController.indexIsChanging) _loadBonCommandes();
     });
-    _loadBonCommandes();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBonCommandes(forceRefresh: true));
   }
 
   @override
@@ -42,45 +36,32 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadBonCommandes();
-    }
-  }
-
-  Future<void> _loadBonCommandes() async {
+  Future<void> _loadBonCommandes({bool forceRefresh = false}) async {
     int? status;
     switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 1;
-        break;
-      case 2: // Validés
-        status = 2;
-        break;
-      case 3: // Rejetés
-        status = 3;
-        break;
+      case 0: status = null; break;
+      case 1: status = 1; break;
+      case 2: status = 2; break;
+      case 3: status = 3; break;
     }
-
-    await controller.loadBonCommandes(status: status);
+    await ref.read(bonCommandeProvider.notifier).loadBonCommandes(status: status, forceRefresh: forceRefresh);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(bonCommandeProvider);
+    final notifier = ref.read(bonCommandeProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Bons de Commande'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadBonCommandes();
-            },
+            onPressed: () => _loadBonCommandes(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -99,7 +80,6 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -107,55 +87,42 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par ID...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildBonCommandeList(),
-            ),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildBonCommandeList(state.bonCommandes, notifier),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBonCommandeList() {
-    // Filtrer les bons de commande selon la recherche
-    final filteredBonCommandes =
-        _searchQuery.isEmpty
-            ? controller.bonCommandes
-            : controller.bonCommandes
-                .where(
-                  (bon) =>
-                      bon.id.toString().contains(_searchQuery) ||
-                      bon.clientId.toString().contains(_searchQuery),
-                )
-                .toList();
+  Widget _buildBonCommandeList(List<BonCommande> bonCommandes, BonCommandeNotifier notifier) {
+    final filtered = _searchQuery.isEmpty
+        ? bonCommandes
+        : bonCommandes
+            .where(
+              (bon) =>
+                  bon.id.toString().contains(_searchQuery) ||
+                  bon.clientId.toString().contains(_searchQuery),
+            )
+            .toList();
 
-    if (filteredBonCommandes.isEmpty) {
+    if (filtered.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -173,9 +140,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  setState(() => _searchQuery = '');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -187,16 +152,16 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     }
 
     return ListView.builder(
-      itemCount: filteredBonCommandes.length,
+      itemCount: filtered.length,
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
-        final bonCommande = filteredBonCommandes[index];
-        return _buildBonCommandeCard(context, bonCommande);
+        final bonCommande = filtered[index];
+        return _buildBonCommandeCard(context, ref, bonCommande, notifier);
       },
     );
   }
 
-  Widget _buildBonCommandeCard(BuildContext context, BonCommande bonCommande) {
+  Widget _buildBonCommandeCard(BuildContext context, WidgetRef ref, BonCommande bonCommande, BonCommandeNotifier notifier) {
     final statusColor = _getStatusColor(bonCommande.status);
     final statusIcon = _getStatusIcon(bonCommande.status);
     final statusText = _getStatusText(bonCommande.status);
@@ -208,15 +173,24 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
           backgroundColor: statusColor.withOpacity(0.1),
           child: Icon(statusIcon, color: statusColor),
         ),
-        title: Text(
-          'Bon de commande #${bonCommande.id ?? 'N/A'}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              bonCommande.clientNomEntreprise?.isNotEmpty == true
+                  ? bonCommande.clientNomEntreprise!
+                  : 'Client #${bonCommande.clientId}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
+            ),
+            const SizedBox(height: 2),
+            Text('Bon de commande #${bonCommande.id ?? 'N/A'}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('Client ID: ${bonCommande.clientId}'),
             Text('Fichiers: ${bonCommande.fichiers.length}'),
             const SizedBox(height: 4),
             Container(
@@ -226,14 +200,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: statusColor),
               ),
-              child: Text(
-                statusText,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
+              child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
             ),
           ],
         ),
@@ -243,11 +210,7 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
-                const Text(
-                  'Informations générales',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                const Text('Informations générales', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -265,38 +228,30 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                       Text('Fichiers: ${bonCommande.fichiers.length}'),
                       if (bonCommande.fichiers.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        const Text(
-                          'Liste des fichiers:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        const Text('Liste des fichiers:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: bonCommande.fichiers.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.attach_file, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(bonCommande.fichiers[index])),
+                                ],
+                              ),
+                            );
+                          },
                         ),
-                        if (bonCommande.fichiers.isEmpty)
-                          const Text('Aucun fichier')
-                        else
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: bonCommande.fichiers.length,
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.attach_file, size: 16),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(bonCommande.fichiers[index]),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
                       ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(bonCommande, statusColor),
+                _buildActionButtons(context, ref, bonCommande, notifier),
               ],
             ),
           ),
@@ -305,37 +260,27 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
     );
   }
 
-  Widget _buildActionButtons(BonCommande bonCommande, Color statusColor) {
+  Widget _buildActionButtons(BuildContext context, WidgetRef ref, BonCommande bonCommande, BonCommandeNotifier notifier) {
     switch (bonCommande.status) {
-      case 1: // En attente - Afficher boutons Valider/Rejeter
-        return Column(
+      case 1:
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () => _showApproveConfirmation(bonCommande),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Valider'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _showRejectDialog(bonCommande),
-                  icon: const Icon(Icons.close),
-                  label: const Text('Rejeter'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
+            ElevatedButton.icon(
+              onPressed: () => _showApproveConfirmation(context, ref, bonCommande, notifier),
+              icon: const Icon(Icons.check),
+              label: const Text('Valider'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _showRejectDialog(context, ref, bonCommande, notifier),
+              icon: const Icon(Icons.close),
+              label: const Text('Rejeter'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             ),
           ],
         );
-      case 2: // Validé - Afficher info et bouton PDF
+      case 2:
         return Column(
           children: [
             Container(
@@ -350,29 +295,20 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
                 children: [
                   const Icon(Icons.check_circle, color: Colors.green),
                   const SizedBox(width: 8),
-                  Text(
-                    'Bon de commande validé',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  Text('Bon de commande validé', style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: () => controller.generatePDF(bonCommande.id!),
+              onPressed: () => _generatePdf(context, ref, bonCommande.id!, notifier),
               icon: const Icon(Icons.picture_as_pdf),
               label: const Text('Générer PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             ),
           ],
         );
-      case 3: // Rejeté - Afficher motif du rejet
+      case 3:
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -385,17 +321,11 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             children: [
               const Icon(Icons.cancel, color: Colors.red),
               const SizedBox(width: 8),
-              Text(
-                'Bon de commande rejeté',
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Bon de commande rejeté', style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold)),
             ],
           ),
         );
-      default: // Autres statuts
+      default:
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -408,107 +338,113 @@ class _BonCommandeValidationPageState extends State<BonCommandeValidationPage>
             children: [
               Icon(Icons.help, color: Colors.grey[600]),
               const SizedBox(width: 8),
-              Text(
-                'Statut: ${bonCommande.status}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Statut: ${bonCommande.status}', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
             ],
           ),
         );
     }
   }
 
+  Future<void> _generatePdf(BuildContext context, WidgetRef ref, int id, BonCommandeNotifier notifier) async {
+    try {
+      await notifier.generatePDF(id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF généré avec succès'), backgroundColor: Colors.green));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+    }
+  }
+
   Color _getStatusColor(int status) {
     switch (status) {
-      case 1: // En attente
-        return Colors.orange;
-      case 2: // Validé
-        return Colors.green;
-      case 3: // Rejeté
-        return Colors.red;
-      default:
-        return Colors.grey;
+      case 1: return Colors.orange;
+      case 2: return Colors.green;
+      case 3: return Colors.red;
+      default: return Colors.grey;
     }
   }
 
   IconData _getStatusIcon(int status) {
     switch (status) {
-      case 1: // En attente
-        return Icons.pending;
-      case 2: // Validé
-        return Icons.check_circle;
-      case 3: // Rejeté
-        return Icons.cancel;
-      default:
-        return Icons.help;
+      case 1: return Icons.pending;
+      case 2: return Icons.check_circle;
+      case 3: return Icons.cancel;
+      default: return Icons.help;
     }
   }
 
   String _getStatusText(int status) {
     switch (status) {
-      case 1: // En attente
-        return 'En attente';
-      case 2: // Validé
-        return 'Validé';
-      case 3: // Rejeté
-        return 'Rejeté';
-      default:
-        return 'Inconnu';
+      case 1: return 'En attente';
+      case 2: return 'Validé';
+      case 3: return 'Rejeté';
+      default: return 'Inconnu';
     }
   }
 
-  void _showApproveConfirmation(BonCommande bonCommande) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce bon de commande ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveBonCommande(bonCommande.id!);
-        _loadBonCommandes();
-      },
-    );
-  }
-
-  void _showRejectDialog(BonCommande bonCommande) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le bon de commande',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(BuildContext context, WidgetRef ref, BonCommande bonCommande, BonCommandeNotifier notifier) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce bon de commande ?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveBonCommande(bonCommande.id!);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bon de commande approuvé avec succès'), backgroundColor: Colors.green));
+                _loadBonCommandes();
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectBonCommande(bonCommande.id!, commentController.text);
-        _loadBonCommandes();
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, WidgetRef ref, BonCommande bonCommande, BonCommandeNotifier notifier) {
+    final commentController = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le bon de commande'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(labelText: 'Motif du rejet', hintText: 'Entrez le motif du rejet'),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez entrer un motif de rejet'), backgroundColor: Colors.red));
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectBonCommande(bonCommande.id!, commentController.text.trim());
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bon de commande rejeté avec succès'), backgroundColor: Colors.orange));
+                _loadBonCommandes();
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

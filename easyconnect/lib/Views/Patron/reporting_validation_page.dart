@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/reporting_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/reporting_notifier.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class ReportingValidationPage extends StatefulWidget {
+class ReportingValidationPage extends ConsumerStatefulWidget {
   const ReportingValidationPage({super.key});
 
   @override
-  State<ReportingValidationPage> createState() =>
+  ConsumerState<ReportingValidationPage> createState() =>
       _ReportingValidationPageState();
 }
 
-class _ReportingValidationPageState extends State<ReportingValidationPage>
+class _ReportingValidationPageState extends ConsumerState<ReportingValidationPage>
     with SingleTickerProviderStateMixin {
-  final ReportingController controller = Get.find<ReportingController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -44,13 +45,14 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
   }
 
   Future<void> _loadReports() async {
-    await controller.loadReports();
+    await ref.read(reportingProvider.notifier).loadReports();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Rapports'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -109,11 +111,13 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
           ),
           // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildReportList(),
+            child: Consumer(
+              builder: (context, ref, _) {
+                final state = ref.watch(reportingProvider);
+                return state.isLoading
+                    ? const SkeletonSearchResults(itemCount: 6)
+                    : _buildReportList(state.reports);
+              },
             ),
           ),
         ],
@@ -121,34 +125,28 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
     );
   }
 
-  Widget _buildReportList() {
+  Widget _buildReportList(List<ReportingModel> reports) {
     // Filtrer les rapports selon l'onglet et la recherche
     List<ReportingModel> filteredReports;
 
     switch (_tabController.index) {
       case 0: // Tous
-        filteredReports = controller.reports;
+        filteredReports = reports;
         break;
       case 1: // En attente
         filteredReports =
-            controller.reports
-                .where((report) => report.status == 'submitted')
-                .toList();
+            reports.where((report) => report.status == 'submitted').toList();
         break;
       case 2: // Validés
         filteredReports =
-            controller.reports
-                .where((report) => report.status == 'approved')
-                .toList();
+            reports.where((report) => report.status == 'approved').toList();
         break;
       case 3: // Rejetés
         filteredReports =
-            controller.reports
-                .where((report) => report.status == 'rejected')
-                .toList();
+            reports.where((report) => report.status == 'rejected').toList();
         break;
       default:
-        filteredReports = controller.reports;
+        filteredReports = reports;
     }
 
     // Appliquer la recherche
@@ -220,7 +218,7 @@ class _ReportingValidationPageState extends State<ReportingValidationPage>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () async {
-          await Get.toNamed('/user-reportings/${report.id}', arguments: report);
+          await context.push('/user-reportings/${report.id}', extra: report);
           _loadReports(); // Rafraîchir la liste au retour (ex. après validation)
         },
         borderRadius: BorderRadius.circular(12),

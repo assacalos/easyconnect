@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/payment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/payment_notifier.dart';
+import 'package:easyconnect/providers/payment_state.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:easyconnect/Views/Components/export_dialog.dart';
+import 'package:easyconnect/utils/export_data_builder.dart';
 
-class PaymentList extends StatefulWidget {
+class PaymentList extends ConsumerStatefulWidget {
   final int? clientId;
 
   const PaymentList({super.key, this.clientId});
 
   @override
-  State<PaymentList> createState() => _PaymentListState();
+  ConsumerState<PaymentList> createState() => _PaymentListState();
 }
 
-class _PaymentListState extends State<PaymentList>
+class _PaymentListState extends ConsumerState<PaymentList>
     with SingleTickerProviderStateMixin {
-  final PaymentController controller = Get.find<PaymentController>();
   late TabController _tabController;
   String _searchQuery = '';
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -28,13 +33,13 @@ class _PaymentListState extends State<PaymentList>
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
-        controller.loadByStatus(_tabController.index);
+        ref.read(paymentProvider.notifier).loadByStatus(_tabController.index);
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (!mounted) return;
-        controller.loadByStatus(0);
+        ref.read(paymentProvider.notifier).loadByStatus(0, forceRefresh: true);
       });
     });
   }
@@ -42,12 +47,12 @@ class _PaymentListState extends State<PaymentList>
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  /// Liste déjà filtrée par statut via loadByStatus ; on filtre uniquement par recherche.
-  List<PaymentModel> get _filteredPayments {
-    List<PaymentModel> list = controller.payments;
+  List<PaymentModel> _filteredPayments(PaymentState state) {
+    List<PaymentModel> list = state.payments;
     if (_searchQuery.isEmpty) return list;
     return list
         .where(
@@ -60,15 +65,34 @@ class _PaymentListState extends State<PaymentList>
 
   @override
   Widget build(BuildContext context) {
+    final paymentState = ref.watch(paymentProvider);
+    final notifier = ref.read(paymentProvider.notifier);
+    final filtered = _filteredPayments(paymentState);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Paiements'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Exporter',
+            onPressed: () {
+              if (filtered.isEmpty) return;
+              showExportDialog(
+                context: context,
+                title: 'Exporter les paiements',
+                fileName: 'paiements_${DateTime.now().millisecondsSinceEpoch}',
+                headers: ExportDataBuilder.paymentHeaders,
+                rows: ExportDataBuilder.paymentsToRows(filtered),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: controller.loadPayments,
+            onPressed: () => notifier.loadPayments(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -82,61 +106,50 @@ class _PaymentListState extends State<PaymentList>
           ],
         ),
       ),
-      body: Obx(() {
-        return Column(
-          children: [
-            // Barre de recherche
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: 'Rechercher par numéro ou client...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon:
-                      _searchQuery.isNotEmpty
-                          ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                          : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Rechercher par numéro ou client...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => setState(() => _searchQuery = ''),
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                onChanged: (value) {
-                  setState(() => _searchQuery = value);
-                },
               ),
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
-
-            // Liste des paiements (skeleton au changement d'onglet : liste vidée + isLoading = true)
-            Expanded(
-              child:
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _filteredPayments.isEmpty
-                      ? const Center(child: Text('Aucun paiement trouvé'))
-                      : PaginatedListView(
-                        scrollController: controller.scrollController,
-                        onLoadMore: controller.loadMore,
-                        hasNextPage: controller.hasNextPage.value,
-                        isLoadingMore: controller.isLoadingMore.value,
-                        itemCount: _filteredPayments.length,
+          ),
+          Expanded(
+            child: paymentState.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : filtered.isEmpty
+                    ? const Center(child: Text('Aucun paiement trouvé'))
+                    : PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: paymentState.hasNextPage,
+                        isLoadingMore: paymentState.isLoadingMore,
+                        itemCount: filtered.length,
                         itemBuilder: (context, index) {
-                          final payment = _filteredPayments[index];
-                          return _buildPaymentCard(payment);
+                          final payment = filtered[index];
+                          return _buildPaymentCard(payment, notifier);
                         },
                       ),
-            ),
-          ],
-        );
-      }),
+          ),
+        ],
+      ),
       floatingActionButton: RoleBasedWidget(
         allowedRoles: [Roles.ADMIN, Roles.COMPTABLE, Roles.PATRON],
         child: FloatingActionButton(
-          onPressed: () => Get.toNamed('/payments/new'),
+          onPressed: () => context.go('/payments/new'),
           tooltip: 'Nouveau paiement',
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -146,7 +159,7 @@ class _PaymentListState extends State<PaymentList>
     );
   }
 
-  Widget _buildPaymentCard(PaymentModel payment) {
+  Widget _buildPaymentCard(PaymentModel payment, PaymentNotifier notifier) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
@@ -280,7 +293,7 @@ class _PaymentListState extends State<PaymentList>
                     TextButton.icon(
                       icon: const Icon(Icons.picture_as_pdf, size: 16),
                       label: const Text('PDF'),
-                      onPressed: () => controller.generatePDF(payment.id),
+                      onPressed: () => notifier.generatePDF(payment.id),
                       style: TextButton.styleFrom(foregroundColor: Colors.red),
                     ),
                   ],
@@ -312,10 +325,10 @@ class _PaymentListState extends State<PaymentList>
   }
 
   void _showPaymentDetail(PaymentModel payment) {
-    Get.toNamed('/payments/detail', arguments: payment.id);
+    context.push('/payments/detail', extra: payment.id);
   }
 
   void _editPayment(PaymentModel payment) {
-    Get.toNamed('/payments/edit', arguments: payment.id);
+    context.push('/payments/edit', extra: payment.id);
   }
 }

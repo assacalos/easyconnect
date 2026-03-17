@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:pusher_client/pusher_client.dart';
 import 'package:laravel_echo/laravel_echo.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/services/session_service.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
+import 'package:easyconnect/providers/notification_notifier.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 
@@ -172,18 +171,12 @@ class WebSocketService {
         tag: 'WEBSOCKET',
       );
 
-      // Mettre à jour le controller de notifications pour rafraîchir la liste
-      // Quand l'app est ouverte, Pusher est plus rapide que FCM
-      // On rafraîchit immédiatement la liste des notifications
-      if (Get.isRegistered<NotificationController>()) {
-        Get.find<NotificationController>().loadNotifications(
-          forceRefresh: true,
-        );
-        AppLogger.info(
-          '✅ UI Rafraîchie via Pusher (app ouverte)',
-          tag: 'WEBSOCKET',
-        );
-      }
+      // Mettre à jour la liste des notifications (Riverpod)
+      NotificationRefreshCallback.instance.refresh();
+      AppLogger.info(
+        '✅ UI Rafraîchie via Pusher (app ouverte)',
+        tag: 'WEBSOCKET',
+      );
 
       // Note: Quand l'app est ouverte, on ne déclenche pas de notification locale
       // car l'utilisateur est déjà sur l'app. Le rafraîchissement de la liste suffit.

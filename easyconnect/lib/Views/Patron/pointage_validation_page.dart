@@ -1,33 +1,32 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:easyconnect/Controllers/attendance_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/attendance_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
-import 'package:easyconnect/Views/Rh/pointage_detail.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 import 'package:easyconnect/utils/map_helper.dart';
 
-class PointageValidationPage extends StatefulWidget {
+class PointageValidationPage extends ConsumerStatefulWidget {
   const PointageValidationPage({super.key});
 
   @override
-  State<PointageValidationPage> createState() => _PointageValidationPageState();
+  ConsumerState<PointageValidationPage> createState() =>
+      _PointageValidationPageState();
 }
 
-class _PointageValidationPageState extends State<PointageValidationPage> {
-  final AttendanceController controller = Get.find<AttendanceController>();
-  final AuthController _authController = Get.find<AuthController>();
+class _PointageValidationPageState extends ConsumerState<PointageValidationPage> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // Charger les données après que le widget soit monté
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadAttendanceData();
+      ref.read(attendanceProvider.notifier).loadAttendanceData();
     });
   }
 
@@ -39,34 +38,32 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
 
   Future<void> _loadAttendanceData() async {
     try {
-      await controller.loadAttendanceData();
-      // Forcer la mise à jour de l'UI
-      setState(() {});
-    } catch (e) {
-      // Gérer l'erreur silencieusement
-    }
+      await ref.read(attendanceProvider.notifier).loadAttendanceData();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(attendanceProvider);
+    final user = ref.watch(authProvider).user;
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Pointages'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadAttendanceData();
-            },
+            onPressed: _loadAttendanceData,
             tooltip: 'Actualiser',
           ),
         ],
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
@@ -74,58 +71,44 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
               decoration: InputDecoration(
                 hintText: 'Rechercher par nom d\'utilisateur...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(() {
-              // Forcer l'observation de attendanceHistory
-              controller
-                  .attendanceHistory
-                  .length; // Accès pour déclencher la réactivité
-              return controller.isLoading.value
-                  ? const SkeletonSearchResults(itemCount: 6)
-                  : _buildAttendanceList();
-            }),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildAttendanceList(state.attendanceHistory, user),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAttendanceList() {
-    // Filtrer les pointages selon la recherche uniquement
-    List<AttendancePunchModel> filteredPointages = controller.attendanceHistory;
-
-    // Appliquer la recherche
+  Widget _buildAttendanceList(
+    List<AttendancePunchModel> pointages,
+    dynamic user,
+  ) {
+    List<AttendancePunchModel> filteredPointages = pointages;
     if (_searchQuery.isNotEmpty) {
-      filteredPointages =
-          filteredPointages
-              .where(
-                (pointage) => _getDisplayName(
-                  pointage,
-                ).toLowerCase().contains(_searchQuery.toLowerCase()),
-              )
-              .toList();
+      filteredPointages = pointages
+          .where(
+            (p) =>
+                _getDisplayName(p, user)
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase()),
+          )
+          .toList();
     }
 
     if (filteredPointages.isEmpty) {
@@ -146,9 +129,7 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  setState(() => _searchQuery = '');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -164,21 +145,16 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
         final pointage = filteredPointages[index];
-        return _buildPointageCard(context, pointage);
+        return _buildPointageCard(context, pointage, user);
       },
     );
   }
 
-  String _getDisplayName(AttendancePunchModel pointage) {
+  String _getDisplayName(AttendancePunchModel pointage, dynamic user) {
     final userName = pointage.userName ?? '';
-    if (userName.toLowerCase().contains('comptable')) {
-      final user = _authController.userAuth.value;
-      if (user != null) {
-        final displayName = '${user.prenom ?? ''} ${user.nom ?? ''}'.trim();
-        if (displayName.isNotEmpty) {
-          return displayName;
-        }
-      }
+    if (userName.toLowerCase().contains('comptable') && user != null) {
+      final displayName = '${user.prenom ?? ''} ${user.nom ?? ''}'.trim();
+      if (displayName.isNotEmpty) return displayName;
     }
     return userName.isNotEmpty ? userName : 'Utilisateur inconnu';
   }
@@ -186,13 +162,14 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
   Widget _buildPointageCard(
     BuildContext context,
     AttendancePunchModel pointage,
+    dynamic user,
   ) {
     final formatDateTime = DateFormat('dd/MM/yyyy HH:mm');
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: InkWell(
-        onTap: () => Get.to(() => PointageDetail(pointage: pointage)),
+        onTap: () => context.push('/pointage/detail', extra: pointage),
         borderRadius: BorderRadius.circular(8),
         child: ExpansionTile(
           leading: CircleAvatar(
@@ -203,7 +180,7 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
             ),
           ),
           title: Text(
-            _getDisplayName(pointage),
+            _getDisplayName(pointage, user),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Column(
@@ -221,7 +198,6 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Informations employé
                   const Text(
                     'Informations employé',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -237,13 +213,12 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Employé: ${_getDisplayName(pointage)}'),
+                        Text('Employé: ${_getDisplayName(pointage, user)}'),
                         Text('ID Employé: ${pointage.userId}'),
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Détails du pointage
                   const Text(
                     'Détails du pointage',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -260,7 +235,10 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [const Text('Type:'), Text(pointage.type)],
+                          children: [
+                            const Text('Type:'),
+                            Text(pointage.type),
+                          ],
                         ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -300,7 +278,6 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                             ),
                           ),
                         ],
-                        // Photo affichée dans une section séparée ci-dessous
                         if (pointage.notes != null &&
                             pointage.notes!.isNotEmpty)
                           Column(
@@ -317,7 +294,6 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                       ],
                     ),
                   ),
-                  // Photo du pointage
                   if (pointage.photoPath != null &&
                       pointage.photoPath!.isNotEmpty) ...[
                     const SizedBox(height: 16),
@@ -343,9 +319,8 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
                           fit: BoxFit.cover,
                           width: double.infinity,
                           height: double.infinity,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
                           errorWidget: (context, url, error) => Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -387,10 +362,11 @@ class _PointageValidationPageState extends State<PointageValidationPage> {
         label: pointage.address,
       );
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'ouvrir Google Maps: $e',
-        snackPosition: SnackPosition.BOTTOM,
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossible d\'ouvrir Google Maps: $e'),
+        ),
       );
     }
   }

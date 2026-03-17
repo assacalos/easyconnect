@@ -867,6 +867,24 @@ class BordereauService {
     _saveBordereauxToHive(list, status);
   }
 
+  /// Invalide le cache Hive des bordereaux (tous les statuts) après création/validation/rejet.
+  static Future<void> clearBordereauxHiveCache() async {
+    try {
+      final keys = [
+        '${HiveStorageService.keyBordereaux}_all',
+        '${HiveStorageService.keyBordereaux}_1',
+        '${HiveStorageService.keyBordereaux}_2',
+        '${HiveStorageService.keyBordereaux}_3',
+      ];
+      for (final key in keys) {
+        await HiveStorageService.clearEntity(key);
+      }
+      AppLogger.debug('Hive: cache bordereaux invalidé', tag: 'BORDEREAU_SERVICE');
+    } catch (e) {
+      AppLogger.warning('Hive: erreur invalidation cache bordereaux: $e', tag: 'BORDEREAU_SERVICE');
+    }
+  }
+
   /// Cache Hive (sync) : affichage instantané Cache-First.
   static List<Bordereau> getCachedBordereaux([int? status]) {
     try {

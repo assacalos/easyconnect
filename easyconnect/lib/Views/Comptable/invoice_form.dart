@@ -1,52 +1,94 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/invoice_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
+import 'package:easyconnect/providers/invoice_notifier.dart';
 import 'package:easyconnect/Views/Components/client_selection_dialog.dart';
+import 'package:easyconnect/providers/invoice_state.dart';
 
-class InvoiceForm extends StatelessWidget {
+class InvoiceForm extends ConsumerStatefulWidget {
   const InvoiceForm({super.key});
 
   @override
+  ConsumerState<InvoiceForm> createState() => _InvoiceFormState();
+}
+
+class _InvoiceFormState extends ConsumerState<InvoiceForm> {
+  final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _termsController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final extra = GoRouterState.of(context).extra;
+      final editId = extra is int ? extra : null;
+      if (editId != null) {
+        ref.read(invoiceProvider.notifier).loadInvoiceForEdit(editId);
+      }
+      final state = ref.read(invoiceProvider);
+      _notesController.text = state.notes;
+      _termsController.text = state.terms;
+    });
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _termsController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final InvoiceController controller = Get.put(InvoiceController());
+    final state = ref.watch(invoiceProvider);
+    final notifier = ref.read(invoiceProvider.notifier);
+
+    ref.listen<InvoiceState>(invoiceProvider, (prev, next) {
+      if (prev?.isLoadingInvoiceForEdit == true &&
+          next.isLoadingInvoiceForEdit == false &&
+          next.editInvoiceId != null) {
+        _notesController.text = next.notes;
+        _termsController.text = next.terms;
+      }
+    });
+
+    final isEdit = state.editInvoiceId != null;
+    final isLoadingEdit = state.isLoadingInvoiceForEdit;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Créer une facture'),
+        title: Text(isEdit ? 'Modifier la facture' : 'Créer une facture'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Informations client
-            _buildClientSection(controller),
-            const SizedBox(height: 20),
-
-            // Articles
-            _buildItemsSection(controller),
-            const SizedBox(height: 20),
-
-            // Paramètres de facturation
-            _buildBillingSection(controller),
-            const SizedBox(height: 20),
-
-            // Notes et conditions
-            _buildNotesSection(controller),
-            const SizedBox(height: 20),
-
-            // Résumé
-            _buildSummarySection(controller),
-          ],
-        ),
-      ),
+      body: isLoadingEdit
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildClientSection(context, state, notifier),
+                  const SizedBox(height: 20),
+                  _buildItemsSection(context, state, notifier),
+                  const SizedBox(height: 20),
+                  _buildBillingSection(context, state, notifier),
+                  const SizedBox(height: 20),
+                  _buildNotesSection(state, notifier),
+                  const SizedBox(height: 20),
+                  _buildSummarySection(context, state, notifier),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _buildClientSection(InvoiceController controller) {
+  Widget _buildClientSection(
+    BuildContext context,
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -96,7 +138,7 @@ class InvoiceForm extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: () => _showClientSelectionDialog(controller),
+                  onPressed: () => _showClientSelectionDialog(context, notifier),
                   icon: const Icon(Icons.search, size: 16),
                   label: const Text('Sélectionner'),
                   style: ElevatedButton.styleFrom(
@@ -107,77 +149,105 @@ class InvoiceForm extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              final selectedClient = controller.selectedClient.value;
-              if (selectedClient != null) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      selectedClient.nomEntreprise?.isNotEmpty == true
-                          ? selectedClient.nomEntreprise!
-                          : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                              .trim()
-                              .isNotEmpty
-                          ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                              .trim()
-                          : 'Client #${selectedClient.id}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (selectedClient.nomEntreprise?.isNotEmpty == true &&
-                        '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                            .trim()
-                            .isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                            .trim(),
-                      ),
-                      const SizedBox(height: 4),
-                    ] else
-                      const SizedBox(height: 8),
-                    if (selectedClient.email != null) ...[
-                      Text('Email: ${selectedClient.email}'),
-                      const SizedBox(height: 4),
-                    ],
-                    if (selectedClient.contact != null) ...[
-                      Text('Contact: ${selectedClient.contact}'),
-                      const SizedBox(height: 4),
-                    ],
-                    if (selectedClient.adresse != null) ...[
-                      Text('Adresse: ${selectedClient.adresse}'),
-                      const SizedBox(height: 4),
-                    ],
-                    Text(
-                      'Statut: ${selectedClient.statusText}',
-                      style: TextStyle(
-                        color: selectedClient.statusColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: controller.clearSelectedClient,
-                      child: const Text('Changer de client'),
-                    ),
-                  ],
-                );
-              }
-              return const Text(
-                'Aucun client sélectionné',
-                style: TextStyle(color: Colors.grey),
-              );
-            }),
+            _buildClientDisplay(state, notifier),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildItemsSection(InvoiceController controller) {
+  Widget _buildClientDisplay(InvoiceState state, InvoiceNotifier notifier) {
+    final client = state.selectedClient;
+    if (client != null) {
+      final name = client.nomEntreprise?.isNotEmpty == true
+          ? client.nomEntreprise!
+          : '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name.isEmpty ? 'Client #${client.id}' : name,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (client.nomEntreprise?.isNotEmpty == true &&
+              '${client.nom ?? ''} ${client.prenom ?? ''}'.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'.trim(),
+            ),
+            const SizedBox(height: 4),
+          ] else
+            const SizedBox(height: 8),
+          if (client.email != null) ...[
+            Text('Email: ${client.email}'),
+            const SizedBox(height: 4),
+          ],
+          if (client.contact != null) ...[
+            Text('Contact: ${client.contact}'),
+            const SizedBox(height: 4),
+          ],
+          if (client.adresse != null) ...[
+            Text('Adresse: ${client.adresse}'),
+            const SizedBox(height: 4),
+          ],
+          Text(
+            'Statut: ${client.statusText}',
+            style: TextStyle(
+              color: client.statusColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: notifier.clearSelectedClient,
+            child: const Text('Changer de client'),
+          ),
+        ],
+      );
+    }
+    if (state.selectedClientId != 0 &&
+        (state.selectedClientName.isNotEmpty ||
+            state.selectedClientEmail.isNotEmpty)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            state.selectedClientName,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (state.selectedClientEmail.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Email: ${state.selectedClientEmail}'),
+          ],
+          if (state.selectedClientAddress.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Adresse: ${state.selectedClientAddress}'),
+          ],
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: notifier.clearSelectedClient,
+            child: const Text('Changer de client'),
+          ),
+        ],
+      );
+    }
+    return const Text(
+      'Aucun client sélectionné',
+      style: TextStyle(color: Colors.grey),
+    );
+  }
+
+  Widget _buildItemsSection(
+    BuildContext context,
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -191,11 +261,14 @@ class InvoiceForm extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   'Articles',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const Spacer(),
                 ElevatedButton.icon(
-                  onPressed: () => _showAddItemDialog(controller),
+                  onPressed: () => _showAddItemDialog(context, notifier),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Ajouter'),
                   style: ElevatedButton.styleFrom(
@@ -206,25 +279,23 @@ class InvoiceForm extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              if (controller.invoiceItems.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Aucun article ajouté',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                );
-              }
-
-              return Column(
-                children:
-                    controller.invoiceItems.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final item = entry.value;
-                      return _buildItemCard(controller, index, item);
-                    }).toList(),
-              );
-            }),
+            if (state.invoiceItems.isEmpty)
+              const Center(
+                child: Text(
+                  'Aucun article ajouté',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              Column(
+                children: state.invoiceItems.asMap().entries.map((entry) {
+                  return _buildItemCard(
+                    entry.key,
+                    entry.value,
+                    notifier,
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),
@@ -232,9 +303,9 @@ class InvoiceForm extends StatelessWidget {
   }
 
   Widget _buildItemCard(
-    InvoiceController controller,
     int index,
     InvoiceItem item,
+    InvoiceNotifier notifier,
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -253,7 +324,10 @@ class InvoiceForm extends StatelessWidget {
                   ),
                   Text(
                     '${item.quantity} x ${item.unitPrice.toStringAsFixed(2)} ',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -270,7 +344,7 @@ class InvoiceForm extends StatelessWidget {
               ),
             ),
             IconButton(
-              onPressed: () => controller.removeInvoiceItem(index),
+              onPressed: () => notifier.removeInvoiceItem(index),
               icon: const Icon(Icons.delete, color: Colors.red),
             ),
           ],
@@ -279,7 +353,11 @@ class InvoiceForm extends StatelessWidget {
     );
   }
 
-  Widget _buildBillingSection(InvoiceController controller) {
+  Widget _buildBillingSection(
+    BuildContext context,
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -293,7 +371,10 @@ class InvoiceForm extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   'Paramètres de facturation',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -305,25 +386,21 @@ class InvoiceForm extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date de facture'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate: controller.invoiceDate.value,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
-                            );
-                            if (date != null) {
-                              controller.invoiceDate.value = date;
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            '${controller.invoiceDate.value.day}/${controller.invoiceDate.value.month}/${controller.invoiceDate.value.year}',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: state.invoiceDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) notifier.setInvoiceDate(date);
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          '${state.invoiceDate.day}/${state.invoiceDate.month}/${state.invoiceDate.year}',
                         ),
                       ),
                     ],
@@ -335,25 +412,21 @@ class InvoiceForm extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Date d\'échéance'),
-                      Obx(
-                        () => TextButton.icon(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: Get.context!,
-                              initialDate: controller.dueDate.value,
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 365),
-                              ),
-                            );
-                            if (date != null) {
-                              controller.dueDate.value = date;
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            '${controller.dueDate.value.day}/${controller.dueDate.value.month}/${controller.dueDate.value.year}',
-                          ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: state.dueDate,
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) notifier.setDueDate(date);
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          '${state.dueDate.day}/${state.dueDate.month}/${state.dueDate.year}',
                         ),
                       ),
                     ],
@@ -367,18 +440,16 @@ class InvoiceForm extends StatelessWidget {
                 const Text('Taux de TVA :'),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Obx(
-                    () => Slider(
-                      value: controller.taxRate.value,
-                      min: 0,
-                      max: 30,
-                      divisions: 30,
-                      label: '${controller.taxRate.value.toInt()}%',
-                      onChanged: (value) => controller.taxRate.value = value,
-                    ),
+                  child: Slider(
+                    value: state.taxRate,
+                    min: 0,
+                    max: 30,
+                    divisions: 30,
+                    label: '${state.taxRate.toInt()}%',
+                    onChanged: (value) => notifier.setTaxRate(value),
                   ),
                 ),
-                Obx(() => Text('${controller.taxRate.value.toInt()}%')),
+                Text('${state.taxRate.toInt()}%'),
               ],
             ),
           ],
@@ -387,7 +458,10 @@ class InvoiceForm extends StatelessWidget {
     );
   }
 
-  Widget _buildNotesSection(InvoiceController controller) {
+  Widget _buildNotesSection(
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -401,27 +475,32 @@ class InvoiceForm extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   'Notes et conditions',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: controller.notesController,
+              controller: _notesController,
               decoration: const InputDecoration(
                 labelText: 'Notes (optionnel)',
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
+              onChanged: notifier.setNotes,
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: controller.termsController,
+              controller: _termsController,
               decoration: const InputDecoration(
                 labelText: 'Conditions de paiement',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
+              onChanged: notifier.setTerms,
             ),
           ],
         ),
@@ -429,7 +508,11 @@ class InvoiceForm extends StatelessWidget {
     );
   }
 
-  Widget _buildSummarySection(InvoiceController controller) {
+  Widget _buildSummarySection(
+    BuildContext context,
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -443,73 +526,61 @@ class InvoiceForm extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   'Résumé',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Obx(
-              () => Column(
-                children: [
-                  _buildSummaryRow(
-                    'Sous-total',
-                    '${controller.subtotal.toStringAsFixed(2)} fcfa',
-                  ),
-                  _buildSummaryRow(
-                    'TVA (${controller.taxRate.value.toInt()}%)',
-                    '${controller.taxAmount.toStringAsFixed(2)} fcfa',
-                  ),
-                  const Divider(),
-                  _buildSummaryRow(
-                    'Total',
-                    '${controller.totalAmount.toStringAsFixed(2)} fcfa',
-                    isTotal: true,
-                  ),
-                ],
-              ),
+            _buildSummaryRow(
+              'Sous-total',
+              '${state.formSubtotal.toStringAsFixed(2)} fcfa',
             ),
-
-            // Bouton Enregistrer
+            _buildSummaryRow(
+              'TVA (${state.taxRate.toInt()}%)',
+              '${state.formTaxAmount.toStringAsFixed(2)} fcfa',
+            ),
+            const Divider(),
+            _buildSummaryRow(
+              'Total',
+              '${state.formTotalAmount.toStringAsFixed(2)} fcfa',
+              isTotal: true,
+            ),
             const SizedBox(height: 24),
-            Obx(
-              () => SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  onPressed:
-                      controller.isCreating.value
-                          ? null
-                          : () async {
-                            final success = await controller.createInvoice();
-                            if (success) {
-                              Get.offNamed('/invoices');
-                            }
-                          },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton(
+                onPressed: state.isCreating
+                    ? null
+                    : () => _submitForm(context, state, notifier),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      controller.isCreating.value
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                          : const Text(
-                            'Enregistrer la facture',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
                 ),
+                child: state.isCreating
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        state.editInvoiceId != null
+                            ? 'Enregistrer les modifications'
+                            : 'Enregistrer la facture',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 16),
@@ -545,31 +616,144 @@ class InvoiceForm extends StatelessWidget {
     );
   }
 
-  void _showClientSelectionDialog(InvoiceController controller) {
-    // Charger les clients validés si pas encore fait
-    if (controller.availableClients.isEmpty) {
-      controller.loadValidatedClients();
+  Future<void> _submitForm(
+    BuildContext context,
+    InvoiceState state,
+    InvoiceNotifier notifier,
+  ) async {
+    notifier.setNotes(_notesController.text);
+    notifier.setTerms(_termsController.text);
+
+    final currentState = ref.read(invoiceProvider);
+
+    if (currentState.editInvoiceId != null) {
+      try {
+        await notifier.updateInvoiceFromForm();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Facture modifiée avec succès'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          context.go('/invoices');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erreur: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+      return;
     }
 
-    showDialog(
-      context: Get.context!,
-      builder:
-          (context) => ClientSelectionDialog(
-            onClientSelected: (client) {
-              controller.selectClientForInvoice(client);
-              // Ne pas appeler Get.back() ici car le dialog le fait déjà
-            },
+    if (currentState.selectedClientId == 0 &&
+        currentState.selectedClientName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez sélectionner un client'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (currentState.invoiceItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez ajouter au moins un article'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final success = await notifier.createInvoice(
+        clientId: currentState.selectedClientId,
+        clientName: currentState.selectedClientName.isNotEmpty
+            ? currentState.selectedClientName
+            : 'Client #${currentState.selectedClientId}',
+        clientEmail: currentState.selectedClientEmail,
+        clientAddress: currentState.selectedClientAddress,
+        invoiceDate: currentState.invoiceDate,
+        dueDate: currentState.dueDate,
+        items: currentState.invoiceItems,
+        taxRate: currentState.taxRate,
+        notes: currentState.notes.trim().isEmpty
+            ? null
+            : currentState.notes.trim(),
+        terms: currentState.terms.trim().isEmpty
+            ? null
+            : currentState.terms.trim(),
+      );
+      if (success && context.mounted) {
+        notifier.clearForm();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Facture créée avec succès'),
+            backgroundColor: Colors.green,
           ),
+        );
+        context.go('/invoices');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showClientSelectionDialog(
+    BuildContext context,
+    InvoiceNotifier notifier,
+  ) {
+    if (ref.read(invoiceProvider).availableClients.isEmpty) {
+      notifier.loadValidatedClients().then((_) {
+        if (context.mounted) _openClientDialog(context, notifier);
+      }).catchError((_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Impossible de charger les clients validés'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      });
+    } else {
+      _openClientDialog(context, notifier);
+    }
+  }
+
+  void _openClientDialog(BuildContext context, InvoiceNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => ClientSelectionDialog(
+        onClientSelected: (client) {
+          notifier.selectClientForInvoice(client);
+          Navigator.pop(ctx);
+        },
+      ),
     );
   }
 
-  void _showAddItemDialog(InvoiceController controller) {
+  void _showAddItemDialog(BuildContext context, InvoiceNotifier notifier) {
     final descriptionController = TextEditingController();
     final quantityController = TextEditingController(text: '1');
     final unitPriceController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Ajouter un article'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -602,22 +786,30 @@ class InvoiceForm extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
             onPressed: () {
               if (descriptionController.text.isNotEmpty &&
                   quantityController.text.isNotEmpty &&
                   unitPriceController.text.isNotEmpty) {
-                controller.addInvoiceItem(
+                notifier.addInvoiceItem(
                   description: descriptionController.text,
                   quantity: int.tryParse(quantityController.text) ?? 1,
-                  unitPrice: double.tryParse(unitPriceController.text) ?? 0.0,
+                  unitPrice:
+                      double.tryParse(unitPriceController.text) ?? 0.0,
                 );
-                Get.back();
+                Navigator.pop(ctx);
               } else {
-                Get.snackbar(
-                  'Erreur',
-                  'Veuillez remplir tous les champs obligatoires',
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Veuillez remplir tous les champs obligatoires',
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },

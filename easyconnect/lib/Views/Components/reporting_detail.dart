@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/reporting_model.dart';
-import 'package:easyconnect/Controllers/reporting_controller.dart';
-import 'package:easyconnect/Views/Components/reporting_form.dart';
+import 'package:easyconnect/providers/reporting_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:intl/intl.dart';
 
-class ReportingDetail extends StatefulWidget {
+class ReportingDetail extends ConsumerStatefulWidget {
   final ReportingModel reporting;
 
   const ReportingDetail({super.key, required this.reporting});
 
   @override
-  State<ReportingDetail> createState() => _ReportingDetailState();
+  ConsumerState<ReportingDetail> createState() => _ReportingDetailState();
 }
 
-class _ReportingDetailState extends State<ReportingDetail> {
+class _ReportingDetailState extends ConsumerState<ReportingDetail> {
   late final TextEditingController _patronNoteController;
 
   @override
@@ -41,6 +42,7 @@ class _ReportingDetailState extends State<ReportingDetail> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/reporting', iconColor: Colors.white),
         title: Text('Rapport - ${formatDate.format(reporting.reportDate)}'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
@@ -49,7 +51,7 @@ class _ReportingDetailState extends State<ReportingDetail> {
           if (reporting.status == 'submitted')
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => ReportingForm(reporting: reporting)),
+              onPressed: () => context.push('/reporting/new', extra: reporting),
               tooltip: 'Modifier',
             ),
           IconButton(
@@ -210,11 +212,7 @@ class _ReportingDetailState extends State<ReportingDetail> {
   }
 
   Widget _buildActionButtons() {
-    if (!Get.isRegistered<ReportingController>()) {
-      return const SizedBox.shrink();
-    }
-    final controller = Get.find<ReportingController>();
-
+    final notifier = ref.read(reportingProvider.notifier);
     return Card(
       elevation: 2,
       child: Padding(
@@ -236,7 +234,7 @@ class _ReportingDetailState extends State<ReportingDetail> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _showApproveConfirmation(controller),
+                    onPressed: () => _showApproveConfirmation(notifier),
                     icon: const Icon(Icons.check),
                     label: const Text('Valider'),
                     style: ElevatedButton.styleFrom(
@@ -249,7 +247,7 @@ class _ReportingDetailState extends State<ReportingDetail> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _showRejectDialog(controller),
+                    onPressed: () => _showRejectDialog(notifier),
                     icon: const Icon(Icons.close),
                     label: const Text('Rejeter'),
                     style: ElevatedButton.styleFrom(
@@ -267,63 +265,98 @@ class _ReportingDetailState extends State<ReportingDetail> {
     );
   }
 
-  void _showApproveConfirmation(ReportingController controller) {
+  void _showApproveConfirmation(ReportingNotifier notifier) {
     final note = _patronNoteController.text.trim();
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce rapport ?'
-          '${note.isNotEmpty ? '\n\nVotre note sera enregistrée.' : ''}',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveReport(
-          reporting.id,
-          patronNote: note.isEmpty ? null : note,
-        );
-        Get.back(); // Retourner à la page précédente
-      },
-    );
-  }
-
-  void _showRejectDialog(ReportingController controller) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le rapport',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: Text(
+          'Voulez-vous valider ce rapport ?${note.isNotEmpty ? '\n\nVotre note sera enregistrée.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveReport(
+                  reporting.id,
+                  patronNote: note.isEmpty ? null : note,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Rapport approuvé avec succès')),
+                );
+                context.pop();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur: $e')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(foregroundColor: Colors.white),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectReport(
-          reporting.id,
-          reason: commentController.text,
-        );
-        Get.back(); // Retourner à la page précédente
-      },
+    );
+  }
+
+  void _showRejectDialog(ReportingNotifier notifier) {
+    final commentController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le rapport'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Veuillez entrer un motif de rejet')),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectReport(
+                  reporting.id,
+                  reason: commentController.text,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Rapport rejeté avec succès')),
+                );
+                context.pop();
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur: $e')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -609,10 +642,8 @@ class _ReportingDetailState extends State<ReportingDetail> {
   }
 
   void _shareReporting() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fonctionnalité de partage à implémenter')),
     );
   }
 }

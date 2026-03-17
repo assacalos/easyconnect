@@ -1,29 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/supplier_model.dart';
 import 'package:easyconnect/services/supplier_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class SupplierController extends GetxController {
-  late final SupplierService _supplierService;
+class SupplierController {
+  static final SupplierController _instance = SupplierController._();
+  static SupplierController get to => _instance;
+  factory SupplierController() => _instance;
+  SupplierController._();
 
-  // Variables observables
-  final RxList<Supplier> allSuppliers =
-      <Supplier>[].obs; // Tous les fournisseurs
-  final RxList<Supplier> suppliers = <Supplier>[].obs; // Fournisseurs filtrés
-  final RxBool isLoading = false.obs;
-  final Rx<SupplierStats?> supplierStats = Rx<SupplierStats?>(null);
+  final SupplierService _supplierService = SupplierService.to;
+
+  // Variables
+  final List<Supplier> allSuppliers = [];
+  final List<Supplier> suppliers = [];
+  bool isLoading = false;
+  SupplierStats? supplierStats;
 
   // Variables pour les filtres
-  final RxString searchQuery = ''.obs;
-  final RxString selectedStatus = 'all'.obs;
+  String searchQuery = '';
+  String selectedStatus = 'all';
 
   // Permissions
-  bool get canCreateSuppliers => true; // À adapter selon vos règles métier
-  bool get canApproveSuppliers => true; // À adapter selon vos règles métier
+  bool get canCreateSuppliers => true;
+  bool get canApproveSuppliers => true;
 
   // Contrôleurs de formulaire
   final TextEditingController nomController = TextEditingController();
@@ -35,23 +39,12 @@ class SupplierController extends GetxController {
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController commentairesController = TextEditingController();
 
-  @override
-  void onInit() {
-    super.onInit();
-
-    try {
-      _supplierService = Get.find<SupplierService>();
-    } catch (e) {}
-
-    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      loadSuppliers();
-      loadSupplierStats();
-    });
+  void ensureInitialized() {
+    loadSuppliers();
+    loadSupplierStats();
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     nomController.dispose();
     emailController.dispose();
     telephoneController.dispose();
@@ -60,7 +53,6 @@ class SupplierController extends GetxController {
     paysController.dispose();
     descriptionController.dispose();
     commentairesController.dispose();
-    super.onClose();
   }
 
   // Charger tous les fournisseurs
@@ -69,28 +61,31 @@ class SupplierController extends GetxController {
     try {
       final hiveList = SupplierService.getCachedFournisseurs();
       if (hiveList.isNotEmpty) {
-        allSuppliers.assignAll(hiveList);
+        allSuppliers.clear();
+        allSuppliers.addAll(hiveList);
         applyFilters();
-        isLoading.value = false;
+        isLoading = false;
         Future.microtask(() => _refreshSuppliersFromApi());
         return;
       }
       final cachedSuppliers = CacheHelper.get<List<Supplier>>(cacheKey);
       if (cachedSuppliers != null && cachedSuppliers.isNotEmpty) {
-        allSuppliers.assignAll(cachedSuppliers);
+        allSuppliers.clear();
+        allSuppliers.addAll(cachedSuppliers);
         applyFilters();
-        isLoading.value = false;
+        isLoading = false;
         Future.microtask(() => _refreshSuppliersFromApi());
         return;
       }
-      isLoading.value = true;
+      isLoading = true;
 
       final loadedSuppliers = await _supplierService.getSuppliers(
         status: null,
         search: null,
       );
 
-      allSuppliers.assignAll(loadedSuppliers);
+      allSuppliers.clear();
+      allSuppliers.addAll(loadedSuppliers);
       CacheHelper.set(
         cacheKey,
         loadedSuppliers,
@@ -98,35 +93,30 @@ class SupplierController extends GetxController {
       );
       applyFilters();
     } catch (e) {
-      // Ne pas afficher d'erreur si des données sont disponibles (cache ou liste non vide)
-      // Ne pas afficher d'erreur pour les erreurs d'authentification (déjà gérées)
       final errorString = e.toString().toLowerCase();
       if (!errorString.contains('session expirée') &&
           !errorString.contains('401') &&
           !errorString.contains('unauthorized')) {
         if (allSuppliers.isEmpty) {
-          // Vérifier une dernière fois le cache avant d'afficher l'erreur
-          final cacheKey = 'suppliers_all';
+          const cacheKey = 'suppliers_all';
           final cachedSuppliers = CacheHelper.get<List<Supplier>>(cacheKey);
           if (cachedSuppliers == null || cachedSuppliers.isEmpty) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Erreur',
               'Impossible de charger les fournisseurs',
-              snackPosition: SnackPosition.BOTTOM,
             );
           } else {
-            // Charger les données du cache si disponibles
-            allSuppliers.assignAll(cachedSuppliers);
+            allSuppliers.clear();
+            allSuppliers.addAll(cachedSuppliers);
             applyFilters();
           }
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  /// Rafraîchit les fournisseurs depuis l'API et met à jour la liste/cache.
   Future<void> _refreshSuppliersFromApi() async {
     try {
       const cacheKey = 'suppliers_all';
@@ -134,7 +124,8 @@ class SupplierController extends GetxController {
         status: null,
         search: null,
       );
-      allSuppliers.assignAll(loadedSuppliers);
+      allSuppliers.clear();
+      allSuppliers.addAll(loadedSuppliers);
       CacheHelper.set(
         cacheKey,
         loadedSuppliers,
@@ -144,29 +135,22 @@ class SupplierController extends GetxController {
     } catch (_) {}
   }
 
-  // Charger les statistiques
   Future<void> loadSupplierStats() async {
     try {
-      final stats = await _supplierService.getSupplierStats();
-      supplierStats.value = stats;
+      supplierStats = await _supplierService.getSupplierStats();
     } catch (e) {}
   }
 
-  // Appliquer les filtres côté client
   void applyFilters() {
     List<Supplier> filteredSuppliers = List.from(allSuppliers);
 
-    // Filtrer par statut
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filteredSuppliers =
-          filteredSuppliers.where((supplier) {
-            return supplier.statut == selectedStatus.value;
-          }).toList();
+          filteredSuppliers.where((supplier) => supplier.statut == selectedStatus).toList();
     }
 
-    // Filtrer par recherche
-    if (searchQuery.value.isNotEmpty) {
-      final query = searchQuery.value.toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
       filteredSuppliers =
           filteredSuppliers.where((supplier) {
             return supplier.nom.toLowerCase().contains(query) ||
@@ -177,25 +161,23 @@ class SupplierController extends GetxController {
           }).toList();
     }
 
-    suppliers.assignAll(filteredSuppliers);
+    suppliers.clear();
+    suppliers.addAll(filteredSuppliers);
   }
 
-  // Rechercher
   void searchSuppliers(String query) {
-    searchQuery.value = query;
-    applyFilters(); // Appliquer les filtres sans recharger depuis l'API
+    searchQuery = query;
+    applyFilters();
   }
 
-  // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
-    applyFilters(); // Appliquer les filtres sans recharger depuis l'API
+    selectedStatus = status;
+    applyFilters();
   }
 
-  // Créer un fournisseur
   Future<bool> createSupplier() async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final supplier = Supplier(
         nom: nomController.text.trim(),
@@ -212,19 +194,16 @@ class SupplierController extends GetxController {
             commentairesController.text.trim().isEmpty
                 ? null
                 : commentairesController.text.trim(),
-        statut: 'en_attente', // Statut par défaut selon la doc
+        statut: 'en_attente',
       );
 
       final createdSupplier = await _supplierService.createSupplier(supplier);
 
-      // Invalider le cache
       CacheHelper.clearByPrefix('suppliers_');
 
-      // Ajouter le fournisseur à la liste localement (mise à jour optimiste)
       if (createdSupplier.id != null) {
         suppliers.add(createdSupplier);
-
-        // Notifier le patron de la soumission
+        allSuppliers.add(createdSupplier);
         NotificationHelper.notifySubmission(
           entityType: 'supplier',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -239,16 +218,13 @@ class SupplierController extends GetxController {
         );
       }
 
-      await loadSuppliers(); // Recharger tous les fournisseurs
+      await loadSuppliers();
       await loadSupplierStats();
-
-      // Rafraîchir les compteurs du dashboard patron
       DashboardRefreshHelper.refreshPatronCounter('supplier');
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Fournisseur créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
@@ -257,24 +233,22 @@ class SupplierController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de créer le fournisseur: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 4),
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Mettre à jour un fournisseur
   Future<bool> updateSupplier(Supplier supplier) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final updatedSupplier = supplier.copyWith(
         nom: nomController.text.trim(),
@@ -294,13 +268,12 @@ class SupplierController extends GetxController {
       );
 
       await _supplierService.updateSupplier(updatedSupplier);
-      await loadSuppliers(); // Recharger tous les fournisseurs
+      await loadSuppliers();
       await loadSupplierStats();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Fournisseur mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
         duration: const Duration(seconds: 2),
@@ -309,63 +282,57 @@ class SupplierController extends GetxController {
       clearForm();
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le fournisseur: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 4),
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Supprimer un fournisseur
   Future<void> deleteSupplier(Supplier supplier) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _supplierService.deleteSupplier(supplier.id!);
       if (success) {
-        await loadSuppliers(); // Recharger tous les fournisseurs
+        await loadSuppliers();
         await loadSupplierStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Fournisseur supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer le fournisseur',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Valider un fournisseur
   Future<void> approveSupplier(
     Supplier supplier, {
     String? validationComment,
   }) async {
+    int supplierIndex = -1;
+    Supplier? originalSupplier;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
-      // Mise à jour optimiste : retirer le fournisseur de la liste s'il est en attente
-      final supplierIndex = allSuppliers.indexWhere((s) => s.id == supplier.id);
-      Supplier? originalSupplier;
+      supplierIndex = allSuppliers.indexWhere((s) => s.id == supplier.id);
       if (supplierIndex != -1) {
         originalSupplier = allSuppliers[supplierIndex];
-        // Si le statut est "pending" ou "en_attente", retirer de la liste
         if (supplier.isPending) {
           allSuppliers.removeAt(supplierIndex);
         }
@@ -377,10 +344,7 @@ class SupplierController extends GetxController {
       );
 
       if (success) {
-        // Invalider le cache
         CacheHelper.clearByPrefix('suppliers_');
-
-        // Notifier l'utilisateur concerné de la validation
         NotificationHelper.notifyValidation(
           entityType: 'supplier',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -395,87 +359,73 @@ class SupplierController extends GetxController {
           entity: supplier,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Fournisseur validé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
 
-        // Recharger en arrière-plan
         Future.microtask(() async {
           await loadSuppliers();
           await loadSupplierStats();
         });
       } else {
-        // En cas d'échec, restaurer le fournisseur dans la liste
         if (originalSupplier != null && supplierIndex != -1) {
           allSuppliers.insert(supplierIndex, originalSupplier);
         }
-        // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Attention',
           'La validation peut avoir réussi. Veuillez vérifier.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
       }
     } catch (e) {
-      // En cas d'erreur, restaurer le fournisseur dans la liste
-      final supplierIndex = allSuppliers.indexWhere((s) => s.id == supplier.id);
-      if (supplierIndex == -1) {
-        // Le fournisseur a été retiré, le remettre
-        allSuppliers.add(supplier);
-        applyFilters(); // Réappliquer les filtres pour mettre à jour suppliers
+      if (supplierIndex != -1 && originalSupplier != null) {
+        allSuppliers.insert(supplierIndex, originalSupplier);
+        applyFilters();
       }
 
-      // Ne pas afficher d'erreur si c'est juste un problème de parsing
       final errorStr = e.toString().toLowerCase();
       if (!errorStr.contains('401') &&
           !errorStr.contains('403') &&
           !errorStr.contains('unauthorized') &&
           !errorStr.contains('forbidden')) {
-        // Vérifier si l'erreur contient des indices de succès
         if (errorStr.contains('validé') ||
             errorStr.contains('approuvé') ||
             errorStr.contains('validated') ||
             errorStr.contains('approved')) {
-          // La validation a peut-être réussi malgré l'erreur
           CacheHelper.clearByPrefix('suppliers_');
           Future.microtask(() async {
             await loadSuppliers();
             await loadSupplierStats();
           });
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             'Fournisseur validé avec succès',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.green,
             colorText: Colors.white,
           );
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Attention',
             'La validation peut avoir réussi. Veuillez vérifier.',
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 2),
           );
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Rejeter un fournisseur
   Future<void> rejectSupplier(
     Supplier supplier, {
     required String rejectionReason,
     String? rejectionComment,
   }) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _supplierService.rejectSupplier(
         supplier.id!,
@@ -484,10 +434,9 @@ class SupplierController extends GetxController {
       );
 
       if (success) {
-        await loadSuppliers(); // Recharger tous les fournisseurs
+        await loadSuppliers();
         await loadSupplierStats();
 
-        // Notifier l'utilisateur concerné du rejet
         NotificationHelper.notifyRejection(
           entityType: 'supplier',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -503,10 +452,9 @@ class SupplierController extends GetxController {
           entity: supplier,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Fournisseur rejeté',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
@@ -516,26 +464,23 @@ class SupplierController extends GetxController {
         );
       }
     } catch (e) {
-      // Extraire le message d'erreur
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
         errorMessage = errorMessage.substring(11);
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de rejeter le fournisseur: $errorMessage',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Remplir le formulaire avec les données d'un fournisseur
   void fillForm(Supplier supplier) {
     nomController.text = supplier.nom;
     emailController.text = supplier.email;
@@ -547,7 +492,6 @@ class SupplierController extends GetxController {
     commentairesController.text = supplier.commentaires ?? '';
   }
 
-  // Vider le formulaire
   void clearForm() {
     nomController.clear();
     emailController.clear();
@@ -559,14 +503,13 @@ class SupplierController extends GetxController {
     commentairesController.clear();
   }
 
-  // Évaluer un fournisseur
   Future<void> rateSupplier(
     Supplier supplier,
     double rating, {
     String? comments,
   }) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _supplierService.rateSupplier(
         supplier.id!,
@@ -574,39 +517,35 @@ class SupplierController extends GetxController {
         comments: comments,
       );
       if (success) {
-        await loadSuppliers(); // Recharger tous les fournisseurs
+        await loadSuppliers();
         await loadSupplierStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Fournisseur évalué avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de l\'évaluation');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible d\'évaluer le fournisseur',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
-  // Soumettre un fournisseur
   Future<void> submitSupplier(Supplier supplier) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _supplierService.submitSupplier(supplier.id!);
       if (success) {
-        await loadSuppliers(); // Recharger tous les fournisseurs
+        await loadSuppliers();
         await loadSupplierStats();
 
-        // Notifier le patron de la soumission
         NotificationHelper.notifySubmission(
           entityType: 'supplier',
           entityName: NotificationHelper.getEntityDisplayName(
@@ -620,22 +559,20 @@ class SupplierController extends GetxController {
           ),
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Fournisseur soumis avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la soumission');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de soumettre le fournisseur',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class PaginatedDataView extends StatelessWidget {
@@ -54,35 +53,33 @@ class PaginatedDataView extends StatelessWidget {
   }
 }
 
-class PaginationController extends GetxController {
+/// Contrôleur de pagination (sans GetX). Gérer le cycle de vie (dispose) côté appelant.
+class PaginationController {
   final int itemsPerPage;
-  final RxInt currentPage = 1.obs;
-  final RxBool isLoading = false.obs;
-  final RxBool hasMoreData = true.obs;
+  int currentPage = 1;
+  bool isLoading = false;
+  bool hasMoreData = true;
   final ScrollController scrollController = ScrollController();
 
   PaginationController({this.itemsPerPage = 10});
 
   void resetPagination() {
-    currentPage.value = 1;
-    hasMoreData.value = true;
+    currentPage = 1;
+    hasMoreData = true;
   }
 
   Future<void> loadNextPage() async {
-    if (isLoading.value || !hasMoreData.value) return;
-
-    isLoading.value = true;
+    if (isLoading || !hasMoreData) return;
+    isLoading = true;
     await loadData();
-    isLoading.value = false;
+    isLoading = false;
   }
 
   Future<void> loadData() async {
     // À implémenter dans les classes dérivées
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
-    super.onClose();
   }
 }

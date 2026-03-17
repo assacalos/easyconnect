@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/services/session_service.dart';
 
 /// Page d'accueil avec image de bienvenue, boutons S'INSCRIRE et SE CONNECTER.
-/// Placer l'image de fond dans assets/images/welcome_bg.png
 class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
 
@@ -12,18 +11,19 @@ class WelcomePage extends StatefulWidget {
 }
 
 class _WelcomePageState extends State<WelcomePage> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (await SessionService.isAuthenticated()) {
-        Get.offNamed('/splash');
-      }
-    });
-  }
+  bool _redirectChecked = false;
 
   @override
   Widget build(BuildContext context) {
+    if (!_redirectChecked) {
+      _redirectChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        if (await SessionService.isAuthenticated()) {
+          context.go('/splash');
+        }
+      });
+    }
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
@@ -74,12 +74,12 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     _WelcomeButton(
                       label: "S'INSCRIRE",
-                      onTap: () => Get.offNamed('/register'),
+                      onTap: () => context.go('/register'),
                     ),
                     const SizedBox(width: 12),
                     _WelcomeButton(
                       label: 'SE CONNECTER',
-                      onTap: () => Get.offNamed('/login'),
+                      onTap: () => context.go('/login'),
                       isPrimary: true,
                     ),
                   ],

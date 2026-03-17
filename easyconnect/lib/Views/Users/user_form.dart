@@ -1,20 +1,20 @@
-import 'package:easyconnect/Controllers/userController.dart';
 import 'package:easyconnect/Models/user_model.dart';
+import 'package:easyconnect/providers/user_management_notifier.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class UserForm extends StatefulWidget {
+class UserForm extends ConsumerStatefulWidget {
   final UserModel? user;
-  UserForm({this.user});
+  UserForm({super.key, this.user});
 
   @override
-  _UserFormState createState() => _UserFormState();
+  ConsumerState<UserForm> createState() => _UserFormState();
 }
 
-class _UserFormState extends State<UserForm> {
+class _UserFormState extends ConsumerState<UserForm> {
   final _formKey = GlobalKey<FormState>();
-  final UserController controller = Get.find();
 
   late TextEditingController firstNameController;
   late TextEditingController lastNameController;
@@ -35,7 +35,18 @@ class _UserFormState extends State<UserForm> {
   }
 
   @override
+  void dispose() {
+    firstNameController.dispose();
+    lastNameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final notifier = ref.read(userManagementProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -61,7 +72,10 @@ class _UserFormState extends State<UserForm> {
               TextFormField(
                 controller: emailController,
                 decoration: InputDecoration(labelText: "Email"),
-                validator: (v) => !v!.contains('@') ? "Email invalide" : null,
+                validator: (v) =>
+                    (v == null || v.isEmpty || !v.contains('@'))
+                        ? "Email invalide"
+                        : null,
               ),
               if (widget.user == null)
                 TextFormField(
@@ -69,10 +83,12 @@ class _UserFormState extends State<UserForm> {
                   decoration: InputDecoration(labelText: "Mot de passe"),
                   obscureText: true,
                   validator:
-                      (v) => v!.length < 6 ? "Minimum 6 caractères" : null,
+                      (v) => (v == null || v.length < 6)
+                          ? "Minimum 6 caractères"
+                          : null,
                 ),
               DropdownButtonFormField<int>(
-                value: 2,
+                value: role,
                 items:
                     [1, 2, 3]
                         .map(
@@ -92,31 +108,58 @@ class _UserFormState extends State<UserForm> {
               ),
               SizedBox(height: 20),
               UniformFormButtons(
-                onCancel: () => Get.back(),
+                onCancel: () => Navigator.pop(context),
                 onSubmit: () async {
                   if (_formKey.currentState!.validate()) {
-                    final user = UserModel(
-                      id: widget.user?.id ?? 0,
-                      nom: firstNameController.text,
-                      prenom: lastNameController.text,
-                      email: emailController.text,
-                      role: role,
-                      isActive: isActive,
-                    );
                     if (widget.user == null) {
-                      final success = await controller.addUser(
-                        user,
-                        passwordController.text,
+                      final success = await notifier.createUser(
+                        nom: lastNameController.text.trim(),
+                        prenom: firstNameController.text.trim(),
+                        email: emailController.text.trim(),
+                        password: passwordController.text,
+                        roleId: role,
+                      );
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            success
+                                ? "Utilisateur créé avec succès"
+                                : "Erreur lors de la création",
+                          ),
+                          backgroundColor:
+                              success ? Colors.green : Colors.red,
+                        ),
                       );
                       if (success) {
                         await Future.delayed(const Duration(milliseconds: 500));
-                        Get.offNamed('/admin/users');
+                        context.go('/admin/users');
                       }
                     } else {
-                      final success = await controller.updateUser(user);
+                      final user = UserModel(
+                        id: widget.user!.id,
+                        nom: firstNameController.text.trim(),
+                        prenom: lastNameController.text.trim(),
+                        email: emailController.text.trim(),
+                        role: role,
+                        isActive: isActive,
+                      );
+                      final success = await notifier.updateUser(user);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            success
+                                ? "Utilisateur mis à jour"
+                                : "Erreur lors de la mise à jour",
+                          ),
+                          backgroundColor:
+                              success ? Colors.green : Colors.red,
+                        ),
+                      );
                       if (success) {
                         await Future.delayed(const Duration(milliseconds: 500));
-                        Get.offNamed('/admin/users');
+                        context.go('/admin/users');
                       }
                     }
                   }

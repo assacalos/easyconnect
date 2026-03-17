@@ -1,43 +1,147 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/contract_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/contract_model.dart';
+import 'package:easyconnect/Models/employee_model.dart';
+import 'package:easyconnect/providers/contract_notifier.dart';
+import 'package:easyconnect/providers/employee_notifier.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:easyconnect/services/camera_service.dart';
 
-class ContractForm extends StatefulWidget {
+class ContractForm extends ConsumerStatefulWidget {
   final Contract? contract;
 
   const ContractForm({super.key, this.contract});
 
   @override
-  State<ContractForm> createState() => _ContractFormState();
+  ConsumerState<ContractForm> createState() => _ContractFormState();
 }
 
-class _ContractFormState extends State<ContractForm> {
-  final ContractController controller = Get.put(ContractController());
+class _ContractFormState extends ConsumerState<ContractForm> {
   final _formKey = GlobalKey<FormState>();
+  final _contractNumberController = TextEditingController();
+  final _departmentController = TextEditingController();
+  final _jobTitleController = TextEditingController();
+  final _jobDescriptionController = TextEditingController();
+  final _workLocationController = TextEditingController();
+  final _workScheduleController = TextEditingController();
+  final _reportingManagerController = TextEditingController();
+  final _grossSalaryController = TextEditingController();
+  final _netSalaryController = TextEditingController();
+  final _weeklyHoursController = TextEditingController();
+  final _startDateController = TextEditingController();
+  final _endDateController = TextEditingController();
+  final _employeeNameController = TextEditingController();
+  final _employeeEmailController = TextEditingController();
+  final _employeePhoneController = TextEditingController();
+  final _healthInsuranceController = TextEditingController();
+  final _retirementPlanController = TextEditingController();
+  final _vacationDaysController = TextEditingController();
+  final _otherBenefitsController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  int _selectedEmployeeId = 0;
+  String _selectedContractType = '';
+  String _selectedDepartment = '';
+  String _selectedPaymentFrequency = 'monthly';
+  String _selectedProbationPeriod = 'none';
+  final List<Map<String, dynamic>> _selectedAttachments = [];
+
+  static const _contractTypeOptions = [
+    {'value': 'permanent', 'label': 'CDI'},
+    {'value': 'fixed_term', 'label': 'CDD'},
+    {'value': 'temporary', 'label': 'Intérim'},
+    {'value': 'internship', 'label': 'Stage'},
+    {'value': 'consultant', 'label': 'Consultant'},
+  ];
+  static const _paymentFrequencyOptions = [
+    {'value': 'monthly', 'label': 'Mensuel'},
+    {'value': 'weekly', 'label': 'Hebdomadaire'},
+    {'value': 'daily', 'label': 'Journalier'},
+    {'value': 'hourly', 'label': 'Horaire'},
+  ];
+  static const _probationPeriodOptions = [
+    {'value': 'none', 'label': 'Aucune'},
+    {'value': '1_month', 'label': '1 mois'},
+    {'value': '3_months', 'label': '3 mois'},
+    {'value': '6_months', 'label': '6 mois'},
+  ];
 
   @override
   void initState() {
     super.initState();
-    // Charger les employés et départements si nécessaire
-    if (controller.employees.isEmpty) {
-      controller.loadEmployees();
-    }
-    if (controller.departments.isEmpty) {
-      controller.loadDepartments();
-    }
-    if (widget.contract != null) {
-      controller.fillForm(widget.contract!);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final empState = ref.read(employeeProvider);
+      final notifier = ref.read(employeeProvider.notifier);
+      if (empState.departments.isEmpty) notifier.loadDepartments();
+      if (empState.employees.isEmpty) notifier.loadEmployees(loadAll: true);
+      if (widget.contract != null) _fillForm(widget.contract!);
+    });
+  }
+
+  @override
+  void dispose() {
+    _contractNumberController.dispose();
+    _departmentController.dispose();
+    _jobTitleController.dispose();
+    _jobDescriptionController.dispose();
+    _workLocationController.dispose();
+    _workScheduleController.dispose();
+    _reportingManagerController.dispose();
+    _grossSalaryController.dispose();
+    _netSalaryController.dispose();
+    _weeklyHoursController.dispose();
+    _startDateController.dispose();
+    _endDateController.dispose();
+    _employeeNameController.dispose();
+    _employeeEmailController.dispose();
+    _employeePhoneController.dispose();
+    _healthInsuranceController.dispose();
+    _retirementPlanController.dispose();
+    _vacationDaysController.dispose();
+    _otherBenefitsController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _fillForm(Contract c) {
+    _contractNumberController.text = c.contractNumber;
+    _selectedContractType = c.contractType;
+    _selectedDepartment = c.department;
+    _departmentController.text = c.department;
+    _jobTitleController.text = c.jobTitle;
+    _jobDescriptionController.text = c.jobDescription;
+    _workLocationController.text = c.workLocation;
+    _workScheduleController.text = c.workSchedule;
+    _reportingManagerController.text = c.reportingManager ?? '';
+    _grossSalaryController.text = c.grossSalary.toString();
+    _netSalaryController.text = c.netSalary.toString();
+    _weeklyHoursController.text = c.weeklyHours.toString();
+    _startDateController.text = DateFormat('dd/MM/yyyy').format(c.startDate);
+    if (c.endDate != null) _endDateController.text = DateFormat('dd/MM/yyyy').format(c.endDate!);
+    _selectedPaymentFrequency = c.paymentFrequency;
+    _selectedProbationPeriod = c.probationPeriod;
+    _employeeNameController.text = c.employeeName;
+    _employeeEmailController.text = c.employeeEmail;
+    _employeePhoneController.text = c.employeePhone ?? '';
+    _healthInsuranceController.text = c.healthInsurance ?? '';
+    _retirementPlanController.text = c.retirementPlan ?? '';
+    _vacationDaysController.text = c.vacationDays?.toString() ?? '';
+    _otherBenefitsController.text = c.otherBenefits ?? '';
+    _notesController.text = c.notes ?? '';
+    _selectedEmployeeId = c.employeeId;
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    final empState = ref.watch(employeeProvider);
+    final departments = empState.departments;
+    final employees = empState.employees;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -64,13 +168,13 @@ class _ContractFormState extends State<ContractForm> {
             children: [
               // Informations générales
               _buildSectionTitle('Informations Générales'),
-              _buildGeneralInfoSection(),
+              _buildGeneralInfoSection(departments),
 
               const SizedBox(height: 24),
 
               // Informations employé
               _buildSectionTitle('Informations Employé'),
-              _buildEmployeeInfoSection(),
+              _buildEmployeeInfoSection(employees),
 
               const SizedBox(height: 24),
 
@@ -121,121 +225,81 @@ class _ContractFormState extends State<ContractForm> {
     );
   }
 
-  Widget _buildGeneralInfoSection() {
+  Widget _buildGeneralInfoSection(List<String> departments) {
+    final contractTypeFiltered = _contractTypeOptions.where((t) => t['value'] != 'all').toList();
+    final validContractType = _selectedContractType.isNotEmpty && contractTypeFiltered.any((t) => t['value'] == _selectedContractType) ? _selectedContractType : null;
+    final deptList = List<String>.from(departments);
+    if (_selectedDepartment.isNotEmpty && !deptList.contains(_selectedDepartment)) deptList.add(_selectedDepartment);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextFormField(
-              controller: controller.contractNumberController,
+              controller: _contractNumberController,
               decoration: const InputDecoration(
                 labelText: 'Numéro du contrat *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.tag),
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Le numéro du contrat est requis';
-                }
+                if (value == null || value.trim().isEmpty) return 'Le numéro du contrat est requis';
                 return null;
               },
             ),
             const SizedBox(height: 16),
-            Obx(() {
-              final contractTypeOptionsFiltered =
-                  controller.contractTypeOptions
-                      .where((type) => type['value'] != 'all')
-                      .toList();
-              final currentValue = controller.selectedContractTypeForm.value;
-              final validValue =
-                  currentValue.isNotEmpty &&
-                          currentValue != 'all' &&
-                          contractTypeOptionsFiltered.any(
-                            (type) => type['value'] == currentValue,
-                          )
-                      ? currentValue
-                      : null;
-
-              return DropdownButtonFormField<String>(
-                value: validValue,
-                decoration: const InputDecoration(
-                  labelText: 'Type de contrat *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.work),
-                ),
-                items:
-                    contractTypeOptionsFiltered.map<DropdownMenuItem<String>>((
-                      type,
-                    ) {
-                      return DropdownMenuItem<String>(
-                        value: type['value']!,
-                        child: Text(type['label']!),
-                      );
-                    }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    controller.setContractType(value);
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Le type de contrat est requis';
-                  }
-                  return null;
-                },
-              );
-            }),
-            const SizedBox(height: 16),
-            Obx(
-              () => DropdownButtonFormField<String>(
-                value:
-                    controller.selectedDepartmentForm.value.isNotEmpty
-                        ? controller.selectedDepartmentForm.value
-                        : null,
-                decoration: const InputDecoration(
-                  labelText: 'Département *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.business),
-                ),
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text('Sélectionner'),
-                  ),
-                  ...controller.departmentOptionsForForm
-                      .map<DropdownMenuItem<String>>((dept) {
-                        return DropdownMenuItem<String>(
-                          value: dept,
-                          child: Text(dept),
-                        );
-                      })
-                      .toList(),
-                ],
-                onChanged: (value) {
-                  controller.selectedDepartmentForm.value = value ?? '';
-                  controller.departmentController.text = value ?? '';
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Le département est requis';
-                  }
-                  return null;
-                },
+            DropdownButtonFormField<String>(
+              value: validContractType,
+              decoration: const InputDecoration(
+                labelText: 'Type de contrat *',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.work),
               ),
+              items: contractTypeFiltered.map<DropdownMenuItem<String>>((type) {
+                return DropdownMenuItem<String>(value: type['value']!, child: Text(type['label']!));
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) setState(() => _selectedContractType = value);
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Le type de contrat est requis';
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedDepartment.isNotEmpty ? _selectedDepartment : null,
+              decoration: const InputDecoration(
+                labelText: 'Département *',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.business),
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('Sélectionner')),
+                ...deptList.map<DropdownMenuItem<String>>((dept) => DropdownMenuItem(value: dept, child: Text(dept))),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedDepartment = value ?? '';
+                  _departmentController.text = value ?? '';
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Le département est requis';
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.jobTitleController,
+              controller: _jobTitleController,
               decoration: const InputDecoration(
                 labelText: 'Poste *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.work_outline),
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Le poste est requis';
-                }
+                if (value == null || value.trim().isEmpty) return 'Le poste est requis';
                 return null;
               },
             ),
@@ -245,57 +309,56 @@ class _ContractFormState extends State<ContractForm> {
     );
   }
 
-  Widget _buildEmployeeInfoSection() {
+  Widget _buildEmployeeInfoSection(List<Employee> employees) {
+    final validEmployeeId = employees.any((e) => e.id == _selectedEmployeeId) && _selectedEmployeeId != 0 ? _selectedEmployeeId : null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Obx(() {
-              final employees = controller.employees;
-              final currentValue = controller.selectedEmployeeId.value;
-              // S'assurer que la valeur actuelle est dans la liste des employés
-              final validValue =
-                  employees.any((emp) => emp.id == currentValue) &&
-                          currentValue != 0
-                      ? currentValue
-                      : null;
-
-              return DropdownButtonFormField<int>(
-                value: validValue,
-                decoration: const InputDecoration(
-                  labelText: 'Employé *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-                items: [
-                  const DropdownMenuItem<int>(
-                    value: null,
-                    child: Text('Sélectionner un employé'),
-                  ),
-                  ...employees.map<DropdownMenuItem<int>>((employee) {
-                    return DropdownMenuItem<int>(
-                      value: employee.id,
-                      child: Text(
-                        '${employee.firstName} ${employee.lastName} - ${employee.email}',
-                      ),
-                    );
-                  }).toList(),
-                ],
-                onChanged: (value) => controller.setEmployee(value),
-                validator: (value) {
-                  if (value == null || value == 0) {
-                    return 'L\'employé est requis';
+            DropdownButtonFormField<int>(
+              value: validEmployeeId,
+              decoration: const InputDecoration(
+                labelText: 'Employé *',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
+              items: [
+                const DropdownMenuItem<int>(value: null, child: Text('Sélectionner un employé')),
+                ...employees.map<DropdownMenuItem<int>>((employee) {
+                  return DropdownMenuItem<int>(
+                    value: employee.id,
+                    child: Text('${employee.firstName} ${employee.lastName} - ${employee.email}'),
+                  );
+                }),
+              ],
+              onChanged: (value) {
+                if (value != null && value != 0) {
+                  Employee? emp;
+                  for (final e in employees) {
+                    if (e.id == value) { emp = e; break; }
                   }
-                  return null;
-                },
-              );
-            }),
+                  setState(() {
+                    _selectedEmployeeId = value;
+                    if (emp != null) {
+                      _employeeNameController.text = '${emp.firstName} ${emp.lastName}';
+                      _employeeEmailController.text = emp.email;
+                      _employeePhoneController.text = emp.phone ?? '';
+                    }
+                  });
+                }
+              },
+              validator: (value) {
+                if (value == null || value == 0) return "L'employé est requis";
+                return null;
+              },
+            ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.employeeNameController,
+              controller: _employeeNameController,
               decoration: const InputDecoration(
-                labelText: 'Nom complet de l\'employé',
+                labelText: "Nom complet de l'employé",
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.person_outline),
               ),
@@ -303,9 +366,9 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.employeeEmailController,
+              controller: _employeeEmailController,
               decoration: const InputDecoration(
-                labelText: 'Email de l\'employé',
+                labelText: "Email de l'employé",
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.email),
               ),
@@ -313,9 +376,9 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.employeePhoneController,
+              controller: _employeePhoneController,
               decoration: const InputDecoration(
-                labelText: 'Téléphone de l\'employé',
+                labelText: "Téléphone de l'employé",
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.phone),
               ),
@@ -328,6 +391,8 @@ class _ContractFormState extends State<ContractForm> {
   }
 
   Widget _buildContractDetailsSection() {
+    final validFreq = _selectedPaymentFrequency.isNotEmpty && _paymentFrequencyOptions.any((f) => f['value'] == _selectedPaymentFrequency) ? _selectedPaymentFrequency : null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -337,19 +402,16 @@ class _ContractFormState extends State<ContractForm> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: controller.startDateController,
+                    controller: _startDateController,
                     decoration: const InputDecoration(
                       labelText: 'Date de début *',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.calendar_today),
                     ),
                     readOnly: true,
-                    onTap:
-                        () => _selectDate(controller.startDateController, true),
+                    onTap: () => _selectDate(_startDateController, true),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'La date de début est requise';
-                      }
+                      if (value == null || value.trim().isEmpty) return 'La date de début est requise';
                       return null;
                     },
                   ),
@@ -357,15 +419,14 @@ class _ContractFormState extends State<ContractForm> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: TextFormField(
-                    controller: controller.endDateController,
+                    controller: _endDateController,
                     decoration: const InputDecoration(
                       labelText: 'Date de fin',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.event),
                     ),
                     readOnly: true,
-                    onTap:
-                        () => _selectDate(controller.endDateController, false),
+                    onTap: () => _selectDate(_endDateController, false),
                   ),
                 ),
               ],
@@ -375,7 +436,7 @@ class _ContractFormState extends State<ContractForm> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: controller.grossSalaryController,
+                    controller: _grossSalaryController,
                     decoration: const InputDecoration(
                       labelText: 'Salaire brut *',
                       border: OutlineInputBorder(),
@@ -383,60 +444,31 @@ class _ContractFormState extends State<ContractForm> {
                     ),
                     keyboardType: TextInputType.number,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Le salaire brut est requis';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Veuillez entrer un montant valide';
-                      }
+                      if (value == null || value.trim().isEmpty) return 'Le salaire brut est requis';
+                      if (double.tryParse(value) == null) return 'Veuillez entrer un montant valide';
                       return null;
                     },
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Obx(
-                    () => DropdownButtonFormField<String>(
-                      value:
-                          controller
-                                      .selectedPaymentFrequency
-                                      .value
-                                      .isNotEmpty &&
-                                  controller.paymentFrequencyOptions.any(
-                                    (freq) =>
-                                        freq['value'] ==
-                                        controller
-                                            .selectedPaymentFrequency
-                                            .value,
-                                  )
-                              ? controller.selectedPaymentFrequency.value
-                              : null,
-                      decoration: const InputDecoration(
-                        labelText: 'Fréquence de paiement *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.schedule),
-                      ),
-                      items:
-                          controller.paymentFrequencyOptions
-                              .map<DropdownMenuItem<String>>((freq) {
-                                return DropdownMenuItem<String>(
-                                  value: freq['value']!,
-                                  child: Text(freq['label']!),
-                                );
-                              })
-                              .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          controller.setPaymentFrequency(value);
-                        }
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'La fréquence de paiement est requise';
-                        }
-                        return null;
-                      },
+                  child: DropdownButtonFormField<String>(
+                    value: validFreq,
+                    decoration: const InputDecoration(
+                      labelText: 'Fréquence de paiement *',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.schedule),
                     ),
+                    items: _paymentFrequencyOptions.map<DropdownMenuItem<String>>((freq) {
+                      return DropdownMenuItem<String>(value: freq['value']!, child: Text(freq['label']!));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) setState(() => _selectedPaymentFrequency = value);
+                    },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'La fréquence de paiement est requise';
+                      return null;
+                    },
                   ),
                 ),
               ],
@@ -446,7 +478,7 @@ class _ContractFormState extends State<ContractForm> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    controller: controller.weeklyHoursController,
+                    controller: _weeklyHoursController,
                     decoration: const InputDecoration(
                       labelText: 'Heures par semaine *',
                       border: OutlineInputBorder(),
@@ -454,45 +486,27 @@ class _ContractFormState extends State<ContractForm> {
                     ),
                     keyboardType: TextInputType.number,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Les heures par semaine sont requises';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Veuillez entrer un nombre valide';
-                      }
+                      if (value == null || value.trim().isEmpty) return 'Les heures par semaine sont requises';
+                      if (double.tryParse(value) == null) return 'Veuillez entrer un nombre valide';
                       return null;
                     },
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Obx(
-                    () => DropdownButtonFormField<String>(
-                      value:
-                          controller.selectedProbationPeriod.value.isNotEmpty
-                              ? controller.selectedProbationPeriod.value
-                              : 'none',
-                      decoration: const InputDecoration(
-                        labelText: 'Période d\'essai',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.timer),
-                      ),
-                      items:
-                          controller.probationPeriodOptions
-                              .map<DropdownMenuItem<String>>((option) {
-                                return DropdownMenuItem<String>(
-                                  value: option['value'],
-                                  child: Text(option['label']!),
-                                );
-                              })
-                              .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          controller.selectedProbationPeriod.value = value;
-                          controller.selectProbationPeriod(value);
-                        }
-                      },
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedProbationPeriod.isNotEmpty ? _selectedProbationPeriod : 'none',
+                    decoration: const InputDecoration(
+                      labelText: "Période d'essai",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.timer),
                     ),
+                    items: _probationPeriodOptions.map<DropdownMenuItem<String>>((option) {
+                      return DropdownMenuItem<String>(value: option['value'], child: Text(option['label']!));
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) setState(() => _selectedProbationPeriod = value);
+                    },
                   ),
                 ),
               ],
@@ -504,69 +518,55 @@ class _ContractFormState extends State<ContractForm> {
   }
 
   Widget _buildWorkConditionsSection() {
+    final validSchedule = _workScheduleController.text.trim().isNotEmpty &&
+        ['full_time', 'part_time', 'flexible'].contains(_workScheduleController.text.trim())
+        ? _workScheduleController.text.trim()
+        : null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextFormField(
-              controller: controller.workLocationController,
+              controller: _workLocationController,
               decoration: const InputDecoration(
                 labelText: 'Lieu de travail *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.location_on),
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Le lieu de travail est requis';
-                }
+                if (value == null || value.trim().isEmpty) return 'Le lieu de travail est requis';
                 return null;
               },
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value:
-                  controller.workScheduleController.text.trim().isNotEmpty &&
-                          ['full_time', 'part_time', 'flexible'].contains(
-                            controller.workScheduleController.text.trim(),
-                          )
-                      ? controller.workScheduleController.text.trim()
-                      : null,
+              value: validSchedule,
               decoration: const InputDecoration(
                 labelText: 'Horaire de travail *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.schedule),
               ),
-              items: [
-                const DropdownMenuItem<String>(
-                  value: 'full_time',
-                  child: Text('Temps plein'),
-                ),
-                const DropdownMenuItem<String>(
-                  value: 'part_time',
-                  child: Text('Temps partiel'),
-                ),
-                const DropdownMenuItem<String>(
-                  value: 'flexible',
-                  child: Text('Flexible'),
-                ),
+              items: const [
+                DropdownMenuItem(value: 'full_time', child: Text('Temps plein')),
+                DropdownMenuItem(value: 'part_time', child: Text('Temps partiel')),
+                DropdownMenuItem(value: 'flexible', child: Text('Flexible')),
               ],
               onChanged: (value) {
                 if (value != null) {
-                  controller.workScheduleController.text = value;
-                  controller.selectWorkSchedule(value);
+                  _workScheduleController.text = value;
+                  setState(() {});
                 }
               },
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'L\'horaire de travail est requis';
-                }
+                if (value == null || value.isEmpty) return "L'horaire de travail est requis";
                 return null;
               },
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.reportingManagerController,
+              controller: _reportingManagerController,
               decoration: const InputDecoration(
                 labelText: 'Superviseur direct',
                 border: OutlineInputBorder(),
@@ -575,7 +575,7 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.jobDescriptionController,
+              controller: _jobDescriptionController,
               decoration: const InputDecoration(
                 labelText: 'Description du poste',
                 border: OutlineInputBorder(),
@@ -596,7 +596,7 @@ class _ContractFormState extends State<ContractForm> {
         child: Column(
           children: [
             TextFormField(
-              controller: controller.healthInsuranceController,
+              controller: _healthInsuranceController,
               decoration: const InputDecoration(
                 labelText: 'Assurance maladie',
                 border: OutlineInputBorder(),
@@ -605,7 +605,7 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.retirementPlanController,
+              controller: _retirementPlanController,
               decoration: const InputDecoration(
                 labelText: 'Plan de retraite',
                 border: OutlineInputBorder(),
@@ -614,7 +614,7 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.vacationDaysController,
+              controller: _vacationDaysController,
               decoration: const InputDecoration(
                 labelText: 'Jours de congé par an',
                 border: OutlineInputBorder(),
@@ -624,7 +624,7 @@ class _ContractFormState extends State<ContractForm> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: controller.otherBenefitsController,
+              controller: _otherBenefitsController,
               decoration: const InputDecoration(
                 labelText: 'Autres avantages',
                 border: OutlineInputBorder(),
@@ -645,7 +645,7 @@ class _ContractFormState extends State<ContractForm> {
         child: Column(
           children: [
             TextFormField(
-              controller: controller.notesController,
+              controller: _notesController,
               decoration: const InputDecoration(
                 labelText: 'Notes',
                 border: OutlineInputBorder(),
@@ -654,62 +654,40 @@ class _ContractFormState extends State<ContractForm> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            // Affichage des fichiers sélectionnés
-            Obx(() {
-              if (controller.selectedAttachments.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Fichiers sélectionnés:',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  if (controller.selectedAttachments.isEmpty)
-                    const Text('Aucun fichier sélectionné')
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: controller.selectedAttachments.length,
-                      itemBuilder: (context, index) {
-                        final file = controller.selectedAttachments[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Icon(
-                              _getFileIcon(file['type'] ?? ''),
-                              color: Colors.blue,
-                            ),
-                            title: Text(
-                              file['name'] ?? 'Fichier',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            subtitle:
-                                file['size'] != null
-                                    ? Text(
-                                      _formatFileSize(file['size']),
-                                      style: const TextStyle(fontSize: 12),
-                                    )
-                                    : null,
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close, color: Colors.red),
-                              onPressed:
-                                  () => controller.removeAttachment(index),
-                            ),
-                          ),
-                        );
-                      },
+            if (_selectedAttachments.isNotEmpty) ...[
+              const Text(
+                'Fichiers sélectionnés:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _selectedAttachments.length,
+                itemBuilder: (context, index) {
+                  final file = _selectedAttachments[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Icon(_getFileIcon(file['type'] ?? ''), color: Colors.blue),
+                      title: Text(file['name'] ?? 'Fichier', style: const TextStyle(fontSize: 14)),
+                      subtitle: file['size'] != null
+                          ? Text(_formatFileSize(file['size']), style: const TextStyle(fontSize: 12))
+                          : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        onPressed: () {
+                          setState(() => _selectedAttachments.removeAt(index));
+                        },
+                      ),
                     ),
-                  const SizedBox(height: 8),
-                ],
-              );
-            }),
-            // Bouton pour sélectionner des fichiers
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
             ElevatedButton.icon(
-              onPressed: () => _selectFiles(controller),
+              onPressed: _selectFiles,
               icon: const Icon(Icons.attach_file),
               label: const Text('Sélectionner des fichiers'),
               style: ElevatedButton.styleFrom(
@@ -721,11 +699,7 @@ class _ContractFormState extends State<ContractForm> {
             const SizedBox(height: 8),
             Text(
               'Formats acceptés: PDF, Images, Documents (max 10 MB par fichier)',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                fontStyle: FontStyle.italic,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -735,22 +709,16 @@ class _ContractFormState extends State<ContractForm> {
 
   Widget _buildActionButtons() {
     return UniformFormButtons(
-      onCancel: () => Get.back(),
-      onSubmit: () => _saveContract(),
+      onCancel: () => context.pop(),
+      onSubmit: _saveContract,
       submitText: 'Soumettre',
     );
   }
 
-  Future<void> _selectDate(
-    TextEditingController controller,
-    bool isStartDate,
-  ) async {
+  Future<void> _selectDate(TextEditingController controller, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate:
-          isStartDate
-              ? DateTime.now()
-              : DateTime.now().add(const Duration(days: 365)),
+      initialDate: isStartDate ? DateTime.now() : DateTime.now().add(const Duration(days: 365)),
       firstDate: isStartDate ? DateTime.now() : DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
     );
@@ -760,27 +728,96 @@ class _ContractFormState extends State<ContractForm> {
   }
 
   void _saveContract() async {
-    if (_formKey.currentState!.validate()) {
-      bool success = false;
-      if (widget.contract == null) {
-        success = await controller.createContract();
-      } else {
-        success = await controller.updateContract(widget.contract!);
+    if (!_formKey.currentState!.validate()) return;
+
+    DateTime? startDate;
+    try {
+      startDate = DateFormat('dd/MM/yyyy').parse(_startDateController.text.trim());
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Date de début invalide (dd/MM/yyyy)')));
+      return;
+    }
+    DateTime? endDate;
+    if (_endDateController.text.trim().isNotEmpty) {
+      try {
+        endDate = DateFormat('dd/MM/yyyy').parse(_endDateController.text.trim());
+      } catch (_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Date de fin invalide (dd/MM/yyyy)')));
+        return;
       }
-      if (success) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        Get.offNamed(
-          '/contracts',
-        ); // Redirection automatique vers la liste après succès
-      }
+    }
+
+    final gross = double.tryParse(_grossSalaryController.text.trim());
+    if (gross == null || gross <= 0) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Salaire brut invalide')));
+      return;
+    }
+    final weeklyHours = int.tryParse(_weeklyHoursController.text.trim());
+    if (weeklyHours == null || weeklyHours <= 0) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Heures par semaine invalides')));
+      return;
+    }
+
+    final notifier = ref.read(contractProvider.notifier);
+    bool success = false;
+
+    if (widget.contract == null) {
+      success = await notifier.createContract(
+        employeeId: _selectedEmployeeId,
+        contractType: _selectedContractType,
+        position: _jobTitleController.text.trim(),
+        department: _selectedDepartment,
+        jobTitle: _jobTitleController.text.trim(),
+        jobDescription: _jobDescriptionController.text.trim(),
+        grossSalary: gross,
+        salaryCurrency: 'MAD',
+        paymentFrequency: _selectedPaymentFrequency,
+        startDate: startDate,
+        endDate: endDate,
+        workLocation: _workLocationController.text.trim(),
+        workSchedule: _workScheduleController.text.trim(),
+        weeklyHours: weeklyHours,
+        probationPeriod: _selectedProbationPeriod,
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+      );
+    } else {
+      success = await notifier.updateContract(
+        id: widget.contract!.id!,
+        contractType: _selectedContractType,
+        position: _jobTitleController.text.trim(),
+        department: _selectedDepartment,
+        jobTitle: _jobTitleController.text.trim(),
+        jobDescription: _jobDescriptionController.text.trim().isNotEmpty ? _jobDescriptionController.text.trim() : null,
+        grossSalary: gross,
+        netSalary: gross * 0.8,
+        salaryCurrency: 'MAD',
+        paymentFrequency: _selectedPaymentFrequency,
+        startDate: startDate,
+        endDate: endDate,
+        workLocation: _workLocationController.text.trim(),
+        workSchedule: _workScheduleController.text.trim(),
+        weeklyHours: weeklyHours,
+        probationPeriod: _selectedProbationPeriod,
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+      );
+    }
+
+    if (!mounted) return;
+    if (success) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      context.go('/contracts');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur lors de l\'enregistrement du contrat')),
+      );
     }
   }
 
-  Future<void> _selectFiles(ContractController controller) async {
+  Future<void> _selectFiles() async {
     try {
-      // Proposer de choisir le type de sélection
-      final String? selectionType = await Get.dialog<String>(
-        AlertDialog(
+      final String? selectionType = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
           title: const Text('Sélectionner des fichiers'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -788,81 +825,68 @@ class _ContractFormState extends State<ContractForm> {
               ListTile(
                 leading: const Icon(Icons.insert_drive_file),
                 title: const Text('Fichiers (PDF, Documents, etc.)'),
-                onTap: () => Get.back(result: 'file'),
+                onTap: () => Navigator.pop(ctx, 'file'),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
                 title: const Text('Image depuis la galerie'),
-                onTap: () => Get.back(result: 'gallery'),
+                onTap: () => Navigator.pop(ctx, 'gallery'),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt),
                 title: const Text('Prendre une photo'),
-                onTap: () => Get.back(result: 'camera'),
+                onTap: () => Navigator.pop(ctx, 'camera'),
               ),
             ],
           ),
         ),
       );
 
-      if (selectionType == null) return;
+      if (selectionType == null || !mounted) return;
 
       if (selectionType == 'file') {
-        // Sélectionner des fichiers avec file_picker
         FilePickerResult? result = await FilePicker.platform.pickFiles(
           type: FileType.any,
           allowMultiple: true,
         );
 
-        if (result != null && result.files.isNotEmpty) {
+        if (result != null && result.files.isNotEmpty && mounted) {
           for (var platformFile in result.files) {
             if (platformFile.path != null) {
               final file = File(platformFile.path!);
               final fileSize = await file.length();
-
-              // Vérifier la taille (max 10 MB)
               if (fileSize > 10 * 1024 * 1024) {
-                Get.snackbar(
-                  'Erreur',
-                  'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)')),
+                  );
+                }
                 continue;
               }
-
-              // Déterminer le type de fichier
               String fileType = 'document';
               final extension = platformFile.extension?.toLowerCase() ?? '';
-              if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
-                fileType = 'image';
-              } else if (extension == 'pdf') {
-                fileType = 'pdf';
-              }
-
-              // Ajouter le fichier à la liste
-              controller.selectedAttachments.add({
-                'name': platformFile.name,
-                'path': platformFile.path!,
-                'size': fileSize,
-                'type': fileType,
-                'extension': extension,
+              if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) fileType = 'image';
+              else if (extension == 'pdf') fileType = 'pdf';
+              setState(() {
+                _selectedAttachments.add({
+                  'name': platformFile.name,
+                  'path': platformFile.path!,
+                  'size': fileSize,
+                  'type': fileType,
+                  'extension': extension,
+                });
               });
             }
           }
-          controller.updateAttachmentsDisplay();
-
-          Get.snackbar(
-            'Succès',
-            '${result.files.length} fichier(s) sélectionné(s)',
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 2),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('${result.files.length} fichier(s) sélectionné(s)')),
+            );
+          }
         }
       } else {
-        // Utiliser CameraService pour une meilleure gestion des permissions
         final cameraService = CameraService();
         File? imageFile;
-
         try {
           if (selectionType == 'camera') {
             imageFile = await cameraService.takePicture();
@@ -870,93 +894,61 @@ class _ContractFormState extends State<ContractForm> {
             imageFile = await cameraService.pickImageFromGallery();
           }
 
-          if (imageFile != null && await imageFile.exists()) {
+          if (imageFile != null && await imageFile.exists() && mounted) {
             final fileSize = await imageFile.length();
-
-            // Vérifier la taille (max 10 MB)
             if (fileSize > 10 * 1024 * 1024) {
-              Get.snackbar(
-                'Erreur',
-                'Le fichier est trop volumineux (max 10 MB)',
-                snackPosition: SnackPosition.BOTTOM,
-                duration: const Duration(seconds: 3),
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Le fichier est trop volumineux (max 10 MB)')),
               );
               return;
             }
-
-            // Valider l'image
             try {
               await cameraService.validateImage(imageFile);
             } catch (e) {
-              Get.snackbar(
-                'Erreur',
-                'Image invalide: $e',
-                snackPosition: SnackPosition.BOTTOM,
-                duration: const Duration(seconds: 3),
-              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Image invalide: $e')),
+                );
+              }
               return;
             }
-
-            final fileName = imageFile.path.split('/').last;
+            final fileName = imageFile.path.split(RegExp(r'[/\\]')).last;
             final extension = fileName.split('.').last.toLowerCase();
-
-            // Déterminer le type de fichier
             String fileType = 'image';
-            if (extension == 'pdf') {
-              fileType = 'pdf';
-            } else if (![
-              'jpg',
-              'jpeg',
-              'png',
-              'gif',
-              'webp',
-            ].contains(extension)) {
-              fileType = 'document';
-            }
-
-            // Ajouter le fichier à la liste
-            controller.selectedAttachments.add({
-              'name': fileName,
-              'path': imageFile.path,
-              'size': fileSize,
-              'type': fileType,
-              'extension': extension,
+            if (extension == 'pdf') fileType = 'pdf';
+            else if (!['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) fileType = 'document';
+            final path = imageFile.path;
+            setState(() {
+              _selectedAttachments.add({
+                'name': fileName,
+                'path': path,
+                'size': fileSize,
+                'type': fileType,
+                'extension': extension,
+              });
             });
-
-            controller.updateAttachmentsDisplay();
-
-            Get.snackbar(
-              'Succès',
-              'Fichier sélectionné',
-              snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 2),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fichier sélectionné')));
+            }
           }
         } catch (e) {
-          // Gérer les erreurs de permissions et autres erreurs
           String errorMessage = 'Erreur lors de la sélection du fichier';
           if (e.toString().contains('Permission')) {
-            errorMessage =
-                'Permission refusée. Veuillez autoriser l\'accès à la caméra/photos dans les paramètres de l\'application.';
+            errorMessage = 'Permission refusée. Veuillez autoriser l\'accès à la caméra/photos dans les paramètres.';
           } else {
             errorMessage = e.toString().replaceFirst('Exception: ', '');
           }
-
-          Get.snackbar(
-            'Erreur',
-            errorMessage,
-            snackPosition: SnackPosition.BOTTOM,
-            duration: const Duration(seconds: 4),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+          }
         }
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: ${e.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
     }
   }
 

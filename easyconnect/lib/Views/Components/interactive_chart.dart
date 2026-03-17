@@ -1,7 +1,6 @@
 import 'package:easyconnect/Views/Components/data_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/utils/permissions.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
@@ -148,7 +147,7 @@ class InteractiveChart extends StatelessWidget {
             lineTouchData: LineTouchData(
               enabled: showTooltips,
               touchTooltipData: LineTouchTooltipData(
-                tooltipRoundedRadius: 8,
+                tooltipBorderRadius: BorderRadius.circular(8),
                 getTooltipItems: (touchedSpots) {
                   return touchedSpots.map((spot) {
                     final data = this.data[spot.spotIndex];
@@ -224,7 +223,7 @@ class InteractiveChart extends StatelessWidget {
             barTouchData: BarTouchData(
               enabled: showTooltips,
               touchTooltipData: BarTouchTooltipData(
-                tooltipRoundedRadius: 8,
+                tooltipBorderRadius: BorderRadius.circular(8),
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
                   return BarTooltipItem(
                     '${data[groupIndex].label ?? ''}\n${rod.toY.toStringAsFixed(2)}',

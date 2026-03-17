@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/camera_service.dart';
@@ -41,23 +41,31 @@ class _RegisterPageState extends State<RegisterPage> {
       if (source == ImageSource.camera) {
         final hasPermission = await _cameraService.requestCameraPermission();
         if (!hasPermission) {
-          Get.snackbar(
-            'Permission requise',
-            'Veuillez autoriser l\'accès à la caméra dans les paramètres.',
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Veuillez autoriser l\'accès à la caméra dans les paramètres.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
           return;
         }
       } else {
         final hasPermission = await _cameraService.requestStoragePermission();
         if (!hasPermission) {
-          Get.snackbar(
-            'Permission requise',
-            'Veuillez autoriser l\'accès aux photos dans les paramètres.',
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Veuillez autoriser l\'accès aux photos dans les paramètres.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
           return;
         }
       }
@@ -72,25 +80,34 @@ class _RegisterPageState extends State<RegisterPage> {
         setState(() => _photoFile = File(image.path));
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        e.toString().replaceFirst('Exception: ', ''),
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceFirst('Exception: ', ''),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   void _showPhotoOptions() {
-    Get.bottomSheet(
-      SafeArea(
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
               title: const Text('Choisir depuis la galerie'),
               onTap: () {
-                Get.back();
+                Navigator.pop(ctx);
                 _pickPhoto(ImageSource.gallery);
               },
             ),
@@ -98,7 +115,7 @@ class _RegisterPageState extends State<RegisterPage> {
               leading: const Icon(Icons.camera_alt),
               title: const Text('Prendre une photo'),
               onTap: () {
-                Get.back();
+                Navigator.pop(ctx);
                 _pickPhoto(ImageSource.camera);
               },
             ),
@@ -107,16 +124,12 @@ class _RegisterPageState extends State<RegisterPage> {
                 leading: const Icon(Icons.delete_outline, color: Colors.red),
                 title: const Text('Supprimer la photo', style: TextStyle(color: Colors.red)),
                 onTap: () {
-                  Get.back();
+                  Navigator.pop(ctx);
                   setState(() => _photoFile = null);
                 },
               ),
           ],
         ),
-      ),
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
     );
   }
@@ -176,30 +189,41 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       setState(() => _isLoading = false);
       if (res['success'] == true) {
-        Get.offNamed('/login');
-        Get.snackbar(
-          'Inscription enregistrée',
-          res['message'] ?? 'Votre compte sera activé après validation par l\'administrateur.',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 5),
-        );
+        context.go('/login');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                res['message'] ??
+                    'Votre compte sera activé après validation par l\'administrateur.',
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       } else {
-        Get.snackbar(
-          'Erreur',
-          res['message'] ?? 'Inscription impossible.',
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message'] ?? 'Inscription impossible.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      Get.snackbar(
-        'Erreur',
-        e.toString().replaceFirst('Exception: ', ''),
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceFirst('Exception: ', ''),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -301,7 +325,8 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return 'Champ requis';
-                            if (!GetUtils.isEmail(v.trim())) return 'Email invalide';
+                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                                .hasMatch(v.trim())) return 'Email invalide';
                             return null;
                           },
                         ),
@@ -379,7 +404,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(height: 12),
                         TextButton(
-                          onPressed: () => Get.offNamed('/login'),
+                          onPressed: () => context.go('/login'),
                           child: Text(
                             'Déjà un compte ? Se connecter',
                             style: TextStyle(color: Colors.grey.shade700),

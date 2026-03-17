@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/tax_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/providers/tax_notifier.dart';
 
-class TaxForm extends StatefulWidget {
+class TaxForm extends ConsumerStatefulWidget {
   final Tax? tax;
 
   const TaxForm({super.key, this.tax});
 
   @override
-  State<TaxForm> createState() => _TaxFormState();
+  ConsumerState<TaxForm> createState() => _TaxFormState();
 }
 
-class _TaxFormState extends State<TaxForm> {
+class _TaxFormState extends ConsumerState<TaxForm> {
   final _formKey = GlobalKey<FormState>();
-  final TaxController controller = Get.put(TaxController());
   final TaxService taxService = TaxService();
+  bool _isSaving = false;
 
   // Liste statique des catégories de taxes
   static const List<String> taxCategories = [
@@ -171,15 +172,14 @@ class _TaxFormState extends State<TaxForm> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Get.back(),
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Annuler'),
               ),
               ElevatedButton(
                 onPressed: () {
                   if (selectedMonth != null && selectedYear != null) {
-                    Get.back(
-                      result: {'month': selectedMonth, 'year': selectedYear},
-                    );
+                    Navigator.of(context).pop(
+                        {'month': selectedMonth, 'year': selectedYear});
                   }
                 },
                 child: const Text('Valider'),
@@ -217,59 +217,63 @@ class _TaxFormState extends State<TaxForm> {
 
   void _saveTax() async {
     if (!_formKey.currentState!.validate()) {
-      Get.snackbar(
-        'Erreur de validation',
-        'Veuillez remplir tous les champs obligatoires',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Veuillez remplir tous les champs obligatoires'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
-    // Validation des champs requis
     if (selectedCategory == null || selectedCategory!.isEmpty) {
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner une catégorie de taxe',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Veuillez sélectionner une catégorie de taxe'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
     if (selectedPeriodStart == null || selectedPeriodEnd == null) {
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner une période',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Veuillez sélectionner une période'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
     if (selectedDueDate == null) {
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner une date d\'échéance',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Veuillez sélectionner une date d\'échéance'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
     final baseAmount = double.tryParse(baseAmountController.text) ?? 0.0;
     if (baseAmount <= 0) {
-      Get.snackbar(
-        'Erreur',
-        'Le montant de base doit être supérieur à 0',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Le montant de base doit être supérieur à 0'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
@@ -304,7 +308,8 @@ class _TaxFormState extends State<TaxForm> {
     );
 
     try {
-      controller.isLoading.value = true;
+      setState(() => _isSaving = true);
+      final notifier = ref.read(taxProvider.notifier);
 
       bool success = false;
       Tax? createdTax;
@@ -312,18 +317,9 @@ class _TaxFormState extends State<TaxForm> {
         createdTax = await taxService.createTax(tax);
         success = true;
 
-        // Invalider le cache
         CacheHelper.clearByPrefix('taxes_');
 
-        // Ajouter la taxe créée à la liste localement (mise à jour optimiste)
         if (createdTax.id != null) {
-          controller.allTaxes.add(createdTax);
-          controller.applyFilters();
-          // Sauvegarder dans le cache pour un affichage instantané
-          final cacheKey = 'taxes_all';
-          CacheHelper.set(cacheKey, controller.allTaxes.toList());
-
-          // Notifier le patron de la création de la taxe
           NotificationHelper.notifySubmission(
             entityType: 'taxe',
             entityName: NotificationHelper.getEntityDisplayName(
@@ -338,66 +334,54 @@ class _TaxFormState extends State<TaxForm> {
           );
         }
 
-        Get.snackbar(
-          'Succès',
-          'Taxe créée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 2),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Taxe créée avec succès'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       } else {
         createdTax = await taxService.updateTax(tax);
         success = true;
 
-        // Invalider le cache
         CacheHelper.clearByPrefix('taxes_');
 
-        Get.snackbar(
-          'Succès',
-          'Taxe mise à jour avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 2),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Taxe mise à jour avec succès'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
 
-      // Rafraîchir les compteurs et recharger en arrière-plan (non-bloquant)
       Future.microtask(() {
         DashboardRefreshHelper.refreshPatronCounter('tax');
-
-        // Recharger les données en arrière-plan sans bloquer l'UI
-        controller.loadTaxes().catchError((e) {
-          print(
-            '⚠️ [TAX_CONTROLLER] Erreur lors du rechargement après création: $e',
-          );
-          // Ne pas afficher d'erreur à l'utilisateur car la création a réussi
-        });
-
-        controller.loadTaxStats().catchError((e) {
-          print(
-            '⚠️ [TAX_CONTROLLER] Erreur lors du rechargement des stats: $e',
-          );
-        });
+        notifier.loadTaxes().ignore();
+        notifier.loadTaxStats().ignore();
       });
 
-      // Rediriger vers la page de liste après succès
       if (success && mounted) {
         await Future.delayed(const Duration(milliseconds: 500));
-        Get.offNamed('/taxes');
+        context.go('/taxes');
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible de sauvegarder la taxe: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 4),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Impossible de sauvegarder la taxe: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
-      controller.isLoading.value = false;
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -565,21 +549,20 @@ class _TaxFormState extends State<TaxForm> {
               const SizedBox(height: 32),
 
               // Boutons
-              Obx(
-                () => Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: controller.isLoading.value ? null : _saveTax,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          minimumSize: const Size(0, 44),
-                        ),
-                        child:
-                            controller.isLoading.value
-                                ? const SizedBox(
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isSaving ? null : _saveTax,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        minimumSize: const Size(0, 44),
+                      ),
+                      child:
+                          _isSaving
+                              ? const SizedBox(
                                   height: 20,
                                   width: 20,
                                   child: CircularProgressIndicator(
@@ -589,15 +572,15 @@ class _TaxFormState extends State<TaxForm> {
                                     ),
                                   ),
                                 )
-                                : Text(
+                              : Text(
                                   widget.tax == null ? 'Créer' : 'Modifier',
                                 ),
-                      ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Get.back(),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           minimumSize: const Size(0, 44),
@@ -607,7 +590,6 @@ class _TaxFormState extends State<TaxForm> {
                     ),
                   ],
                 ),
-              ),
             ],
           ),
         ),

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/app_config.dart';
+
+/// Callback pour afficher un snackbar (défini par l'app).
+void Function(String title, String message,
+    {Color? backgroundColor, Color? colorText, Duration? duration})?
+    validationHelperEnhancedShowSnackbar;
 
 /// Helper amélioré pour la validation des formulaires
 class ValidationHelperEnhanced {
@@ -106,23 +110,20 @@ class ValidationHelperEnhanced {
       return;
     }
 
-    Get.snackbar(
+    validationHelperEnhancedShowSnackbar?.call(
       'Erreur de validation',
       message,
-      snackPosition: SnackPosition.BOTTOM,
       backgroundColor: Colors.orange,
       colorText: Colors.white,
       duration: const Duration(seconds: 3),
     );
   }
 
-  /// Affiche un succès
   static void showSuccess(String message) {
     AppLogger.info('Success: $message');
-    Get.snackbar(
+    validationHelperEnhancedShowSnackbar?.call(
       'Succès',
       message,
-      snackPosition: SnackPosition.BOTTOM,
       backgroundColor: Colors.green,
       colorText: Colors.white,
       duration: const Duration(seconds: 2),

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/bordereau_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/bordereau_notifier.dart';
+import 'package:easyconnect/providers/bordereau_state.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
 import 'package:easyconnect/Views/Components/devis_selection_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class BordereauFormPage extends StatefulWidget {
+class BordereauFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
   final int? bordereauId;
 
@@ -17,11 +20,10 @@ class BordereauFormPage extends StatefulWidget {
   });
 
   @override
-  State<BordereauFormPage> createState() => _BordereauFormPageState();
+  ConsumerState<BordereauFormPage> createState() => _BordereauFormPageState();
 }
 
-class _BordereauFormPageState extends State<BordereauFormPage> {
-  final BordereauxController controller = Get.put(BordereauxController());
+class _BordereauFormPageState extends ConsumerState<BordereauFormPage> {
 
   // Contrôleurs de formulaire
   late final TextEditingController referenceController;
@@ -43,25 +45,12 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     titreController = TextEditingController();
     garantieController = TextEditingController();
 
-    // S'assurer que le formulaire du contrôleur est aussi réinitialisé
     if (!widget.isEditing) {
-      controller.clearForm();
+      ref.read(bordereauProvider.notifier).clearForm();
     }
 
-    // Écouter les changements de la référence générée pour mettre à jour le champ
-    ever(controller.generatedReference, (String ref) {
-      if (ref.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (referenceController.text != ref) {
-            referenceController.text = ref;
-          }
-        });
-      }
-    });
-
-    // Charger les clients validés dès l'entrée dans le formulaire (cache Hive puis API)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadValidatedClients();
+      ref.read(bordereauProvider.notifier).loadValidatedClients();
     });
   }
 
@@ -76,30 +65,34 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
 
   void _initializeFormIfNeeded() {
     if (!_isInitialized && widget.isEditing && widget.bordereauId != null) {
-      try {
-        final bordereau = controller.bordereaux.firstWhere(
-          (b) => b.id == widget.bordereauId,
-        );
-        referenceController.text = bordereau.reference;
-        notesController.text = bordereau.notes ?? '';
-        titreController.text = bordereau.titre ?? '';
-        garantieController.text = bordereau.garantie ?? '';
-        _etatLivraison = bordereau.etatLivraison;
-        _dateLivraison = bordereau.dateLivraison;
-        controller.items.value = bordereau.items;
-        _isInitialized = true;
-      } catch (e) {
-        // Le bordereau n'est pas encore chargé, on réessayera plus tard
+      final bordereaux = ref.read(bordereauProvider).bordereaux;
+      final bordereauList = bordereaux.where((b) => b.id == widget.bordereauId).toList();
+      if (bordereauList.isEmpty) return;
+      final bordereau = bordereauList.first;
+      referenceController.text = bordereau.reference;
+      notesController.text = bordereau.notes ?? '';
+      titreController.text = bordereau.titre ?? '';
+      garantieController.text = bordereau.garantie ?? '';
+      _etatLivraison = bordereau.etatLivraison;
+      _dateLivraison = bordereau.dateLivraison;
+      final notifier = ref.read(bordereauProvider.notifier);
+      notifier.clearItems();
+      for (final item in bordereau.items) {
+        notifier.addItem(item);
       }
+      _isInitialized = true;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     _initializeFormIfNeeded();
+    final state = ref.watch(bordereauProvider);
+    final notifier = ref.read(bordereauProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/bordereaux'),
         title: Text(
           widget.isEditing ? 'Modifier le bordereau' : 'Nouveau bordereau',
         ),
@@ -150,52 +143,47 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Obx(() {
-                        final selectedClient = controller.selectedClient.value;
-                        if (selectedClient != null) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                selectedClient.nomEntreprise?.isNotEmpty == true
-                                    ? selectedClient.nomEntreprise!
-                                    : '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                        .trim()
-                                        .isNotEmpty
-                                    ? '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                        .trim()
-                                    : 'Client #${selectedClient.id}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (selectedClient.nomEntreprise?.isNotEmpty ==
-                                      true &&
-                                  '${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                      .trim()
-                                      .isNotEmpty)
+                      state.selectedClient != null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  'Contact: ${selectedClient.nom ?? ''} ${selectedClient.prenom ?? ''}'
-                                      .trim(),
+                                  state.selectedClient!.nomEntreprise?.isNotEmpty == true
+                                      ? state.selectedClient!.nomEntreprise!
+                                      : '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'
+                                          .trim()
+                                          .isNotEmpty
+                                      ? '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'
+                                          .trim()
+                                      : 'Client #${state.selectedClient!.id}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              if (selectedClient.email != null)
-                                Text(selectedClient.email ?? ''),
-                              if (selectedClient.contact != null)
-                                Text(selectedClient.contact ?? ''),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: controller.clearSelectedClient,
-                                child: const Text('Changer de client'),
-                              ),
-                            ],
-                          );
-                        }
-                        return ElevatedButton(
-                          onPressed: () => _showClientSelection(context),
-                          child: const Text('Sélectionner un client'),
-                        );
-                      }),
+                                if (state.selectedClient!.nomEntreprise?.isNotEmpty == true &&
+                                    '${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'
+                                        .trim()
+                                        .isNotEmpty)
+                                  Text(
+                                    'Contact: ${state.selectedClient!.nom ?? ''} ${state.selectedClient!.prenom ?? ''}'
+                                        .trim(),
+                                  ),
+                                if (state.selectedClient!.email != null)
+                                  Text(state.selectedClient!.email ?? ''),
+                                if (state.selectedClient!.contact != null)
+                                  Text(state.selectedClient!.contact ?? ''),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: notifier.clearSelectedClient,
+                                  child: const Text('Changer de client'),
+                                ),
+                              ],
+                            )
+                          : ElevatedButton(
+                              onPressed: () => _showClientSelection(context),
+                              child: const Text('Sélectionner un client'),
+                            ),
                     ],
                   ),
                 ),
@@ -239,62 +227,55 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                             ),
                           ),
                           const Spacer(),
-                          Obx(() {
-                            if (controller.selectedClient.value == null) {
-                              return const Text(
-                                'Sélectionnez d\'abord un client',
-                                style: TextStyle(color: Colors.grey),
-                              );
-                            }
-                            return ElevatedButton.icon(
-                              onPressed:
-                                  controller.availableDevis.isEmpty
-                                      ? null
-                                      : () => _showDevisSelection(context),
-                              icon: const Icon(Icons.description, size: 16),
-                              label: const Text('Sélectionner'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                              ),
-                            );
-                          }),
+                          state.selectedClient == null
+                              ? const Text(
+                                  'Sélectionnez d\'abord un client',
+                                  style: TextStyle(color: Colors.grey),
+                                )
+                              : ElevatedButton.icon(
+                                  onPressed:
+                                      state.availableDevis.isEmpty
+                                          ? null
+                                          : () => _showDevisSelection(context),
+                                  icon: const Icon(Icons.description, size: 16),
+                                  label: const Text('Sélectionner'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Obx(() {
-                        final selectedDevis = controller.selectedDevis.value;
-                        if (selectedDevis != null) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Devis ${selectedDevis.reference + ' -B'}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                      state.selectedDevis != null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Devis ${state.selectedDevis!.reference + ' -B'}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                'Date: ${DateFormat('dd/MM/yyyy').format(selectedDevis.dateCreation)}',
-                              ),
-                              Text('Articles: ${selectedDevis.items.length}'),
-                              Text(
-                                'Total HT: ${selectedDevis.totalHT.toStringAsFixed(2)} FCFA',
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: controller.clearSelectedDevis,
-                                child: const Text('Changer de devis'),
-                              ),
-                            ],
-                          );
-                        }
-                        return const Text(
-                          'Aucun devis sélectionné',
-                          style: TextStyle(color: Colors.grey),
-                        );
-                      }),
+                                Text(
+                                  'Date: ${DateFormat('dd/MM/yyyy').format(state.selectedDevis!.dateCreation)}',
+                                ),
+                                Text('Articles: ${state.selectedDevis!.items.length}'),
+                                Text(
+                                  'Total HT: ${state.selectedDevis!.totalHT.toStringAsFixed(2)} FCFA',
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: notifier.clearSelectedDevis,
+                                  child: const Text('Changer de devis'),
+                                ),
+                              ],
+                            )
+                          : const Text(
+                              'Aucun devis sélectionné',
+                              style: TextStyle(color: Colors.grey),
+                            ),
                     ],
                   ),
                 ),
@@ -316,57 +297,52 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        // Si un devis est sélectionné, générer automatiquement la référence
-                        if (controller.selectedDevis.value != null) {
-                          // Mettre à jour le contrôleur avec la référence générée
-                          final generatedRef =
-                              controller.generatedReference.value;
-                          if (generatedRef.isNotEmpty &&
-                              referenceController.text != generatedRef) {
-                            referenceController.text = generatedRef;
-                          }
-                          return TextFormField(
-                            controller: referenceController,
-                            decoration: const InputDecoration(
-                              labelText: 'Référence (générée automatiquement)',
-                              border: OutlineInputBorder(),
-                              filled: true,
-                              fillColor: Colors.grey,
-                              helperText: 'Référence générée automatiquement',
+                      state.selectedDevis != null
+                          ? Builder(
+                              builder: (context) {
+                                final genRef = state.generatedReference;
+                                if (genRef.isNotEmpty && referenceController.text != genRef) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    referenceController.text = genRef;
+                                  });
+                                }
+                                return TextFormField(
+                                  controller: referenceController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Référence (générée automatiquement)',
+                                    border: OutlineInputBorder(),
+                                    filled: true,
+                                    fillColor: Colors.grey,
+                                    helperText: 'Référence générée automatiquement',
+                                  ),
+                                  readOnly: true,
+                                  enabled: false,
+                                  validator: (value) {
+                                    final refValue =
+                                        (value == null || value.isEmpty)
+                                            ? state.generatedReference
+                                            : value;
+                                    if (refValue.isEmpty) return 'La référence est requise';
+                                    return null;
+                                  },
+                                );
+                              },
+                            )
+                          : TextFormField(
+                              controller: referenceController,
+                              decoration: const InputDecoration(
+                                labelText: 'Référence',
+                                border: OutlineInputBorder(),
+                                helperText:
+                                    'Saisissez une référence ou sélectionnez un devis',
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'La référence est requise';
+                                }
+                                return null;
+                              },
                             ),
-                            readOnly: true,
-                            enabled: false,
-                            validator: (value) {
-                              // Utiliser la valeur générée si le champ est vide
-                              final refValue =
-                                  (value == null || value.isEmpty)
-                                      ? controller.generatedReference.value
-                                      : value;
-                              if (refValue.isEmpty) {
-                                return 'La référence est requise';
-                              }
-                              return null;
-                            },
-                          );
-                        }
-                        // Sinon, permettre la saisie manuelle
-                        return TextFormField(
-                          controller: referenceController,
-                          decoration: const InputDecoration(
-                            labelText: 'Référence',
-                            border: OutlineInputBorder(),
-                            helperText:
-                                'Saisissez une référence ou sélectionnez un devis',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'La référence est requise';
-                            }
-                            return null;
-                          },
-                        );
-                      }),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: titreController,
@@ -461,35 +437,32 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () => _showItemForm(context),
+                            onPressed: () => _showItemForm(context, notifier: notifier),
                             icon: const Icon(Icons.add),
                             label: const Text('Ajouter'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        if (controller.items.isEmpty) {
-                          return const Center(
-                            child: Text('Aucun article ajouté'),
-                          );
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: controller.items.length,
-                          itemBuilder: (context, index) {
-                            final item = controller.items[index];
-                            return _buildItemCard(item, index);
-                          },
-                        );
-                      }),
+                      state.items.isEmpty
+                          ? const Center(
+                              child: Text('Aucun article ajouté'),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: state.items.length,
+                              itemBuilder: (context, index) {
+                                final item = state.items[index];
+                                return _buildItemCard(item, index, notifier);
+                              },
+                            ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              _buildSaveButton(formKey),
+              _buildSaveButton(context, formKey, state, notifier),
             ],
           ),
         ),
@@ -497,93 +470,72 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
     );
   }
 
-  Widget _buildSaveButton(GlobalKey<FormState> formKey) {
-    return Obx(() {
-      final loading = controller.isLoading.value;
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: loading
-              ? null
-              : () async {
+  Widget _buildSaveButton(BuildContext context, GlobalKey<FormState> formKey, BordereauState state, BordereauNotifier notifier) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: state.isLoading
+            ? null
+            : () async {
           if (formKey.currentState!.validate()) {
-            // Vérifier qu'un client validé est sélectionné
-            if (controller.selectedClient.value == null) {
-              Get.snackbar(
-                'Erreur',
-                'Veuillez sélectionner un client validé',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+            if (state.selectedClient == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Veuillez sélectionner un client validé'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
-            // Vérifier que le client sélectionné est bien validé
-            if (controller.selectedClient.value!.status != 1) {
-              Get.snackbar(
-                'Erreur',
-                'Seuls les clients validés peuvent être sélectionnés',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+            if (state.selectedClient!.status != 1) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Seuls les clients validés peuvent être sélectionnés'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
-            // Vérifier qu'un devis validé est sélectionné
-            if (controller.selectedDevis.value == null) {
-              Get.snackbar(
-                'Erreur',
-                'Veuillez sélectionner un devis validé',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+            if (state.selectedDevis == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Veuillez sélectionner un devis validé'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
-            // Vérifier que le devis sélectionné est bien validé (status = 2)
-            if (controller.selectedDevis.value!.status != 2) {
-              Get.snackbar(
-                'Erreur',
-                'Seuls les devis validés peuvent être utilisés',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+            if (state.selectedDevis!.status != 2) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Seuls les devis validés peuvent être utilisés'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
-            // Vérifier qu'il y a des items
-            if (controller.items.isEmpty) {
-              Get.snackbar(
-                'Erreur',
-                'Veuillez ajouter au moins un article',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+            if (state.items.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Veuillez ajouter au moins un article'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
-            // Utiliser la référence générée si disponible, sinon celle du contrôleur
             final reference =
-                controller.generatedReference.value.isNotEmpty
-                    ? controller.generatedReference.value
+                state.generatedReference.isNotEmpty
+                    ? state.generatedReference
                     : referenceController.text.trim();
-
             if (reference.isEmpty) {
-              Get.snackbar(
-                'Erreur',
-                'La référence est requise',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: Colors.red,
-                colorText: Colors.white,
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('La référence est requise'),
+                  backgroundColor: Colors.red,
+                ),
               );
               return;
             }
-
             final data = {
               'reference': reference,
               'notes': notesController.text,
@@ -592,39 +544,44 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
               'garantie': garantieController.text.trim().isEmpty ? null : garantieController.text.trim(),
               'date_livraison': _dateLivraison?.toIso8601String(),
             };
-
             if (widget.isEditing && widget.bordereauId != null) {
-              final success = await controller.updateBordereau(
-                widget.bordereauId!,
-                data,
-              );
-              if (success) {
-                // Fermer immédiatement le formulaire après succès
-                Get.offNamed('/bordereaux');
+              try {
+                final success = await notifier.updateBordereau(widget.bordereauId!, data);
+                if (success && context.mounted) context.go('/bordereaux');
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
               }
             } else {
-              print('📝 [BORDEREAU FORM] Appel de createBordereau');
-              final success = await controller.createBordereau(data);
-              print('📝 [BORDEREAU FORM] Résultat de createBordereau: $success');
-              if (success) {
-                print('✅ [BORDEREAU FORM] Succès! Fermeture du formulaire...');
-                // Fermer immédiatement le formulaire après succès
-                Get.offNamed('/bordereaux');
-                print('✅ [BORDEREAU FORM] Get.offNamed appelé');
-              } else {
-                print('❌ [BORDEREAU FORM] Échec! Le formulaire reste ouvert');
+              try {
+                final success = await notifier.createBordereau(data);
+                if (success && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Bordereau créé avec succès'), backgroundColor: Colors.green),
+                  );
+                  context.go('/bordereaux');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
               }
             }
           }
         },
-        icon: loading
+        icon: state.isLoading
             ? const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               )
             : const Icon(Icons.save),
-        label: Text(loading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le bordereau' : 'Enregistrer')),
+        label: Text(state.isLoading ? 'Enregistrement...' : (widget.isEditing ? 'Modifier le bordereau' : 'Enregistrer')),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
@@ -633,10 +590,9 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
         ),
       ),
     );
-    });
   }
 
-  Widget _buildItemCard(BordereauItem item, int index) {
+  Widget _buildItemCard(BordereauItem item, int index, BordereauNotifier notifier) {
     return Card(
       child: ListTile(
         title: Text(item.designation),
@@ -652,11 +608,11 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed:
-                  () => _showItemForm(Get.context!, item: item, index: index),
+                  () => _showItemForm(context, item: item, index: index, notifier: notifier),
             ),
             IconButton(
               icon: const Icon(Icons.delete),
-              onPressed: () => controller.removeItem(index),
+              onPressed: () => notifier.removeItem(index),
             ),
           ],
         ),
@@ -665,97 +621,95 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   }
 
   void _showClientSelection(BuildContext context) {
-    // Charger les clients validés si pas encore fait
-    if (controller.availableClients.isEmpty) {
-      controller.loadValidatedClients();
+    final notifier = ref.read(bordereauProvider.notifier);
+    if (ref.read(bordereauProvider).clients.isEmpty) {
+      notifier.loadValidatedClients();
     }
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder:
-          (context) => AlertDialog(
+      builder: (ctx) => Consumer(
+        builder: (context, ref, _) {
+          final state = ref.watch(bordereauProvider);
+          return AlertDialog(
             title: const Text('Sélectionner un client'),
             content: SizedBox(
               width: double.maxFinite,
               height: 400,
-              child: Obx(() {
-                if (controller.isLoadingClients.value) {
-                  return const SkeletonSearchResults(itemCount: 4);
-                }
-
-                if (controller.availableClients.isEmpty) {
-                  return const Center(
-                    child: Text('Aucun client validé disponible'),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: controller.availableClients.length,
-                  itemBuilder: (context, index) {
-                    final client = controller.availableClients[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: client.statusColor,
-                          child: Icon(client.statusIcon, color: Colors.white),
-                        ),
-                        title: Text(
-                          client.nomEntreprise?.isNotEmpty == true
-                              ? client.nomEntreprise!
-                              : '${client.nom ?? ''} ${client.prenom ?? ''}'
-                                  .trim()
-                                  .isNotEmpty
-                              ? '${client.nom ?? ''} ${client.prenom ?? ''}'
-                                  .trim()
-                              : 'Client #${client.id}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (client.nomEntreprise?.isNotEmpty == true &&
-                                '${client.nom ?? ''} ${client.prenom ?? ''}'
-                                    .trim()
-                                    .isNotEmpty)
-                              Text(
-                                'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
-                                    .trim(),
+              child: state.isLoadingClients
+                  ? const SkeletonSearchResults(itemCount: 4)
+                  : state.clients.isEmpty
+                      ? const Center(
+                          child: Text('Aucun client validé disponible'),
+                        )
+                      : ListView.builder(
+                          itemCount: state.clients.length,
+                          itemBuilder: (context, index) {
+                            final client = state.clients[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: client.statusColor,
+                                  child: Icon(client.statusIcon, color: Colors.white),
+                                ),
+                                title: Text(
+                                  client.nomEntreprise?.isNotEmpty == true
+                                      ? client.nomEntreprise!
+                                      : '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                          .trim()
+                                          .isNotEmpty
+                                      ? '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                          .trim()
+                                      : 'Client #${client.id}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (client.nomEntreprise?.isNotEmpty == true &&
+                                        '${client.nom ?? ''} ${client.prenom ?? ''}'
+                                            .trim()
+                                            .isNotEmpty)
+                                      Text(
+                                        'Contact: ${client.nom ?? ''} ${client.prenom ?? ''}'
+                                            .trim(),
+                                      ),
+                                    if (client.email != null)
+                                      Text('Email: ${client.email}'),
+                                    if (client.contact != null)
+                                      Text('Contact: ${client.contact}'),
+                                    Text(
+                                      'Statut: ${client.statusText}',
+                                      style: TextStyle(
+                                        color: client.statusColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () {
+                                  notifier.selectClient(client);
+                                  Navigator.of(ctx).pop();
+                                },
                               ),
-                            if (client.email != null)
-                              Text('Email: ${client.email}'),
-                            if (client.contact != null)
-                              Text('Contact: ${client.contact}'),
-                            Text(
-                              'Statut: ${client.statusText}',
-                              style: TextStyle(
-                                color: client.statusColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                            );
+                          },
                         ),
-                        onTap: () {
-                          controller.selectClient(client);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    );
-                  },
-                );
-              }),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(ctx).pop(),
                 child: const Text('Annuler'),
               ),
             ],
-          ),
+          );
+        },
+      ),
     );
   }
 
-  void _showItemForm(BuildContext context, {BordereauItem? item, int? index}) {
+  void _showItemForm(BuildContext context, {BordereauItem? item, int? index, required BordereauNotifier notifier}) {
     final formKey = GlobalKey<FormState>();
     final referenceController = TextEditingController(
       text: item?.reference ?? '',
@@ -840,11 +794,11 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Get.back(),
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Annuler'),
               ),
               ElevatedButton(
-                  onPressed: () {
+                onPressed: () {
                   if (formKey.currentState!.validate()) {
                     final ref = referenceController.text.trim();
                     final newItem = BordereauItem(
@@ -855,13 +809,12 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
                       quantite: int.parse(quantiteController.text),
                       description: descriptionController.text.isEmpty ? null : descriptionController.text,
                     );
-
                     if (index != null) {
-                      controller.updateItem(index, newItem);
+                      notifier.updateItem(index, newItem);
                     } else {
-                      controller.addItem(newItem);
+                      notifier.addItem(newItem);
                     }
-                    Get.back();
+                    Navigator.of(context).pop();
                   }
                 },
                 child: Text(item == null ? 'Ajouter' : 'Modifier'),
@@ -872,18 +825,16 @@ class _BordereauFormPageState extends State<BordereauFormPage> {
   }
 
   void _showDevisSelection(BuildContext context) {
-    showDialog(
+    final state = ref.read(bordereauProvider);
+    showDialog<void>(
       context: context,
-      builder:
-          (context) => DevisSelectionDialog(
-            devis: controller.availableDevis,
-            isLoading: controller.isLoadingDevis.value,
-            onDevisSelected: (devis) async {
-              await controller.selectDevis(devis);
-              // Le dialog se ferme déjà automatiquement avec Get.back() dans DevisSelectionDialog
-              // Pas besoin de fermer ici pour éviter de fermer la page principale
-            },
-          ),
+      builder: (ctx) => DevisSelectionDialog(
+        devis: state.availableDevis,
+        isLoading: state.isLoadingDevis,
+        onDevisSelected: (devis) async {
+          await ref.read(bordereauProvider.notifier).selectDevis(devis);
+        },
+      ),
     );
   }
 }

@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/salary_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/salary_notifier.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class SalaireValidationPage extends StatefulWidget {
+class SalaireValidationPage extends ConsumerStatefulWidget {
   const SalaireValidationPage({super.key});
 
   @override
-  State<SalaireValidationPage> createState() => _SalaireValidationPageState();
+  ConsumerState<SalaireValidationPage> createState() =>
+      _SalaireValidationPageState();
 }
 
-class _SalaireValidationPageState extends State<SalaireValidationPage>
+class _SalaireValidationPageState extends ConsumerState<SalaireValidationPage>
     with SingleTickerProviderStateMixin {
-  final SalaryController controller = Get.find<SalaryController>();
   late TabController _tabController;
-  String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -24,9 +24,9 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (!_tabController.indexIsChanging) _onTabChanged();
     });
-    _loadSalaries();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSalaries());
   }
 
   @override
@@ -37,45 +37,36 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
   }
 
   void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadSalaries();
+    String status;
+    switch (_tabController.index) {
+      case 0: status = 'all'; break;
+      case 1: status = 'pending'; break;
+      case 2: status = 'approved'; break;
+      case 3: status = 'rejected'; break;
+      default: status = 'all';
     }
+    ref.read(salaryProvider.notifier).filterByStatus(status);
   }
 
   Future<void> _loadSalaries() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 'pending';
-        break;
-      case 2: // Validés
-        status = 'approved';
-        break;
-      case 3: // Rejetés
-        status = 'rejected';
-        break;
-    }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadSalaries();
+    await ref.read(salaryProvider.notifier).loadSalaries(forceRefresh: true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(salaryProvider);
+    final notifier = ref.read(salaryProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Salaires'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadSalaries();
-            },
+            onPressed: _loadSalaries,
             tooltip: 'Actualiser',
           ),
         ],
@@ -94,7 +85,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -102,53 +92,32 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par nom d\'employé...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchSalaries('');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => notifier.searchSalaries(value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildSalaryList(),
-            ),
+            child: state.isLoading && state.salaries.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildSalaryList(state.salaries),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSalaryList() {
-    // Filtrer les salaires selon la recherche
-    final filteredSalaries =
-        _searchQuery.isEmpty
-            ? controller.salaries
-            : controller.salaries
-                .where(
-                  (salaire) => (salaire.employeeName ?? '')
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase()),
-                )
-                .toList();
+  Widget _buildSalaryList(List<Salary> filteredSalaries) {
+    final searchQuery = ref.watch(salaryProvider).searchQuery;
 
     if (filteredSalaries.isEmpty) {
       return Center(
@@ -158,19 +127,17 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
             Icon(Icons.payments, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              _searchQuery.isEmpty
+              searchQuery.isEmpty
                   ? 'Aucun salaire trouvé'
-                  : 'Aucun salaire correspondant à "$_searchQuery"',
+                  : 'Aucun salaire correspondant à "$searchQuery"',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-            if (_searchQuery.isNotEmpty) ...[
+            if (searchQuery.isNotEmpty) ...[
               const SizedBox(height: 8),
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  ref.read(salaryProvider.notifier).searchSalaries('');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -242,7 +209,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations employé
                 const Text(
                   'Informations employé',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -266,7 +232,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Détails du salaire
                 const Text(
                   'Détails du salaire',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -325,7 +290,7 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(salaire, statusColor),
+                _buildActionButtons(context, salaire, statusColor),
               ],
             ),
           ),
@@ -334,16 +299,16 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Salary salaire, Color statusColor) {
+  Widget _buildActionButtons(
+      BuildContext context, Salary salaire, Color statusColor) {
     if (salaire.status == 'pending') {
-      // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(salaire),
+                onPressed: () => _showApproveConfirmation(context, salaire),
                 icon: const Icon(Icons.check),
                 label: const Text('Valider'),
                 style: ElevatedButton.styleFrom(
@@ -352,7 +317,7 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(salaire),
+                onPressed: () => _showRejectDialog(context, salaire),
                 icon: const Icon(Icons.close),
                 label: const Text('Rejeter'),
                 style: ElevatedButton.styleFrom(
@@ -365,7 +330,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
         ],
       );
     } else if (salaire.status == 'approved' || salaire.status == 'paid') {
-      // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -389,7 +353,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
         ),
       );
     } else if (salaire.status == 'rejected') {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -413,7 +376,6 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
         ),
       );
     } else {
-      // Autres statuts
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -439,55 +401,80 @@ class _SalaireValidationPageState extends State<SalaireValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Salary salaire) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce salaire ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveSalary(salaire);
-        _loadSalaries();
-      },
-    );
-  }
-
-  void _showRejectDialog(Salary salaire) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le salaire',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(BuildContext context, Salary salaire) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce salaire ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await ref.read(salaryProvider.notifier).approveSalary(salaire);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Salaire validé')),
+                );
+              }
+              _loadSalaries();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectSalary(salaire, commentController.text);
-        _loadSalaries();
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, Salary salaire) {
+    final commentController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le salaire'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                  ),
+                );
+                return;
+              }
+              await ref.read(salaryProvider.notifier).rejectSalary(
+                  salaire, commentController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Salaire rejeté')),
+                );
+              }
+              _loadSalaries();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

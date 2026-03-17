@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/utils/app_config.dart';
+
+/// Callback pour afficher un snackbar (défini par l'app).
+void Function(String title, String message,
+    {Color? backgroundColor, Color? colorText, Duration? duration})?
+    validationHelperShowSnackbar;
 
 /// Helper class pour standardiser les pages de validation
 class ValidationHelper {
@@ -59,7 +63,7 @@ class ValidationHelper {
             ? 'Erreur lors du chargement: $error'
             : AppConfig.getUserFriendlyErrorMessage(error));
 
-    Get.snackbar(
+    validationHelperShowSnackbar?.call(
       'Erreur',
       userMessage,
       backgroundColor: Colors.red,
@@ -68,10 +72,9 @@ class ValidationHelper {
     );
   }
 
-  /// Gestion de succès standardisée avec snackbar
   static void handleSuccess(String action, {String? customMessage}) {
     logSuccess('Validation', action, action);
-    Get.snackbar(
+    validationHelperShowSnackbar?.call(
       'Succès',
       customMessage ?? '$action avec succès',
       backgroundColor: Colors.green,

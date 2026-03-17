@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/intervention_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/intervention_notifier.dart';
+import 'package:easyconnect/providers/intervention_state.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class InterventionValidationPage extends StatefulWidget {
+class InterventionValidationPage extends ConsumerStatefulWidget {
   const InterventionValidationPage({super.key});
 
   @override
-  State<InterventionValidationPage> createState() =>
+  ConsumerState<InterventionValidationPage> createState() =>
       _InterventionValidationPageState();
 }
 
-class _InterventionValidationPageState extends State<InterventionValidationPage>
+class _InterventionValidationPageState
+    extends ConsumerState<InterventionValidationPage>
     with SingleTickerProviderStateMixin {
-  final InterventionController controller = Get.find<InterventionController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -25,9 +27,8 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (_tabController.indexIsChanging) _loadInterventions();
     });
-    // Charger les données après que le widget soit monté pour éviter de bloquer l'UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadInterventions();
     });
@@ -40,37 +41,36 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadInterventions();
+  String? _statusForTab(int index) {
+    switch (index) {
+      case 0:
+        return null;
+      case 1:
+        return 'pending';
+      case 2:
+        return 'approved';
+      case 3:
+        return 'rejected';
+      default:
+        return null;
     }
   }
 
   Future<void> _loadInterventions() async {
-    String? status;
-    switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
-        break;
-      case 1: // En attente
-        status = 'pending';
-        break;
-      case 2: // Validés
-        status = 'approved';
-        break;
-      case 3: // Rejetés
-        status = 'rejected';
-        break;
-    }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadInterventions();
+    final status = _statusForTab(_tabController.index);
+    await ref.read(interventionProvider.notifier).loadInterventions(
+          statusFilter: status,
+          forceRefresh: true,
+        );
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(interventionProvider);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Interventions'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -98,7 +98,6 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
@@ -106,18 +105,17 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par titre...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
               onChanged: (value) {
@@ -127,32 +125,24 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
               },
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildInterventionList(),
-            ),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildInterventionList(state),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInterventionList() {
-    // Filtrer les interventions selon la recherche
-    final filteredInterventions =
-        _searchQuery.isEmpty
-            ? controller.interventions
-            : controller.interventions
-                .where(
-                  (intervention) => intervention.title.toLowerCase().contains(
-                    _searchQuery.toLowerCase(),
-                  ),
-                )
-                .toList();
+  Widget _buildInterventionList(InterventionState state) {
+    final filteredInterventions = _searchQuery.isEmpty
+        ? state.interventions
+        : state.interventions
+            .where((intervention) => intervention.title
+                .toLowerCase()
+                .contains(_searchQuery.toLowerCase()))
+            .toList();
 
     if (filteredInterventions.isEmpty) {
       return Center(
@@ -200,10 +190,8 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     Intervention intervention,
   ) {
     final formatDate = DateFormat('dd/MM/yyyy');
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
-    );
+    final formatCurrency =
+        NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA');
     final statusColor = _getStatusColor(intervention.status);
     final statusIcon = _getStatusIcon(intervention.status);
     final statusText = _getStatusText(intervention.status);
@@ -225,7 +213,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
             const SizedBox(height: 4),
             Text('Type: ${intervention.type}'),
             Text('Date: ${formatDate.format(intervention.scheduledDate)}'),
-            Text('Coût: ${formatCurrency.format(intervention.cost)}'),
+            Text('Coût: ${formatCurrency.format(intervention.cost ?? 0)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -251,7 +239,6 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
                 const Text(
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -269,7 +256,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
                     children: [
                       Text('Titre: ${intervention.title}'),
                       Text('Type: ${intervention.type}'),
-                      Text('Coût: ${formatCurrency.format(intervention.cost)}'),
+                      Text('Coût: ${formatCurrency.format(intervention.cost ?? 0)}'),
                       Text(
                         'Date prévue: ${formatDate.format(intervention.scheduledDate)}',
                       ),
@@ -278,7 +265,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildActionButtons(intervention, statusColor),
+                _buildActionButtons(context, intervention, statusColor),
               ],
             ),
           ),
@@ -287,16 +274,19 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     );
   }
 
-  Widget _buildActionButtons(Intervention intervention, Color statusColor) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    Intervention intervention,
+    Color statusColor,
+  ) {
     if (intervention.status.toLowerCase() == 'pending') {
-      // En attente - Afficher boutons Valider/Rejeter
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(intervention),
+                onPressed: () => _showApproveConfirmation(context, intervention),
                 icon: const Icon(Icons.check, size: 18),
                 label: const Text('Valider', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
@@ -310,7 +300,7 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(intervention),
+                onPressed: () => _showRejectDialog(context, intervention),
                 icon: const Icon(Icons.close, size: 18),
                 label: const Text('Rejeter', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
@@ -329,7 +319,6 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
       );
     } else if (intervention.status.toLowerCase() == 'approved' ||
         intervention.status.toLowerCase() == 'completed') {
-      // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -353,7 +342,6 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
         ),
       );
     } else if (intervention.status.toLowerCase() == 'rejected') {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -377,7 +365,6 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
         ),
       );
     } else {
-      // Autres statuts
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -454,58 +441,126 @@ class _InterventionValidationPageState extends State<InterventionValidationPage>
     }
   }
 
-  void _showApproveConfirmation(Intervention intervention) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider cette intervention ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        Get.back();
-        await controller.approveIntervention(intervention);
-        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
-      },
-    );
-  }
-
-  void _showRejectDialog(Intervention intervention) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter l\'intervention',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
+  void _showApproveConfirmation(BuildContext context, Intervention intervention) {
+    final notifier = ref.read(interventionProvider.notifier);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text(
+          'Voulez-vous valider cette intervention ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveIntervention(intervention);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Intervention validée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadInterventions();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString()),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
             ),
-            maxLines: 3,
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        await controller.rejectIntervention(
-          intervention,
-          commentController.text,
-        );
-        // Pas besoin de recharger, la mise à jour optimiste le fait déjà
-      },
+    );
+  }
+
+  void _showRejectDialog(BuildContext context, Intervention intervention) {
+    final reasonController = TextEditingController();
+    final notifier = ref.read(interventionProvider.notifier);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter l\'intervention'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Veuillez indiquer la raison du rejet :'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Entrez le motif du rejet',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez entrer un motif de rejet'),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectIntervention(
+                    intervention, reasonController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Intervention rejetée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+                _loadInterventions();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString()),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

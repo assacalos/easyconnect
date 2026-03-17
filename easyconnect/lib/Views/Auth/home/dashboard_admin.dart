@@ -1,27 +1,29 @@
-import 'package:easyconnect/Controllers/userController.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/Models/user_model.dart';
-import 'package:easyconnect/Views/Users/dashboard_section.dart';
-import 'package:easyconnect/Views/Users/log_section.dart';
-import 'package:easyconnect/Views/Users/security_section.dart';
-import 'package:easyconnect/Views/Users/setting_section.dart';
-import 'package:easyconnect/Views/Users/user_form.dart';
-import 'package:easyconnect/Views/Users/user_page.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
+import 'package:easyconnect/providers/user_management_notifier.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-// Sections enum
 enum DashboardSection { dashboard, users, security, settings, logs }
 
-class AdminDashboardFull extends StatefulWidget {
+class AdminDashboardFull extends ConsumerStatefulWidget {
+  const AdminDashboardFull({super.key});
+
   @override
-  _AdminDashboardFullState createState() => _AdminDashboardFullState();
+  ConsumerState<AdminDashboardFull> createState() => _AdminDashboardFullState();
 }
 
-class _AdminDashboardFullState extends State<AdminDashboardFull> {
-  final UserController userController = Get.put(UserController());
-  final AuthController authController = Get.find<AuthController>();
-  final Rx<DashboardSection> currentSection = DashboardSection.dashboard.obs;
+class _AdminDashboardFullState extends ConsumerState<AdminDashboardFull> {
+  DashboardSection currentSection = DashboardSection.dashboard;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(userManagementProvider.notifier).loadUsers();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,47 +33,47 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
           color: Colors.blueGrey.shade900,
           child: Column(
             children: [
-              SizedBox(height: 50),
+              const SizedBox(height: 50),
               Text(
-                "EasyConnect Admin",
+                'EasyConnect Admin',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 30),
-              buildSidebarButton(
-                "Tableau de bord",
+              const SizedBox(height: 30),
+              _buildSidebarButton(
+                'Tableau de bord',
                 Icons.dashboard,
                 section: DashboardSection.dashboard,
               ),
-              buildSidebarButton(
-                "Gestion des utilisateurs",
+              _buildSidebarButton(
+                'Gestion des utilisateurs',
                 Icons.people,
                 section: DashboardSection.users,
               ),
-              buildSidebarButton(
-                "Sécurité",
+              _buildSidebarButton(
+                'Sécurité',
                 Icons.security,
                 section: DashboardSection.security,
               ),
-              buildSidebarButton(
-                "Paramètres système",
+              _buildSidebarButton(
+                'Paramètres système',
                 Icons.settings,
                 section: DashboardSection.settings,
               ),
-              buildSidebarButton(
-                "Logs d’activité",
+              _buildSidebarButton(
+                'Logs d\'activité',
                 Icons.list_alt,
                 section: DashboardSection.logs,
               ),
-              Spacer(),
-              buildSidebarButton(
-                "Déconnexion",
+              const Spacer(),
+              _buildSidebarButton(
+                'Déconnexion',
                 Icons.logout,
                 onTap: () {
-                  authController.logout();
+                  ref.read(authProvider.notifier).logout();
                 },
               ),
             ],
@@ -80,51 +82,33 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
       ),
       appBar: AppBar(
         backgroundColor: Colors.blueGrey.shade800,
-        title: Obx(() => Text(getSectionTitle(currentSection.value))),
+        title: Text(_getSectionTitle(currentSection)),
         actions: [
-          Icon(Icons.notifications),
-          SizedBox(width: 20),
+          const Icon(Icons.notifications),
+          const SizedBox(width: 20),
           CircleAvatar(
             backgroundColor: Colors.white,
             child: Icon(Icons.person, color: Colors.blueGrey.shade800),
           ),
-          SizedBox(width: 20),
+          const SizedBox(width: 20),
         ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Obx(() {
-          switch (currentSection.value) {
-            case DashboardSection.dashboard:
-              return buildDashboardOverview();
-            case DashboardSection.users:
-              return buildUsersSection();
-            case DashboardSection.security:
-              return buildSecuritySection();
-            case DashboardSection.settings:
-              return buildSettingsSection();
-            case DashboardSection.logs:
-              return buildLogsSection();
-            default:
-              return Center(child: Text("Section inconnue"));
-          }
-        }),
+        child: _buildSectionContent(),
       ),
-      floatingActionButton: Obx(() {
-        return currentSection.value == DashboardSection.users
-            ? FloatingActionButton(
-              onPressed: () => Get.to(() => UserForm()),
-              child: Icon(Icons.add),
+      floatingActionButton: currentSection == DashboardSection.users
+          ? FloatingActionButton(
+              onPressed: () => context.push('/admin/users/new'),
+              child: const Icon(Icons.add),
               backgroundColor: Colors.blueGrey.shade800,
-              tooltip: "Ajouter Utilisateur",
+              tooltip: 'Ajouter Utilisateur',
             )
-            : SizedBox.shrink(); // widget vide si ce n'est pas la section users
-      }),
+          : null,
     );
   }
 
-  // ---------------- Sidebar Button ---------------- //
-  Widget buildSidebarButton(
+  Widget _buildSidebarButton(
     String label,
     IconData icon, {
     DashboardSection? section,
@@ -132,51 +116,64 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
   }) {
     return ListTile(
       leading: Icon(icon, color: Colors.white),
-      title: Text(label, style: TextStyle(color: Colors.white)),
-      selected: section != null && section == currentSection.value,
+      title: Text(label, style: const TextStyle(color: Colors.white)),
+      selected: section != null && section == currentSection,
       selectedTileColor: Colors.blueGrey.shade700,
       onTap: () {
-        Navigator.pop(context); // Ferme le drawer
+        Navigator.pop(context);
         if (section != null) {
-          currentSection.value = section;
+          setState(() => currentSection = section);
         } else if (onTap != null) {
-          onTap(); // Action personnalisée (ex: déconnexion)
+          onTap();
         }
       },
     );
   }
 
-  // ---------------- Helper ---------------- //
-  String getSectionTitle(DashboardSection section) {
+  String _getSectionTitle(DashboardSection section) {
     switch (section) {
       case DashboardSection.dashboard:
-        return "Tableau de bord";
+        return 'Tableau de bord';
       case DashboardSection.users:
-        return "Gestion des utilisateurs";
+        return 'Gestion des utilisateurs';
       case DashboardSection.security:
-        return "Sécurité";
+        return 'Sécurité';
       case DashboardSection.settings:
-        return "Paramètres système";
+        return 'Paramètres système';
       case DashboardSection.logs:
-        return "Logs d’activité";
-      default:
-        return "";
+        return 'Logs d\'activité';
     }
   }
 
-  // ---------------- Sections ---------------- //
-  Widget buildDashboardOverview() {
+  Widget _buildSectionContent() {
+    switch (currentSection) {
+      case DashboardSection.dashboard:
+        return _buildDashboardOverview();
+      case DashboardSection.users:
+        return _buildUsersSection();
+      case DashboardSection.security:
+        return _buildSecuritySection();
+      case DashboardSection.settings:
+        return _buildSettingsSection();
+      case DashboardSection.logs:
+        return _buildLogsSection();
+    }
+  }
+
+  Widget _buildDashboardOverview() {
     return Center(
       child: Text(
-        "Bienvenue dans le tableau de bord EasyConnect!\n\nRésumé des informations clés ici.",
-        style: TextStyle(fontSize: 20),
+        'Bienvenue dans le tableau de bord EasyConnect!\n\nRésumé des informations clés ici.',
+        style: const TextStyle(fontSize: 20),
         textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget buildUsersSection() {
-    if (userController.isLoading.value) {
+  Widget _buildUsersSection() {
+    final state = ref.watch(userManagementProvider);
+
+    if (state.isLoading && state.users.isEmpty) {
       return Center(
         child: CircularProgressIndicator(
           color: Colors.blueGrey,
@@ -184,19 +181,18 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
         ),
       );
     }
-    if (userController.users.isEmpty) {
+    if (state.users.isEmpty) {
       return Center(
-        child: Text("Aucun utilisateur trouvé", style: TextStyle(fontSize: 18)),
+        child: Text(
+          'Aucun utilisateur trouvé',
+          style: TextStyle(fontSize: 18),
+        ),
       );
     }
 
-    double width = MediaQuery.of(context).size.width;
-    int crossAxisCount =
-        width >= 1200
-            ? 3
-            : width >= 800
-            ? 2
-            : 1;
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount =
+        width >= 1200 ? 3 : width >= 800 ? 2 : 1;
 
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -205,38 +201,76 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
         crossAxisSpacing: 20,
         mainAxisSpacing: 20,
       ),
-      itemCount: userController.users.length,
+      itemCount: state.users.length,
       itemBuilder: (context, index) {
-        final user = userController.users[index];
-        return UserCard(user: user, controller: userController);
+        final user = state.users[index];
+        return _UserCard(
+          user: user,
+          onEdit: () => context.push('/admin/users/${user.id}/edit'),
+          onDelete: () => _confirmDelete(context, user.id.toString()),
+        );
       },
     );
   }
 
-  Widget buildSecuritySection() {
-    return Center(
+  Future<void> _confirmDelete(BuildContext context, String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer'),
+        content: const Text(
+          'Voulez-vous vraiment supprimer cet utilisateur ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Non'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Oui'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final notifier = ref.read(userManagementProvider.notifier);
+      final ok = await notifier.deleteUser(int.parse(id));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok ? 'Utilisateur supprimé' : 'Erreur'),
+            backgroundColor: ok ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildSecuritySection() {
+    return const Center(
       child: Text(
-        "Section Sécurité\n\nGestion des rôles, permissions et authentification.",
+        'Section Sécurité\n\nGestion des rôles, permissions et authentification.',
         style: TextStyle(fontSize: 18),
         textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget buildSettingsSection() {
-    return Center(
+  Widget _buildSettingsSection() {
+    return const Center(
       child: Text(
-        "Section Paramètres Système\n\nConfiguration générale de l’application.",
+        'Section Paramètres Système\n\nConfiguration générale de l\'application.',
         style: TextStyle(fontSize: 18),
         textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget buildLogsSection() {
-    return Center(
+  Widget _buildLogsSection() {
+    return const Center(
       child: Text(
-        "Section Logs d’activité\n\nHistorique des actions effectuées par les utilisateurs.",
+        'Section Logs d\'activité\n\nHistorique des actions effectuées par les utilisateurs.',
         style: TextStyle(fontSize: 18),
         textAlign: TextAlign.center,
       ),
@@ -244,12 +278,16 @@ class _AdminDashboardFullState extends State<AdminDashboardFull> {
   }
 }
 
-// ---------------- UserCard ---------------- //
-class UserCard extends StatelessWidget {
+class _UserCard extends StatelessWidget {
   final UserModel user;
-  final UserController controller;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-  const UserCard({required this.user, required this.controller});
+  const _UserCard({
+    required this.user,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -258,77 +296,63 @@ class UserCard extends StatelessWidget {
       shadowColor: Colors.blueGrey.shade200,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // User info
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  "${user.nom} ${user.prenom}",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  '${user.nom} ${user.prenom}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  "${user.email}",
+                  '${user.email}',
                   style: TextStyle(color: Colors.grey.shade700),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color:
-                        user.isActive
-                            ? Colors.green.shade100
-                            : Colors.red.shade100,
+                    color: user.isActive
+                        ? Colors.green.shade100
+                        : Colors.red.shade100,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    user.isActive ? "Actif" : "Inactif",
+                    user.isActive ? 'Actif' : 'Inactif',
                     style: TextStyle(
-                      color:
-                          user.isActive
-                              ? Colors.green.shade800
-                              : Colors.red.shade800,
+                      color: user.isActive
+                          ? Colors.green.shade800
+                          : Colors.red.shade800,
                     ),
                   ),
                 ),
               ],
             ),
-            // Actions
             Row(
               children: [
                 IconButton(
                   icon: Icon(Icons.edit, color: Colors.blueGrey),
-                  onPressed: () => Get.to(() => UserForm(user: user)),
-                  tooltip: "Modifier",
+                  onPressed: onEdit,
+                  tooltip: 'Modifier',
                 ),
                 IconButton(
                   icon: Icon(Icons.delete, color: Colors.red.shade400),
-                  onPressed: () => _confirmDelete(context, user.id.toString()),
-                  tooltip: "Supprimer",
+                  onPressed: onDelete,
+                  tooltip: 'Supprimer',
                 ),
               ],
             ),
           ],
         ),
       ),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, String id) {
-    Get.defaultDialog(
-      title: "Supprimer",
-      middleText: "Voulez-vous vraiment supprimer cet utilisateur ?",
-      textConfirm: "Oui",
-      textCancel: "Non",
-      onConfirm: () {
-        controller.deleteUser(id);
-        Get.back();
-      },
     );
   }
 }

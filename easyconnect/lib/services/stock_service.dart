@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
@@ -11,9 +10,13 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 
-class StockService extends GetxService {
-  static StockService get to => Get.find();
+class StockService {
+  static final StockService _instance = StockService._();
+  static StockService get to => _instance;
+  factory StockService() => _instance;
+  StockService._();
   final storage = GetStorage();
 
   // Tester la connectivité à l'API
@@ -57,7 +60,8 @@ class StockService extends GetxService {
     int perPage = 15,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       String url = '${AppConfig.baseUrl}/stocks';
       List<String> params = [];
 

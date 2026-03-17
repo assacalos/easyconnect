@@ -1,93 +1,103 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/media_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easyconnect/Models/media_model.dart';
+import 'package:easyconnect/providers/media_notifier.dart';
+import 'package:easyconnect/providers/media_state.dart';
 import 'package:easyconnect/Views/Components/dashboard_wrapper.dart';
 import 'package:intl/intl.dart';
 
 /// Page pour afficher tous les médias (images et fichiers) par catégorie
-class MediaPage extends StatelessWidget {
+class MediaPage extends ConsumerStatefulWidget {
   const MediaPage({super.key});
 
   @override
+  ConsumerState<MediaPage> createState() => _MediaPageState();
+}
+
+class _MediaPageState extends ConsumerState<MediaPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(mediaProvider.notifier).loadMedia();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final controller = Get.put(MediaController());
+    final state = ref.watch(mediaProvider);
+    final notifier = ref.read(mediaProvider.notifier);
+    final filteredMedia = notifier.getFilteredMedia();
 
     return DashboardWrapper(
-      currentIndex: 4, // Index du bouton "Médias" dans la bottom navigation
+      currentIndex: 4,
       appBar: AppBar(
         title: const Text('Médias'),
         actions: [
-          // Bouton de scan
           IconButton(
             icon: const Icon(Icons.scanner),
             tooltip: 'Scanner un document',
-            onPressed: () => controller.scanDocument(),
+            onPressed: () => notifier.scanDocument(context),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => controller.scanDocument(),
+        onPressed: () => notifier.scanDocument(context),
         icon: const Icon(Icons.scanner),
         label: const Text('Scanner'),
       ),
       child: Column(
         children: [
-          // Filtres par catégorie
-          _buildCategoryFilters(controller),
-
-          // Liste des médias
+          _buildCategoryFilters(context, state, notifier),
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final filteredMedia = controller.getFilteredMedia();
-
-              if (filteredMedia.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.photo_library_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
+            child: state.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : filteredMedia.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.photo_library_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Aucun média trouvé',
+                              style: TextStyle(
+                                  fontSize: 16, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(8),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 0.8,
+                        ),
+                        itemCount: filteredMedia.length,
+                        itemBuilder: (context, index) {
+                          return _buildMediaItem(
+                              context, filteredMedia[index]);
+                        },
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Aucun média trouvé',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return GridView.builder(
-                padding: const EdgeInsets.all(8),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.8,
-                ),
-                itemCount: filteredMedia.length,
-                itemBuilder: (context, index) {
-                  return _buildMediaItem(filteredMedia[index]);
-                },
-              );
-            }),
           ),
         ],
       ),
     );
   }
 
-  /// Construire les filtres de catégorie
-  Widget _buildCategoryFilters(MediaController controller) {
+  Widget _buildCategoryFilters(
+    BuildContext context,
+    MediaState state,
+    MediaNotifier notifier,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: SingleChildScrollView(
@@ -96,46 +106,52 @@ class MediaPage extends StatelessWidget {
         child: Row(
           children: [
             _buildCategoryChip(
-              controller,
+              notifier,
               'all',
               'Tous',
               Icons.photo_library,
-              controller.allMedia.length,
+              state.allMedia.length,
+              state.selectedCategory,
             ),
             _buildCategoryChip(
-              controller,
+              notifier,
               'attendance',
               'Pointages',
               Icons.access_time,
-              controller.getMediaCount('attendance'),
+              notifier.getMediaCount('attendance'),
+              state.selectedCategory,
             ),
             _buildCategoryChip(
-              controller,
+              notifier,
               'bon_commande',
               'Bons de commande',
               Icons.shopping_cart,
-              controller.getMediaCount('bon_commande'),
+              notifier.getMediaCount('bon_commande'),
+              state.selectedCategory,
             ),
             _buildCategoryChip(
-              controller,
+              notifier,
               'expense',
               'Dépenses',
               Icons.receipt,
-              controller.getMediaCount('expense'),
+              notifier.getMediaCount('expense'),
+              state.selectedCategory,
             ),
             _buildCategoryChip(
-              controller,
+              notifier,
               'salary',
               'Salaires',
               Icons.account_balance_wallet,
-              controller.getMediaCount('salary'),
+              notifier.getMediaCount('salary'),
+              state.selectedCategory,
             ),
             _buildCategoryChip(
-              controller,
+              notifier,
               'other',
               'Autres',
               Icons.folder,
-              controller.getMediaCount('other'),
+              notifier.getMediaCount('other'),
+              state.selectedCategory,
             ),
           ],
         ),
@@ -143,15 +159,15 @@ class MediaPage extends StatelessWidget {
     );
   }
 
-  /// Construire un chip de catégorie
   Widget _buildCategoryChip(
-    MediaController controller,
+    MediaNotifier notifier,
     String category,
     String label,
     IconData icon,
     int count,
+    String selectedCategory,
   ) {
-    final isSelected = controller.selectedCategory.value == category;
+    final isSelected = selectedCategory == category;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: FilterChip(
@@ -180,50 +196,44 @@ class MediaPage extends StatelessWidget {
             ),
           ],
         ),
-        onSelected: (selected) {
-          controller.filterByCategory(category);
-        },
+        onSelected: (_) => notifier.filterByCategory(category),
       ),
     );
   }
 
-  /// Construire un élément de média
-  Widget _buildMediaItem(MediaItem media) {
+  Widget _buildMediaItem(BuildContext context, MediaItem media) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _showMediaDetail(media),
+        onTap: () => _showMediaDetail(context, media),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image ou icône
             Expanded(
-              child:
-                  media.isImage
-                      ? CachedNetworkImage(
-                        imageUrl: media.url,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(),
-                        ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.broken_image, size: 48),
-                        ),
-                      )
-                      : Container(
-                        color: Colors.grey[200],
-                        child: Center(
-                          child: Icon(
-                            media.isPdf
-                                ? Icons.picture_as_pdf
-                                : Icons.insert_drive_file,
-                            size: 48,
-                            color: Colors.grey[600],
-                          ),
+              child: media.isImage
+                  ? CachedNetworkImage(
+                      imageUrl: media.url,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                      errorWidget: (context, url, error) => const Center(
+                        child: Icon(Icons.broken_image, size: 48),
+                      ),
+                    )
+                  : Container(
+                      color: Colors.grey[200],
+                      child: Center(
+                        child: Icon(
+                          media.isPdf
+                              ? Icons.picture_as_pdf
+                              : Icons.insert_drive_file,
+                          size: 48,
+                          color: Colors.grey[600],
                         ),
                       ),
+                    ),
             ),
-            // Informations
             Padding(
               padding: const EdgeInsets.all(8),
               child: Column(
@@ -274,7 +284,6 @@ class MediaPage extends StatelessWidget {
     );
   }
 
-  /// Obtenir l'icône de catégorie
   IconData _getCategoryIcon(String category) {
     switch (category) {
       case 'attendance':
@@ -290,7 +299,6 @@ class MediaPage extends StatelessWidget {
     }
   }
 
-  /// Obtenir le label de catégorie
   String _getCategoryLabel(String category) {
     switch (category) {
       case 'attendance':
@@ -306,10 +314,10 @@ class MediaPage extends StatelessWidget {
     }
   }
 
-  /// Afficher les détails d'un média
-  void _showMediaDetail(MediaItem media) {
-    Get.dialog(
-      Dialog(
+  void _showMediaDetail(BuildContext context, MediaItem media) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -319,57 +327,56 @@ class MediaPage extends StatelessWidget {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Get.back(),
+                  onPressed: () => Navigator.pop(ctx),
                 ),
               ],
             ),
-            Expanded(
-              child:
-                  media.isImage
-                      ? CachedNetworkImage(
-                        imageUrl: media.url,
-                        fit: BoxFit.contain,
-                        placeholder: (context, url) => const Center(
-                          child: CircularProgressIndicator(),
-                        ),
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.broken_image, size: 64),
-                        ),
-                      )
-                      : Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              media.isPdf
-                                  ? Icons.picture_as_pdf
-                                  : Icons.insert_drive_file,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              media.fileName,
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                            const SizedBox(height: 8),
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.download),
-                              label: const Text('Télécharger'),
-                              onPressed: () {
-                                // TODO: Implémenter le téléchargement
-                                Get.snackbar(
-                                  'Information',
-                                  'Téléchargement à implémenter',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                );
-                              },
-                            ),
-                          ],
-                        ),
+            Flexible(
+              child: media.isImage
+                  ? CachedNetworkImage(
+                      imageUrl: media.url,
+                      fit: BoxFit.contain,
+                      placeholder: (context, url) => const Center(
+                        child: CircularProgressIndicator(),
                       ),
+                      errorWidget: (context, url, error) => const Center(
+                        child: Icon(Icons.broken_image, size: 64),
+                      ),
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            media.isPdf
+                                ? Icons.picture_as_pdf
+                                : Icons.insert_drive_file,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            media.fileName,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.download),
+                            label: const Text('Télécharger'),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Téléchargement à implémenter'),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
             ),
-            // Informations
             Container(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -381,7 +388,8 @@ class MediaPage extends StatelessWidget {
                     DateFormat('dd/MM/yyyy à HH:mm').format(media.createdAt),
                   ),
                   if (media.fileSize != null)
-                    _buildInfoRow('Taille', _formatFileSize(media.fileSize!)),
+                    _buildInfoRow(
+                        'Taille', _formatFileSize(media.fileSize!)),
                 ],
               ),
             ),

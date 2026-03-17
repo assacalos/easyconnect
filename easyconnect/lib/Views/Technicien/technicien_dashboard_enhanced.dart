@@ -1,111 +1,149 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Views/Components/base_dashboard.dart';
-import 'package:easyconnect/Views/Components/filter_bar.dart';
-import 'package:easyconnect/Views/Components/favorites_bar.dart';
-import 'package:easyconnect/Views/Components/stats_grid.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
+import 'package:easyconnect/providers/technicien_dashboard_notifier.dart';
+import 'package:easyconnect/providers/technicien_dashboard_state.dart';
+import 'package:easyconnect/providers/dashboard_refresh_callback.dart';
+import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
+import 'package:easyconnect/Views/Components/user_profile_card.dart';
+import 'package:easyconnect/Views/Components/paginated_data_view.dart';
 import 'package:easyconnect/utils/roles.dart';
-import 'package:easyconnect/utils/dashboard_filters.dart';
+import 'package:easyconnect/utils/dashboard_entity_colors.dart';
+import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/dashboard_web_chart_section.dart';
+import 'package:easyconnect/Views/Components/rendements_et_alertes_card.dart';
 
-class TechnicienDashboardEnhanced
-    extends BaseDashboard<TechnicienDashboardController> {
+/// Dashboard Technicien migré vers Riverpod.
+class TechnicienDashboardEnhanced extends ConsumerStatefulWidget {
   const TechnicienDashboardEnhanced({super.key});
 
-  @override
-  String get title => 'Technicien';
+  static const String title = 'Technicien';
+  static const Color primaryColor = Color(0xFFC2410C);
 
   @override
-  Color get primaryColor => const Color(0xFFC2410C); // Orange 800
+  ConsumerState<TechnicienDashboardEnhanced> createState() =>
+      _TechnicienDashboardEnhancedState();
+}
+
+class _TechnicienDashboardEnhancedState
+    extends ConsumerState<TechnicienDashboardEnhanced> {
+  final _scrollController = ScrollController();
 
   @override
-  Future<void> Function()? get onRefresh =>
-      () => controller.refreshPendingEntities();
-
-  @override
-  List<Filter> get availableFilters =>
-      DashboardFilters.getFiltersForRole(Roles.TECHNICIEN);
-
-  @override
-  List<FavoriteItem> get favoriteItems => [
-    FavoriteItem(
-      id: 'interventions',
-      label: 'Interventions',
-      icon: Icons.build,
-      route: '/interventions',
-    ),
-    FavoriteItem(
-      id: 'besoins',
-      label: 'Besoins / Rappels patron',
-      icon: Icons.notifications_active,
-      route: '/besoins',
-    ),
-    FavoriteItem(
-      id: 'equipments',
-      label: 'Équipements',
-      icon: Icons.settings,
-      route: '/equipments',
-    ),
-    FavoriteItem(
-      id: 'tasks',
-      label: 'Mes tâches',
-      icon: Icons.task_alt,
-      route: '/tasks',
-    ),
-  ];
-
-  @override
-  List<StatCard> get statsCards => controller.enhancedStats;
-
-  @override
-  Map<String, ChartConfig> get charts => {};
-
-  static String _formatAmount(double value) {
-    if (value >= 1e6)
-      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
-    if (value >= 1e3)
-      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
-    return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DashboardRefreshCallback.instance.refreshTechnicien = () {
+        ref.read(technicienDashboardProvider.notifier).refresh();
+      };
+    });
   }
 
   @override
-  Widget buildCustomContent(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildWelcomeCard(context),
-          const SizedBox(height: 24),
-          _buildQuickActions(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel(
-            'En attente',
-            Icons.schedule,
-            const Color(0xFFEA580C),
+  void dispose() {
+    DashboardRefreshCallback.instance.refreshTechnicien = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final asyncState = ref.watch(technicienDashboardProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(TechnicienDashboardEnhanced.title),
+        backgroundColor: TechnicienDashboardEnhanced.primaryColor,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () =>
+                ref.read(technicienDashboardProvider.notifier).refresh(),
+            tooltip: 'Actualiser',
           ),
-          const SizedBox(height: 12),
-          _buildPendingSection(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel(
-            'Terminés',
-            Icons.check_circle_outline,
-            const Color(0xFF059669),
-          ),
-          const SizedBox(height: 12),
-          _buildValidatedSection(context),
-          const SizedBox(height: 28),
-          _buildSectionLabel(
-            'Montants',
-            Icons.trending_up,
-            const Color(0xFF7C3AED),
-          ),
-          const SizedBox(height: 12),
-          _buildStatisticsSection(context),
         ],
       ),
+      drawer: _buildDrawer(context),
+      body: asyncState.when(
+        data: (state) => RefreshIndicator(
+          onRefresh: () =>
+              ref.read(technicienDashboardProvider.notifier).refresh(),
+          child: _buildBody(context, state),
+        ),
+        loading: () => _buildBody(
+            context, const TechnicienDashboardState(isLoading: true)),
+        error: (e, _) => _buildErrorBody(context, e, () => ref.read(technicienDashboardProvider.notifier).refresh()),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildErrorBody(BuildContext context, Object error, VoidCallback onRetry) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade600),
+            const SizedBox(height: 16),
+            Text(
+              'Impossible de charger le dashboard.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, TechnicienDashboardState state) {
+    return PaginatedDataView(
+      scrollController: _scrollController,
+      onLoadMore: () {},
+      hasMoreData: false,
+      isLoading: state.isLoading,
+      children: [
+        const UserProfileCard(showPermissions: false),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeCard(context),
+              const SizedBox(height: 24),
+              _buildQuickActions(context),
+              const SizedBox(height: 24),
+              _buildRendementsEtAlertes(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'En attente', Icons.schedule, const Color(0xFFEA580C)),
+              const SizedBox(height: 12),
+              _buildPendingSection(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'Terminés', Icons.check_circle_outline, const Color(0xFF059669)),
+              const SizedBox(height: 12),
+              _buildValidatedSection(context, state),
+              const SizedBox(height: 28),
+              _buildSectionLabel(
+                  'Montants', Icons.trending_up, const Color(0xFF7C3AED)),
+              const SizedBox(height: 12),
+              if (kIsWeb) _buildMontantsWeb(context, state) else _buildStatisticsSection(context, state),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -135,84 +173,74 @@ class TechnicienDashboardEnhanced
   }
 
   Widget _buildWelcomeCard(BuildContext context) {
-    return Obx(() {
-      final user = Get.find<AuthController>().userAuth.value;
-      final prenom =
-          user?.prenom?.trim().isNotEmpty == true
-              ? user!.prenom!
-              : 'Technicien';
-      final hour = DateTime.now().hour;
-      final greeting =
-          hour < 12
-              ? 'Bonjour'
-              : hour < 18
-              ? 'Bon après-midi'
-              : 'Bonsoir';
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [const Color(0xFFC2410C), const Color(0xFFEA580C)],
+    final user = ref.watch(authProvider).user;
+    final prenom = user?.prenom?.trim().isNotEmpty == true
+        ? user!.prenom!
+        : 'Technicien';
+    final hour = DateTime.now().hour;
+    final greeting =
+        hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFC2410C), Color(0xFFEA580C)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$greeting, $prenom',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.5,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$greeting, $prenom',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -0.5,
-              ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
             ),
-            const SizedBox(height: 6),
-            Text(
-              DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withOpacity(0.7),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
       _QuickAction(
-        label: 'Interventions',
-        icon: Icons.build,
-        route: '/interventions',
-        color: const Color(0xFFEA580C),
-      ),
+          label: 'Interventions',
+          icon: Icons.build,
+          route: '/interventions',
+          color: DashboardEntityColors.interventions),
       _QuickAction(
-        label: 'Besoins / Rappels',
-        icon: Icons.notifications_active,
-        route: '/besoins',
-        color: Colors.teal,
-      ),
+          label: 'Besoins / Rappels',
+          icon: Icons.notifications_active,
+          route: '/besoins',
+          color: DashboardEntityColors.besoins),
       _QuickAction(
-        label: 'Équipements',
-        icon: Icons.settings,
-        route: '/equipments',
-        color: const Color(0xFF7C3AED),
-      ),
+          label: 'Équipements',
+          icon: Icons.settings,
+          route: '/equipments',
+          color: DashboardEntityColors.equipments),
     ];
     return SizedBox(
       height: 48,
@@ -225,17 +253,16 @@ class TechnicienDashboardEnhanced
           return Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => Get.toNamed(a.route),
+              onTap: () => context.go(a.route),
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: a.color.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: a.color.withOpacity(0.2), width: 1),
+                  border: Border.all(
+                      color: a.color.withOpacity(0.2), width: 1),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -260,31 +287,98 @@ class TechnicienDashboardEnhanced
     );
   }
 
-  Widget _buildPendingSection(BuildContext context) {
-    final items = [
-      _Item(
-        'Interventions',
-        () => controller.pendingInterventions.value,
-        Icons.build,
-        const Color(0xFFEA580C),
-        '/interventions',
+  Widget _buildRendementsEtAlertes(
+    BuildContext context,
+    TechnicienDashboardState state,
+  ) {
+    final rendements = <RendementItem>[
+      RendementItem(
+        label: 'Interventions terminées',
+        value: state.completedInterventions.toString(),
+        route: '/interventions',
+        icon: Icons.build,
+        color: DashboardEntityColors.interventions,
       ),
-      _Item(
-        'Équipements',
-        () => controller.pendingEquipments.value,
-        Icons.settings,
-        const Color(0xFF7C3AED),
-        '/equipments',
+      RendementItem(
+        label: 'Maintenance terminée',
+        value: state.completedMaintenance.toString(),
+        route: '/interventions',
+        icon: Icons.engineering,
+        color: const Color(0xFF2563EB),
       ),
-      _Item(
-        'Tâches',
-        () => controller.pendingTasks.value,
-        Icons.task_alt,
-        const Color(0xFF7C3AED),
-        '/tasks',
+      RendementItem(
+        label: 'Rapports validés',
+        value: state.validatedReports.toString(),
+        route: '/reporting',
+        icon: Icons.analytics,
+        color: DashboardEntityColors.rapports,
+      ),
+      RendementItem(
+        label: 'Équipements opérationnels',
+        value: state.operationalEquipments.toString(),
+        route: '/equipments',
+        icon: Icons.settings,
+        color: DashboardEntityColors.equipments,
       ),
     ];
-    final crossCount = Get.width > 800 ? 2 : 2;
+    final alertes = <AlerteItem>[
+      if (state.pendingInterventions > 0)
+        AlerteItem(
+          message: '${state.pendingInterventions} intervention(s) en attente',
+          route: '/interventions',
+          icon: Icons.build,
+          color: const Color(0xFFEA580C),
+        ),
+      if (state.pendingMaintenance > 0)
+        AlerteItem(
+          message: '${state.pendingMaintenance} maintenance(s) en attente',
+          route: '/interventions',
+          icon: Icons.engineering,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingReports > 0)
+        AlerteItem(
+          message: '${state.pendingReports} rapport(s) en attente',
+          route: '/reporting',
+          icon: Icons.analytics,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingEquipments > 0)
+        AlerteItem(
+          message: '${state.pendingEquipments} équipement(s) en attente',
+          route: '/equipments',
+          icon: Icons.settings,
+          color: const Color(0xFFF59E0B),
+        ),
+      if (state.pendingTasks > 0)
+        AlerteItem(
+          message: '${state.pendingTasks} tâche(s) à traiter',
+          route: '/tasks',
+          icon: Icons.task_alt,
+          color: const Color(0xFFDC2626),
+        ),
+    ];
+    return RendementsEtAlertesCard(
+      titleRendements: 'Mes rendements',
+      rendements: rendements,
+      titleAlertes: 'À faire / Ce qui ne va pas',
+      alertes: alertes,
+    );
+  }
+
+  Widget _buildPendingSection(
+      BuildContext context, TechnicienDashboardState state) {
+    final items = [
+      _Item('Interventions', state.pendingInterventions, Icons.build,
+          DashboardEntityColors.interventions, '/interventions'),
+      _Item('Rapports', state.pendingReports, Icons.analytics,
+          DashboardEntityColors.rapports, '/reporting'),
+      _Item('Équipements', state.pendingEquipments, Icons.settings,
+          DashboardEntityColors.equipments, '/equipments'),
+      _Item('Tâches', state.pendingTasks, Icons.task_alt,
+          DashboardEntityColors.tasks, '/tasks'),
+    ];
+    final crossCount = 2;
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -292,42 +386,34 @@ class TechnicienDashboardEnhanced
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children:
-          items
-              .map(
-                (e) => _buildModernCard(
-                  title: e.title,
-                  count: e.count,
-                  icon: e.icon,
-                  color: e.color,
-                  onTap: () => Get.toNamed(e.route),
-                  badgeColor: const Color(0xFFEA580C),
-                ),
-              )
-              .toList(),
+      children: items
+          .map((e) => _buildModernCard(
+                title: e.title,
+                count: e.count,
+                icon: e.icon,
+                color: e.color,
+                onTap: () => context.go(e.route),
+                badgeColor: const Color(0xFFEA580C),
+                isLoading: state.isLoading,
+              ))
+          .toList(),
     );
   }
 
-  Widget _buildValidatedSection(BuildContext context) {
+  Widget _buildValidatedSection(
+      BuildContext context, TechnicienDashboardState state) {
     final items = [
-      _ValidatedItem(
-        'Interventions terminées',
-        () => controller.completedInterventions.value,
-        Icons.build,
-        const Color(0xFFEA580C),
-        'Clôturées',
-        '/interventions?tab=2',
-      ),
-      _ValidatedItem(
-        'Équipements opérationnels',
-        () => controller.operationalEquipments.value,
-        Icons.settings,
-        const Color(0xFF7C3AED),
-        'En service',
-        '/equipments?tab=2',
-      ),
+      _ValidatedItem('Interventions terminées', state.completedInterventions,
+          Icons.build, DashboardEntityColors.interventions, 'Clôturées',
+          '/interventions?tab=2'),
+      _ValidatedItem('Équipements opérationnels', state.operationalEquipments,
+          Icons.settings, DashboardEntityColors.equipments, 'En service',
+          '/equipments?tab=2'),
+      _ValidatedItem('Rapports validés', state.validatedReports,
+          Icons.analytics, DashboardEntityColors.rapports, 'Validés',
+          '/reporting'),
     ];
-    final crossCount = Get.width > 800 ? 2 : 2;
+    final crossCount = 2;
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -335,29 +421,64 @@ class TechnicienDashboardEnhanced
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
       childAspectRatio: 1.05,
-      children:
-          items
-              .map(
-                (e) => _buildModernCard(
-                  title: e.title,
-                  count: e.count,
-                  icon: e.icon,
-                  color: e.color,
-                  subtitle: e.subtitle,
-                  onTap: () => Get.toNamed(e.route),
-                  badgeColor: const Color(0xFF059669),
-                ),
-              )
-              .toList(),
+      children: items
+          .map((e) => _buildModernCard(
+                title: e.title,
+                count: e.count,
+                icon: e.icon,
+                color: e.color,
+                subtitle: e.subtitle,
+                onTap: () => context.go(e.route),
+                badgeColor: const Color(0xFF059669),
+                isLoading: state.isLoading,
+              ))
+          .toList(),
     );
   }
 
-  Widget _buildStatisticsSection(BuildContext context) {
+  Widget _buildMontantsWeb(BuildContext context, TechnicienDashboardState state) {
+    const orange = Color(0xFFEA580C);
+    const purple = Color(0xFF7C3AED);
+    const green = Color(0xFF059669);
+    return DashboardWebChartSection(
+      isLoading: state.isLoading,
+      barItems: [
+        DashboardBarItem('Interventions', state.interventionCost, orange),
+        DashboardBarItem('Équipements', state.equipmentValue, purple),
+        DashboardBarItem('Économies', state.savings, green),
+      ],
+      cardItems: [
+        DashboardKpiCardItem(
+          title: 'Coût interventions',
+          valueText: _formatAmount(state.interventionCost),
+          icon: Icons.build,
+          color: orange,
+          route: '/interventions',
+        ),
+        DashboardKpiCardItem(
+          title: 'Valeur équipements',
+          valueText: _formatAmount(state.equipmentValue),
+          icon: Icons.settings,
+          color: purple,
+          route: '/equipment',
+        ),
+        DashboardKpiCardItem(
+          title: 'Économies réalisées',
+          valueText: _formatAmount(state.savings),
+          icon: Icons.savings,
+          color: green,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatisticsSection(
+      BuildContext context, TechnicienDashboardState state) {
     return Column(
       children: [
         _buildStatRow(
           'Coût interventions',
-          () => _formatAmount(controller.interventionCost.value),
+          _formatAmount(state.interventionCost),
           Icons.build,
           const Color(0xFFEA580C),
           'Coût total des interventions',
@@ -365,7 +486,7 @@ class TechnicienDashboardEnhanced
         const SizedBox(height: 12),
         _buildStatRow(
           'Valeur équipements',
-          () => _formatAmount(controller.equipmentValue.value),
+          _formatAmount(state.equipmentValue),
           Icons.settings,
           const Color(0xFF7C3AED),
           'Valeur totale des équipements',
@@ -373,7 +494,7 @@ class TechnicienDashboardEnhanced
         const SizedBox(height: 12),
         _buildStatRow(
           'Économies réalisées',
-          () => _formatAmount(controller.savings.value),
+          _formatAmount(state.savings),
           Icons.savings,
           const Color(0xFF059669),
           'Économies réalisées',
@@ -382,83 +503,86 @@ class TechnicienDashboardEnhanced
     );
   }
 
+  static String _formatAmount(double value) {
+    if (value >= 1e6) {
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e6)} M FCFA';
+    }
+    if (value >= 1e3) {
+      return '${NumberFormat('#,##0', 'fr_FR').format(value ~/ 1e3)} k FCFA';
+    }
+    return '${NumberFormat('#,##0', 'fr_FR').format(value)} FCFA';
+  }
+
   Widget _buildStatRow(
-    String title,
-    String Function() valueBuilder,
-    IconData icon,
-    Color color,
-    String subtitle,
-  ) {
-    return Obx(() {
-      final value = valueBuilder();
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+      String title, String value, IconData icon, Color color, String subtitle) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 22, color: color),
+            child: Icon(icon, size: 22, color: color),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    });
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildModernCard({
     required String title,
-    required int Function() count,
+    required int count,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
     required Color badgeColor,
     String? subtitle,
+    bool isLoading = false,
   }) {
     return Material(
       color: Colors.transparent,
@@ -470,6 +594,7 @@ class TechnicienDashboardEnhanced
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: color, width: 4)),
             boxShadow: [
               BoxShadow(
                 color: color.withOpacity(0.08),
@@ -497,27 +622,33 @@ class TechnicienDashboardEnhanced
                     ),
                     child: Icon(icon, size: 22, color: color),
                   ),
-                  Obx(() {
-                    final c = count();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        c.toString(),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: badgeColor,
-                        ),
-                      ),
-                    );
-                  }),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: isLoading
+                        ? Shimmer(
+                            baseColor: badgeColor.withOpacity(0.25),
+                            highlightColor: badgeColor.withOpacity(0.5),
+                            child: Text(
+                              count.toString(),
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: badgeColor),
+                            ),
+                          )
+                        : Text(
+                            count.toString(),
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: badgeColor),
+                          ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -541,7 +672,8 @@ class TechnicienDashboardEnhanced
                   alignment: Alignment.centerLeft,
                   child: Text(
                     subtitle,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -554,55 +686,118 @@ class TechnicienDashboardEnhanced
     );
   }
 
-  @override
-  List<Widget> buildDrawerItems(BuildContext context) {
-    return [
-      _drawerItem(
-        Icons.build,
-        'Interventions',
-        () => _nav(context, '/interventions'),
+  Widget _buildDrawer(BuildContext context) {
+    final userRole = ref.watch(authProvider).user?.role;
+    return Drawer(
+      child: Container(
+        color: Colors.grey.shade900,
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration:
+                  BoxDecoration(color: TechnicienDashboardEnhanced.primaryColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    TechnicienDashboardEnhanced.title,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Rôle: ${Roles.getRoleName(userRole)}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            _drawerItem(Icons.build, 'Interventions',
+                DashboardEntityColors.interventions,
+                () => _nav(context, '/interventions')),
+            _drawerItem(Icons.notifications_active, 'Besoins / Rappels patron',
+                DashboardEntityColors.besoins, () => _nav(context, '/besoins')),
+            _drawerItem(Icons.settings, 'Équipements',
+                DashboardEntityColors.equipments,
+                () => _nav(context, '/equipments')),
+            _drawerItem(Icons.analytics, 'Reporting',
+                DashboardEntityColors.rapports, () => _nav(context, '/reporting')),
+            if (userRole == 1)
+              _drawerItem(Icons.settings, 'Paramètres',
+                  DashboardEntityColors.parametres, () {
+                Navigator.pop(context);
+                context.go('/admin/settings');
+              }),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: Icon(Icons.task_alt,
+                  color: DashboardEntityColors.tasks, size: 22),
+              title:
+                  const Text('Mes tâches', style: TextStyle(color: Colors.white70)),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/tasks');
+              },
+            ),
+          ],
+        ),
       ),
-      _drawerItem(
-        Icons.notifications_active,
-        'Besoins / Rappels patron',
-        () => _nav(context, '/besoins'),
-      ),
-      _drawerItem(
-        Icons.settings,
-        'Équipements',
-        () => _nav(context, '/equipments'),
-      ),
-      Obx(() {
-        final userRole = Get.find<AuthController>().userAuth.value?.role;
-        if (userRole == 1) {
-          return _drawerItem(Icons.settings_applications, 'Paramètres', () {
-            Navigator.pop(context);
-            Get.toNamed('/admin/settings');
-          });
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: TechnicienDashboardEnhanced.primaryColor,
+      unselectedItemColor: Colors.grey,
+      items: [
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.home), label: 'Accueil'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.search), label: 'Rechercher'),
+        const BottomNavigationBarItem(
+            icon: NotificationBadgeIcon(), label: 'Notifications'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.person), label: 'Profil'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.photo_library), label: 'Médias'),
+      ],
+      onTap: (index) {
+        switch (index) {
+          case 1:
+            context.go('/search');
+            break;
+          case 2:
+            context.go('/notifications');
+            break;
+          case 3:
+            context.go('/profile');
+            break;
+          case 4:
+            context.go('/media');
+            break;
         }
-        return const SizedBox.shrink();
-      }),
-    ];
+      },
+    );
   }
 
   void _nav(BuildContext context, String route) {
     Navigator.pop(context);
-    Get.toNamed(route);
+    context.go(route);
   }
 
-  Widget _drawerItem(IconData icon, String label, VoidCallback onTap) {
+  Widget _drawerItem(
+      IconData icon, String label, Color color, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white70, size: 22),
-      title: Text(
-        label,
-        style: const TextStyle(color: Colors.white70, fontSize: 15),
-      ),
+      leading: Icon(icon, color: color, size: 22),
+      title: Text(label,
+          style: const TextStyle(color: Colors.white70, fontSize: 15)),
       onTap: onTap,
     );
   }
-
-  @override
-  Widget? buildFloatingActionButton() => null;
 }
 
 class _QuickAction {
@@ -610,17 +805,16 @@ class _QuickAction {
   final IconData icon;
   final String route;
   final Color color;
-  _QuickAction({
-    required this.label,
-    required this.icon,
-    required this.route,
-    required this.color,
-  });
+  _QuickAction(
+      {required this.label,
+      required this.icon,
+      required this.route,
+      required this.color});
 }
 
 class _Item {
   final String title;
-  final int Function() count;
+  final int count;
   final IconData icon;
   final Color color;
   final String route;
@@ -629,17 +823,11 @@ class _Item {
 
 class _ValidatedItem {
   final String title;
-  final int Function() count;
+  final int count;
   final IconData icon;
   final Color color;
   final String subtitle;
   final String route;
   _ValidatedItem(
-    this.title,
-    this.count,
-    this.icon,
-    this.color,
-    this.subtitle,
-    this.route,
-  );
+      this.title, this.count, this.icon, this.color, this.subtitle, this.route);
 }

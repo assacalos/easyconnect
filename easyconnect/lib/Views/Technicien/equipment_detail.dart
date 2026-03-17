@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/equipment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/equipment_notifier.dart';
+import 'package:easyconnect/providers/equipment_state.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
-import 'package:easyconnect/Views/Technicien/equipment_form.dart';
 import 'package:intl/intl.dart';
 
-class EquipmentDetail extends StatelessWidget {
+class EquipmentDetail extends ConsumerWidget {
   final Equipment equipment;
 
   const EquipmentDetail({super.key, required this.equipment});
 
   @override
-  Widget build(BuildContext context) {
-    final EquipmentController controller = Get.put(EquipmentController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(equipmentProvider);
+    final notifier = ref.read(equipmentProvider.notifier);
     final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
     final formatDate = DateFormat('dd/MM/yyyy');
 
@@ -22,14 +24,15 @@ class EquipmentDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageEquipments)
+          if (state.canManageEquipments)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => EquipmentForm(equipment: equipment)),
+              onPressed: () =>
+                  context.go('/equipments/${equipment.id}/edit', extra: equipment),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareEquipment(),
+            onPressed: () => _shareEquipment(context),
           ),
         ],
       ),
@@ -142,7 +145,7 @@ class EquipmentDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, state, notifier),
           ],
         ),
       ),
@@ -399,7 +402,12 @@ class EquipmentDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(EquipmentController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    EquipmentState state,
+    EquipmentNotifier notifier,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -418,12 +426,14 @@ class EquipmentDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (controller.canManageEquipments) ...[
+                if (state.canManageEquipments) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed: () => Get.to(() => EquipmentForm(equipment: equipment)),
+                      onPressed: () => context.go(
+                          '/equipments/${equipment.id}/edit',
+                          extra: equipment),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -436,7 +446,7 @@ class EquipmentDetail extends StatelessWidget {
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.build),
                     label: const Text('Maintenance'),
-                    onPressed: () => _showMaintenanceDialog(controller),
+                    onPressed: () => _showMaintenanceDialog(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -463,20 +473,19 @@ class EquipmentDetail extends StatelessWidget {
     );
   }
 
-  void _shareEquipment() {
-    // Implémentation du partage
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareEquipment(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showMaintenanceDialog(EquipmentController controller) {
-    Get.snackbar(
-      'Maintenance',
-      'Fonctionnalité de maintenance à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _showMaintenanceDialog(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de maintenance à implémenter'),
+      ),
     );
   }
 

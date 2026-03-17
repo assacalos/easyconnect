@@ -1,39 +1,42 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
 import 'package:easyconnect/services/equipment_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class EquipmentController extends GetxController {
+class EquipmentController {
+  static final EquipmentController _instance = EquipmentController._();
+  static EquipmentController get to => _instance;
+  factory EquipmentController() => _instance;
+  EquipmentController._();
+
   final EquipmentService _equipmentService = EquipmentService();
-  final AuthController _authController = Get.find<AuthController>();
 
-  // Variables observables
-  final RxList<Equipment> equipments = <Equipment>[].obs;
-  final RxList<Equipment> equipmentsNeedingMaintenance = <Equipment>[].obs;
-  final RxList<Equipment> equipmentsWithExpiredWarranty = <Equipment>[].obs;
-  final RxList<EquipmentCategory> equipmentCategories =
-      <EquipmentCategory>[].obs;
-  final RxBool isLoading = false.obs;
-  final Rx<EquipmentStats?> equipmentStats = Rx<EquipmentStats?>(null);
+  // Variables
+  final List<Equipment> equipments = [];
+  final List<Equipment> equipmentsNeedingMaintenance = [];
+  final List<Equipment> equipmentsWithExpiredWarranty = [];
+  final List<EquipmentCategory> equipmentCategories = [];
+  bool isLoading = false;
+  EquipmentStats? equipmentStats;
 
   // Variables pour le formulaire
-  final RxString searchQuery = ''.obs;
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedCategory = 'all'.obs;
-  final RxString selectedCondition = 'all'.obs;
-  final Rx<Equipment?> selectedEquipment = Rx<Equipment?>(null);
+  String searchQuery = '';
+  String selectedStatus = 'all';
+  String selectedCategory = 'all';
+  String selectedCondition = 'all';
+  Equipment? selectedEquipment;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
 
   // Contrôleurs de formulaire
   final TextEditingController nameController = TextEditingController();
@@ -50,24 +53,16 @@ class EquipmentController extends GetxController {
   final TextEditingController currentValueController = TextEditingController();
 
   // Variables de sélection
-  final RxString selectedCategoryForm = 'computer'.obs;
-  final RxString selectedStatusForm = 'active'.obs;
-  final RxString selectedConditionForm = 'good'.obs;
-  final Rx<DateTime?> selectedPurchaseDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedWarrantyExpiry = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedLastMaintenance = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedNextMaintenance = Rx<DateTime?>(null);
-  final RxList<String> selectedAttachments = <String>[].obs;
+  String selectedCategoryForm = 'computer';
+  String selectedStatusForm = 'active';
+  String selectedConditionForm = 'good';
+  DateTime? selectedPurchaseDate;
+  DateTime? selectedWarrantyExpiry;
+  DateTime? selectedLastMaintenance;
+  DateTime? selectedNextMaintenance;
+  final List<String> selectedAttachments = [];
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Chargement différé : les données sont chargées par la page (equipment_list)
-    // au premier affichage pour éviter une avalanche d'appels API au binding.
-  }
-
-  @override
-  void onClose() {
+  void dispose() {
     nameController.dispose();
     descriptionController.dispose();
     serialNumberController.dispose();
@@ -80,63 +75,68 @@ class EquipmentController extends GetxController {
     notesController.dispose();
     purchasePriceController.dispose();
     currentValueController.dispose();
-    super.onClose();
   }
 
   bool _isLoadingEquipmentsInProgress = false;
 
   /// Charge les équipements : Hive d'abord (affichage immédiat), puis API dans la même méthode.
-  Future<void> loadEquipments({int page = 1}) async {
+  Future<void> loadEquipments({int page = 1, bool forceRefresh = false}) async {
     if (_isLoadingEquipmentsInProgress) return;
     _isLoadingEquipmentsInProgress = true;
     if (page == 1) {
-      isLoading.value = true;
-      final cached = EquipmentService.getCachedEquipments();
-      if (cached.isNotEmpty) {
-        equipments.assignAll(cached);
-        isLoading.value = false;
+      isLoading = true;
+      if (!forceRefresh) {
+        final cached = EquipmentService.getCachedEquipments();
+        if (cached.isNotEmpty) {
+          equipments.clear();
+          equipments.addAll(cached);
+          isLoading = false;
+        } else {
+          equipments.clear();
+        }
       } else {
-        equipments.value = [];
+        equipments.clear();
       }
     }
     try {
       final loadedEquipments = await _equipmentService.getEquipments(
-        status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+        status: selectedStatus != 'all' ? selectedStatus : null,
         category:
-            selectedCategory.value != 'all' ? selectedCategory.value : null,
+            selectedCategory != 'all' ? selectedCategory : null,
         condition:
-            selectedCondition.value != 'all' ? selectedCondition.value : null,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+            selectedCondition != 'all' ? selectedCondition : null,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
       );
       if (page == 1) {
-        equipments.assignAll(loadedEquipments);
+        equipments.clear();
+        equipments.addAll(loadedEquipments);
         EquipmentService.saveEquipmentsToHive(loadedEquipments);
       } else {
         equipments.addAll(loadedEquipments);
       }
-      totalPages.value = 1;
-      totalItems.value = loadedEquipments.length;
-      hasNextPage.value = false;
-      hasPreviousPage.value = false;
-      currentPage.value = 1;
+      totalPages = 1;
+      totalItems = loadedEquipments.length;
+      hasNextPage = false;
+      hasPreviousPage = false;
+      currentPage = 1;
     } catch (e) {
       if (equipments.isEmpty) {
         final fallback = EquipmentService.getCachedEquipments();
         if (fallback.isNotEmpty) {
-          equipments.assignAll(fallback);
+          equipments.clear();
+          equipments.addAll(fallback);
         } else {
           final err = e.toString().toLowerCase();
           if (!err.contains('401') && !err.contains('unauthorized')) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Erreur',
               'Impossible de charger les équipements',
-              snackPosition: SnackPosition.BOTTOM,
             );
           }
         }
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
       _isLoadingEquipmentsInProgress = false;
     }
   }
@@ -146,7 +146,8 @@ class EquipmentController extends GetxController {
     try {
       final needingMaintenance =
           await _equipmentService.getEquipmentsNeedingMaintenance();
-      equipmentsNeedingMaintenance.assignAll(needingMaintenance);
+      equipmentsNeedingMaintenance.clear();
+      equipmentsNeedingMaintenance.addAll(needingMaintenance);
     } catch (e) {}
   }
 
@@ -155,7 +156,8 @@ class EquipmentController extends GetxController {
     try {
       final expiredWarranty =
           await _equipmentService.getEquipmentsWithExpiredWarranty();
-      equipmentsWithExpiredWarranty.assignAll(expiredWarranty);
+      equipmentsWithExpiredWarranty.clear();
+      equipmentsWithExpiredWarranty.addAll(expiredWarranty);
     } catch (e) {}
   }
 
@@ -163,7 +165,8 @@ class EquipmentController extends GetxController {
   Future<void> loadEquipmentCategories() async {
     try {
       final categories = await _equipmentService.getEquipmentCategories();
-      equipmentCategories.assignAll(categories);
+      equipmentCategories.clear();
+      equipmentCategories.addAll(categories);
     } catch (e) {}
   }
 
@@ -171,21 +174,21 @@ class EquipmentController extends GetxController {
   Future<void> loadEquipmentStats() async {
     try {
       final stats = await _equipmentService.getEquipmentStats();
-      equipmentStats.value = stats;
+      equipmentStats = stats;
     } catch (e) {}
   }
 
   // Créer un équipement
   Future<bool> createEquipment() async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final equipment = Equipment(
         name: nameController.text.trim(),
         description: descriptionController.text.trim(),
-        category: selectedCategoryForm.value,
-        status: selectedStatusForm.value,
-        condition: selectedConditionForm.value,
+        category: selectedCategoryForm,
+        status: selectedStatusForm,
+        condition: selectedConditionForm,
         serialNumber:
             serialNumberController.text.trim().isEmpty
                 ? null
@@ -218,10 +221,10 @@ class EquipmentController extends GetxController {
             notesController.text.trim().isEmpty
                 ? null
                 : notesController.text.trim(),
-        purchaseDate: selectedPurchaseDate.value,
-        warrantyExpiry: selectedWarrantyExpiry.value,
-        lastMaintenance: selectedLastMaintenance.value,
-        nextMaintenance: selectedNextMaintenance.value,
+        purchaseDate: selectedPurchaseDate,
+        warrantyExpiry: selectedWarrantyExpiry,
+        lastMaintenance: selectedLastMaintenance,
+        nextMaintenance: selectedNextMaintenance,
         purchasePrice: double.tryParse(purchasePriceController.text),
         currentValue: double.tryParse(currentValueController.text),
         attachments: selectedAttachments.isEmpty ? null : selectedAttachments,
@@ -302,7 +305,7 @@ class EquipmentController extends GetxController {
 
         // Arrêter le loader immédiatement pour permettre la fermeture du formulaire
         print('⏸️ [EQUIPMENT] Arrêt du loader');
-        isLoading.value = false;
+        isLoading = false;
 
         // Rafraîchir le dashboard technicien en arrière-plan
         Future.microtask(() {
@@ -333,10 +336,9 @@ class EquipmentController extends GetxController {
 
         // Afficher le message de succès
         print('✅ [EQUIPMENT] Affichage du message de succès');
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Équipement créé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
 
@@ -388,7 +390,7 @@ class EquipmentController extends GetxController {
       CacheHelper.clearByPrefix('equipments_');
 
       // Insertion locale uniquement si le filtre actuel affiche ce statut (ou "tous")
-      final currentFilter = selectedStatus.value;
+      final currentFilter = selectedStatus;
       final shouldInsert =
           currentFilter == 'all' || currentFilter == createdEquipment.status;
       if (shouldInsert) {
@@ -396,7 +398,7 @@ class EquipmentController extends GetxController {
         EquipmentService.saveEquipmentsToHive(equipments.toList());
       }
 
-      isLoading.value = false;
+      isLoading = false;
       Future.microtask(() {
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
       });
@@ -417,10 +419,9 @@ class EquipmentController extends GetxController {
         });
       }
       clearForm();
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Équipement créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 2),
       );
       // Pas de loadEquipments() pour ne pas écraser l'insertion
@@ -430,7 +431,7 @@ class EquipmentController extends GetxController {
       print('❌ [EQUIPMENT] Stack trace: $stackTrace');
 
       // S'assurer que le loader est arrêté en cas d'erreur
-      isLoading.value = false;
+      isLoading = false;
 
       String errorMessage = e.toString();
       if (errorMessage.startsWith('Exception: ')) {
@@ -438,10 +439,9 @@ class EquipmentController extends GetxController {
       }
 
       print('❌ [EQUIPMENT] Affichage du message d\'erreur: $errorMessage');
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
       );
       print('❌ [EQUIPMENT] Retour de createEquipment: false (ÉCHEC)');
@@ -452,15 +452,15 @@ class EquipmentController extends GetxController {
   // Mettre à jour un équipement
   Future<bool> updateEquipment(Equipment equipment) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final updatedEquipment = Equipment(
         id: equipment.id,
         name: nameController.text.trim(),
         description: descriptionController.text.trim(),
-        category: selectedCategoryForm.value,
-        status: selectedStatusForm.value,
-        condition: selectedConditionForm.value,
+        category: selectedCategoryForm,
+        status: selectedStatusForm,
+        condition: selectedConditionForm,
         serialNumber:
             serialNumberController.text.trim().isEmpty
                 ? null
@@ -493,13 +493,13 @@ class EquipmentController extends GetxController {
             notesController.text.trim().isEmpty
                 ? null
                 : notesController.text.trim(),
-        purchaseDate: selectedPurchaseDate.value ?? equipment.purchaseDate,
+        purchaseDate: selectedPurchaseDate ?? equipment.purchaseDate,
         warrantyExpiry:
-            selectedWarrantyExpiry.value ?? equipment.warrantyExpiry,
+            selectedWarrantyExpiry ?? equipment.warrantyExpiry,
         lastMaintenance:
-            selectedLastMaintenance.value ?? equipment.lastMaintenance,
+            selectedLastMaintenance ?? equipment.lastMaintenance,
         nextMaintenance:
-            selectedNextMaintenance.value ?? equipment.nextMaintenance,
+            selectedNextMaintenance ?? equipment.nextMaintenance,
         purchasePrice:
             double.tryParse(purchasePriceController.text) ??
             equipment.purchasePrice,
@@ -513,7 +513,7 @@ class EquipmentController extends GetxController {
         createdAt: equipment.createdAt,
         updatedAt: DateTime.now(),
         createdBy: equipment.createdBy,
-        updatedBy: _authController.userAuth.value?.id,
+        updatedBy: AuthController.to.userAuth?.id,
       );
 
       await _equipmentService.updateEquipment(updatedEquipment);
@@ -525,30 +525,28 @@ class EquipmentController extends GetxController {
 
       clearForm();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Équipement mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 2),
       );
 
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour l\'équipement',
-        snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Supprimer un équipement
   Future<void> deleteEquipment(Equipment equipment) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _equipmentService.deleteEquipment(equipment.id!);
       if (success) {
@@ -558,29 +556,27 @@ class EquipmentController extends GetxController {
         // Rafraîchir le dashboard technicien en arrière-plan
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Équipement supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer l\'équipement',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Mettre à jour le statut d'un équipement
   Future<void> updateEquipmentStatus(Equipment equipment, String status) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _equipmentService.updateEquipmentStatus(
         equipment.id!,
@@ -593,22 +589,20 @@ class EquipmentController extends GetxController {
         // Rafraîchir le dashboard technicien en arrière-plan
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Statut mis à jour avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la mise à jour du statut');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le statut',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -618,7 +612,7 @@ class EquipmentController extends GetxController {
     String condition,
   ) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _equipmentService.updateEquipmentCondition(
         equipment.id!,
@@ -631,29 +625,27 @@ class EquipmentController extends GetxController {
         // Rafraîchir le dashboard technicien en arrière-plan
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'État mis à jour avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la mise à jour de l\'état');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour l\'état',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Assigner un équipement
   Future<void> assignEquipment(Equipment equipment, String assignedTo) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _equipmentService.assignEquipment(
         equipment.id!,
@@ -666,29 +658,27 @@ class EquipmentController extends GetxController {
         // Rafraîchir le dashboard technicien en arrière-plan
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Équipement assigné avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de l\'assignation');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible d\'assigner l\'équipement',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Désassigner un équipement
   Future<void> unassignEquipment(Equipment equipment) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _equipmentService.unassignEquipment(equipment.id!);
       if (success) {
@@ -698,22 +688,20 @@ class EquipmentController extends GetxController {
         // Rafraîchir le dashboard technicien en arrière-plan
         DashboardRefreshHelper.refreshTechnicienPending('equipment');
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Équipement désassigné avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la désassignation');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de désassigner l\'équipement',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -721,9 +709,9 @@ class EquipmentController extends GetxController {
   void fillForm(Equipment equipment) {
     nameController.text = equipment.name;
     descriptionController.text = equipment.description;
-    selectedCategoryForm.value = equipment.category;
-    selectedStatusForm.value = equipment.status;
-    selectedConditionForm.value = equipment.condition;
+    selectedCategoryForm = equipment.category;
+    selectedStatusForm = equipment.status;
+    selectedConditionForm = equipment.condition;
     serialNumberController.text = equipment.serialNumber ?? '';
     modelController.text = equipment.model ?? '';
     brandController.text = equipment.brand ?? '';
@@ -734,21 +722,22 @@ class EquipmentController extends GetxController {
     notesController.text = equipment.notes ?? '';
     purchasePriceController.text = equipment.purchasePrice?.toString() ?? '';
     currentValueController.text = equipment.currentValue?.toString() ?? '';
-    selectedPurchaseDate.value = equipment.purchaseDate;
-    selectedWarrantyExpiry.value = equipment.warrantyExpiry;
-    selectedLastMaintenance.value = equipment.lastMaintenance;
-    selectedNextMaintenance.value = equipment.nextMaintenance;
-    selectedAttachments.assignAll(equipment.attachments ?? []);
-    selectedEquipment.value = equipment;
+    selectedPurchaseDate = equipment.purchaseDate;
+    selectedWarrantyExpiry = equipment.warrantyExpiry;
+    selectedLastMaintenance = equipment.lastMaintenance;
+    selectedNextMaintenance = equipment.nextMaintenance;
+    selectedAttachments.clear();
+    selectedAttachments.addAll(equipment.attachments ?? []);
+    selectedEquipment = equipment;
   }
 
   // Vider le formulaire
   void clearForm() {
     nameController.clear();
     descriptionController.clear();
-    selectedCategoryForm.value = 'computer';
-    selectedStatusForm.value = 'active';
-    selectedConditionForm.value = 'good';
+    selectedCategoryForm = 'computer';
+    selectedStatusForm = 'active';
+    selectedConditionForm = 'good';
     serialNumberController.clear();
     modelController.clear();
     brandController.clear();
@@ -759,71 +748,71 @@ class EquipmentController extends GetxController {
     notesController.clear();
     purchasePriceController.clear();
     currentValueController.clear();
-    selectedPurchaseDate.value = null;
-    selectedWarrantyExpiry.value = null;
-    selectedLastMaintenance.value = null;
-    selectedNextMaintenance.value = null;
+    selectedPurchaseDate = null;
+    selectedWarrantyExpiry = null;
+    selectedLastMaintenance = null;
+    selectedNextMaintenance = null;
     selectedAttachments.clear();
-    selectedEquipment.value = null;
+    selectedEquipment = null;
   }
 
   // Rechercher
   void searchEquipments(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     loadEquipments();
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadEquipments();
   }
 
   // Filtrer par catégorie
   void filterByCategory(String category) {
-    selectedCategory.value = category;
+    selectedCategory = category;
     loadEquipments();
   }
 
   // Filtrer par état
   void filterByCondition(String condition) {
-    selectedCondition.value = condition;
+    selectedCondition = condition;
     loadEquipments();
   }
 
   // Sélectionner la catégorie
   void selectCategory(String category) {
-    selectedCategoryForm.value = category;
+    selectedCategoryForm = category;
   }
 
   // Sélectionner le statut
   void selectStatus(String status) {
-    selectedStatusForm.value = status;
+    selectedStatusForm = status;
   }
 
   // Sélectionner l'état
   void selectCondition(String condition) {
-    selectedConditionForm.value = condition;
+    selectedConditionForm = condition;
   }
 
   // Sélectionner la date d'achat
   void selectPurchaseDate(DateTime date) {
-    selectedPurchaseDate.value = date;
+    selectedPurchaseDate = date;
   }
 
   // Sélectionner la date d'expiration de garantie
   void selectWarrantyExpiry(DateTime date) {
-    selectedWarrantyExpiry.value = date;
+    selectedWarrantyExpiry = date;
   }
 
   // Sélectionner la date de dernière maintenance
   void selectLastMaintenance(DateTime date) {
-    selectedLastMaintenance.value = date;
+    selectedLastMaintenance = date;
   }
 
   // Sélectionner la date de prochaine maintenance
   void selectNextMaintenance(DateTime date) {
-    selectedNextMaintenance.value = date;
+    selectedNextMaintenance = date;
   }
 
   // Obtenir les catégories d'équipements
@@ -899,28 +888,28 @@ class EquipmentController extends GetxController {
 
   // Vérifier les permissions
   bool get canManageEquipments {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole == 1 || userRole == 6; // Admin, Technicien
   }
 
   bool get canViewEquipments {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole != null; // Tous les rôles
   }
 
   // Obtenir les équipements par statut
   List<Equipment> get equipmentsByStatus {
-    if (selectedStatus.value == 'all') return equipments;
+    if (selectedStatus == 'all') return equipments;
     return equipments
-        .where((equipment) => equipment.status == selectedStatus.value)
+        .where((equipment) => equipment.status == selectedStatus)
         .toList();
   }
 
   // Obtenir les équipements par catégorie
   List<Equipment> get equipmentsByCategory {
-    if (selectedCategory.value == 'all') return equipments;
+    if (selectedCategory == 'all') return equipments;
     return equipments
-        .where((equipment) => equipment.category == selectedCategory.value)
+        .where((equipment) => equipment.category == selectedCategory)
         .toList();
   }
 
@@ -928,48 +917,48 @@ class EquipmentController extends GetxController {
   List<Equipment> get filteredEquipments {
     List<Equipment> filtered = equipments;
 
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filtered =
           filtered
-              .where((equipment) => equipment.status == selectedStatus.value)
+              .where((equipment) => equipment.status == selectedStatus)
               .toList();
     }
 
-    if (selectedCategory.value != 'all') {
+    if (selectedCategory != 'all') {
       filtered =
           filtered
               .where(
-                (equipment) => equipment.category == selectedCategory.value,
+                (equipment) => equipment.category == selectedCategory,
               )
               .toList();
     }
 
-    if (selectedCondition.value != 'all') {
+    if (selectedCondition != 'all') {
       filtered =
           filtered
               .where(
-                (equipment) => equipment.condition == selectedCondition.value,
+                (equipment) => equipment.condition == selectedCondition,
               )
               .toList();
     }
 
-    if (searchQuery.value.isNotEmpty) {
+    if (searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (equipment) =>
                     equipment.name.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     equipment.description.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     (equipment.serialNumber?.toLowerCase().contains(
-                          searchQuery.value.toLowerCase(),
+                          searchQuery.toLowerCase(),
                         ) ??
                         false) ||
                     (equipment.model?.toLowerCase().contains(
-                          searchQuery.value.toLowerCase(),
+                          searchQuery.toLowerCase(),
                         ) ??
                         false),
               )

@@ -1,30 +1,99 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/salary_controller.dart';
-import 'package:easyconnect/Models/salary_model.dart';
-import 'package:easyconnect/Views/Components/uniform_buttons.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:easyconnect/Models/salary_model.dart';
+import 'package:easyconnect/providers/salary_notifier.dart';
+import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 
-class SalaryForm extends StatefulWidget {
+class SalaryForm extends ConsumerStatefulWidget {
   final Salary? salary;
 
   const SalaryForm({super.key, this.salary});
 
   @override
-  State<SalaryForm> createState() => _SalaryFormState();
+  ConsumerState<SalaryForm> createState() => _SalaryFormState();
 }
 
-class _SalaryFormState extends State<SalaryForm> {
+class _SalaryFormState extends ConsumerState<SalaryForm> {
   final _formKey = GlobalKey<FormState>();
+  final _baseSalaryController = TextEditingController();
+  final _bonusController = TextEditingController();
+  final _deductionsController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  int _selectedEmployeeId = 0;
+  String _selectedEmployeeName = '';
+  String _selectedEmployeeEmail = '';
+  String _selectedMonth = '';
+  int _selectedYear = DateTime.now().year;
+  double _netSalary = 0;
+  final List<Map<String, dynamic>> _selectedFiles = [];
+
+  static const _months = [
+    {'value': '01', 'label': 'Janvier'},
+    {'value': '02', 'label': 'Février'},
+    {'value': '03', 'label': 'Mars'},
+    {'value': '04', 'label': 'Avril'},
+    {'value': '05', 'label': 'Mai'},
+    {'value': '06', 'label': 'Juin'},
+    {'value': '07', 'label': 'Juillet'},
+    {'value': '08', 'label': 'Août'},
+    {'value': '09', 'label': 'Septembre'},
+    {'value': '10', 'label': 'Octobre'},
+    {'value': '11', 'label': 'Novembre'},
+    {'value': '12', 'label': 'Décembre'},
+  ];
+
+  List<int> get _years {
+    final y = DateTime.now().year;
+    return List.generate(5, (i) => y - 2 + i);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(salaryProvider.notifier).loadEmployees();
+      if (widget.salary != null) _fillForm(widget.salary!);
+    });
+  }
+
+  @override
+  void dispose() {
+    _baseSalaryController.dispose();
+    _bonusController.dispose();
+    _deductionsController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _fillForm(Salary s) {
+    _baseSalaryController.text = s.baseSalary.toString();
+    _bonusController.text = s.bonus.toString();
+    _deductionsController.text = s.deductions.toString();
+    _notesController.text = s.notes ?? '';
+    _selectedEmployeeId = s.employeeId ?? 0;
+    _selectedEmployeeName = s.employeeName ?? '';
+    _selectedEmployeeEmail = s.employeeEmail ?? '';
+    _selectedMonth = s.month ?? '';
+    _selectedYear = s.year ?? DateTime.now().year;
+    _netSalary = s.netSalary;
+    setState(() {});
+  }
+
+  void _updateNetSalary() {
+    final base = double.tryParse(_baseSalaryController.text) ?? 0;
+    final bonus = double.tryParse(_bonusController.text) ?? 0;
+    final ded = double.tryParse(_deductionsController.text) ?? 0;
+    setState(() => _netSalary = base + bonus - ded);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final SalaryController controller = Get.put(SalaryController());
-
-    // Si on édite un salaire existant, remplir le formulaire
-    if (widget.salary != null) {
-      controller.fillForm(widget.salary!);
-    }
+    final salaryState = ref.watch(salaryProvider);
+    final employees = salaryState.employees;
+    final isLoading = salaryState.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -36,7 +105,7 @@ class _SalaryFormState extends State<SalaryForm> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
-            onPressed: () => _saveSalary(controller),
+            onPressed: _saveSalary,
           ),
         ],
       ),
@@ -47,185 +116,127 @@ class _SalaryFormState extends State<SalaryForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Informations de base
               _buildSectionTitle('Informations de base'),
               const SizedBox(height: 16),
-
-              // Sélection de l'employé
               InkWell(
-                onTap: () => _showEmployeeDialog(controller),
+                onTap: () => _showEmployeeDialog(employees),
                 child: InputDecorator(
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Employé *',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person),
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.person),
+                    errorText: _selectedEmployeeId == 0 ? 'Sélectionnez un employé' : null,
                   ),
-                  child: Obx(
-                    () => Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          controller.selectedEmployeeName.value.isNotEmpty
-                              ? controller.selectedEmployeeName.value
-                              : 'Sélectionner un employé',
-                          style: TextStyle(
-                            color:
-                                controller.selectedEmployeeName.value.isNotEmpty
-                                    ? Colors.black
-                                    : Colors.grey[600],
-                            fontWeight: FontWeight.bold,
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedEmployeeName.isNotEmpty ? _selectedEmployeeName : 'Sélectionner un employé',
+                        style: TextStyle(
+                          color: _selectedEmployeeName.isNotEmpty ? Colors.black : Colors.grey[600],
+                          fontWeight: FontWeight.bold,
                         ),
-                        if (controller
-                            .selectedEmployeeEmail
-                            .value
-                            .isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            controller.selectedEmployeeEmail.value,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                      ),
+                      if (_selectedEmployeeEmail.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(_selectedEmployeeEmail, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // Période
               Row(
                 children: [
                   Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<String>(
-                        value:
-                            controller.selectedMonthForm.value.isNotEmpty
-                                ? controller.selectedMonthForm.value
-                                : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Mois *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_month),
-                        ),
-                        items:
-                            controller.months.map<DropdownMenuItem<String>>((
-                              month,
-                            ) {
-                              return DropdownMenuItem<String>(
-                                value: month['value'] as String,
-                                child: Text(month['label'] as String),
-                              );
-                            }).toList(),
-                        onChanged: (value) => controller.selectMonth(value!),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Le mois est obligatoire';
-                          }
-                          return null;
-                        },
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedMonth.isNotEmpty ? _selectedMonth : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Mois *',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_month),
                       ),
+                      items: _months.map<DropdownMenuItem<String>>((m) {
+                        return DropdownMenuItem<String>(
+                          value: m['value'] as String,
+                          child: Text(m['label'] as String),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) setState(() => _selectedMonth = value);
+                      },
+                      validator: (v) => v == null || v.isEmpty ? 'Le mois est obligatoire' : null,
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Obx(
-                      () => DropdownButtonFormField<int>(
-                        value: controller.selectedYearForm.value,
-                        decoration: const InputDecoration(
-                          labelText: 'Année *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today),
-                        ),
-                        items:
-                            controller.years.map<DropdownMenuItem<int>>((year) {
-                              return DropdownMenuItem<int>(
-                                value: year,
-                                child: Text(year.toString()),
-                              );
-                            }).toList(),
-                        onChanged: (value) => controller.selectYear(value!),
-                        validator: (value) {
-                          if (value == null) {
-                            return 'L\'année est obligatoire';
-                          }
-                          return null;
-                        },
+                    child: DropdownButtonFormField<int>(
+                      value: _selectedYear,
+                      decoration: const InputDecoration(
+                        labelText: 'Année *',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today),
                       ),
+                      items: _years.map<DropdownMenuItem<int>>((y) {
+                        return DropdownMenuItem<int>(value: y, child: Text(y.toString()));
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) setState(() => _selectedYear = value);
+                      },
+                      validator: (v) => v == null ? "L'année est obligatoire" : null,
                     ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
-              // Détails du salaire
               _buildSectionTitle('Détails du salaire'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.baseSalaryController,
+                controller: _baseSalaryController,
                 decoration: const InputDecoration(
                   labelText: 'Salaire de base (fcfa) *',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.account_balance_wallet),
                 ),
                 keyboardType: TextInputType.number,
-                onChanged: (_) => controller.updateNetSalary(),
+                onChanged: (_) => _updateNetSalary(),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Le salaire de base est obligatoire';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'Le salaire doit être un nombre';
-                  }
-                  if (double.parse(value) <= 0) {
-                    return 'Le salaire doit être positif';
-                  }
+                  if (value == null || value.trim().isEmpty) return 'Le salaire de base est obligatoire';
+                  if (double.tryParse(value) == null) return 'Le salaire doit être un nombre';
+                  if (double.parse(value) <= 0) return 'Le salaire doit être positif';
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.bonusController,
+                controller: _bonusController,
                 decoration: const InputDecoration(
                   labelText: 'Prime (fcfa)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.star),
                 ),
                 keyboardType: TextInputType.number,
-                onChanged: (_) => controller.updateNetSalary(),
+                onChanged: (_) => _updateNetSalary(),
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.deductionsController,
+                controller: _deductionsController,
                 decoration: const InputDecoration(
                   labelText: 'Déductions (fcfa)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.remove_circle),
                 ),
                 keyboardType: TextInputType.number,
-                onChanged: (_) => controller.updateNetSalary(),
+                onChanged: (_) => _updateNetSalary(),
               ),
-
               const SizedBox(height: 16),
-
-              // Calcul automatique du salaire net
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.blue[50],
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
+                  border: Border.all(color: Colors.blue.shade200),
                 ),
                 child: Column(
                   children: [
@@ -233,86 +244,56 @@ class _SalaryFormState extends State<SalaryForm> {
                     const SizedBox(height: 8),
                     const Text(
                       'Salaire net calculé',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.blue, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
-                    Obx(
-                      () => Text(
-                        NumberFormat.currency(
-                          locale: 'fr_FR',
-                          symbol: 'fcfa',
-                        ).format(controller.netSalary.value),
-                        style: const TextStyle(
-                          fontSize: 24,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    Text(
+                      NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa').format(_netSalary),
+                      style: const TextStyle(fontSize: 24, color: Colors.blue, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Justificatifs
               _buildSectionTitle('Justificatifs'),
               const SizedBox(height: 16),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Fichiers justificatifs',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Fichiers justificatifs', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
-                      Obx(() {
-                        if (controller.selectedFiles.isEmpty) {
-                          return const Text('Aucun fichier sélectionné.');
-                        }
-                        return ListView.builder(
+                      if (_selectedFiles.isEmpty)
+                        const Text('Aucun fichier sélectionné.')
+                      else
+                        ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          itemCount: controller.selectedFiles.length,
+                          itemCount: _selectedFiles.length,
                           itemBuilder: (context, index) {
-                            final file = controller.selectedFiles[index];
-                            final String fileName =
-                                file['name'] ?? 'Fichier inconnu';
-                            final String fileType = file['type'] ?? 'document';
-                            final int fileSize = file['size'] ?? 0;
-
+                            final file = _selectedFiles[index];
+                            final name = file['name'] ?? 'Fichier';
+                            final type = file['type'] ?? 'document';
+                            final size = file['size'] ?? 0;
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               child: ListTile(
-                                leading: Icon(_getFileIcon(fileType)),
-                                title: Text(fileName),
-                                subtitle: Text(_formatFileSize(fileSize)),
+                                leading: Icon(_getFileIcon(type)),
+                                title: Text(name),
+                                subtitle: Text(_formatFileSize(size)),
                                 trailing: IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                  ),
-                                  onPressed: () => controller.removeFile(index),
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => setState(() => _selectedFiles.removeAt(index)),
                                 ),
                               ),
                             );
                           },
-                        );
-                      }),
+                        ),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
-                        onPressed: () => controller.selectFiles(),
+                        onPressed: _selectFiles,
                         icon: const Icon(Icons.attach_file),
                         label: const Text('Ajouter des justificatifs'),
                         style: ElevatedButton.styleFrom(
@@ -325,15 +306,11 @@ class _SalaryFormState extends State<SalaryForm> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Notes
               _buildSectionTitle('Informations supplémentaires'),
               const SizedBox(height: 16),
-
               TextFormField(
-                controller: controller.notesController,
+                controller: _notesController,
                 decoration: const InputDecoration(
                   labelText: 'Notes',
                   border: OutlineInputBorder(),
@@ -342,17 +319,12 @@ class _SalaryFormState extends State<SalaryForm> {
                 ),
                 maxLines: 3,
               ),
-
               const SizedBox(height: 32),
-
-              // Boutons d'action uniformes
-              Obx(
-                () => UniformFormButtons(
-                  onCancel: () => Get.back(),
-                  onSubmit: () => _saveSalary(controller),
-                  submitText: 'Soumettre',
-                  isLoading: controller.isLoading.value,
-                ),
+              UniformFormButtons(
+                onCancel: () => context.pop(),
+                onSubmit: _saveSalary,
+                submitText: 'Soumettre',
+                isLoading: isLoading,
               ),
             ],
           ),
@@ -364,11 +336,7 @@ class _SalaryFormState extends State<SalaryForm> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: Colors.deepPurple,
-      ),
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple),
     );
   }
 
@@ -384,145 +352,144 @@ class _SalaryFormState extends State<SalaryForm> {
   }
 
   String _formatFileSize(int bytes) {
-    if (bytes < 1024) {
-      return '$bytes B';
-    } else if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    } else {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _selectFiles() async {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sélection de fichiers à brancher (optionnel)')),
+      );
     }
   }
 
-  void _saveSalary(SalaryController controller) async {
-    // Valider le formulaire avant de soumettre
-    if (!_formKey.currentState!.validate()) {
-      Get.snackbar(
-        'Erreur de validation',
-        'Veuillez remplir tous les champs obligatoires',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
+  void _showEmployeeDialog(List<Map<String, dynamic>> employees) {
+    if (employees.isEmpty) {
+      ref.read(salaryProvider.notifier).loadEmployees();
     }
-
-    // Vérifier que l'employé est sélectionné
-    if (controller.selectedEmployeeId.value == 0 ||
-        controller.selectedEmployeeName.value.isEmpty) {
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner un employé',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    // Vérifier que le mois est sélectionné
-    if (controller.selectedMonthForm.value.isEmpty) {
-      Get.snackbar(
-        'Erreur',
-        'Veuillez sélectionner un mois',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
-    bool success = false;
-    if (widget.salary == null) {
-      success = await controller.createSalary();
-    } else {
-      success = await controller.updateSalary(widget.salary!);
-    }
-
-    // Rediriger vers la page de liste seulement en cas de succès
-    if (success) {
-      // Attendre un peu pour que le snackbar de succès s'affiche
-      await Future.delayed(const Duration(milliseconds: 500));
-      Get.offNamed('/salaries');
-      // Note: loadSalaries() est déjà appelé dans createSalary() et updateSalary()
-    }
-    // Si erreur, ne pas fermer pour permettre à l'utilisateur de corriger
-  }
-
-  void _showEmployeeDialog(SalaryController controller) {
-    // Recharger les employés si la liste est vide
-    if (controller.employees.isEmpty) {
-      controller.loadEmployees();
-    }
-    
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Sélectionner un employé'),
         content: SizedBox(
           width: double.maxFinite,
           height: 300,
-          child: Obx(() {
-            if (controller.employees.isEmpty) {
-              return const Center(child: Text('Aucun employé disponible'));
-            }
-
-            return ListView.builder(
-              itemCount: controller.employees.length,
-              itemBuilder: (context, index) {
-                final employee = controller.employees[index];
-                final employeeName =
-                    employee['name'] ??
-                    '${employee['first_name'] ?? ''} ${employee['last_name'] ?? ''}'
-                        .trim();
-                final employeeEmail = employee['email'] ?? '';
-                final employeePosition = employee['position'] ?? '';
-                final employeeDepartment = employee['department'] ?? '';
-                final employeeSalary = employee['salary'];
-                final salaryText =
-                    employeeSalary != null
-                        ? 'Salaire: ${NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa', decimalDigits: 0).format(employeeSalary is String ? double.tryParse(employeeSalary) ?? 0 : (employeeSalary is num ? employeeSalary.toDouble() : 0))}'
-                        : '';
-
-                return ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.person)),
-                  title: Text(employeeName),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (employeeEmail.isNotEmpty) Text(employeeEmail),
-                      if (employeePosition.isNotEmpty ||
-                          employeeDepartment.isNotEmpty)
-                        Text(
-                          '${employeePosition.isNotEmpty ? employeePosition : ''}${employeePosition.isNotEmpty && employeeDepartment.isNotEmpty ? ' - ' : ''}${employeeDepartment.isNotEmpty ? employeeDepartment : ''}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      if (salaryText.isNotEmpty)
-                        Text(
-                          salaryText,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                    ],
-                  ),
-                  isThreeLine: true,
-                  onTap: () {
-                    controller.selectEmployee(employee);
-                    Get.back();
+          child: employees.isEmpty
+              ? const Center(child: Text('Chargement...'))
+              : ListView.builder(
+                  itemCount: employees.length,
+                  itemBuilder: (context, index) {
+                    final e = employees[index];
+                    final name = e['name'] ?? '${e['first_name'] ?? ''} ${e['last_name'] ?? ''}'.trim();
+                    final email = e['email'] ?? '';
+                    final id = e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0;
+                    return ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person)),
+                      title: Text(name),
+                      subtitle: Text(email),
+                      onTap: () {
+                        setState(() {
+                          _selectedEmployeeId = id;
+                          _selectedEmployeeName = name;
+                          _selectedEmployeeEmail = email;
+                        });
+                        Navigator.pop(ctx);
+                      },
+                    );
                   },
-                );
-              },
-            );
-          }),
+                ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _saveSalary() async {
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez remplir tous les champs obligatoires')),
+      );
+      return;
+    }
+    if (_selectedEmployeeId == 0 || _selectedEmployeeName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez sélectionner un employé')),
+      );
+      return;
+    }
+    if (_selectedMonth.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez sélectionner un mois')),
+      );
+      return;
+    }
+
+    final base = double.tryParse(_baseSalaryController.text.trim()) ?? 0;
+    final bonus = double.tryParse(_bonusController.text.trim()) ?? 0;
+    final ded = double.tryParse(_deductionsController.text.trim()) ?? 0;
+    final net = base + bonus - ded;
+    const justificatifs = <String>[];
+
+    final notifier = ref.read(salaryProvider.notifier);
+
+    if (widget.salary == null) {
+      final salary = Salary(
+        employeeId: _selectedEmployeeId,
+        employeeName: _selectedEmployeeName,
+        employeeEmail: _selectedEmployeeEmail,
+        baseSalary: base,
+        bonus: bonus,
+        deductions: ded,
+        netSalary: net,
+        month: _selectedMonth,
+        year: _selectedYear,
+        status: 'pending',
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+        justificatifs: justificatifs,
+      );
+      final created = await notifier.createSalary(salary);
+      if (!mounted) return;
+      if (created != null) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        context.go('/salaries');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de l\'enregistrement du salaire')),
+        );
+      }
+    } else {
+      final salary = Salary(
+        id: widget.salary!.id,
+        employeeId: _selectedEmployeeId,
+        employeeName: _selectedEmployeeName,
+        employeeEmail: _selectedEmployeeEmail,
+        baseSalary: base,
+        bonus: bonus,
+        deductions: ded,
+        netSalary: net,
+        month: _selectedMonth,
+        year: _selectedYear,
+        status: widget.salary!.status ?? 'pending',
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+        justificatifs: justificatifs,
+      );
+      final success = await notifier.updateSalary(salary);
+      if (!mounted) return;
+      if (success) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        context.go('/salaries');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la mise à jour du salaire')),
+        );
+      }
+    }
   }
 }

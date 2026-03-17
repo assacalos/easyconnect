@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/services/invoice_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
@@ -11,38 +10,51 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class InvoiceController extends GetxController {
+InvoiceModel? _firstWhereInvoice(List<InvoiceModel> list, bool Function(InvoiceModel) test) {
+  try {
+    return list.firstWhere(test);
+  } catch (_) {
+    return null;
+  }
+}
+
+class InvoiceController {
+  static final InvoiceController _instance = InvoiceController._();
+  static InvoiceController get to => _instance;
+  factory InvoiceController() => _instance;
+  InvoiceController._();
+
   final InvoiceService _invoiceService = InvoiceService.to;
-  final AuthController _authController = Get.find<AuthController>();
   final ClientService _clientService = ClientService();
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxBool isCreating = false.obs;
-  final RxBool isSubmitting = false.obs;
-  final RxList<InvoiceModel> invoices = <InvoiceModel>[].obs;
-  final RxList<InvoiceModel> pendingInvoices = <InvoiceModel>[].obs;
-  final Rx<InvoiceStats?> invoiceStats = Rx<InvoiceStats?>(null);
-  final RxList<InvoiceTemplate> templates = <InvoiceTemplate>[].obs;
+  // Variables
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool isCreating = false;
+  bool isSubmitting = false;
+  final List<InvoiceModel> invoices = [];
+  final List<InvoiceModel> pendingInvoices = [];
+  InvoiceStats? invoiceStats;
+  final List<InvoiceTemplate> templates = [];
 
   // Variables pour la gestion des clients validés
-  final RxList<Client> availableClients = <Client>[].obs;
-  final RxBool isLoadingClients = false.obs;
-  final Rx<Client?> selectedClient = Rx<Client?>(null);
+  final List<Client> availableClients = [];
+  bool isLoadingClients = false;
+  Client? selectedClient;
 
   // Variables pour le formulaire de création
-  final RxInt selectedClientId = 0.obs;
-  final RxString selectedClientName = ''.obs;
-  final RxString selectedClientEmail = ''.obs;
-  final RxString selectedClientAddress = ''.obs;
-  final RxList<InvoiceItem> invoiceItems = <InvoiceItem>[].obs;
-  final RxDouble taxRate = 20.0.obs; // Taux de TVA par défaut
-  final RxString notes = ''.obs;
-  final RxString terms = ''.obs;
-  final Rx<DateTime> invoiceDate = DateTime.now().obs;
-  final Rx<DateTime> dueDate = DateTime.now().add(const Duration(days: 30)).obs;
+  int selectedClientId = 0;
+  String selectedClientName = '';
+  String selectedClientEmail = '';
+  String selectedClientAddress = '';
+  final List<InvoiceItem> invoiceItems = [];
+  double taxRate = 20.0;
+  String notes = '';
+  String terms = '';
+  DateTime invoiceDate = DateTime.now();
+  DateTime dueDate = DateTime.now().add(const Duration(days: 30));
 
   // Contrôleurs de formulaire
   final TextEditingController clientNameController = TextEditingController();
@@ -52,38 +64,33 @@ class InvoiceController extends GetxController {
   final TextEditingController termsController = TextEditingController();
   final TextEditingController invoiceNumberController = TextEditingController();
 
-  // Référence générée automatiquement
-  final generatedInvoiceNumber = ''.obs;
+  String generatedInvoiceNumber = '';
 
   // Variables pour les filtres
-  final RxString selectedStatus = 'all'.obs;
-  final Rx<DateTime?> startDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> endDate = Rx<DateTime?>(null);
-  final RxString searchQuery = ''.obs;
+  String selectedStatus = 'all';
+  DateTime? startDate;
+  DateTime? endDate;
+  String searchQuery = '';
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      loadInvoices();
-      loadTemplates();
-      // Générer automatiquement le numéro de facture au démarrage
+  /// À appeler au premier affichage.
+  void ensureInitialized() {
+    loadInvoices();
+    loadTemplates();
+    if (generatedInvoiceNumber.isEmpty) {
       initializeGeneratedReference();
-    });
+    }
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     clientNameController.dispose();
     clientEmailController.dispose();
@@ -91,7 +98,6 @@ class InvoiceController extends GetxController {
     notesController.dispose();
     termsController.dispose();
     invoiceNumberController.dispose();
-    super.onClose();
   }
 
   // Générer automatiquement le numéro de facture
@@ -113,67 +119,71 @@ class InvoiceController extends GetxController {
     );
   }
 
-  // Initialiser la référence générée
   Future<void> initializeGeneratedReference() async {
-    if (generatedInvoiceNumber.value.isEmpty) {
-      generatedInvoiceNumber.value = await generateInvoiceNumber();
-      invoiceNumberController.text = generatedInvoiceNumber.value;
+    if (generatedInvoiceNumber.isEmpty) {
+      generatedInvoiceNumber = await generateInvoiceNumber();
+      invoiceNumberController.text = generatedInvoiceNumber;
     }
   }
 
   // Charger les factures
-  Future<void> loadInvoices({int page = 1}) async {
+  Future<void> loadInvoices({int page = 1, bool forceRefresh = false}) async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
 
-      final cacheKey = 'invoices_${user.role}_${selectedStatus.value}';
-      final statusParam = selectedStatus.value != 'all' ? selectedStatus.value : null;
+      final cacheKey = 'invoices_${user.role}_${selectedStatus}';
+      final statusParam = selectedStatus != 'all' ? selectedStatus : null;
       final commercialIdParam = (user.role == 1 || user.role == 6) ? null : user.id;
 
       if (page == 1) {
-        final hiveList = InvoiceService.getCachedFactures(statusParam, commercialIdParam);
-        if (hiveList.isNotEmpty) {
-          invoices.assignAll(hiveList);
-          isLoading.value = false;
-          Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
-          return;
+        if (!forceRefresh) {
+          final hiveList = InvoiceService.getCachedFactures(statusParam, commercialIdParam);
+          if (hiveList.isNotEmpty) {
+            invoices.clear();
+            invoices.addAll(hiveList);
+            isLoading = false;
+            Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
+            return;
+          }
+          final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
+          if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
+            invoices.clear();
+            invoices.addAll(cachedInvoices);
+            isLoading = false;
+            Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
+            return;
+          }
         }
-        final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
-        if (cachedInvoices != null && cachedInvoices.isNotEmpty) {
-          invoices.assignAll(cachedInvoices);
-          isLoading.value = false;
-          Future.microtask(() => _refreshInvoicesFromApi(cacheKey, statusParam, commercialIdParam));
-          return;
-        }
-        invoices.value = [];
-        isLoading.value = true;
+        invoices.clear();
+        isLoading = true;
       } else if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         // Utiliser la méthode paginée
         final paginatedResponse = await _invoiceService.getInvoicesPaginated(
-          startDate: startDate.value,
-          endDate: endDate.value,
-          status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+          startDate: startDate,
+          endDate: endDate,
+          status: selectedStatus != 'all' ? selectedStatus : null,
           commercialId: (user.role == 1 || user.role == 6) ? null : user.id,
           page: page,
-          perPage: perPage.value,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          perPage: perPage,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          invoices.value = paginatedResponse.data;
+          invoices.clear();
+          invoices.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           invoices.addAll(paginatedResponse.data);
@@ -200,9 +210,9 @@ class InvoiceController extends GetxController {
         try {
           // OPTIMISATION : Limiter le fallback à 1000 factures max pour éviter la saturation mémoire
           final loadedInvoices = await _invoiceService.getAllInvoices(
-            startDate: startDate.value,
-            endDate: endDate.value,
-            status: selectedStatus.value != 'all' ? selectedStatus.value : null,
+            startDate: startDate,
+            endDate: endDate,
+            status: selectedStatus != 'all' ? selectedStatus : null,
             commercialId: (user.role == 1 || user.role == 6) ? null : user.id,
           );
 
@@ -210,7 +220,8 @@ class InvoiceController extends GetxController {
           final limitedInvoices = loadedInvoices.take(1000).toList();
 
           if (page == 1) {
-            invoices.value = limitedInvoices;
+            invoices.clear();
+            invoices.addAll(limitedInvoices);
           } else {
             invoices.addAll(limitedInvoices);
           }
@@ -229,12 +240,14 @@ class InvoiceController extends GetxController {
           if (page > 1 || invoices.isEmpty) {
             final hiveList = InvoiceService.getCachedFactures();
             if (hiveList.isNotEmpty) {
-              invoices.assignAll(hiveList);
+              invoices.clear();
+              invoices.addAll(hiveList);
               return;
             }
             final fallbackCache = CacheHelper.get<List<InvoiceModel>>('invoices_all');
             if (fallbackCache != null && fallbackCache.isNotEmpty) {
-              invoices.value = fallbackCache;
+              invoices.clear();
+              invoices.addAll(fallbackCache);
               return;
             }
             rethrow;
@@ -254,23 +267,22 @@ class InvoiceController extends GetxController {
           final cacheKey = 'invoices_all';
           final cachedInvoices = CacheHelper.get<List<InvoiceModel>>(cacheKey);
           if (cachedInvoices == null || cachedInvoices.isEmpty) {
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Erreur',
               'Impossible de charger les factures: ${e.toString()}',
-              snackPosition: SnackPosition.BOTTOM,
               backgroundColor: Colors.red,
               colorText: Colors.white,
               duration: const Duration(seconds: 4),
             );
           } else {
-            // Charger les données du cache si disponibles
-            invoices.value = cachedInvoices;
+            invoices.clear();
+            invoices.addAll(cachedInvoices);
           }
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
@@ -281,31 +293,32 @@ class InvoiceController extends GetxController {
     int? commercialIdParam,
   ) async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
-      final currentStatus = selectedStatus.value != 'all' ? selectedStatus.value : null;
+      final currentStatus = selectedStatus != 'all' ? selectedStatus : null;
       final currentCommercialId = (user.role == 1 || user.role == 6) ? null : user.id;
       if (currentStatus != statusParam || currentCommercialId != commercialIdParam) return;
 
       final paginatedResponse = await _invoiceService.getInvoicesPaginated(
-        startDate: startDate.value,
-        endDate: endDate.value,
+        startDate: startDate,
+        endDate: endDate,
         status: statusParam,
         commercialId: commercialIdParam,
         page: 1,
-        perPage: perPage.value,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        perPage: perPage,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
       );
-      final stillSameStatus = (selectedStatus.value != 'all' ? selectedStatus.value : null) == statusParam;
+      final stillSameStatus = (selectedStatus != 'all' ? selectedStatus : null) == statusParam;
       final stillSameCommercial = (user.role == 1 || user.role == 6) ? commercialIdParam == null : commercialIdParam == user.id;
       if (!stillSameStatus || !stillSameCommercial) return;
 
-      invoices.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      invoices.clear();
+      invoices.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
       CacheHelper.set(cacheKey, paginatedResponse.data);
       loadInvoiceStats().catchError((_) {});
     } catch (_) {}
@@ -313,49 +326,50 @@ class InvoiceController extends GetxController {
 
   /// Chargement de la page suivante au scroll (appelé par la vue).
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value) {
-      loadInvoices(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading) {
+      loadInvoices(page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
-      loadInvoices(page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading) {
+      loadInvoices(page: currentPage - 1);
     }
   }
 
   // Charger les factures en attente (pour le patron)
   Future<void> loadPendingInvoices() async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null || (user.role != 1 && user.role != 6))
         return; // Seulement pour le patron ou admin
 
       final pendingList = await _invoiceService.getPendingInvoices();
-      pendingInvoices.value = pendingList;
+      pendingInvoices.clear();
+      pendingInvoices.addAll(pendingList);
     } catch (e) {}
   }
 
   // Charger les statistiques
   Future<void> loadInvoiceStats() async {
     try {
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
 
       final stats = await _invoiceService.getInvoiceStats(
-        startDate: startDate.value,
-        endDate: endDate.value,
+        startDate: startDate,
+        endDate: endDate,
         commercialId: (user.role != 1 && user.role != 6) ? user.id : null,
       );
-      invoiceStats.value = stats;
+      invoiceStats = stats;
     } catch (e) {}
   }
 
@@ -363,29 +377,29 @@ class InvoiceController extends GetxController {
   Future<void> loadTemplates() async {
     try {
       final templatesList = await _invoiceService.getInvoiceTemplates();
-      templates.value = templatesList;
+      templates.clear();
+      templates.addAll(templatesList);
     } catch (e) {}
   }
 
   // Créer une facture
   Future<bool> createInvoice() async {
-    if (isCreating.value) return false;
+    if (isCreating) return false;
     bool successReturned = false;
     try {
-      isCreating.value = true;
+      isCreating = true;
 
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) {
-        Get.snackbar('Erreur', 'Utilisateur non connecté');
+        errorHelperShowSnackbar?.call('Erreur', 'Utilisateur non connecté');
         return false;
       }
 
       // Vérifier qu'un client validé est sélectionné
-      if (selectedClient.value == null) {
-        Get.snackbar(
+      if (selectedClient == null) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Veuillez sélectionner un client validé',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -393,11 +407,10 @@ class InvoiceController extends GetxController {
       }
 
       // Vérifier que le client sélectionné est bien validé
-      if (selectedClient.value!.status != 1) {
-        Get.snackbar(
+      if (selectedClient!.status != 1) {
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Seuls les clients validés peuvent être sélectionnés',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -405,23 +418,23 @@ class InvoiceController extends GetxController {
       }
 
       if (invoiceItems.isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez ajouter au moins un article');
+        errorHelperShowSnackbar?.call('Erreur', 'Veuillez ajouter au moins un article');
         return false;
       }
 
       final result = await _invoiceService.createInvoice(
-        clientId: selectedClient.value!.id!,
+        clientId: selectedClient!.id!,
         clientName:
-            '${selectedClient.value!.nom ?? ''} ${selectedClient.value!.prenom ?? ''}'
+            '${selectedClient!.nom ?? ''} ${selectedClient!.prenom ?? ''}'
                 .trim(),
-        clientEmail: selectedClient.value!.email ?? '',
-        clientAddress: selectedClient.value!.adresse ?? '',
+        clientEmail: selectedClient!.email ?? '',
+        clientAddress: selectedClient!.adresse ?? '',
         commercialId: user.id,
         commercialName: user.nom ?? 'Comptable',
-        invoiceDate: invoiceDate.value,
-        dueDate: dueDate.value,
+        invoiceDate: invoiceDate,
+        dueDate: dueDate,
         items: invoiceItems,
-        taxRate: taxRate.value,
+        taxRate: taxRate,
         notes:
             notesController.text.trim().isEmpty
                 ? null
@@ -451,13 +464,12 @@ class InvoiceController extends GetxController {
         clearForm();
 
         // Mettre isCreating à false immédiatement pour permettre la fermeture du formulaire
-        isCreating.value = false;
+        isCreating = false;
 
         // Afficher le message de succès
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           result['message'] ?? 'Facture créée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
           duration: const Duration(seconds: 2),
@@ -477,10 +489,9 @@ class InvoiceController extends GetxController {
         successReturned = true;
         return true;
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la création de la facture',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
@@ -505,23 +516,19 @@ class InvoiceController extends GetxController {
         errorMessage = errorMessage.substring(11);
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
-        maxWidth: 400,
-        isDismissible: true,
-        shouldIconPulse: true,
       );
       return false;
     } finally {
       // Ne pas mettre isCreating à false ici si on a déjà réussi
       // (il a été mis à false dans le bloc de succès pour fermer le formulaire plus vite)
       if (!successReturned) {
-        isCreating.value = false;
+        isCreating = false;
       }
     }
   }
@@ -529,14 +536,14 @@ class InvoiceController extends GetxController {
   // Soumettre une facture au patron
   Future<void> submitInvoiceToPatron(int invoiceId) async {
     try {
-      isSubmitting.value = true;
+      isSubmitting = true;
 
       final result = await _invoiceService.submitInvoiceToPatron(invoiceId);
 
       if (result['success'] == true) {
-        Get.snackbar('Succès', 'Facture soumise au patron');
+        errorHelperShowSnackbar?.call('Succès', 'Facture soumise au patron');
         // Notifier de manière asynchrone (non-bloquant)
-        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId);
+        final invoice = _firstWhereInvoice(invoices, (i) => i.id == invoiceId);
         if (invoice != null) {
           NotificationHelper.notifySubmission(
             entityType: 'facture',
@@ -554,15 +561,15 @@ class InvoiceController extends GetxController {
         await loadInvoices();
         await loadPendingInvoices();
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la soumission',
         );
       }
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la soumission: $e');
     } finally {
-      isSubmitting.value = false;
+      isSubmitting = false;
     }
   }
 
@@ -573,7 +580,7 @@ class InvoiceController extends GetxController {
         'Approbation de la facture: $invoiceId',
         tag: 'INVOICE_CONTROLLER',
       );
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('invoices_');
@@ -668,10 +675,9 @@ class InvoiceController extends GetxController {
           result['success'] == 'true';
 
       if (isSuccess) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           result['message'] ?? 'Facture approuvée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
           duration: const Duration(seconds: 2),
@@ -700,8 +706,7 @@ class InvoiceController extends GetxController {
         // Recharger les données en arrière-plan pour synchroniser avec le serveur
         // Mais garder la mise à jour optimiste pour que la facture reste visible
         // Forcer le chargement de toutes les factures (status: null)
-        selectedStatus.value =
-            'all'; // Forcer le chargement de toutes les factures
+        selectedStatus = 'all'; // Forcer le chargement de toutes les factures
         Future.delayed(const Duration(milliseconds: 500), () async {
           await loadInvoices();
           await loadPendingInvoices();
@@ -711,10 +716,9 @@ class InvoiceController extends GetxController {
         await loadInvoices();
         await loadPendingInvoices();
         // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Attention',
           'La validation peut avoir réussi. Veuillez vérifier.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
       }
@@ -728,16 +732,15 @@ class InvoiceController extends GetxController {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadInvoices();
       await loadPendingInvoices();
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible d\'approuver la facture: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -748,7 +751,7 @@ class InvoiceController extends GetxController {
         'Rejet de la facture: $invoiceId',
         tag: 'INVOICE_CONTROLLER',
       );
-      isLoading.value = true;
+      isLoading = true;
 
       // Mise à jour optimiste : retirer des pending, mettre à jour statut dans la liste principale
       final pendingIndex = pendingInvoices.indexWhere((i) => i.id == invoiceId);
@@ -796,14 +799,13 @@ class InvoiceController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Facture rejetée',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.orange,
           colorText: Colors.white,
         );
-        final invoice = invoices.firstWhereOrNull((i) => i.id == invoiceId) ?? originalInvoice;
+        final invoice = _firstWhereInvoice(invoices, (i) => i.id == invoiceId) ?? originalInvoice;
         if (invoice != null) {
           NotificationHelper.notifyRejection(
             entityType: 'facture',
@@ -824,10 +826,9 @@ class InvoiceController extends GetxController {
         loadInvoices().catchError((_) {});
         loadPendingInvoices().catchError((_) {});
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors du rejet',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -839,16 +840,15 @@ class InvoiceController extends GetxController {
         error: e,
         stackTrace: stackTrace,
       );
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors du rejet: $e',
-        snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -890,7 +890,7 @@ class InvoiceController extends GetxController {
       invoiceItems.fold(0.0, (sum, item) => sum + item.totalPrice);
 
   // Calculer le montant de la TVA
-  double get taxAmount => subtotal * (taxRate.value / 100);
+  double get taxAmount => subtotal * (taxRate / 100);
 
   // Calculer le total
   double get totalAmount => subtotal + taxAmount;
@@ -902,10 +902,10 @@ class InvoiceController extends GetxController {
     required String clientEmail,
     required String clientAddress,
   }) {
-    selectedClientId.value = clientId;
-    selectedClientName.value = clientName;
-    selectedClientEmail.value = clientEmail;
-    selectedClientAddress.value = clientAddress;
+    selectedClientId = clientId;
+    selectedClientName = clientName;
+    selectedClientEmail = clientEmail;
+    selectedClientAddress = clientAddress;
 
     clientNameController.text = clientName;
     clientEmailController.text = clientEmail;
@@ -914,16 +914,16 @@ class InvoiceController extends GetxController {
 
   // Réinitialiser le formulaire
   void resetForm() {
-    selectedClientId.value = 0;
-    selectedClientName.value = '';
-    selectedClientEmail.value = '';
-    selectedClientAddress.value = '';
+    selectedClientId = 0;
+    selectedClientName = '';
+    selectedClientEmail = '';
+    selectedClientAddress = '';
     invoiceItems.clear();
-    taxRate.value = 20.0;
-    notes.value = '';
-    terms.value = '';
-    invoiceDate.value = DateTime.now();
-    dueDate.value = DateTime.now().add(const Duration(days: 30));
+    taxRate = 20.0;
+    notes = '';
+    terms = '';
+    invoiceDate = DateTime.now();
+    dueDate = DateTime.now().add(const Duration(days: 30));
 
     clientNameController.clear();
     clientEmailController.clear();
@@ -939,10 +939,10 @@ class InvoiceController extends GetxController {
     DateTime? end,
     String? search,
   }) {
-    selectedStatus.value = status ?? 'all';
-    startDate.value = start;
-    endDate.value = end;
-    searchQuery.value = search ?? '';
+    selectedStatus = status ?? 'all';
+    startDate = start;
+    endDate = end;
+    searchQuery = search ?? '';
     loadInvoices();
   }
 
@@ -965,7 +965,8 @@ class InvoiceController extends GetxController {
       return b.createdAt.compareTo(a.createdAt);
     });
 
-    invoices.value = sortedInvoices;
+    invoices.clear();
+    invoices.addAll(sortedInvoices);
   }
 
   // Obtenir le statut de la facture
@@ -998,69 +999,71 @@ class InvoiceController extends GetxController {
 
   // Vérifier si l'utilisateur peut approuver
   bool get canApproveInvoices {
-    final user = _authController.userAuth.value;
+    final user = AuthController.to.userAuth;
     return user?.role == 1 || user?.role == 6; // Patron ou Admin
   }
 
   // Vérifier si l'utilisateur peut soumettre
   bool get canSubmitInvoices {
-    final user = _authController.userAuth.value;
+    final user = AuthController.to.userAuth;
     return user?.role == 3; // Comptable
   }
 
   // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
-    isLoadingClients.value = true;
+    isLoadingClients = true;
     final cached = ClientService.getCachedClients(1);
     if (cached.isNotEmpty) {
-      availableClients.assignAll(cached);
-      isLoadingClients.value = false;
+      availableClients.clear();
+      availableClients.addAll(cached);
+      isLoadingClients = false;
     } else {
-      availableClients.value = [];
+      availableClients.clear();
     }
     try {
       final clients = await _clientService.getClients(status: 1);
-      availableClients.assignAll(clients);
+      availableClients.clear();
+      availableClients.addAll(clients);
     } catch (e) {
       if (availableClients.isEmpty) {
         final fallback = ClientService.getCachedClients(1);
         if (fallback.isNotEmpty) {
-          availableClients.assignAll(fallback);
+          availableClients.clear();
+          availableClients.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les clients validés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoadingClients.value = false;
+      isLoadingClients = false;
     }
   }
 
   // Sélection d'un client
   void selectClientForInvoice(Client client) {
-    selectedClient.value = client;
-    selectedClientId.value = client.id!;
-    selectedClientName.value =
+    selectedClient = client;
+    selectedClientId = client.id!;
+    selectedClientName =
         '${client.nom ?? ''} ${client.prenom ?? ''}'.trim();
-    selectedClientEmail.value = client.email ?? '';
-    selectedClientAddress.value = client.adresse ?? '';
+    selectedClientEmail = client.email ?? '';
+    selectedClientAddress = client.adresse ?? '';
 
     // Mettre à jour les contrôleurs de formulaire pour l'affichage
-    clientNameController.text = selectedClientName.value;
-    clientEmailController.text = selectedClientEmail.value;
-    clientAddressController.text = selectedClientAddress.value;
+    clientNameController.text = selectedClientName;
+    clientEmailController.text = selectedClientEmail;
+    clientAddressController.text = selectedClientAddress;
   }
 
   // Effacer la sélection du client
   void clearSelectedClient() {
-    selectedClient.value = null;
-    selectedClientId.value = 0;
-    selectedClientName.value = '';
-    selectedClientEmail.value = '';
-    selectedClientAddress.value = '';
+    selectedClient = null;
+    selectedClientId = 0;
+    selectedClientName = '';
+    selectedClientEmail = '';
+    selectedClientAddress = '';
 
     // Effacer les contrôleurs de formulaire
     clientNameController.clear();
@@ -1072,9 +1075,9 @@ class InvoiceController extends GetxController {
   void clearForm() {
     clearSelectedClient();
     invoiceItems.clear();
-    notes.value = '';
-    terms.value = '';
-    generatedInvoiceNumber.value = '';
+    notes = '';
+    terms = '';
+    generatedInvoiceNumber = '';
     invoiceNumberController.clear();
     // Régénérer une nouvelle référence
     initializeGeneratedReference();
@@ -1083,7 +1086,7 @@ class InvoiceController extends GetxController {
   /// Générer un PDF pour une facture
   Future<void> generatePDF(int invoiceId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Récupérer la facture depuis la liste ou depuis l'API si pas trouvée
       InvoiceModel invoice;
@@ -1166,7 +1169,7 @@ class InvoiceController extends GetxController {
         },
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'PDF généré avec succès',
         backgroundColor: Colors.green,
@@ -1180,7 +1183,7 @@ class InvoiceController extends GetxController {
         error: e,
         stackTrace: stackTrace,
       );
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de générer le PDF: ${e.toString()}',
         backgroundColor: Colors.red,
@@ -1189,64 +1192,65 @@ class InvoiceController extends GetxController {
       );
       rethrow;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Charger une facture pour modification
   Future<void> loadInvoiceForEdit(int invoiceId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final invoice = await _invoiceService.getInvoiceById(invoiceId);
 
       // Remplir le formulaire avec les données de la facture
-      selectedClientId.value = invoice.clientId;
-      selectedClientName.value = invoice.clientName;
-      selectedClientEmail.value = invoice.clientEmail;
-      selectedClientAddress.value = invoice.clientAddress;
-      invoiceDate.value = invoice.invoiceDate;
-      dueDate.value = invoice.dueDate;
-      taxRate.value = invoice.taxRate;
-      invoiceItems.value = invoice.items;
-      notes.value = invoice.notes ?? '';
-      terms.value = invoice.terms ?? '';
+      selectedClientId = invoice.clientId;
+      selectedClientName = invoice.clientName;
+      selectedClientEmail = invoice.clientEmail;
+      selectedClientAddress = invoice.clientAddress;
+      invoiceDate = invoice.invoiceDate;
+      dueDate = invoice.dueDate;
+      taxRate = invoice.taxRate;
+      invoiceItems.clear();
+      invoiceItems.addAll(invoice.items);
+      notes = invoice.notes ?? '';
+      terms = invoice.terms ?? '';
 
       notesController.text = invoice.notes ?? '';
       termsController.text = invoice.terms ?? '';
     } catch (e) {
-      Get.snackbar('Erreur', 'Impossible de charger la facture: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Impossible de charger la facture: $e');
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Modifier une facture
-  Future<void> updateInvoice(int invoiceId) async {
+  Future<void> updateInvoice(int invoiceId, [BuildContext? context]) async {
     try {
       if (invoiceItems.isEmpty) {
-        Get.snackbar('Erreur', 'Veuillez ajouter au moins un article');
+        errorHelperShowSnackbar?.call('Erreur', 'Veuillez ajouter au moins un article');
         return;
       }
 
-      isCreating.value = true;
+      isCreating = true;
 
-      final user = _authController.userAuth.value;
+      final user = AuthController.to.userAuth;
       if (user == null) return;
 
       final subtotal = invoiceItems.fold(
         0.0,
         (sum, item) => sum + item.totalPrice,
       );
-      final taxAmount = subtotal * (taxRate.value / 100);
+      final taxAmount = subtotal * (taxRate / 100);
       final totalAmount = subtotal + taxAmount;
 
       final result = await _invoiceService.updateInvoice(
         invoiceId: invoiceId,
         data: {
-          'date_facture': invoiceDate.value.toIso8601String().split('T')[0],
-          'date_echeance': dueDate.value.toIso8601String().split('T')[0],
+          'date_facture': invoiceDate.toIso8601String().split('T')[0],
+          'date_echeance': dueDate.toIso8601String().split('T')[0],
           'subtotal': subtotal,
-          'tax_rate': taxRate.value,
+          'tax_rate': taxRate,
           'tax_amount': taxAmount,
           'total_amount': totalAmount,
           'notes':
@@ -1262,15 +1266,15 @@ class InvoiceController extends GetxController {
       );
 
       if (result['success'] == true) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Facture modifiée avec succès',
           backgroundColor: Colors.green,
           colorText: Colors.white,
         );
 
-        if (Navigator.canPop(Get.context!)) {
-          Get.back();
+        if (context != null && Navigator.canPop(context)) {
+          Navigator.of(context).pop();
         }
 
         // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
@@ -1281,18 +1285,18 @@ class InvoiceController extends GetxController {
           // L'utilisateur peut recharger manuellement si nécessaire
         }
       } else {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           result['message'] ?? 'Erreur lors de la modification',
         );
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la modification de la facture: $e',
       );
     } finally {
-      isCreating.value = false;
+      isCreating = false;
     }
   }
 }

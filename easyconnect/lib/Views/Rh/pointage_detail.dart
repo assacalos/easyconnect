@@ -1,6 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easyconnect/Models/attendance_punch_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/utils/map_helper.dart';
@@ -17,13 +17,15 @@ class PointageDetail extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/attendance-punch', iconColor: Colors.white),
         title: Text('Pointage - ${pointage.typeLabel}'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _sharePointage(),
+            onPressed: () => _sharePointage(context),
           ),
         ],
       ),
@@ -81,7 +83,7 @@ class PointageDetail extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _openGoogleMaps(),
+                    onPressed: () => _openGoogleMaps(context),
                     icon: const Icon(Icons.map),
                     label: const Text('Ouvrir dans Google Maps'),
                     style: ElevatedButton.styleFrom(
@@ -447,15 +449,13 @@ class PointageDetail extends StatelessWidget {
     }
   }
 
-  void _sharePointage() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _sharePointage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fonctionnalité de partage à implémenter')),
     );
   }
 
-  Future<void> _openGoogleMaps() async {
+  Future<void> _openGoogleMaps(BuildContext context) async {
     try {
       await MapHelper.openGoogleMaps(
         latitude: pointage.latitude,
@@ -463,11 +463,11 @@ class PointageDetail extends StatelessWidget {
         label: pointage.address,
       );
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        'Impossible d\'ouvrir Google Maps: $e',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Impossible d\'ouvrir Google Maps: $e')),
+        );
+      }
     }
   }
 }

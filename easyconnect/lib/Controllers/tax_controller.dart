@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/services/tax_service.dart';
@@ -7,47 +6,42 @@ import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class TaxController extends GetxController {
-  late final TaxService _taxService;
-
-  // Variables observables
-  final RxList<Tax> allTaxes = <Tax>[].obs; // Toutes les taxes
-  final RxList<Tax> taxes = <Tax>[].obs; // Taxes filtrées
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final Rx<TaxStats?> taxStats = Rx<TaxStats?>(null);
-
-  // Variables pour les filtres
-  final RxString selectedStatus = 'all'.obs;
-  final RxString searchQuery = ''.obs;
-  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
-
-  // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
-  final ScrollController scrollController = ScrollController();
-
-  @override
-  void onInit() {
-    super.onInit();
-
-    try {
-      _taxService = Get.find<TaxService>();
-    } catch (e) {}
-
-    // Attendre que le token soit disponible avant de charger
+class TaxController {
+  static final TaxController _instance = TaxController._();
+  static TaxController get to => _instance;
+  factory TaxController() => _instance;
+  TaxController._() {
+    _taxService = TaxService();
     _waitForTokenAndLoad();
   }
 
-  @override
-  void onClose() {
+  late final TaxService _taxService;
+
+  // Variables
+  final List<Tax> allTaxes = [];
+  final List<Tax> taxes = [];
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  TaxStats? taxStats;
+
+  // Variables pour les filtres
+  String selectedStatus = 'all';
+  String searchQuery = '';
+  String? _currentStatusFilter;
+
+  // Métadonnées de pagination
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
+  final ScrollController scrollController = ScrollController();
+
+  void dispose() {
     scrollController.dispose();
-    super.onClose();
   }
 
   Future<void> _waitForTokenAndLoad() async {
@@ -70,11 +64,11 @@ class TaxController extends GetxController {
   }
 
   // Charger toutes les taxes
-  Future<void> loadTaxes({String? statusFilter, int page = 1}) async {
+  Future<void> loadTaxes({String? statusFilter, int page = 1, bool forceRefresh = false}) async {
     try {
       _currentStatusFilter =
           statusFilter ??
-          (selectedStatus.value == 'all' ? null : selectedStatus.value);
+          (selectedStatus == 'all' ? null : selectedStatus);
 
       // Vérifier que le token est disponible
       final storage = GetStorage();
@@ -86,47 +80,52 @@ class TaxController extends GetxController {
       final cacheKey = 'taxes_${_currentStatusFilter ?? 'all'}';
 
       if (page == 1) {
-        final hiveList = TaxService.getCachedTaxes();
-        if (hiveList.isNotEmpty) {
-          allTaxes.assignAll(hiveList);
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshTaxesFromApi(cacheKey));
-          return;
+        if (!forceRefresh) {
+          final hiveList = TaxService.getCachedTaxes();
+          if (hiveList.isNotEmpty) {
+            allTaxes.clear();
+            allTaxes.addAll(hiveList);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshTaxesFromApi(cacheKey));
+            return;
+          }
+          final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
+          if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
+            allTaxes.clear();
+            allTaxes.addAll(cachedTaxes);
+            applyFilters();
+            isLoading = false;
+            Future.microtask(() => _refreshTaxesFromApi(cacheKey));
+            return;
+          }
         }
-        final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
-        if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
-          allTaxes.assignAll(cachedTaxes);
-          applyFilters();
-          isLoading.value = false;
-          Future.microtask(() => _refreshTaxesFromApi(cacheKey));
-          return;
-        }
-        allTaxes.value = [];
-        isLoading.value = true;
+        allTaxes.clear();
+        isLoading = true;
       } else if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         // Utiliser la méthode paginée
         final paginatedResponse = await _taxService.getTaxesPaginated(
           status: _currentStatusFilter,
-          search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+          search: searchQuery.isNotEmpty ? searchQuery : null,
           page: page,
-          perPage: perPage.value,
+          perPage: perPage,
         );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          allTaxes.value = paginatedResponse.data;
+          allTaxes.clear();
+          allTaxes.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           allTaxes.addAll(paginatedResponse.data);
@@ -148,7 +147,8 @@ class TaxController extends GetxController {
           search: null,
         );
         if (loadedTaxes.isNotEmpty) {
-          allTaxes.assignAll(loadedTaxes);
+          allTaxes.clear();
+          allTaxes.addAll(loadedTaxes);
           applyFilters();
           if (page == 1) {
             CacheHelper.set(cacheKey, loadedTaxes);
@@ -170,7 +170,8 @@ class TaxController extends GetxController {
         final cachedTaxes = CacheHelper.get<List<Tax>>(cacheKey);
         if (cachedTaxes != null && cachedTaxes.isNotEmpty) {
           // Charger les données du cache si disponibles
-          allTaxes.assignAll(cachedTaxes);
+          allTaxes.clear();
+            allTaxes.addAll(cachedTaxes);
           applyFilters();
           print(
             '✅ [TAX_CONTROLLER] Données chargées depuis le cache (${cachedTaxes.length} taxes)',
@@ -179,8 +180,8 @@ class TaxController extends GetxController {
           return;
         } else {
           // Vider la liste seulement si aucune donnée n'est disponible
-          allTaxes.value = [];
-          taxes.value = [];
+          allTaxes.clear();
+          taxes.clear();
         }
       } else {
         // Si la liste contient des données, on garde ce qu'on a
@@ -221,17 +222,14 @@ class TaxController extends GetxController {
         return;
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
         duration: const Duration(seconds: 5),
       );
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
@@ -239,20 +237,21 @@ class TaxController extends GetxController {
   /// Rafraîchit les taxes depuis l'API (page 1) et met à jour la liste/cache si le filtre est inchangé.
   Future<void> _refreshTaxesFromApi(String cacheKey) async {
     try {
-      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      if (_currentStatusFilter != (selectedStatus == 'all' ? null : selectedStatus)) return;
       final paginatedResponse = await _taxService.getTaxesPaginated(
         status: _currentStatusFilter,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
         page: 1,
-        perPage: perPage.value,
+        perPage: perPage,
       );
-      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
-      allTaxes.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      if (_currentStatusFilter != (selectedStatus == 'all' ? null : selectedStatus)) return;
+      allTaxes.clear();
+          allTaxes.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
       applyFilters();
       CacheHelper.set(cacheKey, paginatedResponse.data);
       loadTaxStats().catchError((_) {});
@@ -260,27 +259,27 @@ class TaxController extends GetxController {
   }
 
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadTaxes(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value + 1,
+        page: currentPage + 1,
       );
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
+    if (hasPreviousPage && !isLoading) {
       loadTaxes(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value - 1,
+        page: currentPage - 1,
       );
     }
   }
@@ -289,7 +288,7 @@ class TaxController extends GetxController {
   Future<void> loadTaxStats() async {
     try {
       final stats = await _taxService.getTaxStats();
-      taxStats.value = stats;
+      taxStats = stats;
     } catch (e) {}
   }
 
@@ -306,12 +305,12 @@ class TaxController extends GetxController {
   void applyFilters() {
     List<Tax> filteredTaxes = List.from(allTaxes);
     // Filtrer par statut (normalisation vers les 4 statuts)
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       final beforeCount = filteredTaxes.length;
       filteredTaxes =
           filteredTaxes.where((tax) {
             bool matches = false;
-            final statusLower = selectedStatus.value.toLowerCase();
+            final statusLower = selectedStatus.toLowerCase();
             if (statusLower == 'en_attente') {
               matches = tax.isPending;
             } else if (statusLower == 'valide') {
@@ -327,8 +326,8 @@ class TaxController extends GetxController {
     } else {}
 
     // Filtrer par recherche
-    if (searchQuery.value.isNotEmpty) {
-      final query = searchQuery.value.toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
       final beforeCount = filteredTaxes.length;
       filteredTaxes =
           filteredTaxes.where((tax) {
@@ -340,7 +339,8 @@ class TaxController extends GetxController {
           }).toList();
     } else {}
 
-    taxes.assignAll(filteredTaxes);
+    taxes.clear();
+    taxes.addAll(filteredTaxes);
     // Debug final
     if (taxes.isEmpty) {
       if (allTaxes.isNotEmpty) {
@@ -351,20 +351,20 @@ class TaxController extends GetxController {
 
   // Rechercher
   void searchTaxes(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     applyFilters(); // Appliquer les filtres sans recharger depuis l'API
   }
 
   // Valider une taxe
   Future<void> validateTax(Tax tax, {String? validationComment}) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('taxes_');
@@ -426,12 +426,9 @@ class TaxController extends GetxController {
           entity: tax,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Taxe validée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
 
         // Recharger les données en arrière-plan avec le filtre actuel
@@ -450,15 +447,12 @@ class TaxController extends GetxController {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadTaxes(statusFilter: _currentStatusFilter);
       await loadTaxStats();
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de valider la taxe: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -469,7 +463,7 @@ class TaxController extends GetxController {
     String? rejectionComment,
   }) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('taxes_');
@@ -533,12 +527,9 @@ class TaxController extends GetxController {
           entity: tax,
         );
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Taxe rejetée',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
 
         // Recharger les données en arrière-plan avec le filtre actuel
@@ -557,22 +548,19 @@ class TaxController extends GetxController {
       // En cas d'erreur, recharger pour restaurer l'état correct
       await loadTaxes(statusFilter: _currentStatusFilter);
       await loadTaxStats();
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de rejeter la taxe: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Marquer une taxe comme payée
   Future<void> markTaxAsPaid(Tax tax) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Utiliser le service pour marquer comme payé
       final success = await _taxService.markTaxAsPaid(
@@ -586,33 +574,27 @@ class TaxController extends GetxController {
         await loadTaxes();
         await loadTaxStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Taxe marquée comme payée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
       } else {
         throw Exception('Erreur lors du marquage comme payé');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de marquer la taxe comme payée: ${e.toString()}',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Supprimer une taxe
   Future<void> deleteTax(Tax tax) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Supprimer via l'API
       final success = await _taxService.deleteTax(tax.id!);
@@ -622,22 +604,20 @@ class TaxController extends GetxController {
         await loadTaxes();
         await loadTaxStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Taxe supprimée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer la taxe',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

@@ -1,30 +1,26 @@
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Controllers/host_controller.dart';
-import 'package:easyconnect/Views/Commercial/client_list_page.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
+import 'package:easyconnect/providers/host_provider.dart';
 import 'package:easyconnect/Views/Components/bottomBar.dart';
 import 'package:easyconnect/Views/Components/sideBar.dart';
-import 'package:easyconnect/Views/Users/user_page.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class Host extends StatelessWidget {
+class Host extends ConsumerWidget {
   const Host({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final HostController hostController = Get.find();
-    final AuthController authController = Get.find();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    final currentIndex = ref.watch(hostIndexProvider);
+
     return Scaffold(
-      appBar: AppBar(foregroundColor: Colors.black, title: Text("EasyConnect")),
+      appBar: AppBar(foregroundColor: Colors.black, title: const Text("EasyConnect")),
       drawer: SidebarWidget(
         customWidgets: [
           UserAccountsDrawerHeader(
-            accountName: Text(
-              "${authController.userAuth.value?.nom ?? 'Utilisateur'}",
-            ),
-            accountEmail: Text(
-              "${authController.userAuth.value?.email ?? 'Email'}",
-            ),
+            accountName: Text(user?.nom ?? 'Utilisateur'),
+            accountEmail: Text(user?.email ?? 'Email'),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Icon(Icons.person, color: Colors.blueGrey.shade900),
@@ -32,464 +28,359 @@ class Host extends StatelessWidget {
             decoration: BoxDecoration(color: Colors.blueGrey.shade800),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 1, // Admin
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 1,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.people_alt_outlined, color: Colors.white),
-              title: Text(
-                "Gestion des utilisateurs",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.people_alt_outlined, color: Colors.white),
+              title: const Text("Gestion des utilisateurs", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/admin/users');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 1,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 1,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(
-                Icons.roller_shades_closed_outlined,
-                color: Colors.white,
-              ),
-              title: Text(
-                "Gestion des rôles",
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () => print("Gestion des rôles"),
+              leading: const Icon(Icons.roller_shades_closed_outlined, color: Colors.white),
+              title: const Text("Gestion des rôles", style: TextStyle(color: Colors.white)),
+              onTap: () {},
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 2, // Commercial
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 2,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.people, color: Colors.white),
-              title: Text(
-                "Gestion des clients",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.people, color: Colors.white),
+              title: const Text("Gestion des clients", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => ClientsPage());
+                context.go('/clients');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 2,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 2,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.request_quote, color: Colors.white),
-              title: Text(
-                "Gestion des proformas",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.request_quote, color: Colors.white),
+              title: const Text("Gestion des proformas", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/devis');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 2,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 2,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(
-                Icons.insert_drive_file_outlined,
-                color: Colors.white,
-              ),
-              title: Text(
-                "Gestion des bordereaux",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.white),
+              title: const Text("Gestion des bordereaux", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/bordereaux');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 2,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 2,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.book_online_rounded, color: Colors.white),
-              title: Text(
-                "Gestion des bons de commande",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.book_online_rounded, color: Colors.white),
+              title: const Text("Gestion des bons de commande", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/bon-commandes');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 3, // Comptable
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 3,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.inventory_outlined, color: Colors.white),
-              title: Text(
-                "Gestion des factures",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.inventory_outlined, color: Colors.white),
+              title: const Text("Gestion des factures", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/invoices');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 3,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 3,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.paid, color: Colors.white),
-              title: Text(
-                "Gestion des paiements",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.paid, color: Colors.white),
+              title: const Text("Gestion des paiements", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/payments');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 3,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 3,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.table_view, color: Colors.white),
-              title: Text(
-                "Gestion des Taxes & Impôts",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.table_view, color: Colors.white),
+              title: const Text("Gestion des Taxes & Impôts", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/taxes');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 3,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 3,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.fence_outlined, color: Colors.white),
-              title: Text(
-                "Gestion des fournisseurs",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.fence_outlined, color: Colors.white),
+              title: const Text("Gestion des fournisseurs", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/suppliers');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 4, // RH
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 4,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.work, color: Colors.white),
-              title: Text(
-                "Gestion des employés",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.work, color: Colors.white),
+              title: const Text("Gestion des employés", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/employees');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 4,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 4,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.paid, color: Colors.white),
-              title: Text(
-                "Gestion des salaires",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.paid, color: Colors.white),
+              title: const Text("Gestion des salaires", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/salaries');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 4,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 4,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.receipt, color: Colors.white),
-              title: Text(
-                "Gestion des recrutements",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.receipt, color: Colors.white),
+              title: const Text("Gestion des recrutements", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/recruitment');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 4,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 4,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.holiday_village, color: Colors.white),
-              title: Text(
-                "Gestion des congés",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.holiday_village, color: Colors.white),
+              title: const Text("Gestion des congés", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/leaves');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 5, // Technicien
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 5,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.manage_accounts, color: Colors.white),
-              title: Text(
-                "Gestion des interventions",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.manage_accounts, color: Colors.white),
+              title: const Text("Gestion des interventions", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/interventions');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 5,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 5,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(
-                Icons.precision_manufacturing_rounded,
-                color: Colors.white,
-              ),
-              title: Text(
-                "Gestion des equipements",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.precision_manufacturing_rounded, color: Colors.white),
+              title: const Text("Gestion des equipements", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/equipments');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6, // Patron
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.people, color: Colors.white),
-              title: Text(
-                "Validation Client",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.people, color: Colors.white),
+              title: const Text("Validation Client", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/clients/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.request_quote, color: Colors.white),
-              title: Text(
-                "Validation Proforma",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.request_quote, color: Colors.white),
+              title: const Text("Validation Proforma", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/devis/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(
-                Icons.insert_drive_file_outlined,
-                color: Colors.white,
-              ),
-              title: Text(
-                "Validation Bordereau",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.white),
+              title: const Text("Validation Bordereau", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/bordereaux/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.book_online_rounded, color: Colors.white),
-              title: Text(
-                "Validation Bon de commande",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.book_online_rounded, color: Colors.white),
+              title: const Text("Validation Bon de commande", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/bon-commandes/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.inventory_outlined, color: Colors.white),
-              title: Text(
-                "Validation facture",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.inventory_outlined, color: Colors.white),
+              title: const Text("Validation facture", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/factures/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.book_online_rounded, color: Colors.white),
-              title: Text(
-                "Validation Paiements",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.book_online_rounded, color: Colors.white),
+              title: const Text("Validation Paiements", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/paiements/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.fence_outlined, color: Colors.white),
-              title: Text(
-                "Validation des fournisseurs",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.fence_outlined, color: Colors.white),
+              title: const Text("Validation des fournisseurs", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/suppliers/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.paid, color: Colors.white),
-              title: Text(
-                "Validation des salaires",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.paid, color: Colors.white),
+              title: const Text("Validation des salaires", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/salaires/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.receipt, color: Colors.white),
-              title: Text(
-                "Validation des recrutements",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.receipt, color: Colors.white),
+              title: const Text("Validation des recrutements", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/recrutement/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.table_view, color: Colors.white),
-              title: Text(
-                "Validation des Taxes & Impôts",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.table_view, color: Colors.white),
+              title: const Text("Validation des Taxes & Impôts", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/taxes/validation');
               },
             ),
           ),
           Visibility(
-            visible: authController.userAuth.value?.role == 6,
-            replacement: SizedBox.shrink(),
+            visible: user?.role == 6,
+            replacement: const SizedBox.shrink(),
             child: ListTile(
-              leading: Icon(Icons.manage_accounts, color: Colors.white),
-              title: Text(
-                "Validation des interventions",
-                style: TextStyle(color: Colors.white),
-              ),
+              leading: const Icon(Icons.manage_accounts, color: Colors.white),
+              title: const Text("Validation des interventions", style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                Get.to(() => UserPage());
+                context.go('/interventions/validation');
               },
             ),
           ),
-
-          ListTile(
+          const ListTile(
             leading: Icon(Icons.present_to_all, color: Colors.white),
             title: Text("Pointage", style: TextStyle(color: Colors.white)),
-            onTap: () => print("Pointage"),
           ),
-          ListTile(
+          const ListTile(
             leading: Icon(Icons.report, color: Colors.white),
             title: Text("Rapports", style: TextStyle(color: Colors.white)),
-            onTap: () => print("Rapports"),
           ),
-          ListTile(
+          const ListTile(
             leading: Icon(Icons.note, color: Colors.white),
             title: Text("Bloc Notes", style: TextStyle(color: Colors.white)),
-            onTap: () => print("Bloc Notes"),
           ),
-          Obx(() {
-            final userRole = authController.userAuth.value?.role;
-            // Afficher le bouton paramètres seulement pour les admins
-            if (userRole == 1) {
-              return ListTile(
-                leading: Icon(Icons.settings, color: Colors.white),
-                title: Text(
-                  "Paramètres",
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Get.toNamed('/admin/settings');
-                },
-              );
-            }
-            return SizedBox.shrink();
-          }),
-          ListTile(
+          if (user?.role == 1)
+            ListTile(
+              leading: const Icon(Icons.settings, color: Colors.white),
+              title: const Text("Paramètres", style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/admin/settings');
+              },
+            ),
+          const ListTile(
             leading: Icon(Icons.person, color: Colors.white),
             title: Text("Profil", style: TextStyle(color: Colors.white)),
-            onTap: () => print("Profil"),
           ),
-          Divider(color: Colors.white54),
+          const Divider(color: Colors.white54),
           ListTile(
-            leading: Icon(Icons.logout, color: Colors.red),
-            title: Text("Déconnexion", style: TextStyle(color: Colors.red)),
-            onTap: () {
-              authController.logout();
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text("Déconnexion", style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              Navigator.pop(context);
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
             },
           ),
         ],
@@ -502,28 +393,30 @@ class Host extends StatelessWidget {
           BottomBarItem(
             icon: Icons.notifications,
             label: "Notifications",
-            showBadge: true, // Afficher le badge avec le nombre de notifications non lues
+            showBadge: true,
           ),
           BottomBarItem(icon: Icons.message_rounded, label: "Chat"),
           BottomBarItem(icon: Icons.print, label: "Scanner"),
         ],
       ),
-      body: Obx(() {
-        switch (hostController.currentIndex.value) {
-          case 0:
-            return Center(child: Text("Accueil"));
-          case 1:
-            return Center(child: Text("Rechercher"));
-          case 2:
-            return Center(child: Text("Notifications"));
-          case 3:
-            return Center(child: Text("Chat"));
-          case 4:
-            return Center(child: Text("Scanner"));
-          default:
-            return Center(child: Text("Accueil"));
-        }
-      }),
+      body: _buildBodyForIndex(context, currentIndex),
     );
+  }
+
+  Widget _buildBodyForIndex(BuildContext context, int index) {
+    switch (index) {
+      case 0:
+        return const Center(child: Text("Accueil"));
+      case 1:
+        return const Center(child: Text("Rechercher"));
+      case 2:
+        return const Center(child: Text("Notifications"));
+      case 3:
+        return const Center(child: Text("Chat"));
+      case 4:
+        return const Center(child: Text("Scanner"));
+      default:
+        return const Center(child: Text("Accueil"));
+    }
   }
 }

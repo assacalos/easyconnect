@@ -1,43 +1,65 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/devis_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/devis_notifier.dart';
+import 'package:easyconnect/providers/devis_state.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/Views/Components/uniform_buttons.dart';
 import 'package:easyconnect/Views/Components/responsive_widgets.dart';
 import 'package:easyconnect/utils/responsive_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class DevisListPage extends StatelessWidget {
-  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
-  final DevisController controller = Get.find<DevisController>();
-  final formatDate = DateFormat('dd/MM/yyyy');
+class DevisListPage extends ConsumerStatefulWidget {
   final int? clientId;
 
-  DevisListPage({super.key, this.clientId});
+  const DevisListPage({super.key, this.clientId});
+
+  @override
+  ConsumerState<DevisListPage> createState() => _DevisListPageState();
+}
+
+class _DevisListPageState extends ConsumerState<DevisListPage> {
+  final formatCurrency = NumberFormat.currency(locale: 'fr_FR', symbol: 'fcfa');
+  final formatDate = DateFormat('dd/MM/yyyy');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(devisProvider.notifier).loadDevis(status: null, forceRefresh: true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Charger les données au démarrage : afficher le cache d'abord puis rafraîchir en arrière-plan (évite erreur et longue attente)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadDevis(forceRefresh: false);
-    });
+    final devisState = ref.watch(devisProvider);
+    final notifier = ref.read(devisProvider.notifier);
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: true,
+          leading: const AppBarBackButton(fallbackRoute: '/commercial', iconColor: Colors.white),
           title: const Text('Devis'),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => controller.loadDevis(forceRefresh: true),
-              tooltip: 'Actualiser',
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Retour',
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/commercial');
+                }
+              },
             ),
             IconButton(
-              icon: const Icon(Icons.bug_report),
-              onPressed: () => controller.debugDevis(),
-              tooltip: 'Debug',
+              icon: const Icon(Icons.refresh),
+              onPressed: () => notifier.refreshData(),
+              tooltip: 'Actualiser',
             ),
           ],
           bottom: const TabBar(
@@ -53,17 +75,16 @@ class DevisListPage extends StatelessWidget {
           children: [
             TabBarView(
               children: [
-                _buildDevisList(context, 1), // En attente
-                _buildDevisList(context, 2), // Validés
-                _buildDevisList(context, 3), // Rejetés
+                _buildDevisList(context, 1, devisState, notifier),
+                _buildDevisList(context, 2, devisState, notifier),
+                _buildDevisList(context, 3, devisState, notifier),
               ],
             ),
-            // Bouton d'ajout uniforme en bas à droite (Stack exige Positioned)
             Positioned(
               bottom: 80,
               right: 16,
               child: UniformAddButton(
-                onPressed: () => Get.toNamed('/devis/new'),
+                onPressed: () => context.go('/devis/new'),
                 label: 'Nouveau Devis',
                 icon: Icons.description,
               ),
@@ -74,75 +95,55 @@ class DevisListPage extends StatelessWidget {
     );
   }
 
-  Widget _buildDevisList(BuildContext context, int status) {
-    final DevisController controller = Get.find<DevisController>();
-    // Récupérer clientId depuis les arguments si non fourni
-    final args = Get.arguments as Map<String, dynamic>?;
-    final filterClientId = clientId ?? args?['clientId'] as int?;
+  Widget _buildDevisList(BuildContext context, int status, DevisState devisState, DevisNotifier notifier) {
+    if (devisState.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-    return Obx(() {
-      // Skeleton dès que loading (y compris au changement d'onglet : liste vidée + isLoading = true)
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+    var devisList = devisState.devis.where((d) => d.status == status).toList();
+    final filterClientId = widget.clientId;
+    if (filterClientId != null) {
+      devisList = devisList.where((d) => d.clientId == filterClientId).toList();
+    }
 
-      var devisList =
-          controller.devis.where((d) => d.status == status).toList();
-
-      // Filtrer par clientId si fourni
-      if (filterClientId != null) {
-        devisList =
-            devisList.where((d) => d.clientId == filterClientId).toList();
-      }
-
-      if (devisList.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                status == 1
-                    ? Icons.access_time
-                    : status == 2
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                size: 64,
-                color: Colors.grey.shade400,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                status == 1
-                    ? 'Aucun devis en attente'
-                    : status == 2
-                    ? 'Aucun devis validé'
-                    : 'Aucun devis rejeté',
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
-          ),
-        );
-      }
-
-      return ResponsiveScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal: ResponsiveHelper.getHorizontalPadding(context),
-          vertical: ResponsiveHelper.getVerticalPadding(context),
-        ),
+    if (devisList.isEmpty) {
+      return Center(
         child: Column(
-          children:
-              devisList.map((devis) {
-                return ResponsiveCard(
-                  padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context)),
-                  elevation: 2.0,
-                  child: _buildDevisCard(context, devis, status),
-                );
-              }).toList(),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              status == 1 ? Icons.access_time : status == 2 ? Icons.check_circle : Icons.cancel,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              status == 1 ? 'Aucun devis en attente' : status == 2 ? 'Aucun devis validé' : 'Aucun devis rejeté',
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          ],
         ),
       );
-    });
+    }
+
+    return ResponsiveScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveHelper.getHorizontalPadding(context),
+        vertical: ResponsiveHelper.getVerticalPadding(context),
+      ),
+      child: Column(
+        children: devisList.map((devis) {
+          return ResponsiveCard(
+            padding: EdgeInsets.all(ResponsiveHelper.getSpacing(context)),
+            elevation: 2.0,
+            child: _buildDevisCard(context, devis, status, notifier),
+          );
+        }).toList(),
+      ),
+    );
   }
 
-  Widget _buildDevisCard(BuildContext context, Devis devis, int status) {
+  Widget _buildDevisCard(BuildContext context, Devis devis, int status, DevisNotifier notifier) {
     return Card(
       margin: EdgeInsets.symmetric(
         vertical: ResponsiveHelper.getSpacing(
@@ -256,7 +257,6 @@ class DevisListPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Informations principales
               Wrap(
                 spacing: ResponsiveHelper.getSpacing(context),
                 runSpacing: 4,
@@ -441,7 +441,7 @@ class DevisListPage extends StatelessWidget {
             Icons.visibility,
             size: ResponsiveHelper.getIconSize(context),
           ),
-          onPressed: () => Get.toNamed('/devis/${devis.id}'),
+          onPressed: () => context.go('/devis/${devis.id}'),
           tooltip: 'Voir les détails',
         ),
         children: [
@@ -655,7 +655,7 @@ class DevisListPage extends StatelessWidget {
                       children: [
                         Expanded(
                           child: TextButton.icon(
-                            onPressed: () => Get.toNamed('/devis/${devis.id}'),
+                            onPressed: () => context.go('/devis/${devis.id}'),
                             icon: Icon(
                               Icons.visibility,
                               size: ResponsiveHelper.getIconSize(context),
@@ -667,7 +667,7 @@ class DevisListPage extends StatelessWidget {
                         if (status == 1 || status == 2 || status == 3) ...[
                           Expanded(
                             child: TextButton.icon(
-                              onPressed: () => Get.toNamed('/devis/${devis.id}/edit'),
+                              onPressed: () => context.go('/devis/${devis.id}/edit'),
                               icon: Icon(
                                 Icons.edit,
                                 size: ResponsiveHelper.getIconSize(context),
@@ -681,7 +681,28 @@ class DevisListPage extends StatelessWidget {
                     if (status == 2) ...[
                       const SizedBox(height: 8),
                       ElevatedButton.icon(
-                        onPressed: () => controller.generatePDF(devis.id!),
+                        onPressed: () async {
+                          try {
+                            await notifier.generatePDF(devis.id!);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('PDF généré avec succès'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Erreur: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
                         icon: Icon(
                           Icons.picture_as_pdf,
                           size: ResponsiveHelper.getIconSize(context),

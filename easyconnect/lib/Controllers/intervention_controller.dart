@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/services/intervention_service.dart';
 import 'package:easyconnect/Controllers/auth_controller.dart';
@@ -9,34 +8,39 @@ import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class InterventionController extends GetxController {
+class InterventionController {
+  static final InterventionController _instance = InterventionController._();
+  static InterventionController get to => _instance;
+  factory InterventionController() => _instance;
+  InterventionController._();
+
   final InterventionService _interventionService = InterventionService();
-  final AuthController _authController = Get.find<AuthController>();
   final ClientService _clientService = ClientService();
 
-  // Variables observables
-  final RxList<Intervention> interventions = <Intervention>[].obs;
-  final RxList<Intervention> pendingInterventions = <Intervention>[].obs;
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final Rx<InterventionStats?> interventionStats = Rx<InterventionStats?>(null);
+  // Variables
+  final List<Intervention> interventions = [];
+  final List<Intervention> pendingInterventions = [];
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  InterventionStats? interventionStats;
 
   // Variables pour le formulaire
-  final RxString searchQuery = ''.obs;
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedType = 'all'.obs;
-  final RxString selectedPriority = 'all'.obs;
-  final Rx<Intervention?> selectedIntervention = Rx<Intervention?>(null);
-  String? _currentStatusFilter; // Mémoriser le filtre de statut actuel
+  String searchQuery = '';
+  String selectedStatus = 'all';
+  String selectedType = 'all';
+  String selectedPriority = 'all';
+  Intervention? selectedIntervention;
+  String? _currentStatusFilter;
 
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
   // Contrôleurs de formulaire
@@ -59,22 +63,22 @@ class InterventionController extends GetxController {
       TextEditingController();
 
   // Variables de sélection
-  final RxString selectedTypeForm = 'external'.obs;
-  final RxString selectedPriorityForm = 'medium'.obs;
-  final Rx<DateTime?> selectedScheduledDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedEndDate = Rx<DateTime?>(null);
-  final RxList<String> selectedAttachments = <String>[].obs;
+  String selectedTypeForm = 'external';
+  String selectedPriorityForm = 'medium';
+  DateTime? selectedScheduledDate;
+  DateTime? selectedStartDate;
+  DateTime? selectedEndDate;
+  final List<String> selectedAttachments = [];
 
   // Variables pour la gestion des clients validés
-  final RxList<Client> availableClients = <Client>[].obs;
-  final RxBool isLoadingClients = false.obs;
-  final Rx<Client?> selectedClient = Rx<Client?>(null);
+  final List<Client> availableClients = [];
+  bool isLoadingClients = false;
+  Client? selectedClient;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Charger les données de manière asynchrone pour ne pas bloquer l'UI
+  bool _initialized = false;
+  void ensureInitialized() {
+    if (_initialized) return;
+    _initialized = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       loadInterventions();
       loadInterventionStats();
@@ -82,9 +86,7 @@ class InterventionController extends GetxController {
     });
   }
 
-  @override
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     titleController.dispose();
     descriptionController.dispose();
@@ -100,7 +102,6 @@ class InterventionController extends GetxController {
     costController.dispose();
     estimatedDurationController.dispose();
     actualDurationController.dispose();
-    super.onClose();
   }
 
   // Charger toutes les interventions
@@ -108,46 +109,48 @@ class InterventionController extends GetxController {
     try {
       _currentStatusFilter =
           statusFilter ??
-          (selectedStatus.value == 'all' ? null : selectedStatus.value);
+          (selectedStatus == 'all' ? null : selectedStatus);
 
       if (page == 1) {
         final hiveList = InterventionService.getCachedInterventions();
         if (hiveList.isNotEmpty) {
-          interventions.value = hiveList;
-          isLoading.value = false;
+          interventions.clear();
+          interventions.addAll(hiveList);
+          isLoading = false;
           Future.microtask(() => _refreshInterventionsFromApi());
           return;
         }
-        isLoading.value = true;
+        isLoading = true;
       }
       if (page > 1) {
-        isLoadingMore.value = true;
+        isLoadingMore = true;
       }
 
       try {
         final paginatedResponse = await _interventionService
             .getInterventionsPaginated(
               status: _currentStatusFilter,
-              type: selectedType.value == 'all' ? null : selectedType.value,
+              type: selectedType == 'all' ? null : selectedType,
               priority:
-                  selectedPriority.value == 'all'
+                  selectedPriority == 'all'
                       ? null
-                      : selectedPriority.value,
-              search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+                      : selectedPriority,
+              search: searchQuery.isNotEmpty ? searchQuery : null,
               page: page,
-              perPage: perPage.value,
+              perPage: perPage,
             );
 
         // Mettre à jour les métadonnées de pagination
-        totalPages.value = paginatedResponse.meta.lastPage;
-        totalItems.value = paginatedResponse.meta.total;
-        hasNextPage.value = paginatedResponse.hasNextPage;
-        hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-        currentPage.value = paginatedResponse.meta.currentPage;
+        totalPages = paginatedResponse.meta.lastPage;
+        totalItems = paginatedResponse.meta.total;
+        hasNextPage = paginatedResponse.hasNextPage;
+        hasPreviousPage = paginatedResponse.hasPreviousPage;
+        currentPage = paginatedResponse.meta.currentPage;
 
         // Mettre à jour la liste
         if (page == 1) {
-          interventions.value = paginatedResponse.data;
+          interventions.clear();
+          interventions.addAll(paginatedResponse.data);
         } else {
           // Pour les pages suivantes, ajouter les données
           interventions.addAll(paginatedResponse.data);
@@ -156,13 +159,14 @@ class InterventionController extends GetxController {
         // En cas d'erreur, essayer la méthode non-paginée en fallback
         final loadedInterventions = await _interventionService.getInterventions(
           status: _currentStatusFilter,
-          type: selectedType.value == 'all' ? null : selectedType.value,
+          type: selectedType == 'all' ? null : selectedType,
           priority:
-              selectedPriority.value == 'all' ? null : selectedPriority.value,
-          search: searchQuery.value.isEmpty ? null : searchQuery.value,
+              selectedPriority == 'all' ? null : selectedPriority,
+          search: searchQuery.isEmpty ? null : searchQuery,
         );
         if (page == 1) {
-          interventions.value = loadedInterventions;
+          interventions.clear();
+          interventions.addAll(loadedInterventions);
         } else {
           interventions.addAll(loadedInterventions);
         }
@@ -171,57 +175,58 @@ class InterventionController extends GetxController {
       // Ne pas afficher d'erreur - les erreurs sont gérées silencieusement
       // Les erreurs d'authentification sont déjà gérées par AuthErrorHandler
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
     }
   }
 
   /// Rafraîchit les interventions depuis l'API (page 1) et met à jour la liste si le filtre est inchangé.
   Future<void> _refreshInterventionsFromApi() async {
     try {
-      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
+      if (_currentStatusFilter != (selectedStatus == 'all' ? null : selectedStatus)) return;
       final paginatedResponse = await _interventionService.getInterventionsPaginated(
         status: _currentStatusFilter,
-        type: selectedType.value == 'all' ? null : selectedType.value,
-        priority: selectedPriority.value == 'all' ? null : selectedPriority.value,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        type: selectedType == 'all' ? null : selectedType,
+        priority: selectedPriority == 'all' ? null : selectedPriority,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
         page: 1,
-        perPage: perPage.value,
+        perPage: perPage,
       );
-      if (_currentStatusFilter != (selectedStatus.value == 'all' ? null : selectedStatus.value)) return;
-      interventions.value = paginatedResponse.data;
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = 1;
+      if (_currentStatusFilter != (selectedStatus == 'all' ? null : selectedStatus)) return;
+      interventions.clear();
+      interventions.addAll(paginatedResponse.data);
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = 1;
       loadInterventionStats().catchError((_) {});
     } catch (_) {}
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadInterventions(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value + 1,
+        page: currentPage + 1,
       );
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
+    if (hasPreviousPage && !isLoading) {
       loadInterventions(
         statusFilter: _currentStatusFilter,
-        page: currentPage.value - 1,
+        page: currentPage - 1,
       );
     }
   }
@@ -230,7 +235,8 @@ class InterventionController extends GetxController {
   Future<void> loadPendingInterventions() async {
     try {
       final pending = await _interventionService.getPendingInterventions();
-      pendingInterventions.assignAll(pending);
+      pendingInterventions.clear();
+      pendingInterventions.addAll(pending);
     } catch (e) {}
   }
 
@@ -238,29 +244,29 @@ class InterventionController extends GetxController {
   Future<void> loadInterventionStats() async {
     try {
       final stats = await _interventionService.getInterventionStats();
-      interventionStats.value = stats;
+      interventionStats = stats;
     } catch (e) {}
   }
 
   // Créer une intervention
   Future<bool> createIntervention() async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final intervention = Intervention(
         title: titleController.text.trim(),
         description: descriptionController.text.trim(),
-        type: selectedTypeForm.value,
-        priority: selectedPriorityForm.value,
+        type: selectedTypeForm,
+        priority: selectedPriorityForm,
         scheduledDate:
-            selectedScheduledDate.value ??
+            selectedScheduledDate ??
             DateTime.now().add(const Duration(days: 1)),
         location:
             locationController.text.trim().isEmpty
                 ? null
                 : locationController.text.trim(),
-        clientId: selectedClient.value?.id,
+        clientId: selectedClient?.id,
         clientName:
             clientNameController.text.trim().isEmpty
                 ? null
@@ -322,12 +328,11 @@ class InterventionController extends GetxController {
       await loadInterventionStats();
       _notifyDashboard();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Intervention créée avec succès',
         backgroundColor: Colors.green,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
       );
 
       clearForm();
@@ -344,42 +349,41 @@ class InterventionController extends GetxController {
         return false;
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de créer l\'intervention: ${e.toString()}',
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Mettre à jour une intervention
   Future<bool> updateIntervention(Intervention intervention) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final updatedIntervention = Intervention(
         id: intervention.id,
         title: titleController.text.trim(),
         description: descriptionController.text.trim(),
-        type: selectedTypeForm.value,
-        priority: selectedPriorityForm.value,
+        type: selectedTypeForm,
+        priority: selectedPriorityForm,
         status: intervention.status,
         scheduledDate:
-            selectedScheduledDate.value ?? intervention.scheduledDate,
-        startDate: selectedStartDate.value ?? intervention.startDate,
-        endDate: selectedEndDate.value ?? intervention.endDate,
+            selectedScheduledDate ?? intervention.scheduledDate,
+        startDate: selectedStartDate ?? intervention.startDate,
+        endDate: selectedEndDate ?? intervention.endDate,
         location:
             locationController.text.trim().isEmpty
                 ? null
                 : locationController.text.trim(),
-        clientId: selectedClient.value?.id ?? intervention.clientId,
+        clientId: selectedClient?.id ?? intervention.clientId,
         clientName:
             clientNameController.text.trim().isEmpty
                 ? null
@@ -429,10 +433,9 @@ class InterventionController extends GetxController {
       await loadInterventionStats();
       _notifyDashboard();
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Intervention mise à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
       );
 
       clearForm();
@@ -449,14 +452,13 @@ class InterventionController extends GetxController {
         return false;
       }
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -548,10 +550,9 @@ class InterventionController extends GetxController {
 
         _notifyDashboard();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Intervention approuvée',
-          snackPosition: SnackPosition.BOTTOM,
         );
 
         // Recharger les données en arrière-plan avec le filtre actuel
@@ -568,10 +569,9 @@ class InterventionController extends GetxController {
         await loadInterventions(statusFilter: _currentStatusFilter);
         await loadPendingInterventions();
         // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Attention',
           'La validation peut avoir réussi. Veuillez vérifier.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
       }
@@ -599,10 +599,9 @@ class InterventionController extends GetxController {
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -705,10 +704,9 @@ class InterventionController extends GetxController {
 
         _notifyDashboard();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Intervention rejetée',
-          snackPosition: SnackPosition.BOTTOM,
         );
 
         // Recharger les données en arrière-plan avec le filtre actuel
@@ -750,10 +748,9 @@ class InterventionController extends GetxController {
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -769,7 +766,7 @@ class InterventionController extends GetxController {
   // Démarrer une intervention
   Future<void> startIntervention(Intervention intervention) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _interventionService.startIntervention(
         intervention.id!,
@@ -784,29 +781,27 @@ class InterventionController extends GetxController {
         await loadInterventionStats();
         _notifyDashboard();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Intervention démarrée',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors du démarrage');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de démarrer l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Terminer une intervention
   Future<void> completeIntervention(Intervention intervention) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _interventionService.completeIntervention(
         intervention.id!,
@@ -824,29 +819,27 @@ class InterventionController extends GetxController {
         await loadInterventionStats();
         _notifyDashboard();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Intervention terminée',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la finalisation');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de terminer l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Supprimer une intervention
   Future<void> deleteIntervention(Intervention intervention) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       final success = await _interventionService.deleteIntervention(
         intervention.id!,
@@ -855,22 +848,20 @@ class InterventionController extends GetxController {
         interventions.removeWhere((i) => i.id == intervention.id);
         await loadInterventionStats();
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Intervention supprimée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer l\'intervention',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
@@ -878,11 +869,11 @@ class InterventionController extends GetxController {
   void fillForm(Intervention intervention) {
     titleController.text = intervention.title;
     descriptionController.text = intervention.description;
-    selectedTypeForm.value = intervention.type;
-    selectedPriorityForm.value = intervention.priority;
-    selectedScheduledDate.value = intervention.scheduledDate;
-    selectedStartDate.value = intervention.startDate;
-    selectedEndDate.value = intervention.endDate;
+    selectedTypeForm = intervention.type;
+    selectedPriorityForm = intervention.priority;
+    selectedScheduledDate = intervention.scheduledDate;
+    selectedStartDate = intervention.startDate;
+    selectedEndDate = intervention.endDate;
     locationController.text = intervention.location ?? '';
     // Si l'intervention a un clientId, charger le client
     if (intervention.clientId != null) {
@@ -902,17 +893,14 @@ class InterventionController extends GetxController {
         intervention.estimatedDuration?.toString() ?? '';
     actualDurationController.text =
         intervention.actualDuration?.toString() ?? '';
-    selectedAttachments.assignAll(intervention.attachments ?? []);
-    selectedIntervention.value = intervention;
+    selectedAttachments.clear();
+    selectedAttachments.addAll(intervention.attachments ?? []);
+    selectedIntervention = intervention;
   }
 
-  // Notifier le dashboard technicien d'un changement
   void _notifyDashboard() {
     try {
-      if (Get.isRegistered<TechnicienDashboardController>()) {
-        final dashboardController = Get.find<TechnicienDashboardController>();
-        dashboardController.refreshPendingEntities();
-      }
+      TechnicienDashboardController.to.refreshPendingEntities();
     } catch (e) {}
   }
 
@@ -920,11 +908,11 @@ class InterventionController extends GetxController {
   void clearForm() {
     titleController.clear();
     descriptionController.clear();
-    selectedTypeForm.value = 'external';
-    selectedPriorityForm.value = 'medium';
-    selectedScheduledDate.value = null;
-    selectedStartDate.value = null;
-    selectedEndDate.value = null;
+    selectedTypeForm = 'external';
+    selectedPriorityForm = 'medium';
+    selectedScheduledDate = null;
+    selectedStartDate = null;
+    selectedEndDate = null;
     locationController.clear();
     clientNameController.clear();
     clientPhoneController.clear();
@@ -938,57 +926,57 @@ class InterventionController extends GetxController {
     estimatedDurationController.clear();
     actualDurationController.clear();
     selectedAttachments.clear();
-    selectedIntervention.value = null;
+    selectedIntervention = null;
     clearSelectedClient();
   }
 
   // Rechercher
   void searchInterventions(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     loadInterventions();
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadInterventions();
   }
 
   // Filtrer par type
   void filterByType(String type) {
-    selectedType.value = type;
+    selectedType = type;
     loadInterventions();
   }
 
   // Filtrer par priorité
   void filterByPriority(String priority) {
-    selectedPriority.value = priority;
+    selectedPriority = priority;
     loadInterventions();
   }
 
   // Sélectionner le type
   void selectType(String type) {
-    selectedTypeForm.value = type;
+    selectedTypeForm = type;
   }
 
   // Sélectionner la priorité
   void selectPriority(String priority) {
-    selectedPriorityForm.value = priority;
+    selectedPriorityForm = priority;
   }
 
   // Sélectionner la date programmée
   void selectScheduledDate(DateTime date) {
-    selectedScheduledDate.value = date;
+    selectedScheduledDate = date;
   }
 
   // Sélectionner la date de début
   void selectStartDate(DateTime date) {
-    selectedStartDate.value = date;
+    selectedStartDate = date;
   }
 
   // Sélectionner la date de fin
   void selectEndDate(DateTime date) {
-    selectedEndDate.value = date;
+    selectedEndDate = date;
   }
 
   // Obtenir les types d'intervention
@@ -1026,38 +1014,40 @@ class InterventionController extends GetxController {
 
   // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
-    isLoadingClients.value = true;
+    isLoadingClients = true;
     final cached = ClientService.getCachedClients(1);
     if (cached.isNotEmpty) {
-      availableClients.assignAll(cached);
-      isLoadingClients.value = false;
+      availableClients.clear();
+      availableClients.addAll(cached);
+      isLoadingClients = false;
     } else {
-      availableClients.value = [];
+      availableClients.clear();
     }
     try {
       final clients = await _clientService.getClients(status: 1);
-      availableClients.assignAll(clients);
+      availableClients.clear();
+      availableClients.addAll(clients);
     } catch (e) {
       if (availableClients.isEmpty) {
         final fallback = ClientService.getCachedClients(1);
         if (fallback.isNotEmpty) {
-          availableClients.assignAll(fallback);
+          availableClients.clear();
+          availableClients.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les clients validés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoadingClients.value = false;
+      isLoadingClients = false;
     }
   }
 
   // Sélection d'un client
   void selectClientForIntervention(Client client) {
-    selectedClient.value = client;
+    selectedClient = client;
     // Remplir automatiquement les champs du formulaire
     // Prioriser le nom de l'entreprise
     final displayName =
@@ -1077,39 +1067,39 @@ class InterventionController extends GetxController {
 
   // Effacer la sélection du client
   void clearSelectedClient() {
-    selectedClient.value = null;
+    selectedClient = null;
     // Ne pas effacer les champs manuellement remplis
   }
 
   // Vérifier les permissions
   bool get canManageInterventions {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole == 1 || userRole == 6; // Admin, Technicien
   }
 
   bool get canApproveInterventions {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole == 1 || userRole == 4; // Admin, Patron
   }
 
   bool get canViewInterventions {
-    final userRole = _authController.userAuth.value?.role;
+    final userRole = AuthController.to.userAuth?.role;
     return userRole != null; // Tous les rôles
   }
 
   // Obtenir les interventions par statut
   List<Intervention> get interventionsByStatus {
-    if (selectedStatus.value == 'all') return interventions;
+    if (selectedStatus == 'all') return interventions;
     return interventions
-        .where((intervention) => intervention.status == selectedStatus.value)
+        .where((intervention) => intervention.status == selectedStatus)
         .toList();
   }
 
   // Obtenir les interventions par type
   List<Intervention> get interventionsByType {
-    if (selectedType.value == 'all') return interventions;
+    if (selectedType == 'all') return interventions;
     return interventions
-        .where((intervention) => intervention.type == selectedType.value)
+        .where((intervention) => intervention.type == selectedType)
         .toList();
   }
 
@@ -1117,45 +1107,45 @@ class InterventionController extends GetxController {
   List<Intervention> get filteredInterventions {
     List<Intervention> filtered = interventions;
 
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filtered =
           filtered
               .where(
-                (intervention) => intervention.status == selectedStatus.value,
+                (intervention) => intervention.status == selectedStatus,
               )
               .toList();
     }
 
-    if (selectedType.value != 'all') {
+    if (selectedType != 'all') {
       filtered =
           filtered
-              .where((intervention) => intervention.type == selectedType.value)
+              .where((intervention) => intervention.type == selectedType)
               .toList();
     }
 
-    if (selectedPriority.value != 'all') {
+    if (selectedPriority != 'all') {
       filtered =
           filtered
               .where(
                 (intervention) =>
-                    intervention.priority == selectedPriority.value,
+                    intervention.priority == selectedPriority,
               )
               .toList();
     }
 
-    if (searchQuery.value.isNotEmpty) {
+    if (searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (intervention) =>
                     intervention.title.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     intervention.description.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     (intervention.clientName?.toLowerCase().contains(
-                          searchQuery.value.toLowerCase(),
+                          searchQuery.toLowerCase(),
                         ) ??
                         false),
               )

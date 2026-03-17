@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
@@ -12,9 +11,14 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 
-class PaymentService extends GetxService {
-  static PaymentService get to => Get.find();
+class PaymentService {
+  static final PaymentService _instance = PaymentService._();
+  static PaymentService get to => _instance;
+  factory PaymentService() => _instance;
+  PaymentService._();
+
   final storage = GetStorage();
 
   // ===== MÉTHODES DE CONNECTIVITÉ =====
@@ -54,7 +58,8 @@ class PaymentService extends GetxService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       final queryParams = <String, String>{
         'page': page.toString(),
         'per_page': perPage.toString(),
@@ -175,7 +180,8 @@ class PaymentService extends GetxService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       String url = '$baseUrl/payments';
       List<String> params = [];
 

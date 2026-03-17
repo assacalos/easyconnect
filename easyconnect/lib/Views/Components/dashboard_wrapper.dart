@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Views/Components/bottom_navigation.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/utils/roles.dart';
 
-class DashboardWrapper extends StatelessWidget {
+class DashboardWrapper extends ConsumerWidget {
   final Widget child;
   final int currentIndex;
   final PreferredSizeWidget? appBar;
@@ -19,9 +20,9 @@ class DashboardWrapper extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
-    final userRole = authController.userAuth.value?.role;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    final userRole = user?.role;
 
     return Scaffold(
       appBar: appBar,
@@ -30,131 +31,131 @@ class DashboardWrapper extends StatelessWidget {
       bottomNavigationBar:
           userRole != null
               ? BottomNavigation(
-                currentIndex: currentIndex,
-                onTap: (index) => _handleNavigation(index, userRole),
-              )
+                  currentIndex: currentIndex,
+                  onTap: (index) => _handleNavigation(context, index, userRole),
+                )
               : null,
     );
   }
 
-  void _handleNavigation(int index, int userRole) {
+  void _handleNavigation(BuildContext context, int index, int userRole) {
     switch (userRole) {
       case Roles.COMMERCIAL:
-        _handleCommercialNavigation(index);
+        _handleCommercialNavigation(context, index);
         break;
       case Roles.COMPTABLE:
-        _handleComptableNavigation(index);
+        _handleComptableNavigation(context, index);
         break;
       case Roles.TECHNICIEN:
-        _handleTechnicienNavigation(index);
+        _handleTechnicienNavigation(context, index);
         break;
       case Roles.RH:
-        _handleRHNavigation(index);
+        _handleRHNavigation(context, index);
         break;
       case Roles.PATRON:
-        _handlePatronNavigation(index);
+        _handlePatronNavigation(context, index);
         break;
       default:
         break;
     }
   }
 
-  void _handleCommercialNavigation(int index) {
+  void _handleCommercialNavigation(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Get.toNamed('/commercial');
+        context.go('/commercial');
         break;
       case 1:
-        Get.toNamed('/clients-page');
+        context.go('/clients-page');
         break;
       case 2:
-        Get.toNamed('/devis-page');
+        context.go('/devis-page');
         break;
       case 3:
-        Get.toNamed('/attendance-punch');
+        context.go('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/media');
+        context.go('/media');
         break;
     }
   }
 
-  void _handleComptableNavigation(int index) {
+  void _handleComptableNavigation(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Get.toNamed('/comptable');
+        context.go('/comptable');
         break;
       case 1:
-        Get.toNamed('/invoices');
+        context.go('/invoices');
         break;
       case 2:
-        Get.toNamed('/payments');
+        context.go('/payments');
         break;
       case 3:
-        Get.toNamed('/attendance-punch');
+        context.go('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/media');
+        context.go('/media');
         break;
     }
   }
 
-  void _handleTechnicienNavigation(int index) {
+  void _handleTechnicienNavigation(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Get.toNamed('/technicien');
+        context.go('/technicien');
         break;
       case 1:
-        Get.toNamed('/tickets');
+        context.go('/tickets');
         break;
       case 2:
-        Get.toNamed('/interventions');
+        context.go('/interventions');
         break;
       case 3:
-        Get.toNamed('/attendance-punch');
+        context.go('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/media');
+        context.go('/media');
         break;
     }
   }
 
-  void _handleRHNavigation(int index) {
+  void _handleRHNavigation(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Get.toNamed('/rh');
+        context.go('/rh');
         break;
       case 1:
-        Get.toNamed('/employees');
+        context.go('/employees');
         break;
       case 2:
-        Get.toNamed('/leaves');
+        context.go('/leaves');
         break;
       case 3:
-        Get.toNamed('/attendance-punch');
+        context.go('/attendance-punch');
         break;
       case 4:
-        Get.toNamed('/media');
+        context.go('/media');
         break;
     }
   }
 
-  void _handlePatronNavigation(int index) {
+  void _handlePatronNavigation(BuildContext context, int index) {
     switch (index) {
       case 0:
-        Get.toNamed('/patron');
+        context.go('/patron');
         break;
       case 1:
-        Get.toNamed('/company');
+        context.go('/company');
         break;
       case 2:
-        Get.toNamed('/approvals');
+        context.go('/approvals');
         break;
       case 3:
-        Get.toNamed('/analytics');
+        context.go('/analytics');
         break;
       case 4:
-        Get.toNamed('/media');
+        context.go('/media');
         break;
     }
   }

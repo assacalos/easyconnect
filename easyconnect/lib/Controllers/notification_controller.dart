@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/notification_api_service.dart';
@@ -10,51 +9,37 @@ import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/logger.dart';
 
 /// Contrôleur pour gérer les notifications avec polling
-class NotificationController extends GetxController {
+class NotificationController {
+  static final NotificationController _instance = NotificationController._();
+  static NotificationController get to => _instance;
+  factory NotificationController() => _instance;
+  NotificationController._();
+
   final NotificationApiService _apiService = NotificationApiService();
   final NotificationServiceEnhanced _notificationService =
       NotificationServiceEnhanced();
 
-  // Liste des notifications
-  final RxList<AppNotification> notifications = <AppNotification>[].obs;
-
-  // Compteur de notifications non lues
-  final RxInt unreadCount = 0.obs;
-
-  // État de chargement
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-
-  // Filtres
-  final RxBool unreadOnly = false.obs;
-  final Rx<String?> selectedType = Rx<String?>(null);
-  final Rx<String?> selectedEntityType = Rx<String?>(null);
-
-  // Pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 20.obs;
+  final List<AppNotification> notifications = [];
+  int unreadCount = 0;
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool unreadOnly = false;
+  String? selectedType;
+  String? selectedEntityType;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 20;
   final ScrollController scrollController = ScrollController();
 
-  // Timer pour le polling
   Timer? _pollingTimer;
   bool _isPolling = false;
-
-  // Set pour stocker les IDs des notifications déjà vues (pour détecter les nouvelles)
   final Set<String> _seenNotificationIds = <String>{};
-
-  // Flag pour savoir si c'est le premier chargement
   bool _isFirstLoad = true;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Synchroniser le badge de l'icône de l'app avec le nombre de non lues
-    ever(unreadCount, (_) => _updateAppIconBadge());
-    // Initialiser le service de notifications locales
+  void init() {
     _notificationService.initialize().catchError((e) {
       AppLogger.error(
         'Erreur lors de l\'initialisation du service de notifications: $e',
@@ -65,25 +50,20 @@ class NotificationController extends GetxController {
     startPolling();
   }
 
-  /// Met à jour le badge sur l'icône de l'application (menu du téléphone).
-  /// Affiche le nombre de non lues uniquement quand l'app est en arrière-plan ;
-  /// dès qu'on rentre dans l'app, le badge est retiré.
   Future<void> _updateAppIconBadge() async {
     try {
       final supported = await FlutterAppBadger.isAppBadgeSupported();
       if (!supported) return;
 
-      // Dès qu'on est au premier plan : pas de badge sur l'icône
       if (!SessionService.isAppInBackground()) {
         await FlutterAppBadger.removeBadge();
         return;
       }
 
-      final count = unreadCount.value;
-      if (count <= 0) {
+      if (unreadCount <= 0) {
         await FlutterAppBadger.removeBadge();
       } else {
-        final displayCount = count > 99 ? 99 : count;
+        final displayCount = unreadCount > 99 ? 99 : unreadCount;
         await FlutterAppBadger.updateBadgeCount(displayCount);
       }
     } catch (e) {
@@ -95,16 +75,13 @@ class NotificationController extends GetxController {
     }
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     stopPolling();
-    super.onClose();
   }
 
   bool _isLoadingNotificationsInProgress = false;
 
-  /// Charge les notifications : Hive d'abord (affichage immédiat), puis API dans la même méthode.
   Future<void> loadNotifications({
     bool forceRefresh = false,
     int page = 1,
@@ -113,34 +90,36 @@ class NotificationController extends GetxController {
     _isLoadingNotificationsInProgress = true;
 
     if (page == 1) {
-      isLoading.value = true;
+      isLoading = true;
       final cached = NotificationApiService.getCachedNotifications();
       if (cached.isNotEmpty && !forceRefresh) {
-        notifications.assignAll(cached);
-        isLoading.value = false;
-        currentPage.value = 1;
+        notifications.clear();
+        notifications.addAll(cached);
+        isLoading = false;
+        currentPage = 1;
       } else {
-        notifications.value = [];
+        notifications.clear();
       }
     } else {
-      isLoadingMore.value = true;
+      isLoadingMore = true;
     }
-    currentPage.value = page;
+    currentPage = page;
 
     try {
       final loadedNotifications = await _apiService.getNotifications(
-        unreadOnly: unreadOnly.value,
-        type: selectedType.value,
-        entityType: selectedEntityType.value,
+        unreadOnly: unreadOnly,
+        type: selectedType,
+        entityType: selectedEntityType,
         page: page,
-        perPage: perPage.value,
+        perPage: perPage,
       );
 
       if (page == 1) {
         if (!_isFirstLoad && forceRefresh) {
           _detectAndShowNewNotifications(loadedNotifications);
         }
-        notifications.assignAll(loadedNotifications);
+        notifications.clear();
+        notifications.addAll(loadedNotifications);
         _seenNotificationIds.addAll(loadedNotifications.map((n) => n.id));
         _isFirstLoad = false;
       } else {
@@ -154,28 +133,28 @@ class NotificationController extends GetxController {
       if (notifications.isEmpty) {
         final fallback = NotificationApiService.getCachedNotifications();
         if (fallback.isNotEmpty) {
-          notifications.assignAll(fallback);
+          notifications.clear();
+          notifications.addAll(fallback);
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       _isLoadingNotificationsInProgress = false;
     }
   }
 
-  /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
-  /// Actualiser le compteur de notifications non lues
   Future<void> refreshUnreadCount() async {
     try {
       final count = await _apiService.getUnreadCount();
-      unreadCount.value = count;
+      unreadCount = count;
+      await _updateAppIconBadge();
     } catch (e) {
       AppLogger.error(
         'Erreur lors de la récupération du compteur: $e',
@@ -184,7 +163,6 @@ class NotificationController extends GetxController {
     }
   }
 
-  /// Marquer une notification comme lue
   Future<void> markAsRead(String notificationId) async {
     try {
       final success = await _apiService.markAsRead(notificationId);
@@ -203,7 +181,6 @@ class NotificationController extends GetxController {
     }
   }
 
-  /// Marquer toutes les notifications comme lues
   Future<void> markAllAsRead() async {
     try {
       final success = await _apiService.markAllAsRead();
@@ -213,7 +190,7 @@ class NotificationController extends GetxController {
             notifications[i] = notifications[i].copyWith(isRead: true);
           }
         }
-        unreadCount.value = 0;
+        unreadCount = 0;
       }
     } catch (e) {
       AppLogger.error(
@@ -223,7 +200,6 @@ class NotificationController extends GetxController {
     }
   }
 
-  /// Supprimer une notification
   Future<void> deleteNotification(String notificationId) async {
     try {
       final success = await _apiService.deleteNotification(notificationId);
@@ -239,7 +215,6 @@ class NotificationController extends GetxController {
     }
   }
 
-  /// Démarrer le polling
   void startPolling({Duration interval = const Duration(seconds: 30)}) {
     if (_isPolling) return;
 
@@ -255,7 +230,6 @@ class NotificationController extends GetxController {
     );
   }
 
-  /// Arrêter le polling
   void stopPolling() {
     _isPolling = false;
     _pollingTimer?.cancel();
@@ -267,32 +241,27 @@ class NotificationController extends GetxController {
     );
   }
 
-  /// Filtrer par type
   void filterByType(String? type) {
-    selectedType.value = type?.isEmpty == true ? null : type;
+    selectedType = type?.isEmpty == true ? null : type;
     loadNotifications(forceRefresh: true, page: 1);
   }
 
-  /// Filtrer par type d'entité
   void filterByEntityType(String? entityType) {
-    selectedEntityType.value = entityType?.isEmpty == true ? null : entityType;
+    selectedEntityType = entityType?.isEmpty == true ? null : entityType;
     loadNotifications(forceRefresh: true, page: 1);
   }
 
-  /// Toggle filtre non lues seulement
   void toggleUnreadOnly() {
-    unreadOnly.value = !unreadOnly.value;
+    unreadOnly = !unreadOnly;
     loadNotifications(forceRefresh: true, page: 1);
   }
 
-  /// Charger la page suivante
   Future<void> loadNextPage() async {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      await loadNotifications(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      await loadNotifications(page: currentPage + 1);
     }
   }
 
-  /// Gérer le tap sur une notification : marquer comme lue puis rediriger vers l'élément cible
   void handleNotificationTap(AppNotification notification) {
     if (!notification.isRead) {
       markAsRead(notification.id);
@@ -300,22 +269,18 @@ class NotificationController extends GetxController {
     NotificationNavigationService().handleNavigationFromNotification(notification);
   }
 
-  /// Détecter les nouvelles notifications et déclencher des notifications locales
   void _detectAndShowNewNotifications(
     List<AppNotification> loadedNotifications,
   ) {
     try {
-      // Trouver les notifications qui sont nouvelles (pas encore vues)
       final newNotifications =
           loadedNotifications.where((notification) {
             final isNew = !_seenNotificationIds.contains(notification.id);
             final isUnread = !notification.isRead;
-
             AppLogger.debug(
               'Vérification notification ID=${notification.id}: isNew=$isNew, isUnread=$isUnread',
               tag: 'NOTIFICATION_CONTROLLER',
             );
-
             return isNew && isUnread;
           }).toList();
 
@@ -324,9 +289,7 @@ class NotificationController extends GetxController {
         tag: 'NOTIFICATION_CONTROLLER',
       );
 
-      // Pour chaque nouvelle notification, déclencher une notification locale
       for (final notification in newNotifications) {
-        // Déterminer le type de son selon le type de notification
         String soundType = 'info';
         if (notification.type == 'success') {
           soundType = 'success';
@@ -343,13 +306,11 @@ class NotificationController extends GetxController {
           tag: 'NOTIFICATION_CONTROLLER',
         );
 
-        // Afficher la notification locale avec son (sans ajouter à la liste car déjà gérée par le controller)
         _notificationService
             .showNotification(
               notification,
               soundType: soundType,
-              addToList:
-                  false, // Ne pas ajouter à la liste car le controller gère déjà sa propre liste
+              addToList: false,
             )
             .then((_) {
               AppLogger.info(

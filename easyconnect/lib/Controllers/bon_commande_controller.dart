@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
 import 'package:easyconnect/services/bon_commande_service.dart';
@@ -17,70 +16,82 @@ import 'package:easyconnect/utils/error_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/app_config.dart';
 
-class BonCommandeController extends GetxController
-    with GetSingleTickerProviderStateMixin {
-  late int userId;
+BonCommande? _firstWhereBonCommandeById(List<BonCommande> list, int id) {
+  try {
+    return list.firstWhere((b) => b.id == id);
+  } catch (_) {
+    return null;
+  }
+}
+
+class BonCommandeController {
+  static final BonCommandeController _instance = BonCommandeController._();
+  static BonCommandeController get to => _instance;
+  factory BonCommandeController() => _instance;
+  BonCommandeController._();
+
+  int get userId => int.parse(AuthController.to.userAuth?.id.toString() ?? '0');
+
   final BonCommandeService _bonCommandeService = BonCommandeService();
   final ClientService _clientService = ClientService();
 
-  final bonCommandes = <BonCommande>[].obs;
-  final selectedClient = Rxn<Client>();
-  final availableClients = <Client>[].obs;
-  final isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final isLoadingClients = false.obs;
-  final currentBonCommande = Rxn<BonCommande>();
+  final List<BonCommande> bonCommandes = [];
+  Client? selectedClient;
+  final List<Client> availableClients = [];
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool isLoadingClients = false;
+  BonCommande? currentBonCommande;
+
+  // Fichiers scannés (liste de chemins locaux)
+  final List<Map<String, dynamic>> selectedFiles = [];
+
+  // Gestion des onglets : la vue crée le TabController et l'assigne via setTabController
+  TabController? _tabController;
+  int? selectedStatus;
   int? _currentStatus;
   bool _isLoadingInProgress = false;
 
-  // Fichiers scannés (liste de chemins locaux)
-  final selectedFiles = <Map<String, dynamic>>[].obs;
-
-  // Gestion des onglets
-  late TabController tabController;
-  final selectedStatus = Rxn<int>();
-
   // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
-  final RxString searchQuery = ''.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
+  String searchQuery = '';
   final ScrollController scrollController = ScrollController();
   Timer? _searchDebounceTimer;
 
   // Statistiques
-  final totalBonCommandes = 0.obs;
-  final bonCommandesEnvoyes = 0.obs;
-  final bonCommandesAcceptes = 0.obs;
-  final bonCommandesRefuses = 0.obs;
-  final bonCommandesLivres = 0.obs;
-  final montantTotal = 0.0.obs;
+  int totalBonCommandes = 0;
+  int bonCommandesEnvoyes = 0;
+  int bonCommandesAcceptes = 0;
+  int bonCommandesRefuses = 0;
+  int bonCommandesLivres = 0;
+  double montantTotal = 0.0;
 
-  @override
-  void onInit() {
-    super.onInit();
-    userId = int.parse(
-      Get.find<AuthController>().userAuth.value!.id.toString(),
-    );
-    tabController = TabController(length: 5, vsync: this);
-    tabController.addListener(_onTabChanged);
-    ever(searchQuery, (_) {
-      _searchDebounceTimer?.cancel();
-      _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-        loadBonCommandes(status: _currentStatus, forceRefresh: true);
-      });
-    });
+  void setTabController(TabController c) {
+    _tabController?.removeListener(_onTabChanged);
+    _tabController = c;
+    _tabController!.addListener(_onTabChanged);
   }
 
-  // Sélectionner des fichiers (scan ou sélection)
-  Future<void> selectFiles() async {
+  void setSearchQuery(String q) {
+    if (searchQuery == q) return;
+    searchQuery = q;
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      loadBonCommandes(status: _currentStatus, forceRefresh: true);
+    });
+  }
+  // Sélectionner des fichiers (scan ou sélection). Nécessite [context] pour les dialogs.
+  Future<void> selectFiles(BuildContext context) async {
     try {
       // Proposer de choisir le type de sélection
-      final String? selectionType = await Get.dialog<String>(
-        AlertDialog(
+      final String? selectionType = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
           title: const Text('Sélectionner des fichiers'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -88,17 +99,17 @@ class BonCommandeController extends GetxController
               ListTile(
                 leading: const Icon(Icons.insert_drive_file),
                 title: const Text('Fichiers (PDF, Documents, etc.)'),
-                onTap: () => Get.back(result: 'file'),
+                onTap: () => Navigator.of(ctx).pop('file'),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library),
                 title: const Text('Image depuis la galerie'),
-                onTap: () => Get.back(result: 'gallery'),
+                onTap: () => Navigator.of(ctx).pop('gallery'),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt),
                 title: const Text('Prendre une photo / Scanner'),
-                onTap: () => Get.back(result: 'camera'),
+                onTap: () => Navigator.of(ctx).pop('camera'),
               ),
             ],
           ),
@@ -122,10 +133,9 @@ class BonCommandeController extends GetxController
 
               // Vérifier la taille (max 10 MB)
               if (fileSize > 10 * 1024 * 1024) {
-                Get.snackbar(
+                errorHelperShowSnackbar?.call(
                   'Erreur',
                   'Le fichier "${platformFile.name}" est trop volumineux (max 10 MB)',
-                  snackPosition: SnackPosition.BOTTOM,
                 );
                 continue;
               }
@@ -150,10 +160,9 @@ class BonCommandeController extends GetxController
             }
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Succès',
             '${result.files.length} fichier(s) sélectionné(s)',
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 2),
           );
         }
@@ -179,10 +188,9 @@ class BonCommandeController extends GetxController
 
             // Vérifier la taille (max 10 MB)
             if (fileSize > 10 * 1024 * 1024) {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Erreur',
                 'Le fichier est trop volumineux (max 10 MB)',
-                snackPosition: SnackPosition.BOTTOM,
                 duration: const Duration(seconds: 3),
               );
               return;
@@ -192,10 +200,9 @@ class BonCommandeController extends GetxController
             try {
               await cameraService.validateImage(imageFile);
             } catch (e) {
-              Get.snackbar(
+              errorHelperShowSnackbar?.call(
                 'Erreur',
                 'Image invalide: $e',
-                snackPosition: SnackPosition.BOTTOM,
                 duration: const Duration(seconds: 3),
               );
               return;
@@ -213,10 +220,9 @@ class BonCommandeController extends GetxController
               'extension': extension,
             });
 
-            Get.snackbar(
+            errorHelperShowSnackbar?.call(
               'Succès',
               'Fichier sélectionné',
-              snackPosition: SnackPosition.BOTTOM,
               duration: const Duration(seconds: 2),
             );
           }
@@ -230,49 +236,46 @@ class BonCommandeController extends GetxController
             errorMessage = e.toString().replaceFirst('Exception: ', '');
           }
 
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             errorMessage,
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 4),
           );
         }
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la sélection du fichier: ${e.toString().replaceFirst('Exception: ', '')}',
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 4),
       );
     }
   }
 
-  // Supprimer un fichier de la liste
   void removeFile(int index) {
     if (index >= 0 && index < selectedFiles.length) {
       selectedFiles.removeAt(index);
     }
   }
 
-  @override
-  void onClose() {
+  void dispose() {
     _searchDebounceTimer?.cancel();
     scrollController.dispose();
-    tabController.dispose();
-    super.onClose();
+    _tabController?.removeListener(_onTabChanged);
+    _tabController?.dispose();
+    _tabController = null;
   }
 
   void _onTabChanged() {
-    // Toujours synchroniser le filtre avec l'onglet affiché (comme bon de commande fournisseur)
-    final index = tabController.index;
-    selectedStatus.value = index == 0 ? null : index;
+    if (_tabController == null || !_tabController!.indexIsChanging) return;
+    final index = _tabController!.index;
+    selectedStatus = index == 0 ? null : index;
   }
 
   /// Retourne les bons de commande filtrés selon l'onglet (0 = Tous, 1 = En attente, 2 = Validés, 3 = Rejetés, 4 = Livrés).
   /// En attente : statuts 0 et 1 sont considérés comme "en attente".
   List<BonCommande> getFilteredBonCommandes() {
-    final status = selectedStatus.value;
+    final status = selectedStatus;
     if (status == null) return bonCommandes;
     if (status == 1) {
       return bonCommandes
@@ -296,7 +299,7 @@ class BonCommandeController extends GetxController
     if (!forceRefresh &&
         bonCommandes.isNotEmpty &&
         _currentStatus == status &&
-        currentPage.value == page &&
+        currentPage == page &&
         page == 1) {
       AppLogger.debug('Données déjà chargées', tag: 'BON_COMMANDE_CONTROLLER');
       return;
@@ -306,28 +309,29 @@ class BonCommandeController extends GetxController
     final entityKey = 'bon_commandes_${status ?? 'all'}';
 
     if (page == 1) {
-      isLoading.value = true;
+      isLoading = true;
       final cachedData = BonCommandeService.getCachedBonCommandes(status);
       if (cachedData.isNotEmpty) {
-        bonCommandes.assignAll(cachedData);
-        isLoading.value = false;
+        bonCommandes.clear();
+        bonCommandes.addAll(cachedData);
+        isLoading = false;
         AppLogger.debug(
           '[Hive] statut=$status, ${cachedData.length} bon(s) → affichage instantané',
           tag: 'BON_COMMANDE_CONTROLLER',
         );
       } else {
-        bonCommandes.value = [];
+        bonCommandes.clear();
       }
     } else {
-      isLoadingMore.value = true;
+      isLoadingMore = true;
     }
 
     try {
       final response = await _bonCommandeService.getBonCommandesPaginated(
         status: status,
         page: page,
-        perPage: perPage.value,
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        perPage: perPage,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
       );
 
       if (_currentStatus != status) {
@@ -336,10 +340,11 @@ class BonCommandeController extends GetxController
       }
 
       if (page == 1) {
-        bonCommandes.assignAll(response.data);
+        bonCommandes.clear();
+        bonCommandes.addAll(response.data);
         CacheHelper.set(entityKey, response.data);
         BonCommandeService.saveCachedBonCommandes(response.data, status);
-        currentPage.value = 1;
+        currentPage = 1;
         AppLogger.debug(
           '[API] page 1 → ${response.data.length} bon(s), Hive mis à jour',
           tag: 'BON_COMMANDE_CONTROLLER',
@@ -348,78 +353,77 @@ class BonCommandeController extends GetxController
         bonCommandes.addAll(response.data);
       }
 
-      totalPages.value = response.meta.lastPage;
-      totalItems.value = response.meta.total;
-      hasNextPage.value = response.hasNextPage;
-      hasPreviousPage.value = response.hasPreviousPage;
-      if (page > 1) currentPage.value = response.meta.currentPage;
+      totalPages = response.meta.lastPage;
+      totalItems = response.meta.total;
+      hasNextPage = response.hasNextPage;
+      hasPreviousPage = response.hasPreviousPage;
+      if (page > 1) currentPage = response.meta.currentPage;
     } catch (e) {
       AppLogger.error('Erreur API Bons de commande: $e', tag: 'BON_COMMANDE_CONTROLLER');
       if (bonCommandes.isEmpty) {
         final fallback = BonCommandeService.getCachedBonCommandes(status);
         if (fallback.isNotEmpty) {
-          bonCommandes.assignAll(fallback);
+          bonCommandes.clear();
+          bonCommandes.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les bons de commande',
-            snackPosition: SnackPosition.BOTTOM,
             duration: const Duration(seconds: 4),
           );
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       _isLoadingInProgress = false;
     }
   }
 
 
-  /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante
   void loadNextPage() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      loadBonCommandes(status: _currentStatus, page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      loadBonCommandes(status: _currentStatus, page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   void loadPreviousPage() {
-    if (hasPreviousPage.value && !isLoading.value) {
-      loadBonCommandes(status: _currentStatus, page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading) {
+      loadBonCommandes(status: _currentStatus, page: currentPage - 1);
     }
   }
 
   Future<void> loadStats() async {
     try {
       final stats = await _bonCommandeService.getBonCommandeStats();
-      totalBonCommandes.value = stats['total'] ?? 0;
-      bonCommandesEnvoyes.value = stats['envoyes'] ?? 0;
-      bonCommandesAcceptes.value = stats['acceptes'] ?? 0;
-      bonCommandesRefuses.value = stats['refuses'] ?? 0;
-      bonCommandesLivres.value = stats['livres'] ?? 0;
-      montantTotal.value = stats['montant_total'] ?? 0.0;
+      totalBonCommandes = stats['total'] ?? 0;
+      bonCommandesEnvoyes = stats['envoyes'] ?? 0;
+      bonCommandesAcceptes = stats['acceptes'] ?? 0;
+      bonCommandesRefuses = stats['refuses'] ?? 0;
+      bonCommandesLivres = stats['livres'] ?? 0;
+      montantTotal = stats['montant_total'] ?? 0.0;
     } catch (e) {
       // Erreur silencieuse lors du chargement des statistiques
     }
   }
 
   Future<bool> createBonCommande() async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
       // Vérifications
-      if (selectedClient.value == null) {
+      if (selectedClient == null) {
         throw Exception('Aucun client sélectionné');
       }
 
-      if (selectedClient.value!.id == null) {
+      if (selectedClient!.id == null) {
         throw Exception(
           'L\'ID du client est manquant. Veuillez sélectionner un client valide.',
         );
@@ -429,9 +433,9 @@ class BonCommandeController extends GetxController
         throw Exception('Veuillez ajouter au moins un fichier scanné');
       }
 
-      isLoading.value = true;
+      isLoading = true;
 
-      final clientId = selectedClient.value!.id!;
+      final clientId = selectedClient!.id!;
 
       // Extraire les chemins des fichiers
       final fichiersPaths =
@@ -479,12 +483,9 @@ class BonCommandeController extends GetxController
 
       DashboardRefreshHelper.refreshPatronCounter('bon_commande');
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bon de commande créé avec succès',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
         duration: const Duration(seconds: 3),
       );
 
@@ -502,14 +503,14 @@ class BonCommandeController extends GetxController
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<bool> updateBonCommande(int bonCommandeId) async {
-    if (isLoading.value) return false;
+    if (isLoading) return false;
     try {
-      isLoading.value = true;
+      isLoading = true;
       final bonCommandeToUpdate = bonCommandes.firstWhere(
         (b) => b.id == bonCommandeId,
       );
@@ -520,7 +521,7 @@ class BonCommandeController extends GetxController
 
       final updatedBonCommande = BonCommande(
         id: bonCommandeId,
-        clientId: selectedClient.value?.id ?? bonCommandeToUpdate.clientId,
+        clientId: selectedClient?.id ?? bonCommandeToUpdate.clientId,
         commercialId: bonCommandeToUpdate.commercialId,
         fichiers:
             fichiersPaths.isNotEmpty
@@ -532,10 +533,9 @@ class BonCommandeController extends GetxController
       await _bonCommandeService.updateBonCommande(updatedBonCommande);
 
       // Si la mise à jour réussit, afficher le message de succès
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'Bon de commande mis à jour avec succès',
-        snackPosition: SnackPosition.BOTTOM,
       );
 
       // Essayer de recharger la liste (mais ne pas faire échouer si ça échoue)
@@ -548,47 +548,44 @@ class BonCommandeController extends GetxController
 
       return true;
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de mettre à jour le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
       );
       return false;
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> deleteBonCommande(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bonCommandeService.deleteBonCommande(
         bonCommandeId,
       );
       if (success) {
         bonCommandes.removeWhere((b) => b.id == bonCommandeId);
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande supprimé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la suppression');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de supprimer le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> submitBonCommande(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bonCommandeService.submitBonCommande(
         bonCommandeId,
       );
@@ -596,9 +593,7 @@ class BonCommandeController extends GetxController
         await loadBonCommandes();
 
         // Notifier le patron de la soumission
-        final bonCommande = bonCommandes.firstWhereOrNull(
-          (b) => b.id == bonCommandeId,
-        );
+        final bonCommande = _firstWhereBonCommandeById(bonCommandes, bonCommandeId);
         if (bonCommande != null) {
           NotificationHelper.notifySubmission(
             entityType: 'bon_commande',
@@ -614,28 +609,26 @@ class BonCommandeController extends GetxController
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande soumis avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la soumission');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de soumettre le bon de commande',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> approveBonCommande(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_commandes_');
@@ -660,13 +653,12 @@ class BonCommandeController extends GetxController
         bonCommandeId,
       );
       if (success) {
-        // Rafraîchir les compteurs du dashboard patron
+        // Rafraîchir les compteurs du dashboard patron et commercial
         DashboardRefreshHelper.refreshPatronCounter('boncommande');
+        DashboardRefreshHelper.refreshCommercialDashboard();
 
         // Notifier l'utilisateur concerné de la validation
-        final bonCommande = bonCommandes.firstWhereOrNull(
-          (b) => b.id == bonCommandeId,
-        );
+        final bonCommande = _firstWhereBonCommandeById(bonCommandes, bonCommandeId);
         if (bonCommande != null) {
           NotificationHelper.notifyValidation(
             entityType: 'bon_commande',
@@ -683,10 +675,9 @@ class BonCommandeController extends GetxController
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande approuvé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
 
         // Recharger les données en arrière-plan avec le statut actuel
@@ -700,10 +691,9 @@ class BonCommandeController extends GetxController
         // En cas d'échec, recharger pour restaurer l'état
         await loadBonCommandes(status: _currentStatus);
         // Ne pas afficher d'erreur si la validation a peut-être réussi côté serveur
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Attention',
           'La validation peut avoir réussi. Veuillez vérifier.',
-          snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 2),
         );
       }
@@ -728,10 +718,9 @@ class BonCommandeController extends GetxController
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -739,13 +728,13 @@ class BonCommandeController extends GetxController
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> rejectBonCommande(int bonCommandeId, String commentaire) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Invalider le cache avant l'appel API
       CacheHelper.clearByPrefix('bon_commandes_');
@@ -771,13 +760,12 @@ class BonCommandeController extends GetxController
         commentaire,
       );
       if (success) {
-        // Rafraîchir les compteurs du dashboard patron
+        // Rafraîchir les compteurs du dashboard patron et commercial
         DashboardRefreshHelper.refreshPatronCounter('boncommande');
+        DashboardRefreshHelper.refreshCommercialDashboard();
 
         // Notifier l'utilisateur concerné du rejet
-        final bonCommande = bonCommandes.firstWhereOrNull(
-          (b) => b.id == bonCommandeId,
-        );
+        final bonCommande = _firstWhereBonCommandeById(bonCommandes, bonCommandeId);
         if (bonCommande != null) {
           NotificationHelper.notifyRejection(
             entityType: 'bon_commande',
@@ -795,10 +783,9 @@ class BonCommandeController extends GetxController
           );
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande rejeté avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
 
         // Recharger les données en arrière-plan avec le statut actuel
@@ -834,10 +821,9 @@ class BonCommandeController extends GetxController
           errorStr.contains('unauthorized') ||
           errorStr.contains('forbidden')) {
         // Erreur d'authentification - afficher
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur d\'authentification. Veuillez vous reconnecter.',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         // Autre erreur - recharger pour vérifier l'état
@@ -845,88 +831,86 @@ class BonCommandeController extends GetxController
         // Ne pas afficher d'erreur car l'action peut avoir réussi
       }
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> markAsDelivered(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bonCommandeService.markAsDelivered(bonCommandeId);
       if (success) {
         await loadBonCommandes();
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Bon de commande marqué comme livré',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors du marquage comme livré');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de marquer le bon de commande comme livré',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   Future<void> generateInvoice(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
       final success = await _bonCommandeService.generateInvoice(bonCommandeId);
       if (success) {
         await loadBonCommandes();
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Facture générée avec succès',
-          snackPosition: SnackPosition.BOTTOM,
         );
       } else {
         throw Exception('Erreur lors de la génération de la facture');
       }
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Impossible de générer la facture',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 
   // Chargement des clients validés : cache Hive d'abord, puis API.
   Future<void> loadValidatedClients() async {
-    isLoadingClients.value = true;
+    isLoadingClients = true;
     final cached = ClientService.getCachedClients(1);
     if (cached.isNotEmpty) {
-      availableClients.assignAll(cached);
-      isLoadingClients.value = false;
+      availableClients.clear();
+      availableClients.addAll(cached);
+      isLoadingClients = false;
     } else {
-      availableClients.value = [];
+      availableClients.clear();
     }
     try {
       final clients = await _clientService.getClients(status: 1);
-      availableClients.assignAll(clients);
+      availableClients.clear();
+      availableClients.addAll(clients);
     } catch (e) {
       if (availableClients.isEmpty) {
         final fallback = ClientService.getCachedClients(1);
         if (fallback.isNotEmpty) {
-          availableClients.assignAll(fallback);
+          availableClients.clear();
+          availableClients.addAll(fallback);
         } else {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Impossible de charger les clients validés',
-            snackPosition: SnackPosition.BOTTOM,
           );
         }
       }
     } finally {
-      isLoadingClients.value = false;
+      isLoadingClients = false;
     }
   }
 
@@ -943,23 +927,23 @@ class BonCommandeController extends GetxController
   }
 
   void selectClient(Client client) {
-    selectedClient.value = client;
+    selectedClient = client;
   }
 
   void clearSelectedClient() {
-    selectedClient.value = null;
+    selectedClient = null;
   }
 
   /// Effacer toutes les données du formulaire
   void clearForm() {
-    selectedClient.value = null;
+    selectedClient = null;
     selectedFiles.clear();
   }
 
   /// Générer un PDF pour un bon de commande
   Future<void> generatePDF(int bonCommandeId) async {
     try {
-      isLoading.value = true;
+      isLoading = true;
 
       // Trouver le bon de commande
       final bonCommande = bonCommandes.firstWhere(
@@ -998,21 +982,17 @@ class BonCommandeController extends GetxController
         },
       );
 
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Succès',
         'PDF généré avec succès',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
       );
     } catch (e) {
-      Get.snackbar(
+      errorHelperShowSnackbar?.call(
         'Erreur',
         'Erreur lors de la génération du PDF: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
       );
     } finally {
-      isLoading.value = false;
+      isLoading = false;
     }
   }
 }

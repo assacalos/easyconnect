@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/router/app_router.dart' show rootGoRouter;
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/utils/encoding_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -19,8 +20,8 @@ class NotificationServiceEnhanced {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  final RxList<AppNotification> notifications = <AppNotification>[].obs;
-  final RxInt unreadCount = 0.obs;
+  final List<AppNotification> notifications = [];
+  int get unreadCount => notifications.where((n) => !n.isRead).length;
 
   bool _isInitialized = false;
   bool _soundsEnabled = true;
@@ -197,7 +198,7 @@ class NotificationServiceEnhanced {
         if (parts.length == 2) {
           final route = parts[0];
           final data = parts[1];
-          Get.toNamed(route, arguments: data);
+          rootGoRouter?.go(route, extra: data);
         }
       } catch (e) {
         AppLogger.error(
@@ -451,34 +452,39 @@ class NotificationServiceEnhanced {
     );
   }
 
-  /// Afficher un snackbar
+  /// Afficher un snackbar (optionnel: défini par l'app via showSnackbarCallback)
+  static void Function(String title, String message, Color? backgroundColor,
+      VoidCallback? onTap)? showSnackbarCallback;
+
   Future<void> _showSnackbar(AppNotification notification) async {
-    Get.snackbar(
-      fixUtf8Mojibake(notification.title),
-      fixUtf8Mojibake(notification.message),
-      duration: const Duration(seconds: 4),
-      backgroundColor: _getSnackbarColorFromString(notification.type),
-      colorText: Colors.white,
-      icon: Icon(
-        _getNotificationIconFromString(notification.type),
-        color: Colors.white,
-      ),
-      snackPosition: SnackPosition.TOP,
-      margin: const EdgeInsets.all(16),
-      borderRadius: 8,
-      isDismissible: true,
-      onTap: (_) {
+    final title = fixUtf8Mojibake(notification.title);
+    final message = fixUtf8Mojibake(notification.message);
+    final backgroundColor =
+        _getSnackbarColorFromString(notification.type);
+    if (showSnackbarCallback != null) {
+      showSnackbarCallback!(title, message, backgroundColor, () {
         if (notification.actionRoute.isNotEmpty) {
-          Get.toNamed(
+          rootGoRouter?.go(
             notification.actionRoute,
-            arguments: {
+            extra: {
               'entityId': notification.entityId,
               'entityType': notification.entityType,
             },
           );
         }
-      },
-    );
+      });
+      return;
+    }
+    // Fallback: navigation si route présente
+    if (notification.actionRoute.isNotEmpty) {
+      rootGoRouter?.go(
+        notification.actionRoute,
+        extra: {
+          'entityId': notification.entityId,
+          'entityType': notification.entityType,
+        },
+      );
+    }
   }
 
   /// Obtenir la couleur selon le type de notification (String)
@@ -550,7 +556,7 @@ class NotificationServiceEnhanced {
 
   /// Mettre à jour le compteur de notifications non lues
   void _updateUnreadCount() {
-    unreadCount.value = notifications.where((n) => !n.isRead).length;
+    // Compteur dérivé via getter unreadCount
   }
 
   /// Supprimer une notification

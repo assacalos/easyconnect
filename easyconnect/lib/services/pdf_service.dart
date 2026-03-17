@@ -12,6 +12,13 @@ class PdfService {
   factory PdfService() => _instance;
   PdfService._internal();
 
+  /// Convertit une valeur dynamique (String, int, double, null) en double pour éviter les erreurs de cast.
+  static double _safeDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
   // Cache pour les images
   pw.MemoryImage? _logoImage;
   pw.MemoryImage? _signatureImage;
@@ -330,6 +337,169 @@ class PdfService {
       // Libérer la mémoire du document PDF
       pdf = null;
     }
+  }
+
+  /// Génère un bulletin de paie PDF (paie ivoirienne : FCFA, CNPS, IR).
+  /// [bulletin] contient les données déjà calculées par l'API (employé, période, salaire de base,
+  /// primes, déductions, cotisations CNPS employeur/salarié, impôt sur le revenu, net à payer).
+  Future<void> generateBulletinPaiePdf({
+    required Map<String, dynamic> bulletin,
+  }) async {
+    pw.Document? pdf;
+    try {
+      await _loadImages();
+      pdf = pw.Document();
+
+      final reference = bulletin['id'] != null
+          ? 'BDP-${bulletin['id']}'
+          : 'BDP-${bulletin['employee_name'] ?? 'N/A'}-${bulletin['month'] ?? ''}-${bulletin['year'] ?? ''}';
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.symmetric(horizontal: 35, vertical: 28),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _buildHeader(
+                  'BULLETIN DE PAIE',
+                  reference,
+                  titre: 'Période : ${_formatBulletinPeriod(bulletin['month'], bulletin['year'])}',
+                  compact: true,
+                  logoSizeOverride: 100.0,
+                ),
+                pw.SizedBox(height: 16),
+                _buildBulletinEmployeInfo(bulletin),
+                pw.SizedBox(height: 16),
+                _buildBulletinSalaireTable(bulletin),
+                pw.SizedBox(height: 20),
+                _buildSignature(compact: true, signatureSizeOverride: 160.0),
+                pw.SizedBox(height: 12),
+                _buildFooter(null),
+              ],
+            );
+          },
+        ),
+      );
+
+      await _saveAndOpenPdf(pdf, 'bulletin_paie_${reference.replaceAll(' ', '_')}.pdf');
+    } catch (e) {
+      throw Exception('Erreur lors de la génération du bulletin de paie: $e');
+    } finally {
+      pdf = null;
+    }
+  }
+
+  String _formatBulletinPeriod(dynamic month, dynamic year) {
+    if (month == null && year == null) return 'N/A';
+    final m = month?.toString() ?? '';
+    final y = year?.toString() ?? '';
+    const months = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ];
+    final idx = int.tryParse(m);
+    final monthLabel = (idx != null && idx >= 1 && idx <= 12) ? months[idx - 1] : m;
+    return '$monthLabel $y'.trim();
+  }
+
+  pw.Widget _buildBulletinEmployeInfo(Map<String, dynamic> bulletin) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey50,
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'EMPLOYÉ',
+            style: pw.TextStyle(
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue800,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text('Nom : ${bulletin['employee_name'] ?? 'N/A'}', style: const pw.TextStyle(fontSize: 11)),
+          if (bulletin['employee_email'] != null && bulletin['employee_email'].toString().isNotEmpty)
+            pw.Text('Email : ${bulletin['employee_email']}', style: const pw.TextStyle(fontSize: 11)),
+          pw.Text('Période : ${_formatBulletinPeriod(bulletin['month'], bulletin['year'])}', style: const pw.TextStyle(fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildBulletinSalaireTable(Map<String, dynamic> bulletin) {
+    final base = _safeDouble(bulletin['base_salary']);
+    final primes = _safeDouble(bulletin['bonus']);
+    final totalBrut = base + primes;
+    final cnpsSalarie = bulletin['cnps_salarie'] != null ? _safeDouble(bulletin['cnps_salarie']) : null;
+    final cnpsEmployeur = bulletin['cnps_employeur'] != null ? _safeDouble(bulletin['cnps_employeur']) : null;
+    final impotRevenu = bulletin['impot_revenu'] != null ? _safeDouble(bulletin['impot_revenu']) : null;
+    final deductions = _safeDouble(bulletin['deductions']);
+    final net = _safeDouble(bulletin['net_salary']);
+
+    final fmt = (dynamic v) => '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(v is double ? v : _safeDouble(v))} FCFA';
+
+    final rows = <pw.TableRow>[
+      _bulletinRow('Salaire de base', fmt(base), isHeader: true),
+      _bulletinRow('Primes', fmt(primes), isHeader: true),
+      _bulletinRow('Total brut', fmt(totalBrut), isTotal: true),
+    ];
+    if (cnpsSalarie != null && cnpsSalarie > 0) {
+      rows.add(_bulletinRow('CNPS - Part salarié', fmt(cnpsSalarie)));
+    }
+    if (cnpsEmployeur != null && cnpsEmployeur > 0) {
+      rows.add(_bulletinRow('CNPS - Part employeur', fmt(cnpsEmployeur)));
+    }
+    if (impotRevenu != null && impotRevenu > 0) {
+      rows.add(_bulletinRow('Impôt sur le revenu', fmt(impotRevenu)));
+    }
+    if (deductions > 0) {
+      rows.add(_bulletinRow('Autres déductions', fmt(deductions)));
+    }
+    rows.add(_bulletinRow('Net à payer', fmt(net), isNet: true));
+
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Table(
+        columnWidths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(1.5)},
+        border: pw.TableBorder.all(color: PdfColors.grey300),
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.blue100),
+            children: [
+              pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Libellé', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11))),
+              pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('Montant (FCFA)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11), textAlign: pw.TextAlign.right)),
+            ],
+          ),
+          ...rows,
+        ],
+      ),
+    );
+  }
+
+  pw.TableRow _bulletinRow(String label, String value, {bool isHeader = false, bool isTotal = false, bool isNet = false}) {
+    final bold = isHeader || isTotal || isNet;
+    final bg = isNet ? PdfColors.blue50 : (isTotal ? PdfColors.grey100 : null);
+    return pw.TableRow(
+      decoration: bg != null ? pw.BoxDecoration(color: bg) : null,
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: pw.Text(value, style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal), textAlign: pw.TextAlign.right),
+        ),
+      ],
+    );
   }
 
   // Générer un PDF de paiement
@@ -708,7 +878,7 @@ class PdfService {
               pw.Padding(
                 padding: pw.EdgeInsets.all(cellPadding),
                 child: pw.Text(
-                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format((item['prix_unitaire'] as num?)?.toDouble() ?? 0.0)} FCFA',
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(_safeDouble(item['prix_unitaire']))} FCFA',
                   textAlign: pw.TextAlign.right,
                   style: pw.TextStyle(fontSize: cellFontSize),
                 ),
@@ -716,7 +886,7 @@ class PdfService {
               pw.Padding(
                 padding: pw.EdgeInsets.all(cellPadding),
                 child: pw.Text(
-                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format((item['montant_total'] as num?)?.toDouble() ?? 0.0)} FCFA',
+                  '${NumberFormat.currency(locale: 'fr_FR', symbol: '').format(_safeDouble(item['montant_total']))} FCFA',
                   textAlign: pw.TextAlign.right,
                   style: pw.TextStyle(fontSize: cellFontSize),
                 ),

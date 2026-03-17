@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/recruitment_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/recruitment_notifier.dart';
+import 'package:easyconnect/providers/recruitment_state.dart';
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class RecruitmentValidationPage extends StatefulWidget {
+class RecruitmentValidationPage extends ConsumerStatefulWidget {
   const RecruitmentValidationPage({super.key});
 
   @override
-  State<RecruitmentValidationPage> createState() =>
+  ConsumerState<RecruitmentValidationPage> createState() =>
       _RecruitmentValidationPageState();
 }
 
-class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
+class _RecruitmentValidationPageState
+    extends ConsumerState<RecruitmentValidationPage>
     with SingleTickerProviderStateMixin {
-  final RecruitmentController controller = Get.find<RecruitmentController>();
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -24,10 +26,8 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      _onTabChanged();
-    });
-    _loadRecruitments();
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadRecruitments());
   }
 
   @override
@@ -44,39 +44,42 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
   }
 
   Future<void> _loadRecruitments() async {
-    String? status;
+    String status;
     switch (_tabController.index) {
-      case 0: // Tous
-        status = null;
+      case 0:
+        status = 'all';
         break;
-      case 1: // En attente
+      case 1:
         status = 'draft';
         break;
-      case 2: // Validés
+      case 2:
         status = 'published';
         break;
-      case 3: // Rejetés
+      case 3:
         status = 'cancelled';
         break;
+      default:
+        status = 'all';
     }
-
-    controller.selectedStatus.value = status ?? 'all';
-    await controller.loadRecruitmentRequests();
+    final notifier = ref.read(recruitmentProvider.notifier);
+    notifier.filterByStatus(status);
+    await notifier.loadRecruitmentRequests();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(recruitmentProvider);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Recrutements'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadRecruitments();
-            },
+            onPressed: _loadRecruitments,
             tooltip: 'Actualiser',
           ),
         ],
@@ -95,7 +98,6 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -103,59 +105,46 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par poste, département...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildRecruitmentList(),
-            ),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildRecruitmentList(state),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRecruitmentList() {
-    // Filtrer les recrutements selon la recherche
-    final filteredRecruitments =
-        _searchQuery.isEmpty
-            ? controller.recruitmentRequests
-            : controller.recruitmentRequests
-                .where(
-                  (recruitment) =>
-                      recruitment.position.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      recruitment.department.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ),
-                )
-                .toList();
+  Widget _buildRecruitmentList(RecruitmentState state) {
+    List<RecruitmentRequest> filtered = state.recruitmentRequests;
 
-    if (filteredRecruitments.isEmpty) {
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      filtered = filtered
+          .where(
+            (r) =>
+                r.position.toLowerCase().contains(q) ||
+                r.department.toLowerCase().contains(q) ||
+                r.title.toLowerCase().contains(q),
+          )
+          .toList();
+    }
+
+    if (filtered.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -173,9 +162,7 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
               ElevatedButton.icon(
                 onPressed: () {
                   _searchController.clear();
-                  setState(() {
-                    _searchQuery = '';
-                  });
+                  setState(() => _searchQuery = '');
                 },
                 icon: const Icon(Icons.clear),
                 label: const Text('Effacer la recherche'),
@@ -187,23 +174,21 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
     }
 
     return ListView.builder(
-      itemCount: filteredRecruitments.length,
+      itemCount: filtered.length,
       padding: const EdgeInsets.all(8),
       itemBuilder: (context, index) {
-        final recruitment = filteredRecruitments[index];
+        final recruitment = filtered[index];
         return _buildRecruitmentCard(context, recruitment);
       },
     );
   }
 
-  Widget _buildRecruitmentCard(
-    BuildContext context,
-    RecruitmentRequest recruitment,
-  ) {
+  Widget _buildRecruitmentCard(BuildContext context, RecruitmentRequest recruitment) {
     final formatDate = DateFormat('dd/MM/yyyy');
     final statusColor = _getStatusColor(recruitment.status);
     final statusIcon = _getStatusIcon(recruitment.status);
     final statusText = _getStatusText(recruitment.status);
+    final notifier = ref.read(recruitmentProvider.notifier);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -221,9 +206,7 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
           children: [
             const SizedBox(height: 4),
             Text('Département: ${recruitment.department}'),
-            Text(
-              'Date limite: ${formatDate.format(recruitment.applicationDeadline)}',
-            ),
+            Text('Date limite: ${formatDate.format(recruitment.applicationDeadline)}'),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -249,7 +232,6 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
                 const Text(
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -268,20 +250,18 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
                       Text('Titre: ${recruitment.title}'),
                       Text('Poste: ${recruitment.position}'),
                       Text('Département: ${recruitment.department}'),
-                      Text('Type: ${recruitment.employmentType}'),
-                      Text('Niveau: ${recruitment.experienceLevel}'),
+                      Text('Type: ${recruitment.employmentTypeText}'),
+                      Text('Niveau: ${recruitment.experienceLevelText}'),
                       Text('Salaire: ${recruitment.salaryRange}'),
                       Text('Localisation: ${recruitment.location}'),
-                      Text(
-                        'Date limite: ${formatDate.format(recruitment.applicationDeadline)}',
-                      ),
+                      Text('Date limite: ${formatDate.format(recruitment.applicationDeadline)}'),
                       if (recruitment.description.isNotEmpty)
                         Text('Description: ${recruitment.description}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(recruitment, statusColor),
+                _buildActionButtons(recruitment, statusColor, notifier),
               ],
             ),
           ),
@@ -293,38 +273,33 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
   Widget _buildActionButtons(
     RecruitmentRequest recruitment,
     Color statusColor,
+    RecruitmentNotifier notifier,
   ) {
     if (recruitment.status.toLowerCase() == 'draft') {
-      // En attente - Afficher boutons Valider/Rejeter
-      return Column(
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(recruitment),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(recruitment),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
+          ElevatedButton.icon(
+            onPressed: () => _showApproveConfirmation(recruitment, notifier),
+            icon: const Icon(Icons.check),
+            label: const Text('Valider'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => _showRejectDialog(recruitment, notifier),
+            icon: const Icon(Icons.close),
+            label: const Text('Rejeter'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       );
     } else if (recruitment.status.toLowerCase() == 'published') {
-      // Validé - Afficher seulement info
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -339,16 +314,12 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
             const SizedBox(width: 8),
             Text(
               'Recrutement validé',
-              style: TextStyle(
-                color: Colors.green[700],
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
             ),
           ],
         ),
       );
     } else if (recruitment.status.toLowerCase() == 'cancelled') {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -363,16 +334,12 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
             const SizedBox(width: 8),
             Text(
               'Recrutement rejeté',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold),
             ),
           ],
         ),
       );
     } else {
-      // Autres statuts
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -387,10 +354,7 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
             const SizedBox(width: 8),
             Text(
               'Statut: ${recruitment.status}',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -443,58 +407,87 @@ class _RecruitmentValidationPageState extends State<RecruitmentValidationPage>
     }
   }
 
-  void _showApproveConfirmation(RecruitmentRequest recruitment) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider ce recrutement ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        Get.back();
-        controller.approveRecruitmentRequest(recruitment);
-        _loadRecruitments();
-      },
-    );
-  }
-
-  void _showRejectDialog(RecruitmentRequest recruitment) {
-    final commentController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter le recrutement',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: commentController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(RecruitmentRequest recruitment, RecruitmentNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider ce recrutement ?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveRecruitmentRequest(recruitment);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Recrutement validé'), backgroundColor: Colors.green),
+                  );
+                  _loadRecruitments();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () {
-        if (commentController.text.isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        controller.rejectRecruitmentRequest(
-          recruitment,
-          commentController.text,
-        );
-        _loadRecruitments();
-      },
+    );
+  }
+
+  void _showRejectDialog(RecruitmentRequest recruitment, RecruitmentNotifier notifier) {
+    final commentController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter le recrutement'),
+        content: TextField(
+          controller: commentController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              if (commentController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Veuillez entrer un motif de rejet'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectRecruitmentRequest(recruitment, commentController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Recrutement rejeté'), backgroundColor: Colors.green),
+                  );
+                  _loadRecruitments();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

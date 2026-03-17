@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Models/journal_entry_model.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/Views/Components/journal_form_page.dart';
 
 class JournalDetailPage extends StatefulWidget {
   final int entryId;
@@ -99,7 +98,7 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
                 ),
                 const SizedBox(height: 24),
                 TextButton.icon(
-                  onPressed: () => Get.back(),
+                  onPressed: () => context.pop(),
                   icon: const Icon(Icons.arrow_back),
                   label: const Text('Retour'),
                 ),
@@ -134,7 +133,10 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
             icon: const Icon(Icons.edit),
             tooltip: 'Modifier',
             onPressed: () async {
-              final ok = await Get.to<bool>(() => JournalFormPage(entryId: widget.entryId));
+              final ok = await context.push<bool>(
+                '/journal/form',
+                extra: widget.entryId,
+              );
               if (ok == true && mounted) _loadEntry();
             },
           ),

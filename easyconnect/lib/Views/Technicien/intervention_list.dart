@@ -1,36 +1,73 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/intervention_controller.dart';
-import 'package:easyconnect/Controllers/technicien_dashboard_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/intervention_notifier.dart';
+import 'package:easyconnect/providers/intervention_state.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
-import 'package:easyconnect/Views/Technicien/intervention_form.dart';
-import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
 import 'package:easyconnect/Views/Components/role_based_widget.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class InterventionList extends StatelessWidget {
+class InterventionList extends ConsumerStatefulWidget {
   final int? clientId;
 
   const InterventionList({super.key, this.clientId});
 
   @override
+  ConsumerState<InterventionList> createState() => _InterventionListState();
+}
+
+class _InterventionListState extends ConsumerState<InterventionList> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(interventionProvider.notifier).loadInterventions();
+      ref.read(interventionProvider.notifier).loadInterventionStats();
+      ref.read(interventionProvider.notifier).loadPendingInterventions();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final InterventionController controller = Get.put(InterventionController());
+    final state = ref.watch(interventionProvider);
+    final notifier = ref.read(interventionProvider.notifier);
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: true,
+          leading: const AppBarBackButton(fallbackRoute: '/technicien', iconColor: Colors.white),
           title: const Text('Gestion des Interventions'),
           backgroundColor: Colors.deepPurple,
           foregroundColor: Colors.white,
           actions: [
             IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Retour',
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/technicien');
+                }
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () => controller.loadInterventions(),
+              onPressed: () => notifier.loadInterventions(forceRefresh: true),
             ),
           ],
           bottom: const TabBar(
@@ -46,27 +83,18 @@ class InterventionList extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildInterventionTab(controller, 'pending'),
-            _buildInterventionTab(controller, 'approved'),
-            _buildInterventionTab(controller, 'rejected'),
+            _buildInterventionTab(state, notifier, 'pending'),
+            _buildInterventionTab(state, notifier, 'approved'),
+            _buildInterventionTab(state, notifier, 'rejected'),
           ],
         ),
         floatingActionButton: RoleBasedWidget(
           allowedRoles: [Roles.ADMIN, Roles.TECHNICIEN, Roles.PATRON],
           child: FloatingActionButton.extended(
             onPressed: () async {
-              await Get.to(() => const InterventionForm());
-              // Recharger les données après retour du formulaire
-              controller.loadInterventions();
-              // Notifier le dashboard technicien pour qu'il se mette à jour
-              if (Get.isRegistered<TechnicienDashboardController>()) {
-                try {
-                  final dashboardController =
-                      Get.find<TechnicienDashboardController>();
-                  dashboardController.refreshPendingEntities();
-                } catch (e) {
-                  print('⚠️ DashboardController non disponible: $e');
-                }
+              await context.push('/interventions/new');
+              if (context.mounted) {
+                notifier.loadInterventions(forceRefresh: true);
               }
             },
             icon: const Icon(Icons.add),
@@ -83,79 +111,68 @@ class InterventionList extends StatelessWidget {
   }
 
   Widget _buildInterventionTab(
-    InterventionController controller,
+    InterventionState state,
+    InterventionNotifier notifier,
     String status,
   ) {
-    // Récupérer clientId depuis les arguments
-    final args = Get.arguments as Map<String, dynamic>?;
-    final filterClientId = clientId ?? args?['clientId'] as int?;
-
-    return Obx(() {
-      // Filtrer les interventions par statut
-      var interventions =
-          controller.interventions.where((intervention) {
-            switch (status) {
-              case 'pending':
-                return intervention.status == 'pending';
-              case 'approved':
-                return intervention.status == 'approved' ||
-                    intervention.status == 'in_progress' ||
-                    intervention.status == 'completed';
-              case 'rejected':
-                return intervention.status == 'rejected';
-              default:
-                return true;
-            }
-          }).toList();
-
-      // Filtrer par clientId si fourni
-      if (filterClientId != null) {
-        interventions =
-            interventions
-                .where(
-                  (intervention) => intervention.clientId == filterClientId,
-                )
-                .toList();
+    var interventions = state.interventions.where((intervention) {
+      switch (status) {
+        case 'pending':
+          return intervention.status == 'pending';
+        case 'approved':
+          return intervention.status == 'approved' ||
+              intervention.status == 'in_progress' ||
+              intervention.status == 'completed';
+        case 'rejected':
+          return intervention.status == 'rejected';
+        default:
+          return true;
       }
+    }).toList();
 
-      if (controller.isLoading.value) {
-        return const SkeletonSearchResults(itemCount: 6);
-      }
+    final filterClientId = widget.clientId;
+    if (filterClientId != null) {
+      interventions =
+          interventions.where((i) => i.clientId == filterClientId).toList();
+    }
 
-      if (interventions.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                _getEmptyMessage(status),
-                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _getEmptySubMessage(status),
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-        );
-      }
+    if (state.isLoading) {
+      return const SkeletonSearchResults(itemCount: 6);
+    }
 
-      return PaginatedListView(
-        scrollController: controller.scrollController,
-        onLoadMore: controller.loadMore,
-        hasNextPage: controller.hasNextPage.value,
-        isLoadingMore: controller.isLoadingMore.value,
-        padding: const EdgeInsets.all(12),
-        itemCount: interventions.length,
-        itemBuilder: (context, index) {
-          final intervention = interventions[index];
-          return _buildInterventionCard(intervention, controller);
-        },
+    if (interventions.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _getEmptyMessage(status),
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _getEmptySubMessage(status),
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
       );
-    });
+    }
+
+    return PaginatedListView(
+      scrollController: _scrollController,
+      onLoadMore: notifier.loadMore,
+      hasNextPage: state.hasNextPage,
+      isLoadingMore: state.isLoadingMore,
+      padding: const EdgeInsets.all(12),
+      itemCount: interventions.length,
+      itemBuilder: (context, index) {
+        final intervention = interventions[index];
+        return _buildInterventionCard(context, intervention, state, notifier);
+      },
+    );
   }
 
   IconData _getEmptyIcon(String status) {
@@ -198,8 +215,10 @@ class InterventionList extends StatelessWidget {
   }
 
   Widget _buildInterventionCard(
+    BuildContext context,
     Intervention intervention,
-    InterventionController controller,
+    InterventionState state,
+    InterventionNotifier notifier,
   ) {
     final formatDate = DateFormat('dd/MM/yyyy');
 
@@ -208,18 +227,9 @@ class InterventionList extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () async {
-          await Get.to(() => InterventionDetail(intervention: intervention));
-          // Recharger les données après retour de la page de détails
-          controller.loadInterventions();
-          // Notifier le dashboard technicien pour qu'il se mette à jour
-          if (Get.isRegistered<TechnicienDashboardController>()) {
-            try {
-              final dashboardController =
-                  Get.find<TechnicienDashboardController>();
-              dashboardController.refreshPendingEntities();
-            } catch (e) {
-              print('⚠️ DashboardController non disponible: $e');
-            }
+          await context.push('/interventions/${intervention.id}', extra: intervention);
+          if (context.mounted) {
+            notifier.loadInterventions(forceRefresh: true);
           }
         },
         borderRadius: BorderRadius.circular(8),
@@ -228,7 +238,6 @@ class InterventionList extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête avec titre et statut
               Row(
                 children: [
                   Expanded(
@@ -243,10 +252,7 @@ class InterventionList extends StatelessWidget {
                   _buildStatusChip(intervention),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // Type et priorité
               Row(
                 children: [
                   Icon(
@@ -280,20 +286,14 @@ class InterventionList extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 8),
-
-              // Description
               Text(
                 intervention.description,
                 style: TextStyle(color: Colors.grey[600], fontSize: 14),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-
               const SizedBox(height: 8),
-
-              // Raison du rejet
               if (intervention.status == 'rejected' &&
                   (intervention.rejectionReason != null &&
                       intervention.rejectionReason!.isNotEmpty)) ...[
@@ -312,8 +312,6 @@ class InterventionList extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-
-              // Informations de planification
               Row(
                 children: [
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
@@ -333,7 +331,6 @@ class InterventionList extends StatelessWidget {
                   ],
                 ],
               ),
-
               if (intervention.location != null) ...[
                 const SizedBox(height: 4),
                 Row(
@@ -347,7 +344,6 @@ class InterventionList extends StatelessWidget {
                   ],
                 ),
               ],
-
               if (intervention.clientName != null) ...[
                 const SizedBox(height: 4),
                 Row(
@@ -361,62 +357,58 @@ class InterventionList extends StatelessWidget {
                   ],
                 ),
               ],
-
               const SizedBox(height: 12),
-
-              // Actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   if (intervention.status == 'pending' &&
-                      controller.canManageInterventions) ...[
+                      state.canManageInterventions) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(
-                            () => InterventionForm(intervention: intervention),
-                          ),
+                      onPressed: () => context.push(
+                        '/interventions/${intervention.id}/edit',
+                        extra: intervention,
+                      ),
                     ),
                     const SizedBox(width: 8),
                   ],
                   if (intervention.status == 'approved' &&
-                      controller.canManageInterventions) ...[
+                      state.canManageInterventions) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.play_arrow, size: 16),
                       label: const Text('Démarrer'),
-                      onPressed:
-                          () => _showStartDialog(intervention, controller),
+                      onPressed: () =>
+                          _showStartDialog(context, intervention, notifier),
                     ),
                     const SizedBox(width: 8),
                   ],
                   if (intervention.status == 'in_progress' &&
-                      controller.canManageInterventions) ...[
+                      state.canManageInterventions) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.stop, size: 16),
                       label: const Text('Terminer'),
-                      onPressed:
-                          () => _showCompleteDialog(intervention, controller),
+                      onPressed: () => _showCompleteDialog(
+                          context, intervention, notifier),
                     ),
                     const SizedBox(width: 8),
                   ],
                   if (intervention.status == 'pending' &&
-                      controller.canApproveInterventions) ...[
+                      state.canApproveInterventions) ...[
                     TextButton.icon(
                       icon: const Icon(Icons.check, size: 16),
                       label: const Text('Approuver'),
-                      onPressed:
-                          () => _showApproveDialog(intervention, controller),
+                      onPressed: () =>
+                          _showApproveDialog(context, intervention, notifier),
                     ),
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('Rejeter'),
-                      onPressed:
-                          () => _showRejectDialog(intervention, controller),
+                      onPressed: () =>
+                          _showRejectDialog(context, intervention, notifier),
                     ),
                   ],
-                  // Bouton PDF pour les interventions validées (approved, completed)
                   if (intervention.status == 'approved' ||
                       intervention.status == 'completed') ...[
                     const SizedBox(width: 8),
@@ -424,11 +416,12 @@ class InterventionList extends StatelessWidget {
                       icon: const Icon(Icons.picture_as_pdf, size: 16),
                       label: const Text('PDF'),
                       onPressed: () {
-                        // Note: Pas de méthode generatePDF pour les interventions
-                        Get.snackbar(
-                          'Information',
-                          'Génération PDF non disponible pour les interventions',
-                          snackPosition: SnackPosition.BOTTOM,
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Génération PDF non disponible pour les interventions',
+                            ),
+                          ),
                         );
                       },
                       style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -465,13 +458,14 @@ class InterventionList extends StatelessWidget {
   }
 
   void _showStartDialog(
+    BuildContext context,
     Intervention intervention,
-    InterventionController controller,
+    InterventionNotifier notifier,
   ) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Démarrer l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -491,15 +485,28 @@ class InterventionList extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.startIntervention(intervention);
-              Get.back();
+              notifier.startIntervention(intervention,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              Navigator.pop(ctx);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Intervention démarrée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               minimumSize: const Size(0, 36),
             ),
@@ -511,16 +518,18 @@ class InterventionList extends StatelessWidget {
   }
 
   void _showCompleteDialog(
+    BuildContext context,
     Intervention intervention,
-    InterventionController controller,
+    InterventionNotifier notifier,
   ) {
     final solutionController = TextEditingController();
     final completionNotesController = TextEditingController();
     final actualDurationController = TextEditingController();
     final costController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Terminer l\'intervention'),
         content: SingleChildScrollView(
           child: Column(
@@ -565,20 +574,34 @@ class InterventionList extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
-              controller.solutionController.text = solutionController.text;
-              controller.completionNotesController.text =
-                  completionNotesController.text;
-              controller.actualDurationController.text =
-                  actualDurationController.text;
-              controller.costController.text = costController.text;
-              controller.completeIntervention(intervention);
-              Get.back();
+              notifier.completeIntervention(
+                intervention,
+                solution: solutionController.text.trim(),
+                completionNotes: completionNotesController.text.trim().isEmpty
+                    ? null
+                    : completionNotesController.text.trim(),
+                actualDuration:
+                    double.tryParse(actualDurationController.text),
+                cost: double.tryParse(costController.text),
+              );
+              Navigator.pop(ctx);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Intervention terminée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               minimumSize: const Size(0, 36),
             ),
@@ -590,13 +613,14 @@ class InterventionList extends StatelessWidget {
   }
 
   void _showApproveDialog(
+    BuildContext context,
     Intervention intervention,
-    InterventionController controller,
+    InterventionNotifier notifier,
   ) {
     final notesController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -616,15 +640,39 @@ class InterventionList extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveIntervention(intervention);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveIntervention(intervention,
+                    notes: notesController.text.trim().isEmpty
+                        ? null
+                        : notesController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Intervention approuvée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString()),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               minimumSize: const Size(0, 36),
             ),
@@ -636,13 +684,14 @@ class InterventionList extends StatelessWidget {
   }
 
   void _showRejectDialog(
+    BuildContext context,
     Intervention intervention,
-    InterventionController controller,
+    InterventionNotifier notifier,
   ) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter l\'intervention'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -660,20 +709,46 @@ class InterventionList extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectIntervention(
-                  intervention,
-                  reasonController.text.trim(),
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Veuillez indiquer la raison du rejet'),
+                  ),
                 );
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectIntervention(
+                    intervention, reasonController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Intervention rejetée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString()),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Rejeter'),
           ),
         ],

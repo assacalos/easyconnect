@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easyconnect/utils/permissions.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 
 class StatsGrid extends StatelessWidget {
@@ -64,16 +64,15 @@ class StatCard {
   });
 }
 
-class StatCardWidget extends StatelessWidget {
+class StatCardWidget extends ConsumerWidget {
   final StatCard stat;
 
   const StatCardWidget({super.key, required this.stat});
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRole = ref.watch(authProvider).user?.role;
 
-    // Partie statique du widget (icône, titre, valeur) - ne se reconstruit jamais
     final staticContent = Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -118,35 +117,27 @@ class StatCardWidget extends StatelessWidget {
       ),
     );
 
-    // Vérification de permission - Obx ciblé uniquement sur userAuth
     if (stat.requiredPermission != null) {
-      // Obx ciblé uniquement sur userAuth - ne reconstruit que si l'utilisateur change
-      return Obx(() {
-        final userRole = authController.userAuth.value?.role;
-        if (!Permissions.hasPermission(userRole, stat.requiredPermission!)) {
-          return Card(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.lock, size: 32, color: Colors.grey.shade400),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Accès restreint",
-                    style: TextStyle(color: Colors.grey.shade600),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+      if (!Permissions.hasPermission(userRole, stat.requiredPermission!)) {
+        return Card(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock, size: 32, color: Colors.grey.shade400),
+                const SizedBox(height: 8),
+                Text(
+                  'Accès restreint',
+                  style: TextStyle(color: Colors.grey.shade600),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-          );
-        }
-        return staticContent;
-      });
+          ),
+        );
+      }
     }
-
-    // Si pas de permission requise, retourner directement le contenu statique
     return staticContent;
   }
 }

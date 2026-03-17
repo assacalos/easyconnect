@@ -8,6 +8,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 
 class DevisService {
@@ -22,7 +23,8 @@ class DevisService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -43,16 +45,13 @@ class DevisService {
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'DEVIS_SERVICE');
 
+      final headers = <String, String>{'Accept': 'application/json'};
+      if (token != null && token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
+
       final response = await RetryHelper.retryNetwork(
         operation:
             () => http
-                .get(
-                  uri,
-                  headers: {
-                    'Accept': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
-                )
+                .get(uri, headers: headers)
                 .timeout(
                   AppConfig.defaultTimeout,
                   onTimeout:
@@ -542,6 +541,24 @@ class DevisService {
 
   static void saveDevisToHive(List<Devis> list, int? status) {
     _saveDevisToHive(list, status);
+  }
+
+  /// Invalide le cache Hive des devis (tous les statuts) après validation/rejet.
+  static Future<void> clearDevisHiveCache() async {
+    try {
+      final keys = [
+        '${HiveStorageService.keyDevis}_all',
+        '${HiveStorageService.keyDevis}_1',
+        '${HiveStorageService.keyDevis}_2',
+        '${HiveStorageService.keyDevis}_3',
+      ];
+      for (final key in keys) {
+        await HiveStorageService.clearEntity(key);
+      }
+      AppLogger.debug('Hive: cache devis invalidé', tag: 'DEVIS_SERVICE');
+    } catch (e) {
+      AppLogger.warning('Hive: erreur invalidation cache devis: $e', tag: 'DEVIS_SERVICE');
+    }
   }
 
   /// Cache Hive (sync) : affichage instantané Cache-First.

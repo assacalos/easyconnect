@@ -1,23 +1,24 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
-import 'package:easyconnect/Controllers/notification_controller.dart';
 import 'package:easyconnect/Views/Components/notification_badge_icon.dart';
 import 'package:easyconnect/models/user_model.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final AuthController authController = Get.find<AuthController>();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    final isPatron = user?.role == Roles.PATRON;
 
     return Scaffold(
       appBar: AppBar(
@@ -25,110 +26,71 @@ class ProfilePage extends StatelessWidget {
         backgroundColor: Colors.blueGrey.shade900,
         foregroundColor: Colors.white,
         actions: [
-          Obx(() {
-            final isPatron = authController.userAuth.value?.role == Roles.PATRON;
-            if (isPatron && Get.isRegistered<NotificationController>()) {
-              return IconButton(
-                icon: const NotificationBadgeIcon(),
-                onPressed: () => Get.toNamed('/notifications'),
-                tooltip: 'Notifications',
-              );
-            }
-            return const SizedBox.shrink();
-          }),
+          if (isPatron)
+            IconButton(
+              icon: const NotificationBadgeIcon(),
+              onPressed: () => context.go('/notifications'),
+              tooltip: 'Notifications',
+            ),
           IconButton(
             icon: const Icon(Icons.edit),
-            onPressed: () => _showEditProfileDialog(context, authController),
+            onPressed: () => _showEditProfileDialog(context, ref),
             tooltip: 'Modifier le profil',
           ),
         ],
       ),
-      body: Obx(() {
-        final user = authController.userAuth.value;
-        if (user == null) {
-          return const Center(child: Text('Aucune information utilisateur'));
-        }
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // En-tête avec avatar
-              _buildHeader(context, user),
-              const SizedBox(height: 24),
-
-              // Informations personnelles
-              _buildSection(
-                title: 'Informations personnelles',
-                icon: Icons.person,
+      body: user == null
+          ? const Center(child: Text('Aucune information utilisateur'))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoRow(Icons.badge, 'ID', user.id.toString()),
-                  if (user.nom != null && user.nom!.isNotEmpty)
-                    _buildInfoRow(Icons.person_outline, 'Nom', user.nom!),
-                  if (user.prenom != null && user.prenom!.isNotEmpty)
-                    _buildInfoRow(Icons.person_outline, 'Prénom', user.prenom!),
-                  if (user.email != null && user.email!.isNotEmpty)
-                    _buildInfoRow(Icons.email, 'Email', user.email!),
+              _buildHeader(context, user, ref),
+                  const SizedBox(height: 24),
+                  _buildSection(
+                    title: 'Informations personnelles',
+                    icon: Icons.person,
+                    children: [
+                      _buildInfoRow(Icons.badge, 'ID', user.id.toString()),
+                      if (user.nom != null && user.nom!.isNotEmpty)
+                        _buildInfoRow(Icons.person_outline, 'Nom', user.nom!),
+                      if (user.prenom != null && user.prenom!.isNotEmpty)
+                        _buildInfoRow(Icons.person_outline, 'Prénom', user.prenom!),
+                      if (user.email != null && user.email!.isNotEmpty)
+                        _buildInfoRow(Icons.email, 'Email', user.email!),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSection(
+                    title: 'Informations professionnelles',
+                    icon: Icons.work,
+                    children: [
+                      _buildInfoRow(Icons.business_center, 'Rôle', Roles.getRoleName(user.role ?? 0)),
+                      _buildInfoRow(Icons.circle, 'Statut', user.isActive ? 'Actif' : 'Inactif', valueColor: user.isActive ? Colors.green : Colors.red),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (user.createdAt != null || user.updatedAt != null)
+                    _buildSection(
+                      title: 'Informations système',
+                      icon: Icons.info,
+                      children: [
+                        if (user.createdAt != null)
+                          _buildInfoRow(Icons.calendar_today, 'Date de création', _formatDate(user.createdAt)),
+                        if (user.updatedAt != null)
+                          _buildInfoRow(Icons.update, 'Dernière mise à jour', _formatDate(user.updatedAt)),
+                      ],
+                    ),
+                  const SizedBox(height: 32),
+                  _buildActionsSection(context, ref),
                 ],
               ),
-
-              const SizedBox(height: 16),
-
-              // Informations professionnelles
-              _buildSection(
-                title: 'Informations professionnelles',
-                icon: Icons.work,
-                children: [
-                  _buildInfoRow(
-                    Icons.business_center,
-                    'Rôle',
-                    Roles.getRoleName(user.role ?? 0),
-                  ),
-                  _buildInfoRow(
-                    Icons.circle,
-                    'Statut',
-                    user.isActive ? 'Actif' : 'Inactif',
-                    valueColor: user.isActive ? Colors.green : Colors.red,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Informations système
-              if (user.createdAt != null || user.updatedAt != null)
-                _buildSection(
-                  title: 'Informations système',
-                  icon: Icons.info,
-                  children: [
-                    if (user.createdAt != null)
-                      _buildInfoRow(
-                        Icons.calendar_today,
-                        'Date de création',
-                        _formatDate(user.createdAt),
-                      ),
-                    if (user.updatedAt != null)
-                      _buildInfoRow(
-                        Icons.update,
-                        'Dernière mise à jour',
-                        _formatDate(user.updatedAt),
-                      ),
-                  ],
-                ),
-
-              const SizedBox(height: 32),
-
-              // Actions
-              _buildActionsSection(context, authController),
-            ],
-          ),
-        );
-      }),
+            ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, dynamic user) {
+  Widget _buildHeader(BuildContext context, dynamic user, WidgetRef ref) {
     final String? photoUrl = user is UserModel ? user.photoUrl : (user.avatar?.toString().trim().isNotEmpty == true && user.avatar.toString().startsWith('http') ? user.avatar : null);
     return Card(
       elevation: 4,
@@ -138,7 +100,7 @@ class ProfilePage extends StatelessWidget {
         child: Row(
           children: [
             GestureDetector(
-              onTap: () => _changeProfilePhoto(context, user),
+              onTap: () => _changeProfilePhoto(context, user, ref),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -241,9 +203,14 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Future<void> _changeProfilePhoto(BuildContext context, dynamic user) async {
-    Get.bottomSheet(
-      SafeArea(
+  Future<void> _changeProfilePhoto(BuildContext context, dynamic user, WidgetRef ref) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -251,35 +218,30 @@ class ProfilePage extends StatelessWidget {
               leading: const Icon(Icons.camera_alt),
               title: const Text('Prendre une photo'),
               onTap: () async {
-                Get.back();
-                await _pickAndUploadPhoto(context, ImageSource.camera);
+                Navigator.of(ctx).pop();
+                await _pickAndUploadPhoto(context, ImageSource.camera, ref);
               },
             ),
             ListTile(
               leading: const Icon(Icons.photo_library),
               title: const Text('Choisir depuis la galerie'),
               onTap: () async {
-                Get.back();
-                await _pickAndUploadPhoto(context, ImageSource.gallery);
+                Navigator.of(ctx).pop();
+                await _pickAndUploadPhoto(context, ImageSource.gallery, ref);
               },
             ),
             ListTile(
               leading: const Icon(Icons.close),
               title: const Text('Annuler'),
-              onTap: () => Get.back(),
+              onTap: () => Navigator.of(ctx).pop(),
             ),
           ],
         ),
       ),
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
     );
   }
 
-  Future<void> _pickAndUploadPhoto(BuildContext context, ImageSource source) async {
-    final AuthController authController = Get.find<AuthController>();
+  Future<void> _pickAndUploadPhoto(BuildContext context, ImageSource source, WidgetRef ref) async {
     try {
       final picker = ImagePicker();
       final XFile? picked = await picker.pickImage(
@@ -291,32 +253,33 @@ class ProfilePage extends StatelessWidget {
       final File file = File(picked.path);
       if (!await file.exists()) return;
 
-      Get.snackbar('Chargement…', 'Mise à jour de la photo en cours…', snackPosition: SnackPosition.BOTTOM);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mise à jour de la photo en cours…')),
+        );
+      }
       final response = await ApiService.updateProfilePhoto(file);
-      Get.closeCurrentSnackbar();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
       if (response['success'] == true && response['data'] != null) {
         final data = Map<String, dynamic>.from(response['data'] as Map);
-        authController.userAuth.value = UserModel.fromJson(data);
         await SessionService.saveUser(data);
-        Get.snackbar(
-          'Photo mise à jour',
-          'Votre photo de profil a été enregistrée.',
-          snackPosition: SnackPosition.BOTTOM,
+        await ref.read(authProvider.notifier).refreshUserData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Votre photo de profil a été enregistrée.')),
         );
       } else {
-        Get.snackbar(
-          'Erreur',
-          response['message']?.toString() ?? 'Impossible de mettre à jour la photo.',
-          snackPosition: SnackPosition.BOTTOM,
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message']?.toString() ?? 'Impossible de mettre à jour la photo.')),
         );
       }
     } catch (e) {
-      Get.snackbar(
-        'Erreur',
-        e.toString().replaceFirst('Exception: ', ''),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
     }
   }
 
@@ -393,14 +356,14 @@ class ProfilePage extends StatelessWidget {
 
   Widget _buildActionsSection(
     BuildContext context,
-    AuthController authController,
+    WidgetRef ref,
   ) {
     return Column(
       children: [
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: () => _showChangePasswordDialog(context, authController),
+            onPressed: () => _showChangePasswordDialog(context, ref),
             icon: const Icon(Icons.lock),
             label: const Text('Changer le mot de passe'),
             style: ElevatedButton.styleFrom(
@@ -418,7 +381,7 @@ class ProfilePage extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: () => _showLogoutConfirmation(context, authController),
+            onPressed: () => _showLogoutConfirmation(context, ref),
             icon: const Icon(Icons.logout),
             label: const Text('Déconnexion'),
             style: OutlinedButton.styleFrom(
@@ -455,17 +418,18 @@ class ProfilePage extends StatelessWidget {
 
   void _showEditProfileDialog(
     BuildContext context,
-    AuthController authController,
+    WidgetRef ref,
   ) {
-    final user = authController.userAuth.value;
+    final user = ref.read(authProvider).user;
     if (user == null) return;
 
     final nomController = TextEditingController(text: user.nom ?? '');
     final prenomController = TextEditingController(text: user.prenom ?? '');
     final emailController = TextEditingController(text: user.email ?? '');
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Modifier le profil'),
         content: SingleChildScrollView(
           child: Column(
@@ -499,25 +463,21 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
               final nom = nomController.text.trim();
               final prenom = prenomController.text.trim();
               final email = emailController.text.trim();
               if (nom.isEmpty || prenom.isEmpty || email.isEmpty) {
-                Get.snackbar(
-                  'Champs requis',
-                  'Veuillez remplir nom, prénom et email.',
-                  snackPosition: SnackPosition.BOTTOM,
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Veuillez remplir nom, prénom et email.')),
                 );
                 return;
               }
-              if (!GetUtils.isEmail(email)) {
-                Get.snackbar(
-                  'Email invalide',
-                  'Veuillez saisir une adresse email valide.',
-                  snackPosition: SnackPosition.BOTTOM,
+              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Veuillez saisir une adresse email valide.')),
                 );
                 return;
               }
@@ -527,30 +487,25 @@ class ProfilePage extends StatelessWidget {
                   prenom: prenom,
                   email: email,
                 );
-                Get.back();
+                Navigator.of(ctx).pop();
                 if (response['success'] == true && response['data'] != null) {
-                  authController.userAuth.value =
-                      UserModel.fromJson(Map<String, dynamic>.from(response['data'] as Map));
                   await SessionService.saveUser(
                       Map<String, dynamic>.from(response['data'] as Map));
-                  Get.snackbar(
-                    'Profil mis à jour',
-                    'Vos informations (dont l\'email) ont été enregistrées. Vous recevrez les notifications par mail.',
-                    snackPosition: SnackPosition.BOTTOM,
-                  );
+                  await ref.read(authProvider.notifier).refreshUserData();
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Vos informations ont été enregistrées.')),
+                    );
+                  }
                 } else {
-                  Get.snackbar(
-                    'Erreur',
-                    response['message']?.toString() ?? 'Impossible de mettre à jour le profil.',
-                    snackPosition: SnackPosition.BOTTOM,
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(content: Text(response['message']?.toString() ?? 'Impossible de mettre à jour le profil.')),
                   );
                 }
               } catch (e) {
-                Get.back();
-                Get.snackbar(
-                  'Erreur',
-                  e.toString().replaceFirst('Exception: ', ''),
-                  snackPosition: SnackPosition.BOTTOM,
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
                 );
               }
             },
@@ -563,122 +518,75 @@ class ProfilePage extends StatelessWidget {
 
   void _showChangePasswordDialog(
     BuildContext context,
-    AuthController authController,
+    WidgetRef ref,
   ) {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
-    final showCurrentPassword = false.obs;
-    final showNewPassword = false.obs;
-    final showConfirmPassword = false.obs;
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Changer le mot de passe'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Obx(
-                () => TextField(
-                  controller: currentPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'Mot de passe actuel',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        showCurrentPassword.value
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed:
-                          () =>
-                              showCurrentPassword.value =
-                                  !showCurrentPassword.value,
-                    ),
-                  ),
-                  obscureText: !showCurrentPassword.value,
+              TextField(
+                controller: currentPasswordController,
+                decoration: const InputDecoration(
+                  labelText: 'Mot de passe actuel',
+                  border: OutlineInputBorder(),
                 ),
+                obscureText: true,
               ),
               const SizedBox(height: 16),
-              Obx(
-                () => TextField(
-                  controller: newPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'Nouveau mot de passe',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        showNewPassword.value
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed:
-                          () => showNewPassword.value = !showNewPassword.value,
-                    ),
-                  ),
-                  obscureText: !showNewPassword.value,
+              TextField(
+                controller: newPasswordController,
+                decoration: const InputDecoration(
+                  labelText: 'Nouveau mot de passe',
+                  border: OutlineInputBorder(),
                 ),
+                obscureText: true,
               ),
               const SizedBox(height: 16),
-              Obx(
-                () => TextField(
-                  controller: confirmPasswordController,
-                  decoration: InputDecoration(
-                    labelText: 'Confirmer le nouveau mot de passe',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        showConfirmPassword.value
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed:
-                          () =>
-                              showConfirmPassword.value =
-                                  !showConfirmPassword.value,
-                    ),
-                  ),
-                  obscureText: !showConfirmPassword.value,
+              TextField(
+                controller: confirmPasswordController,
+                decoration: const InputDecoration(
+                  labelText: 'Confirmer le nouveau mot de passe',
+                  border: OutlineInputBorder(),
                 ),
+                obscureText: true,
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () {
-              if (newPasswordController.text !=
-                  confirmPasswordController.text) {
-                Get.snackbar(
-                  'Erreur',
-                  'Les mots de passe ne correspondent pas',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
+              if (newPasswordController.text != confirmPasswordController.text) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Les mots de passe ne correspondent pas'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
                 return;
               }
-
               if (newPasswordController.text.length < 6) {
-                Get.snackbar(
-                  'Erreur',
-                  'Le mot de passe doit contenir au moins 6 caractères',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.red,
-                  colorText: Colors.white,
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Le mot de passe doit contenir au moins 6 caractères'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
                 return;
               }
-
-              // TODO: Implémenter le changement de mot de passe via API
-              Get.snackbar(
-                'Information',
-                'Le changement de mot de passe sera implémenté prochainement',
-                snackPosition: SnackPosition.BOTTOM,
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Le changement de mot de passe sera implémenté prochainement')),
               );
-              Get.back();
+              Navigator.of(ctx).pop();
             },
             child: const Text('Changer'),
           ),
@@ -689,18 +597,20 @@ class ProfilePage extends StatelessWidget {
 
   void _showLogoutConfirmation(
     BuildContext context,
-    AuthController authController,
+    WidgetRef ref,
   ) {
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Déconnexion'),
         content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
-              Get.back();
-              await authController.logout(redirectTo: '/login');
+              Navigator.of(ctx).pop();
+              await ref.read(authProvider.notifier).logout();
+              if (ctx.mounted) context.go('/login');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

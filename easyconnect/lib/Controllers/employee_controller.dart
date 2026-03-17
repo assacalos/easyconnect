@@ -1,45 +1,47 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/services/employee_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
+import 'package:easyconnect/utils/error_helper.dart';
 
-class EmployeeController extends GetxController {
+class EmployeeController {
+  static final EmployeeController _instance = EmployeeController._();
+  static EmployeeController get to => _instance;
+  factory EmployeeController() => _instance;
+  EmployeeController._();
+
   final EmployeeService _employeeService = EmployeeService.to;
 
-  // Variables observables
-  final RxBool isLoading = false.obs;
-  final RxBool isLoadingMore = false.obs;
-  final RxBool isCreating = false.obs;
-  final RxBool isUpdating = false.obs;
-  final RxBool isDeleting = false.obs;
-  final RxList<Employee> employees = <Employee>[].obs;
-  final Rx<Employee?> selectedEmployee = Rx<Employee?>(null);
-  final Rx<Employee?> selectedEmployeeForForm = Rx<Employee?>(null);
-  final Rx<EmployeeStats?> employeeStats = Rx<EmployeeStats?>(null);
-  final RxList<String> departments = <String>[].obs;
-  final RxList<String> positions = <String>[].obs;
+  // Variables
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  bool isCreating = false;
+  bool isUpdating = false;
+  bool isDeleting = false;
+  final List<Employee> employees = [];
+  Employee? selectedEmployee;
+  Employee? selectedEmployeeForForm;
+  EmployeeStats? employeeStats;
+  final List<String> departments = [];
+  final List<String> positions = [];
 
-  // Variables pour la recherche et les filtres
-  final RxString searchQuery = ''.obs;
-  final RxString selectedDepartment = 'all'.obs;
-  final RxString selectedPosition = 'all'.obs;
-  final RxString selectedStatus = 'all'.obs;
-  final RxString selectedSortBy = 'name'.obs;
-  final RxBool sortAscending = true.obs;
+  String searchQuery = '';
+  String selectedDepartment = 'all';
+  String selectedPosition = 'all';
+  String selectedStatus = 'all';
+  String selectedSortBy = 'name';
+  bool sortAscending = true;
 
-  // Métadonnées de pagination
-  final RxInt currentPage = 1.obs;
-  final RxInt totalPages = 1.obs;
-  final RxInt totalItems = 0.obs;
-  final RxBool hasNextPage = false.obs;
-  final RxBool hasPreviousPage = false.obs;
-  final RxInt perPage = 15.obs;
+  int currentPage = 1;
+  int totalPages = 1;
+  int totalItems = 0;
+  bool hasNextPage = false;
+  bool hasPreviousPage = false;
+  int perPage = 15;
   final ScrollController scrollController = ScrollController();
 
-  // Variables pour le formulaire
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
@@ -53,35 +55,29 @@ class EmployeeController extends GetxController {
   final TextEditingController salaryController = TextEditingController();
   final TextEditingController notesController = TextEditingController();
 
-  // Variables pour les sélections
-  final Rx<DateTime?> selectedBirthDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedHireDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedContractStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedContractEndDate = Rx<DateTime?>(null);
-  final RxString selectedGender = ''.obs;
-  final RxString selectedMaritalStatus = ''.obs;
-  final RxString selectedNationality = ''.obs;
-  //final RxString selectedDepartment = ''.obs;
-  final RxString selectedContractType = ''.obs;
-  final RxString selectedCurrency = 'fcfa'.obs;
-  final RxString selectedWorkSchedule = ''.obs;
-  //final RxString selectedStatus = 'active'.obs;
+  DateTime? selectedBirthDate;
+  DateTime? selectedHireDate;
+  DateTime? selectedContractStartDate;
+  DateTime? selectedContractEndDate;
+  String selectedGender = '';
+  String selectedMaritalStatus = '';
+  String selectedNationality = '';
+  String selectedContractType = '';
+  String selectedCurrency = 'fcfa';
+  String selectedWorkSchedule = '';
 
-  // Variables pour les documents
   final TextEditingController documentNameController = TextEditingController();
   final TextEditingController documentDescriptionController =
       TextEditingController();
-  final RxString selectedDocumentType = ''.obs;
-  final Rx<DateTime?> selectedDocumentExpiryDate = Rx<DateTime?>(null);
-  final RxBool isDocumentRequired = false.obs;
+  String selectedDocumentType = '';
+  DateTime? selectedDocumentExpiryDate;
+  bool isDocumentRequired = false;
 
-  // Variables pour les congés
-  final RxString selectedLeaveType = ''.obs;
-  final Rx<DateTime?> selectedLeaveStartDate = Rx<DateTime?>(null);
-  final Rx<DateTime?> selectedLeaveEndDate = Rx<DateTime?>(null);
+  String selectedLeaveType = '';
+  DateTime? selectedLeaveStartDate;
+  DateTime? selectedLeaveEndDate;
   final TextEditingController leaveReasonController = TextEditingController();
 
-  // Variables pour les performances
   final TextEditingController performancePeriodController =
       TextEditingController();
   final TextEditingController performanceCommentsController =
@@ -92,7 +88,7 @@ class EmployeeController extends GetxController {
       TextEditingController();
   final TextEditingController performanceImprovementController =
       TextEditingController();
-  final RxDouble selectedPerformanceRating = 0.0.obs;
+  double selectedPerformanceRating = 0.0;
 
   // Listes pour les dropdowns
   final List<Map<String, dynamic>> genders = [
@@ -169,16 +165,9 @@ class EmployeeController extends GetxController {
     {'value': 'salary', 'label': 'Salaire'},
   ];
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Chargement différé : les données sont chargées par la page (employee_list)
-    // au premier affichage pour éviter une avalanche d'appels API au binding.
-  }
+  void ensureInitialized() {}
 
-  @override
-  @override
-  void onClose() {
+  void dispose() {
     scrollController.dispose();
     firstNameController.dispose();
     lastNameController.dispose();
@@ -199,7 +188,6 @@ class EmployeeController extends GetxController {
     performanceGoalsController.dispose();
     performanceAchievementsController.dispose();
     performanceImprovementController.dispose();
-    super.onClose();
   }
 
   bool _isLoadingEmployeesInProgress = false;
@@ -213,53 +201,56 @@ class EmployeeController extends GetxController {
     if (_isLoadingEmployeesInProgress) return;
     _isLoadingEmployeesInProgress = true;
     final cacheKey =
-        'employees_${searchQuery.value}_${selectedDepartment.value}_${selectedPosition.value}_${selectedStatus.value}';
+        'employees_${searchQuery}_${selectedDepartment}_${selectedPosition}_${selectedStatus}';
 
     if (page == 1) {
-      isLoading.value = true;
+      isLoading = true;
       final hiveList = EmployeeService.getCachedEmployees();
       if (hiveList.isNotEmpty && !forceRefresh) {
-        employees.assignAll(hiveList);
-        isLoading.value = false;
-        currentPage.value = 1;
+        employees.clear();
+        employees.addAll(hiveList);
+        isLoading = false;
+        currentPage = 1;
       } else {
         final cached = CacheHelper.get<List<Employee>>(cacheKey);
         if (cached != null && cached.isNotEmpty && !forceRefresh) {
-          employees.assignAll(cached);
-          isLoading.value = false;
+          employees.clear();
+          employees.addAll(cached);
+          isLoading = false;
         } else {
-          employees.value = [];
+          employees.clear();
         }
       }
     } else {
-      isLoadingMore.value = true;
+      isLoadingMore = true;
     }
 
     try {
       final paginatedResponse = await _employeeService.getEmployeesPaginated(
-        search: searchQuery.value.isNotEmpty ? searchQuery.value : null,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
         department:
-            selectedDepartment.value != 'all' && selectedDepartment.value.isNotEmpty
-                ? selectedDepartment.value
+            selectedDepartment != 'all' && selectedDepartment.isNotEmpty
+                ? selectedDepartment
                 : null,
         position:
-            selectedPosition.value != 'all' && selectedPosition.value.isNotEmpty
-                ? selectedPosition.value
+            selectedPosition != 'all' && selectedPosition.isNotEmpty
+                ? selectedPosition
                 : null,
-        status: (loadAll || selectedStatus.value == 'all') ? null : selectedStatus.value,
+        status: (loadAll || selectedStatus == 'all') ? null : selectedStatus,
         page: page,
-        perPage: perPage.value,
+        perPage: perPage,
       );
 
-      totalPages.value = paginatedResponse.meta.lastPage;
-      totalItems.value = paginatedResponse.meta.total;
-      hasNextPage.value = paginatedResponse.hasNextPage;
-      hasPreviousPage.value = paginatedResponse.hasPreviousPage;
-      currentPage.value = paginatedResponse.meta.currentPage;
+      totalPages = paginatedResponse.meta.lastPage;
+      totalItems = paginatedResponse.meta.total;
+      hasNextPage = paginatedResponse.hasNextPage;
+      hasPreviousPage = paginatedResponse.hasPreviousPage;
+      currentPage = paginatedResponse.meta.currentPage;
 
       final employeesList = paginatedResponse.data;
       if (page == 1) {
-        employees.assignAll(employeesList);
+        employees.clear();
+        employees.addAll(employeesList);
         CacheHelper.set(cacheKey, employeesList, duration: AppConfig.mediumCacheDuration);
       } else {
         final existingIds = employees.map((e) => e.id).toSet();
@@ -277,19 +268,20 @@ class EmployeeController extends GetxController {
       if (page == 1 && employees.isEmpty) {
         final fallback = EmployeeService.getCachedEmployees();
         if (fallback.isNotEmpty) {
-          employees.assignAll(fallback);
+          employees.clear();
+          employees.addAll(fallback);
         } else {
           final cached = CacheHelper.get<List<Employee>>(cacheKey);
           if (cached != null && cached.isNotEmpty) {
-            employees.assignAll(cached);
+            employees.clear();
+          employees.addAll(cached);
           } else {
             final err = e.toString().toLowerCase();
             if (!err.contains('401') && !err.contains('unauthorized')) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                Get.snackbar(
+                errorHelperShowSnackbar?.call(
                   'Erreur',
                   'Impossible de charger les employés',
-                  snackPosition: SnackPosition.BOTTOM,
                   backgroundColor: Colors.red,
                   colorText: Colors.white,
                   duration: const Duration(seconds: 5),
@@ -300,43 +292,43 @@ class EmployeeController extends GetxController {
         }
       }
     } finally {
-      isLoading.value = false;
-      isLoadingMore.value = false;
+      isLoading = false;
+      isLoadingMore = false;
       _isLoadingEmployeesInProgress = false;
     }
   }
 
   /// Chargement de la page suivante au scroll.
   void loadMore() {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
+    if (hasNextPage && !isLoading && !isLoadingMore) {
       loadNextPage();
     }
   }
 
   /// Charger la page suivante (pour scroll infini)
   Future<void> loadNextPage() async {
-    if (hasNextPage.value && !isLoading.value && !isLoadingMore.value) {
-      await loadEmployees(page: currentPage.value + 1);
+    if (hasNextPage && !isLoading && !isLoadingMore) {
+      await loadEmployees(page: currentPage + 1);
     }
   }
 
   /// Charger la page précédente
   Future<void> loadPreviousPage() async {
-    if (hasPreviousPage.value && !isLoading.value) {
-      await loadEmployees(page: currentPage.value - 1);
+    if (hasPreviousPage && !isLoading) {
+      await loadEmployees(page: currentPage - 1);
     }
   }
 
   /// Recharger la page actuelle
   Future<void> reloadCurrentPage() async {
-    await loadEmployees(page: currentPage.value);
+    await loadEmployees(page: currentPage);
   }
 
   // Charger les statistiques
   Future<void> loadEmployeeStats() async {
     try {
       final stats = await _employeeService.getEmployeeStats();
-      employeeStats.value = stats;
+      employeeStats = stats;
     } catch (e) {}
   }
 
@@ -344,7 +336,8 @@ class EmployeeController extends GetxController {
   Future<void> loadDepartments() async {
     try {
       final departmentsList = await _employeeService.getDepartments();
-      departments.value = departmentsList;
+      departments.clear();
+      departments.addAll(departmentsList);
     } catch (e) {}
   }
 
@@ -352,48 +345,49 @@ class EmployeeController extends GetxController {
   Future<void> loadPositions() async {
     try {
       final positionsList = await _employeeService.getPositions();
-      positions.value = positionsList;
+      positions.clear();
+      positions.addAll(positionsList);
     } catch (e) {}
   }
 
   // Rechercher des employés
   void searchEmployees(String query) {
-    searchQuery.value = query;
+    searchQuery = query;
     loadEmployees();
   }
 
   // Filtrer par département
   void filterByDepartment(String department) {
-    selectedDepartment.value = department;
+    selectedDepartment = department;
     loadEmployees();
   }
 
   // Filtrer par poste
   void filterByPosition(String position) {
-    selectedPosition.value = position;
+    selectedPosition = position;
     loadEmployees();
   }
 
   // Filtrer par statut
   void filterByStatus(String status) {
-    selectedStatus.value = status;
+    selectedStatus = status;
     loadEmployees();
   }
 
   /// Charge les employés pour l’onglet [index] (0=Actifs, 1=Inactifs, 2=En congé, 3=Terminés). Cache-first.
-  void loadByStatus(int index) {
+  void loadByStatus(int index, {bool forceRefresh = false}) {
     const statuses = ['active', 'inactive', 'on_leave', 'terminated'];
-    selectedStatus.value = statuses[index];
-    loadEmployees(forceRefresh: false);
+    selectedStatus = statuses[index];
+    loadEmployees(forceRefresh: forceRefresh);
   }
 
   // Trier les employés
   void sortEmployees(String sortBy) {
-    if (selectedSortBy.value == sortBy) {
-      sortAscending.value = !sortAscending.value;
+    if (selectedSortBy == sortBy) {
+      sortAscending = !sortAscending;
     } else {
-      selectedSortBy.value = sortBy;
-      sortAscending.value = true;
+      selectedSortBy = sortBy;
+      sortAscending = true;
     }
     _applySorting();
   }
@@ -402,7 +396,7 @@ class EmployeeController extends GetxController {
   void _applySorting() {
     employees.sort((a, b) {
       int comparison = 0;
-      switch (selectedSortBy.value) {
+      switch (selectedSortBy) {
         case 'name':
           comparison = a.fullName.compareTo(b.fullName);
           break;
@@ -421,7 +415,7 @@ class EmployeeController extends GetxController {
           comparison = (a.salary ?? 0).compareTo(b.salary ?? 0);
           break;
       }
-      return sortAscending.value ? comparison : -comparison;
+      return sortAscending ? comparison : -comparison;
     });
   }
 
@@ -429,44 +423,44 @@ class EmployeeController extends GetxController {
   List<Employee> get filteredEmployees {
     List<Employee> filtered = employees;
 
-    if (searchQuery.value.isNotEmpty) {
+    if (searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (employee) =>
                     employee.fullName.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     employee.email.toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ) ||
                     (employee.position ?? '').toLowerCase().contains(
-                      searchQuery.value.toLowerCase(),
+                      searchQuery.toLowerCase(),
                     ),
               )
               .toList();
     }
 
-    if (selectedDepartment.value != 'all') {
+    if (selectedDepartment != 'all') {
       filtered =
           filtered
               .where(
-                (employee) => employee.department == selectedDepartment.value,
+                (employee) => employee.department == selectedDepartment,
               )
               .toList();
     }
 
-    if (selectedPosition.value != 'all') {
+    if (selectedPosition != 'all') {
       filtered =
           filtered
-              .where((employee) => employee.position == selectedPosition.value)
+              .where((employee) => employee.position == selectedPosition)
               .toList();
     }
 
-    if (selectedStatus.value != 'all') {
+    if (selectedStatus != 'all') {
       filtered =
           filtered
-              .where((employee) => employee.status == selectedStatus.value)
+              .where((employee) => employee.status == selectedStatus)
               .toList();
     }
 
@@ -476,15 +470,14 @@ class EmployeeController extends GetxController {
   // Créer un nouvel employé
   Future<bool> createEmployee() async {
     try {
-      isCreating.value = true;
+      isCreating = true;
 
       // Validation des champs obligatoires
       if (firstNameController.text.trim().isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Le prénom est obligatoire',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red,
             colorText: Colors.white,
           );
@@ -494,10 +487,9 @@ class EmployeeController extends GetxController {
 
       if (lastNameController.text.trim().isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Le nom est obligatoire',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red,
             colorText: Colors.white,
           );
@@ -507,10 +499,9 @@ class EmployeeController extends GetxController {
 
       if (emailController.text.trim().isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'L\'email est obligatoire',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red,
             colorText: Colors.white,
           );
@@ -522,10 +513,9 @@ class EmployeeController extends GetxController {
       final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
       if (!emailRegex.hasMatch(emailController.text.trim())) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
+          errorHelperShowSnackbar?.call(
             'Erreur',
             'Format d\'email invalide',
-            snackPosition: SnackPosition.BOTTOM,
             backgroundColor: Colors.red,
             colorText: Colors.white,
           );
@@ -552,15 +542,15 @@ class EmployeeController extends GetxController {
             addressController.text.trim().isNotEmpty
                 ? addressController.text.trim()
                 : null,
-        birthDate: selectedBirthDate.value,
-        gender: selectedGender.value.isNotEmpty ? selectedGender.value : null,
+        birthDate: selectedBirthDate,
+        gender: selectedGender.isNotEmpty ? selectedGender : null,
         maritalStatus:
-            selectedMaritalStatus.value.isNotEmpty
-                ? selectedMaritalStatus.value
+            selectedMaritalStatus.isNotEmpty
+                ? selectedMaritalStatus
                 : null,
         nationality:
-            selectedNationality.value.isNotEmpty
-                ? selectedNationality.value
+            selectedNationality.isNotEmpty
+                ? selectedNationality
                 : null,
         idNumber:
             idNumberController.text.trim().isNotEmpty
@@ -575,32 +565,32 @@ class EmployeeController extends GetxController {
                 ? positionController.text.trim()
                 : null,
         department:
-            selectedDepartment.value.isNotEmpty &&
-                    selectedDepartment.value != 'all'
-                ? selectedDepartment.value
+            selectedDepartment.isNotEmpty &&
+                    selectedDepartment != 'all'
+                ? selectedDepartment
                 : null,
         manager:
             managerController.text.trim().isNotEmpty
                 ? managerController.text.trim()
                 : null,
-        hireDate: selectedHireDate.value,
-        contractStartDate: selectedContractStartDate.value,
-        contractEndDate: selectedContractEndDate.value,
+        hireDate: selectedHireDate,
+        contractStartDate: selectedContractStartDate,
+        contractEndDate: selectedContractEndDate,
         contractType:
-            selectedContractType.value.isNotEmpty
-                ? selectedContractType.value
+            selectedContractType.isNotEmpty
+                ? selectedContractType
                 : null,
         salary:
             salaryController.text.isNotEmpty
                 ? double.tryParse(salaryController.text)
                 : null,
         currency:
-            selectedCurrency.value.isNotEmpty
-                ? selectedCurrency.value
+            selectedCurrency.isNotEmpty
+                ? selectedCurrency
                 : 'fcfa', // Valeur par défaut
         workSchedule:
-            selectedWorkSchedule.value.isNotEmpty
-                ? selectedWorkSchedule.value
+            selectedWorkSchedule.isNotEmpty
+                ? selectedWorkSchedule
                 : null,
         notes:
             notesController.text.trim().isNotEmpty
@@ -624,10 +614,9 @@ class EmployeeController extends GetxController {
       }
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Employé créé avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
@@ -659,10 +648,9 @@ class EmployeeController extends GetxController {
           errorMessage = errorMessage.substring(11);
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur lors de la création de l\'employé: $errorMessage',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
           duration: const Duration(seconds: 5),
@@ -670,14 +658,14 @@ class EmployeeController extends GetxController {
       });
       return false;
     } finally {
-      isCreating.value = false;
+      isCreating = false;
     }
   }
 
   // Mettre à jour un employé
   Future<bool> updateEmployee(Employee employee) async {
     try {
-      isUpdating.value = true;
+      isUpdating = true;
 
       await _employeeService.updateEmployee(
         id: employee.id!,
@@ -692,15 +680,15 @@ class EmployeeController extends GetxController {
             addressController.text.trim().isNotEmpty
                 ? addressController.text.trim()
                 : null,
-        birthDate: selectedBirthDate.value,
-        gender: selectedGender.value.isNotEmpty ? selectedGender.value : null,
+        birthDate: selectedBirthDate,
+        gender: selectedGender.isNotEmpty ? selectedGender : null,
         maritalStatus:
-            selectedMaritalStatus.value.isNotEmpty
-                ? selectedMaritalStatus.value
+            selectedMaritalStatus.isNotEmpty
+                ? selectedMaritalStatus
                 : null,
         nationality:
-            selectedNationality.value.isNotEmpty
-                ? selectedNationality.value
+            selectedNationality.isNotEmpty
+                ? selectedNationality
                 : null,
         idNumber:
             idNumberController.text.trim().isNotEmpty
@@ -715,36 +703,36 @@ class EmployeeController extends GetxController {
                 ? positionController.text.trim()
                 : null,
         department:
-            selectedDepartment.value.isNotEmpty &&
-                    selectedDepartment.value != 'all'
-                ? selectedDepartment.value
+            selectedDepartment.isNotEmpty &&
+                    selectedDepartment != 'all'
+                ? selectedDepartment
                 : null,
         manager:
             managerController.text.trim().isNotEmpty
                 ? managerController.text.trim()
                 : null,
-        hireDate: selectedHireDate.value,
-        contractStartDate: selectedContractStartDate.value,
-        contractEndDate: selectedContractEndDate.value,
+        hireDate: selectedHireDate,
+        contractStartDate: selectedContractStartDate,
+        contractEndDate: selectedContractEndDate,
         contractType:
-            selectedContractType.value.isNotEmpty
-                ? selectedContractType.value
+            selectedContractType.isNotEmpty
+                ? selectedContractType
                 : null,
         salary:
             salaryController.text.isNotEmpty
                 ? double.tryParse(salaryController.text)
                 : null,
         currency:
-            selectedCurrency.value.isNotEmpty
-                ? selectedCurrency.value
+            selectedCurrency.isNotEmpty
+                ? selectedCurrency
                 : 'fcfa', // Valeur par défaut
         workSchedule:
-            selectedWorkSchedule.value.isNotEmpty
-                ? selectedWorkSchedule.value
+            selectedWorkSchedule.isNotEmpty
+                ? selectedWorkSchedule
                 : null,
         status:
-            selectedStatus.value.isNotEmpty && selectedStatus.value != 'all'
-                ? selectedStatus.value
+            selectedStatus.isNotEmpty && selectedStatus != 'all'
+                ? selectedStatus
                 : null,
         notes:
             notesController.text.trim().isNotEmpty
@@ -754,10 +742,9 @@ class EmployeeController extends GetxController {
 
       // Utiliser addPostFrameCallback pour éviter l'erreur "visitChildElements during build"
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Succès',
           'Employé mis à jour avec succès',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.green,
           colorText: Colors.white,
           duration: const Duration(seconds: 3),
@@ -781,10 +768,9 @@ class EmployeeController extends GetxController {
           errorMessage = errorMessage.substring(11);
         }
 
-        Get.snackbar(
+        errorHelperShowSnackbar?.call(
           'Erreur',
           'Erreur lors de la mise à jour de l\'employé: $errorMessage',
-          snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
           duration: const Duration(seconds: 5),
@@ -792,25 +778,25 @@ class EmployeeController extends GetxController {
       });
       return false;
     } finally {
-      isUpdating.value = false;
+      isUpdating = false;
     }
   }
 
   // Supprimer un employé
   Future<void> deleteEmployee(Employee employee) async {
     try {
-      isDeleting.value = true;
+      isDeleting = true;
 
       await _employeeService.deleteEmployee(employee.id!);
 
-      Get.snackbar('Succès', 'Employé supprimé avec succès');
+      errorHelperShowSnackbar?.call('Succès', 'Employé supprimé avec succès');
       CacheHelper.clearByPrefix('employees_');
       loadEmployees(loadAll: true, forceRefresh: true);
       loadEmployeeStats();
     } catch (e) {
-      Get.snackbar('Erreur', 'Erreur lors de la suppression de l\'employé: $e');
+      errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la suppression de l\'employé: $e');
     } finally {
-      isDeleting.value = false;
+      isDeleting = false;
     }
   }
 
@@ -833,7 +819,7 @@ class EmployeeController extends GetxController {
         ),
       );
 
-      Get.snackbar('Succès', 'Employé soumis pour approbation');
+      errorHelperShowSnackbar?.call('Succès', 'Employé soumis pour approbation');
       loadEmployees();
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -843,7 +829,7 @@ class EmployeeController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors de la soumission: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de la soumission: $e');
       }
     }
   }
@@ -868,7 +854,7 @@ class EmployeeController extends GetxController {
         entity: employee,
       );
 
-      Get.snackbar('Succès', 'Employé approuvé');
+      errorHelperShowSnackbar?.call('Succès', 'Employé approuvé');
       loadEmployees();
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -878,7 +864,7 @@ class EmployeeController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors de l\'approbation: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur lors de l\'approbation: $e');
       }
     }
   }
@@ -907,7 +893,7 @@ class EmployeeController extends GetxController {
         entity: employee,
       );
 
-      Get.snackbar('Succès', 'Employé rejeté');
+      errorHelperShowSnackbar?.call('Succès', 'Employé rejeté');
       loadEmployees();
     } catch (e) {
       // Ne pas afficher d'erreur pour les erreurs de parsing qui peuvent survenir après un succès
@@ -917,7 +903,7 @@ class EmployeeController extends GetxController {
           !errorStr.contains('type') &&
           !errorStr.contains('cast') &&
           !errorStr.contains('null')) {
-        Get.snackbar('Erreur', 'Erreur lors du rejet: $e');
+        errorHelperShowSnackbar?.call('Erreur', 'Erreur lors du rejet: $e');
       }
     }
   }
@@ -936,18 +922,18 @@ class EmployeeController extends GetxController {
     salaryController.text = employee.salary?.toString() ?? '';
     notesController.text = employee.notes ?? '';
 
-    selectedBirthDate.value = employee.birthDate;
-    selectedHireDate.value = employee.hireDate;
-    selectedContractStartDate.value = employee.contractStartDate;
-    selectedContractEndDate.value = employee.contractEndDate;
-    selectedGender.value = employee.gender ?? '';
-    selectedMaritalStatus.value = employee.maritalStatus ?? '';
-    selectedNationality.value = employee.nationality ?? '';
-    selectedDepartment.value = employee.department ?? '';
-    selectedContractType.value = employee.contractType ?? '';
-    selectedCurrency.value = employee.currency ?? 'fcfa';
-    selectedWorkSchedule.value = employee.workSchedule ?? '';
-    selectedStatus.value = employee.status ?? 'active';
+    selectedBirthDate = employee.birthDate;
+    selectedHireDate = employee.hireDate;
+    selectedContractStartDate = employee.contractStartDate;
+    selectedContractEndDate = employee.contractEndDate;
+    selectedGender = employee.gender ?? '';
+    selectedMaritalStatus = employee.maritalStatus ?? '';
+    selectedNationality = employee.nationality ?? '';
+    selectedDepartment = employee.department ?? '';
+    selectedContractType = employee.contractType ?? '';
+    selectedCurrency = employee.currency ?? 'fcfa';
+    selectedWorkSchedule = employee.workSchedule ?? '';
+    selectedStatus = employee.status ?? 'active';
   }
 
   // Vider le formulaire
@@ -964,41 +950,41 @@ class EmployeeController extends GetxController {
     salaryController.clear();
     notesController.clear();
 
-    selectedBirthDate.value = null;
-    selectedHireDate.value = null;
-    selectedContractStartDate.value = null;
-    selectedContractEndDate.value = null;
-    selectedGender.value = '';
-    selectedMaritalStatus.value = '';
-    selectedNationality.value = '';
-    selectedDepartment.value = '';
-    selectedContractType.value = '';
-    selectedCurrency.value = 'fcfa';
-    selectedWorkSchedule.value = '';
-    selectedStatus.value = 'active';
+    selectedBirthDate = null;
+    selectedHireDate = null;
+    selectedContractStartDate = null;
+    selectedContractEndDate = null;
+    selectedGender = '';
+    selectedMaritalStatus = '';
+    selectedNationality = '';
+    selectedDepartment = '';
+    selectedContractType = '';
+    selectedCurrency = 'fcfa';
+    selectedWorkSchedule = '';
+    selectedStatus = 'active';
   }
 
   // Sélectionner une date
-  Future<void> selectDate(BuildContext context, Rx<DateTime?> dateRx) async {
+  Future<void> selectDate(BuildContext context, DateTime? initialValue, void Function(DateTime?) onDatePicked) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: dateRx.value ?? DateTime.now(),
+      initialDate: initialValue ?? DateTime.now(),
       firstDate: DateTime(1900),
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      dateRx.value = picked;
+      onDatePicked(picked);
     }
   }
 
   // Sélectionner un employé
   void selectEmployee(Employee employee) {
-    selectedEmployee.value = employee;
+    selectedEmployee = employee;
   }
 
   // Sélectionner un employé pour remplir le formulaire
   void selectEmployeeForForm(Employee? employee) {
-    selectedEmployeeForForm.value = employee;
+    selectedEmployeeForForm = employee;
     if (employee != null) {
       fillForm(employee);
     } else {

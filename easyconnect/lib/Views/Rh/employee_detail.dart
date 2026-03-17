@@ -1,22 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/employee_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/employee_notifier.dart';
 import 'package:easyconnect/Models/employee_model.dart';
-import 'package:easyconnect/Views/Rh/employee_form.dart';
 import 'package:intl/intl.dart';
 
-class EmployeeDetail extends StatelessWidget {
+class EmployeeDetail extends ConsumerWidget {
   final Employee employee;
 
   const EmployeeDetail({super.key, required this.employee});
 
   @override
-  Widget build(BuildContext context) {
-    final EmployeeController controller = Get.put(EmployeeController());
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'fcfa',
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(employeeProvider.notifier);
+    const canManage = true;
+    const canApprove = true;
     final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
     return Scaffold(
@@ -25,14 +23,15 @@ class EmployeeDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageEmployees)
+          if (canManage)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => EmployeeForm(employee: employee)),
+              onPressed: () =>
+                  context.go('/employees/${employee.id}/edit', extra: employee),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareEmployee(),
+            onPressed: () => _shareEmployee(context),
           ),
         ],
       ),
@@ -185,7 +184,7 @@ class EmployeeDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, notifier, canManage, canApprove),
           ],
         ),
       ),
@@ -608,7 +607,8 @@ class EmployeeDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(EmployeeController controller) {
+  Widget _buildActionButtons(
+      BuildContext context, EmployeeNotifier notifier, bool canManage, bool canApprove) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -627,13 +627,13 @@ class EmployeeDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (controller.canManageEmployees) ...[
+                if (canManage) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(() => EmployeeForm(employee: employee)),
+                      onPressed: () => context.go(
+                          '/employees/${employee.id}/edit', extra: employee),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -645,7 +645,7 @@ class EmployeeDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.send),
                       label: const Text('Soumettre'),
-                      onPressed: () => _showSubmitDialog(controller),
+                      onPressed: () => _showSubmitDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepPurple,
                         foregroundColor: Colors.white,
@@ -653,13 +653,13 @@ class EmployeeDetail extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (controller.canApproveEmployees) ...[
+                if (canApprove) ...[
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -671,7 +671,7 @@ class EmployeeDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -901,45 +901,53 @@ class EmployeeDetail extends StatelessWidget {
     }
   }
 
-  void _shareEmployee() {
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareEmployee(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showSubmitDialog(EmployeeController controller) {
-    final commentsController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+  void _showSubmitDialog(BuildContext context, EmployeeNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Soumettre pour approbation'),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Êtes-vous sûr de vouloir soumettre cet employé pour approbation par le Patron ?',
               style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: commentsController,
-              decoration: const InputDecoration(
-                labelText: 'Commentaires (optionnel)',
-                border: OutlineInputBorder(),
-                hintText: 'Ajoutez des commentaires...',
-              ),
-              maxLines: 3,
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.submitEmployeeForApproval(employee);
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.submitEmployeeForApproval(employee);
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Employé soumis pour approbation'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepPurple,
@@ -952,11 +960,11 @@ class EmployeeDetail extends StatelessWidget {
     );
   }
 
-  void _showApproveDialog(EmployeeController controller) {
+  void _showApproveDialog(BuildContext context, EmployeeNotifier notifier) {
     final commentsController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver l\'employé'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -978,14 +986,35 @@ class EmployeeDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.approveEmployee(
-                employee,
-                comments: commentsController.text,
-              );
-              Get.back();
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveEmployee(
+                  employee,
+                  comments: commentsController.text.trim().isEmpty
+                      ? null
+                      : commentsController.text.trim(),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Employé approuvé'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -998,11 +1027,11 @@ class EmployeeDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(EmployeeController controller) {
+  void _showRejectDialog(BuildContext context, EmployeeNotifier notifier) {
     final reasonController = TextEditingController();
-
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter l\'employé'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1024,15 +1053,41 @@ class EmployeeDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.isNotEmpty) {
-                controller.rejectEmployee(
-                  employee,
-                  reason: reasonController.text,
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Le motif du rejet est obligatoire'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
-                Get.back();
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectEmployee(
+                  employee,
+                  reason: reasonController.text.trim(),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Employé rejeté'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'), backgroundColor: Colors.red),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(

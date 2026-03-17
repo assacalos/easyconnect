@@ -5,6 +5,7 @@ import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
@@ -38,9 +39,13 @@ class ClientService {
   }) async {
     final effectiveTimeout = timeout ?? AppConfig.defaultTimeout;
     try {
-      final token = storage.read('token');
+      await SessionService.ensureValidToken();
+      final token = SessionService.getTokenSync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
+      if (token == null || token.isEmpty) {
+        AppLogger.warning('getClientsPaginated: pas de token (session)', tag: 'CLIENT_SERVICE');
+      }
 
       final queryParams = <String, String>{
         'page': page.toString(),
@@ -67,7 +72,7 @@ class ClientService {
             () => http
                 .get(
                   uri,
-                  headers: _getHeaders(token as String?),
+                  headers: _getHeaders(token),
                 )
                 .timeout(
                   effectiveTimeout,
@@ -297,6 +302,26 @@ class ClientService {
     } catch (e) {
       return false;
     }
+  }
+
+  /// Créer un accès au portail client pour un client déjà enregistré (lié à la fiche client du commercial).
+  /// Retourne les données de réponse (email, temporary_password, etc.) ou lance en cas d'erreur.
+  Future<Map<String, dynamic>> createPortalAccess(int clientId, {String? password}) async {
+    final token = storage.read('token');
+    final url = '${AppConfig.baseUrl}/clients-create-portal-access/$clientId';
+    final body = password != null ? json.encode({'password': password}) : null;
+    final response = await http.post(
+      Uri.parse(url),
+      headers: _getHeaders(token as String?, isJson: body != null),
+      body: body,
+    );
+    await AuthErrorHandler.handleHttpResponse(response);
+    final result = ApiService.parseResponse(response);
+    if (result['success'] == true) {
+      CacheHelper.clearByPrefix('clients_');
+      return result;
+    }
+    throw Exception(result['message'] ?? 'Erreur lors de la création de l\'accès portail');
   }
 
   Future<Map<String, dynamic>> getClientStats() async {

@@ -1,5 +1,10 @@
-import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 
-class HostController extends GetxController {
-  final currentIndex = 0.obs;
+class HostController {
+  static final HostController _instance = HostController._();
+  static HostController get to => _instance;
+  factory HostController() => _instance;
+  HostController._();
+
+  int currentIndex = 0;
 }

@@ -1,24 +1,28 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/expense_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/expense_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/expense_model.dart';
-import 'package:easyconnect/Views/Comptable/expense_form.dart';
+import 'package:easyconnect/utils/roles.dart';
 import 'package:intl/intl.dart';
 
-class ExpenseDetail extends StatelessWidget {
+class ExpenseDetail extends ConsumerWidget {
   final Expense expense;
 
   const ExpenseDetail({super.key, required this.expense});
 
   @override
-  Widget build(BuildContext context) {
-    final ExpenseController controller = Get.put(ExpenseController());
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(expenseProvider.notifier);
+    final userRole = ref.watch(authProvider).user?.role;
+    final canManage = userRole == Roles.ADMIN || userRole == Roles.COMPTABLE;
+    final canApprove = userRole == Roles.ADMIN || userRole == Roles.PATRON;
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
       symbol: 'fcfa',
     );
-    // final formatDate = DateFormat('dd/MM/yyyy à HH:mm');
 
     return Scaffold(
       appBar: AppBar(
@@ -26,14 +30,15 @@ class ExpenseDetail extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          if (controller.canManageExpenses && expense.status == 'pending')
+          if (canManage && expense.status == 'pending')
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => Get.to(() => ExpenseForm(expense: expense)),
+              onPressed: () =>
+                  context.go('/expenses/${expense.id}/edit', extra: expense),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => _shareExpense(),
+            onPressed: () => _shareExpense(context),
           ),
         ],
       ),
@@ -70,7 +75,7 @@ class ExpenseDetail extends StatelessWidget {
             // Justificatif si disponible
             if (expense.receiptPath != null && expense.receiptUrl.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _buildReceiptCard(),
+              _buildReceiptCard(context),
             ],
 
             // Notes si disponibles
@@ -109,7 +114,7 @@ class ExpenseDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(controller),
+            _buildActionButtons(context, ref, notifier, canManage, canApprove),
           ],
         ),
       ),
@@ -246,7 +251,7 @@ class ExpenseDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildReceiptCard() {
+  Widget _buildReceiptCard(BuildContext context) {
     // Vérifier si c'est une image (jpg, jpeg, png, gif, webp)
     final isImage = expense.receiptPath != null &&
         ['jpg', 'jpeg', 'png', 'gif', 'webp'].any(
@@ -280,7 +285,7 @@ class ExpenseDetail extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.download),
                   tooltip: 'Télécharger',
-                  onPressed: () => _downloadReceipt(),
+                  onPressed: () => _downloadReceipt(context),
                 ),
               ],
             ),
@@ -353,16 +358,13 @@ class ExpenseDetail extends StatelessWidget {
     );
   }
 
-  void _downloadReceipt() {
+  void _downloadReceipt(BuildContext context) {
     if (expense.receiptUrl.isNotEmpty) {
-      // Utiliser url_launcher pour ouvrir le lien de téléchargement
-      // Note: Il faudra ajouter le package url_launcher si ce n'est pas déjà fait
-      Get.snackbar(
-        'Téléchargement',
-        'Ouverture du justificatif...',
-        snackPosition: SnackPosition.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ouverture du justificatif...'),
+        ),
       );
-      // TODO: Implémenter le téléchargement avec url_launcher ou un package de téléchargement
     }
   }
 
@@ -447,7 +449,13 @@ class ExpenseDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(ExpenseController controller) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    ExpenseNotifier notifier,
+    bool canManage,
+    bool canApprove,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -466,14 +474,13 @@ class ExpenseDetail extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                if (expense.status == 'pending' &&
-                    controller.canManageExpenses) ...[
+                if (expense.status == 'pending' && canManage) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.edit),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(() => ExpenseForm(expense: expense)),
+                      onPressed: () =>
+                          context.go('/expenses/${expense.id}/edit', extra: expense),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -482,13 +489,12 @@ class ExpenseDetail extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
-                if (expense.status == 'pending' &&
-                    controller.canApproveExpenses) ...[
+                if (expense.status == 'pending' && canApprove) ...[
                   Expanded(
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.check),
                       label: const Text('Approuver'),
-                      onPressed: () => _showApproveDialog(controller),
+                      onPressed: () => _showApproveDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
@@ -500,7 +506,7 @@ class ExpenseDetail extends StatelessWidget {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.close),
                       label: const Text('Rejeter'),
-                      onPressed: () => _showRejectDialog(controller),
+                      onPressed: () => _showRejectDialog(context, notifier),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
@@ -530,20 +536,20 @@ class ExpenseDetail extends StatelessWidget {
     );
   }
 
-  void _shareExpense() {
-    // Implémentation du partage
-    Get.snackbar(
-      'Partage',
-      'Fonctionnalité de partage à implémenter',
-      snackPosition: SnackPosition.BOTTOM,
+  void _shareExpense(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fonctionnalité de partage à implémenter'),
+      ),
     );
   }
 
-  void _showApproveDialog(ExpenseController controller) {
+  void _showApproveDialog(BuildContext context, ExpenseNotifier notifier) {
     final notesController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver la dépense'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -561,12 +567,21 @@ class ExpenseDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveExpense(expense);
-              Get.back();
+            onPressed: () async {
+              await notifier.approveExpense(expense,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense approuvée')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Approuver'),
@@ -576,11 +591,12 @@ class ExpenseDetail extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(ExpenseController controller) {
+  void _showRejectDialog(BuildContext context, ExpenseNotifier notifier) {
     final reasonController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter la dépense'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -598,14 +614,25 @@ class ExpenseDetail extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectExpense(expense, reasonController.text.trim());
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez indiquer la raison du rejet')),
+                );
+                return;
+              }
+              await notifier.rejectExpense(
+                  expense, reasonController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense rejetée')),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

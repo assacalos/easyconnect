@@ -1,95 +1,104 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/expense_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:easyconnect/providers/expense_notifier.dart';
+import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/Models/expense_model.dart';
-import 'package:easyconnect/Views/Comptable/expense_form.dart';
-import 'package:easyconnect/Views/Comptable/expense_detail.dart';
 import 'package:easyconnect/Views/Components/paginated_list_view.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:easyconnect/Views/Components/export_dialog.dart';
+import 'package:easyconnect/utils/export_data_builder.dart';
+import 'package:easyconnect/utils/roles.dart';
 
-class ExpenseList extends StatefulWidget {
+class ExpenseList extends ConsumerStatefulWidget {
   const ExpenseList({super.key});
 
   @override
-  State<ExpenseList> createState() => _ExpenseListState();
+  ConsumerState<ExpenseList> createState() => _ExpenseListState();
 }
 
-class _ExpenseListState extends State<ExpenseList>
+class _ExpenseListState extends ConsumerState<ExpenseList>
     with SingleTickerProviderStateMixin {
-  final ExpenseController controller = Get.put(ExpenseController());
   late TabController _tabController;
-  String _searchQuery = '';
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        controller.loadExpenses();
-      }
+      if (!_tabController.indexIsChanging) _updateFilter();
     });
-    // Charger les données après que le widget soit construit
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.loadExpenses();
+      ref.read(expenseProvider.notifier).loadExpenses(forceRefresh: true);
     });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  List<Expense> get _filteredExpenses {
-    List<Expense> filtered = controller.expenses;
-
-    // Filtrer par statut selon l'onglet actif
+  void _updateFilter() {
+    String status;
     switch (_tabController.index) {
-      case 0: // Toutes
+      case 0:
+        status = 'all';
         break;
-      case 1: // En attente
-        filtered = filtered.where((e) => e.status == 'pending').toList();
+      case 1:
+        status = 'pending';
         break;
-      case 2: // Validées
-        filtered = filtered.where((e) => e.status == 'approved').toList();
+      case 2:
+        status = 'approved';
         break;
-      case 3: // Rejetées
-        filtered = filtered.where((e) => e.status == 'rejected').toList();
+      case 3:
+        status = 'rejected';
         break;
+      default:
+        status = 'all';
     }
-
-    // Filtrer par recherche
-    if (_searchQuery.isNotEmpty) {
-      filtered =
-          filtered
-              .where(
-                (expense) =>
-                    expense.title.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ||
-                    expense.description.toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ),
-              )
-              .toList();
-    }
-
-    return filtered;
+    ref.read(expenseProvider.notifier).filterByStatus(status);
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(expenseProvider);
+    final notifier = ref.read(expenseProvider.notifier);
+    final userRole = ref.watch(authProvider).user?.role;
+    final canManage = userRole == Roles.ADMIN || userRole == Roles.COMPTABLE;
+    final canApprove = userRole == Roles.ADMIN || userRole == Roles.PATRON;
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/comptable', iconColor: Colors.white),
         title: const Text('Dépenses'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Exporter',
+            onPressed: () {
+              final list = state.expenses;
+              if (list.isEmpty) return;
+              showExportDialog(
+                context: context,
+                title: 'Exporter les dépenses',
+                fileName: 'depenses_${DateTime.now().millisecondsSinceEpoch}',
+                headers: ExportDataBuilder.expenseHeaders,
+                rows: ExportDataBuilder.expensesToRows(list),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: controller.loadExpenses,
+            onPressed: () => notifier.loadExpenses(forceRefresh: true),
             tooltip: 'Actualiser',
           ),
         ],
@@ -105,57 +114,56 @@ class _ExpenseListState extends State<ExpenseList>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Rechercher par titre ou description...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                        : null,
+                suffixIcon: state.searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          notifier.searchExpenses('');
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
+              onChanged: (value) => notifier.searchExpenses(value),
             ),
           ),
-
-          // Liste des dépenses
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const SkeletonSearchResults(itemCount: 6);
-              }
-              return _filteredExpenses.isEmpty
-                  ? const Center(child: Text('Aucune dépense trouvée'))
-                  : PaginatedListView(
-                    scrollController: controller.scrollController,
-                    onLoadMore: controller.loadMore,
-                    hasNextPage: controller.hasNextPage.value,
-                    isLoadingMore: controller.isLoadingMore.value,
-                    itemCount: _filteredExpenses.length,
-                    itemBuilder: (context, index) {
-                      final expense = _filteredExpenses[index];
-                      return _buildExpenseCard(expense);
-                    },
-                  );
-            }),
+            child: state.isLoading && state.expenses.isEmpty
+                ? const SkeletonSearchResults(itemCount: 6)
+                : state.expenses.isEmpty
+                    ? const Center(child: Text('Aucune dépense trouvée'))
+                    : PaginatedListView(
+                        scrollController: _scrollController,
+                        onLoadMore: notifier.loadMore,
+                        hasNextPage: state.hasNextPage,
+                        isLoadingMore: state.isLoadingMore,
+                        itemCount: state.expenses.length,
+                        itemBuilder: (context, index) {
+                          final expense = state.expenses[index];
+                          return _buildExpenseCard(
+                            context,
+                            expense,
+                            notifier,
+                            canManage,
+                            canApprove,
+                          );
+                        },
+                      ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.to(() => const ExpenseForm()),
+        onPressed: () => context.go('/expenses/new'),
         tooltip: 'Nouvelle dépense',
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -164,7 +172,13 @@ class _ExpenseListState extends State<ExpenseList>
     );
   }
 
-  Widget _buildExpenseCard(Expense expense) {
+  Widget _buildExpenseCard(
+    BuildContext context,
+    Expense expense,
+    ExpenseNotifier notifier,
+    bool canManage,
+    bool canApprove,
+  ) {
     final formatCurrency = NumberFormat.currency(
       locale: 'fr_FR',
       symbol: 'fcfa',
@@ -174,7 +188,7 @@ class _ExpenseListState extends State<ExpenseList>
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
       child: InkWell(
-        onTap: () => Get.to(() => ExpenseDetail(expense: expense)),
+        onTap: () => context.go('/expenses/${expense.id}', extra: expense),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -288,21 +302,21 @@ class _ExpenseListState extends State<ExpenseList>
                   TextButton.icon(
                     icon: const Icon(Icons.info_outline, size: 16),
                     label: const Text('Détails'),
-                    onPressed:
-                        () => Get.to(() => ExpenseDetail(expense: expense)),
+                    onPressed: () =>
+                        context.go('/expenses/${expense.id}', extra: expense),
                   ),
-                  if (expense.status == 'pending' &&
-                      controller.canManageExpenses) ...[
+                  if (expense.status == 'pending' && canManage) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.edit, size: 16),
                       label: const Text('Modifier'),
-                      onPressed:
-                          () => Get.to(() => ExpenseForm(expense: expense)),
+                      onPressed: () => context.go(
+                        '/expenses/${expense.id}/edit',
+                        extra: expense,
+                      ),
                     ),
                   ],
-                  if (expense.status == 'pending' &&
-                      controller.canApproveExpenses) ...[
+                  if (expense.status == 'pending' && canApprove) ...[
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.check, size: 16),
@@ -310,14 +324,14 @@ class _ExpenseListState extends State<ExpenseList>
                       style: TextButton.styleFrom(
                         foregroundColor: Colors.green,
                       ),
-                      onPressed: () => _showApproveDialog(expense, controller),
+                      onPressed: () => _showApproveDialog(context, expense, notifier),
                     ),
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('Rejeter'),
                       style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => _showRejectDialog(expense, controller),
+                      onPressed: () => _showRejectDialog(context, expense, notifier),
                     ),
                   ],
                   // Note: Pas de méthode generatePDF pour les dépenses
@@ -334,16 +348,19 @@ class _ExpenseListState extends State<ExpenseList>
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  void _showApproveDialog(Expense expense, ExpenseController controller) {
+  void _showApproveDialog(
+      BuildContext context, Expense expense, ExpenseNotifier notifier) {
     final notesController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Approuver la dépense'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Êtes-vous sûr de vouloir approuver cette dépense ?'),
+            const Text(
+                'Êtes-vous sûr de vouloir approuver cette dépense ?'),
             const SizedBox(height: 16),
             TextField(
               controller: notesController,
@@ -356,12 +373,21 @@ class _ExpenseListState extends State<ExpenseList>
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              controller.notesController.text = notesController.text;
-              controller.approveExpense(expense);
-              Get.back();
+            onPressed: () async {
+              await notifier.approveExpense(expense,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense approuvée')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Approuver'),
@@ -371,11 +397,13 @@ class _ExpenseListState extends State<ExpenseList>
     );
   }
 
-  void _showRejectDialog(Expense expense, ExpenseController controller) {
+  void _showRejectDialog(
+      BuildContext context, Expense expense, ExpenseNotifier notifier) {
     final reasonController = TextEditingController();
 
-    Get.dialog(
-      AlertDialog(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Rejeter la dépense'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -393,14 +421,25 @@ class _ExpenseListState extends State<ExpenseList>
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler')),
           ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                controller.rejectExpense(expense, reasonController.text.trim());
-                Get.back();
-              } else {
-                Get.snackbar('Erreur', 'Veuillez indiquer la raison du rejet');
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez indiquer la raison du rejet')),
+                );
+                return;
+              }
+              await notifier.rejectExpense(
+                  expense, reasonController.text.trim());
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Dépense rejetée')),
+                );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

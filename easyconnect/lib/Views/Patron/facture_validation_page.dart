@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:easyconnect/Controllers/invoice_controller.dart';
-import 'package:easyconnect/Controllers/auth_controller.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easyconnect/providers/invoice_notifier.dart';
 import 'package:easyconnect/Models/invoice_model.dart';
-import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
+import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
 
-class FactureValidationPage extends StatefulWidget {
+class FactureValidationPage extends ConsumerStatefulWidget {
   const FactureValidationPage({super.key});
 
   @override
-  State<FactureValidationPage> createState() => _FactureValidationPageState();
+  ConsumerState<FactureValidationPage> createState() =>
+      _FactureValidationPageState();
 }
 
-class _FactureValidationPageState extends State<FactureValidationPage>
+class _FactureValidationPageState extends ConsumerState<FactureValidationPage>
     with SingleTickerProviderStateMixin {
-  late final InvoiceController controller;
   late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -24,15 +23,9 @@ class _FactureValidationPageState extends State<FactureValidationPage>
   @override
   void initState() {
     super.initState();
-    // Vérifier et initialiser le contrôleur
-    if (!Get.isRegistered<InvoiceController>()) {
-      Get.put(InvoiceController(), permanent: true);
-    }
-    controller = Get.find<InvoiceController>();
-
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      _onTabChanged();
+      if (_tabController.indexIsChanging) _loadInvoices();
     });
     _loadInvoices();
   }
@@ -44,48 +37,28 @@ class _FactureValidationPageState extends State<FactureValidationPage>
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _loadInvoices();
-    }
-  }
-
   Future<void> _loadInvoices() async {
-    // Réinitialiser les filtres pour charger toutes les factures
-    controller.selectedStatus.value = 'all';
-    controller.startDate.value = null;
-    controller.endDate.value = null;
-    controller.searchQuery.value = '';
-
-    // Invalider le cache pour forcer le rechargement depuis le serveur
-    final authController = Get.find<AuthController>();
-    final user = authController.userAuth.value;
-    if (user != null) {
-      final cacheKey = 'invoices_${user.role}_all';
-      CacheHelper.remove(cacheKey);
-      // Invalider aussi les autres clés de cache possibles
-      CacheHelper.remove('invoices_${user.role}_en_attente');
-      CacheHelper.remove('invoices_${user.role}_valide');
-      CacheHelper.remove('invoices_${user.role}_rejete');
-    }
-
-    // Charger toutes les factures, le filtrage par onglet se fait côté client
-    await controller.loadInvoices();
+    final notifier = ref.read(invoiceProvider.notifier);
+    notifier.filterInvoices(status: 'all', start: null, end: null, search: '');
+    await notifier.loadInvoices(forceRefresh: true);
+    await notifier.loadPendingInvoices();
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(invoiceProvider);
+    final notifier = ref.read(invoiceProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarBackButton(fallbackRoute: '/patron', iconColor: Colors.white),
         title: const Text('Validation des Factures'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadInvoices();
-            },
+            onPressed: _loadInvoices,
             tooltip: 'Actualiser',
           ),
         ],
@@ -104,7 +77,6 @@ class _FactureValidationPageState extends State<FactureValidationPage>
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -112,143 +84,112 @@ class _FactureValidationPageState extends State<FactureValidationPage>
               decoration: InputDecoration(
                 hintText: 'Rechercher par numéro, client...',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                        : null,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
-          // Contenu des onglets
           Expanded(
-            child: Obx(
-              () =>
-                  controller.isLoading.value
-                      ? const SkeletonSearchResults(itemCount: 6)
-                      : _buildInvoiceList(),
-            ),
+            child: state.isLoading
+                ? const SkeletonSearchResults(itemCount: 6)
+                : _buildInvoiceList(state.invoices, notifier),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInvoiceList() {
-    // Utiliser Obx pour rendre réactif l'accès à controller.invoices
-    return Obx(() {
-      // Filtrer selon l'onglet actif et la recherche
-      List<InvoiceModel> filteredInvoices = controller.invoices;
-
-      // Filtrer par statut selon l'onglet actif
-      if (_tabController.index == 1) {
-        // Onglet "En attente" - inclure tous les statuts en attente
-        final statusLower = (String status) => status.toLowerCase().trim();
-        filteredInvoices =
-            filteredInvoices.where((invoice) {
-              final status = statusLower(invoice.status);
-              return status == 'draft' ||
-                  status == 'en_attente' ||
-                  status == 'pending' ||
-                  status == 'en attente';
-            }).toList();
-      } else if (_tabController.index == 2) {
-        // Onglet "Validés"
-        filteredInvoices =
-            filteredInvoices.where((invoice) {
-              final status = invoice.status.toLowerCase().trim();
-              return status == 'valide' ||
-                  status == 'validated' ||
-                  status == 'approved';
-            }).toList();
-      } else if (_tabController.index == 3) {
-        // Onglet "Rejetés"
-        filteredInvoices =
-            filteredInvoices.where((invoice) {
-              final status = invoice.status.toLowerCase().trim();
-              return status == 'rejete' || status == 'rejected';
-            }).toList();
-      }
-      // Onglet 0 (Tous) - pas de filtre supplémentaire
-
-      // Filtrer selon la recherche
-      if (_searchQuery.isNotEmpty) {
-        filteredInvoices =
-            filteredInvoices
-                .where(
-                  (invoice) =>
-                      invoice.invoiceNumber.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ) ||
-                      invoice.clientName.toLowerCase().contains(
-                        _searchQuery.toLowerCase(),
-                      ),
-                )
-                .toList();
-      }
-
-      if (filteredInvoices.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.receipt, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                _searchQuery.isEmpty
-                    ? 'Aucune facture trouvée'
-                    : 'Aucune facture correspondant à "$_searchQuery"',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              if (_searchQuery.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _searchQuery = '';
-                    });
-                  },
-                  icon: const Icon(Icons.clear),
-                  label: const Text('Effacer la recherche'),
-                ),
-              ],
-            ],
-          ),
-        );
-      }
-
-      return ListView.builder(
-        itemCount: filteredInvoices.length,
-        padding: const EdgeInsets.all(8),
-        itemBuilder: (context, index) {
-          final invoice = filteredInvoices[index];
-          return _buildInvoiceCard(context, invoice);
-        },
-      );
-    });
+  List<InvoiceModel> _filterByTabAndSearch(
+      List<InvoiceModel> invoices, int tabIndex, String search) {
+    List<InvoiceModel> filtered = invoices;
+    if (tabIndex == 1) {
+      filtered = filtered.where((inv) {
+        final s = inv.status.toLowerCase().trim();
+        return s == 'draft' ||
+            s == 'en_attente' ||
+            s == 'pending' ||
+            s == 'en attente';
+      }).toList();
+    } else if (tabIndex == 2) {
+      filtered = filtered.where((inv) {
+        final s = inv.status.toLowerCase().trim();
+        return s == 'valide' || s == 'validated' || s == 'approved';
+      }).toList();
+    } else if (tabIndex == 3) {
+      filtered = filtered
+          .where((inv) =>
+              inv.status.toLowerCase().trim() == 'rejete' ||
+              inv.status.toLowerCase().trim() == 'rejected')
+          .toList();
+    }
+    if (search.isNotEmpty) {
+      filtered = filtered.where((inv) {
+        return inv.invoiceNumber.toLowerCase().contains(search.toLowerCase()) ||
+            inv.clientName.toLowerCase().contains(search.toLowerCase());
+      }).toList();
+    }
+    return filtered;
   }
 
-  Widget _buildInvoiceCard(BuildContext context, InvoiceModel invoice) {
-    final formatDate = DateFormat('dd/MM/yyyy');
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
+  Widget _buildInvoiceList(
+      List<InvoiceModel> invoices, InvoiceNotifier notifier) {
+    final filtered =
+        _filterByTabAndSearch(invoices, _tabController.index, _searchQuery);
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.receipt, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isEmpty
+                  ? 'Aucune facture trouvée'
+                  : 'Aucune facture correspondant à "$_searchQuery"',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            if (_searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+                icon: const Icon(Icons.clear),
+                label: const Text('Effacer la recherche'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: filtered.length,
+      padding: const EdgeInsets.all(8),
+      itemBuilder: (context, index) {
+        final invoice = filtered[index];
+        return _buildInvoiceCard(context, invoice, notifier);
+      },
     );
-    final statusColor = _getStatusColor(invoice.status);
+  }
+
+  Widget _buildInvoiceCard(
+      BuildContext context, InvoiceModel invoice, InvoiceNotifier notifier) {
+    final formatDate = DateFormat('dd/MM/yyyy');
+    final formatCurrency =
+        NumberFormat.currency(locale: 'fr_FR', symbol: 'FCFA');
+    final statusColor = notifier.getInvoiceStatusColor(invoice.status);
     final statusIcon = _getStatusIcon(invoice.status);
     final statusText = _getStatusText(invoice.status);
 
@@ -281,10 +222,9 @@ class _FactureValidationPageState extends State<FactureValidationPage>
               child: Text(
                 statusText,
                 style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12),
               ),
             ),
           ],
@@ -295,7 +235,6 @@ class _FactureValidationPageState extends State<FactureValidationPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Informations générales
                 const Text(
                   'Informations générales',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -317,18 +256,14 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                       Text('Adresse: ${invoice.clientAddress}'),
                       Text('Commercial: ${invoice.commercialName}'),
                       Text(
-                        'Date facture: ${formatDate.format(invoice.invoiceDate)}',
-                      ),
+                          'Date facture: ${formatDate.format(invoice.invoiceDate)}'),
                       Text(
-                        'Date échéance: ${formatDate.format(invoice.dueDate)}',
-                      ),
-                      if (invoice.notes != null)
-                        Text('Notes: ${invoice.notes}'),
+                          'Date échéance: ${formatDate.format(invoice.dueDate)}'),
+                      if (invoice.notes != null) Text('Notes: ${invoice.notes}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Détails des articles
                 const Text(
                   'Détails des articles',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -341,9 +276,8 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: invoice.items.length,
-                    itemBuilder: (context, index) {
-                      return _buildItemDetails(invoice.items[index]);
-                    },
+                    itemBuilder: (context, i) =>
+                        _buildItemDetails(invoice.items[i], formatCurrency),
                   ),
                 const SizedBox(height: 16),
                 Container(
@@ -373,10 +307,8 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Total:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          const Text('Total',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                           Text(
                             formatCurrency.format(invoice.totalAmount),
                             style: const TextStyle(fontWeight: FontWeight.bold),
@@ -387,7 +319,7 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButtons(invoice, statusColor),
+                _buildActionButtons(context, invoice, notifier),
               ],
             ),
           ),
@@ -396,27 +328,15 @@ class _FactureValidationPageState extends State<FactureValidationPage>
     );
   }
 
-  Widget _buildItemDetails(InvoiceItem item) {
-    final formatCurrency = NumberFormat.currency(
-      locale: 'fr_FR',
-      symbol: 'FCFA',
-    );
-
+  Widget _buildItemDetails(InvoiceItem item, NumberFormat formatCurrency) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Expanded(
             flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.description,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
+            child: Text(item.description,
+                style: const TextStyle(fontWeight: FontWeight.w500)),
           ),
           Expanded(child: Text('${item.quantity}')),
           Expanded(child: Text(formatCurrency.format(item.unitPrice))),
@@ -431,53 +351,42 @@ class _FactureValidationPageState extends State<FactureValidationPage>
     );
   }
 
-  Widget _buildActionButtons(InvoiceModel invoice, Color statusColor) {
-    // Vérifier si la facture est en attente (gérer toutes les variantes)
-    final statusLower = invoice.status.toLowerCase().trim();
+  Widget _buildActionButtons(
+      BuildContext context, InvoiceModel invoice, InvoiceNotifier notifier) {
+    final s = invoice.status.toLowerCase().trim();
     final isPending =
-        statusLower == 'en_attente' ||
-        statusLower == 'pending' ||
-        statusLower == 'draft' ||
-        statusLower == 'en attente';
+        s == 'en_attente' || s == 'pending' || s == 'draft' || s == 'en attente';
     final isValidated =
-        statusLower == 'valide' ||
-        statusLower == 'validated' ||
-        statusLower == 'approved';
-    final isRejected = statusLower == 'rejete' || statusLower == 'rejected';
+        s == 'valide' || s == 'validated' || s == 'approved';
+    final isRejected = s == 'rejete' || s == 'rejected';
 
     if (isPending) {
-      // En attente - Afficher boutons Valider/Rejeter
-      return Column(
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _showApproveConfirmation(invoice),
-                icon: const Icon(Icons.check),
-                label: const Text('Valider'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showRejectDialog(invoice),
-                icon: const Icon(Icons.close),
-                label: const Text('Rejeter'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
+          ElevatedButton.icon(
+            onPressed: () => _showApproveConfirmation(context, invoice, notifier),
+            icon: const Icon(Icons.check),
+            label: const Text('Valider'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => _showRejectDialog(context, invoice, notifier),
+            icon: const Icon(Icons.close),
+            label: const Text('Rejeter'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       );
     }
 
     if (isValidated) {
-      // Validé - Afficher info et bouton PDF
       return Column(
         children: [
           Container(
@@ -495,16 +404,33 @@ class _FactureValidationPageState extends State<FactureValidationPage>
                 Text(
                   'Facture validée',
                   style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.bold,
-                  ),
+                      color: Colors.green[700], fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () => controller.generatePDF(invoice.id),
+            onPressed: () async {
+              try {
+                await notifier.generatePDF(invoice.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('PDF généré avec succès'),
+                        backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
             icon: const Icon(Icons.picture_as_pdf),
             label: const Text('Générer PDF'),
             style: ElevatedButton.styleFrom(
@@ -517,7 +443,6 @@ class _FactureValidationPageState extends State<FactureValidationPage>
     }
 
     if (isRejected) {
-      // Rejeté - Afficher motif du rejet
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -533,16 +458,13 @@ class _FactureValidationPageState extends State<FactureValidationPage>
             Text(
               'Facture rejetée',
               style: TextStyle(
-                color: Colors.red[700],
-                fontWeight: FontWeight.bold,
-              ),
+                  color: Colors.red[700], fontWeight: FontWeight.bold),
             ),
           ],
         ),
       );
     }
 
-    // Autres statuts
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -558,26 +480,11 @@ class _FactureValidationPageState extends State<FactureValidationPage>
           Text(
             'Statut: ${invoice.status}',
             style: TextStyle(
-              color: Colors.grey[600],
-              fontWeight: FontWeight.bold,
-            ),
+                color: Colors.grey[600], fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'en_attente':
-        return Colors.orange;
-      case 'valide':
-        return Colors.green;
-      case 'rejete':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 
   IconData _getStatusIcon(String status) {
@@ -606,57 +513,106 @@ class _FactureValidationPageState extends State<FactureValidationPage>
     }
   }
 
-  void _showApproveConfirmation(InvoiceModel invoice) {
-    Get.defaultDialog(
-      title: 'Confirmation',
-      middleText: 'Voulez-vous valider cette facture ?',
-      textConfirm: 'Valider',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        Get.back();
-        await controller.approveInvoice(invoice.id);
-        // Mise à jour optimiste côté contrôleur ; sync en arrière-plan sans bloquer l'UI
-        _loadInvoices().catchError((_) {});
-      },
-    );
-  }
-
-  void _showRejectDialog(InvoiceModel invoice) {
-    final reasonController = TextEditingController();
-
-    Get.defaultDialog(
-      title: 'Rejeter la facture',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: reasonController,
-            decoration: const InputDecoration(
-              labelText: 'Motif du rejet',
-              hintText: 'Entrez le motif du rejet',
-            ),
-            maxLines: 3,
+  void _showApproveConfirmation(
+      BuildContext context, InvoiceModel invoice, InvoiceNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Voulez-vous valider cette facture ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await notifier.approveInvoice(invoice.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Facture approuvée avec succès'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  _loadInvoices();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(foregroundColor: Colors.white),
+            child: const Text('Valider'),
           ),
         ],
       ),
-      textConfirm: 'Rejeter',
-      textCancel: 'Annuler',
-      confirmTextColor: Colors.white,
-      onConfirm: () async {
-        if (reasonController.text.trim().isEmpty) {
-          Get.snackbar(
-            'Erreur',
-            'Veuillez entrer un motif de rejet',
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return;
-        }
-        Get.back();
-        await controller.rejectInvoice(invoice.id, reasonController.text.trim());
-        // Mise à jour optimiste côté contrôleur ; sync en arrière-plan sans bloquer l'UI
-        _loadInvoices().catchError((_) {});
-      },
+    );
+  }
+
+  void _showRejectDialog(
+      BuildContext context, InvoiceModel invoice, InvoiceNotifier notifier) {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeter la facture'),
+        content: TextField(
+          controller: reasonController,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Entrez le motif du rejet',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Veuillez entrer un motif de rejet')),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              try {
+                await notifier.rejectInvoice(
+                    invoice.id, reasonController.text.trim());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Facture rejetée'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  _loadInvoices();
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erreur: $e')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

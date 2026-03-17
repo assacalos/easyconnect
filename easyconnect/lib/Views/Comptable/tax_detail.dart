@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:intl/intl.dart';
 
@@ -19,7 +19,7 @@ class TaxDetail extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed:
-                () => Get.toNamed('/taxes/${tax.id}/edit', arguments: tax),
+                () => context.push('/taxes/${tax.id}/edit', extra: tax),
           ),
         ],
       ),
@@ -75,7 +75,7 @@ class TaxDetail extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Actions
-            _buildActionButtons(),
+            _buildActionButtons(context),
           ],
         ),
       ),
@@ -303,7 +303,7 @@ class TaxDetail extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(BuildContext context) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -327,10 +327,7 @@ class TaxDetail extends StatelessWidget {
                     icon: const Icon(Icons.edit),
                     label: const Text('Modifier'),
                     onPressed:
-                        () => Get.toNamed(
-                          '/taxes/${tax.id}/edit',
-                          arguments: tax,
-                        ),
+                        () => context.push('/taxes/${tax.id}/edit', extra: tax),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -342,7 +339,7 @@ class TaxDetail extends StatelessWidget {
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.delete),
                     label: const Text('Supprimer'),
-                    onPressed: () => _showDeleteDialog(),
+                    onPressed: () => _showDeleteDialog(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -399,18 +396,21 @@ class TaxDetail extends StatelessWidget {
     return Icons.help;
   }
 
-  void _showDeleteDialog() {
-    Get.dialog(
-      AlertDialog(
+  void _showDeleteDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
         title: const Text('Supprimer la taxe'),
         content: Text('Êtes-vous sûr de vouloir supprimer ${tax.name} ?'),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
           ElevatedButton(
             onPressed: () {
-              // Logique de suppression
-              Get.back();
-              Get.back(); // Retour à la liste
+              Navigator.pop(ctx);
+              Navigator.pop(context); // Retour à la liste
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
