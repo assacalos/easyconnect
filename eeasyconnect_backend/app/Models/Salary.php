@@ -138,22 +138,34 @@ class Salary extends Model
 
     public function getEmployeeNameAttribute()
     {
-        return $this->employee ? $this->employee->first_name . ' ' . $this->employee->last_name : 'N/A';
+        if (!$this->relationLoaded('employee') || !$this->employee) {
+            return 'N/A';
+        }
+        return trim(($this->employee->first_name ?? '') . ' ' . ($this->employee->last_name ?? '')) ?: 'N/A';
     }
 
     public function getHrNameAttribute()
     {
-        return $this->hr ? $this->hr->first_name . ' ' . $this->hr->last_name : 'N/A';
+        if (!$this->relationLoaded('hr') || !$this->hr) {
+            return 'N/A';
+        }
+        return trim(($this->hr->first_name ?? '') . ' ' . ($this->hr->last_name ?? '')) ?: 'N/A';
     }
 
     public function getApproverNameAttribute()
     {
-        return $this->approver ? $this->approver->prenom . ' ' . $this->approver->nom : 'N/A';
+        if (!$this->relationLoaded('approver') || !$this->approver) {
+            return 'N/A';
+        }
+        return trim(($this->approver->prenom ?? '') . ' ' . ($this->approver->nom ?? '')) ?: 'N/A';
     }
 
     public function getPayerNameAttribute()
     {
-        return $this->payer ? $this->payer->prenom . ' ' . $this->payer->nom : 'N/A';
+        if (!$this->relationLoaded('payer') || !$this->payer) {
+            return 'N/A';
+        }
+        return trim(($this->payer->prenom ?? '') . ' ' . ($this->payer->nom ?? '')) ?: 'N/A';
     }
 
     public function getFormattedBaseSalaryAttribute()

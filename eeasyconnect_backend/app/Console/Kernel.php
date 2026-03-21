@@ -16,6 +16,14 @@ class Kernel extends ConsoleKernel
     $schedule->command('queue:work --stop-when-empty')
              ->everyMinute()
              ->withoutOverlapping();
+
+    $schedule->command('app:clear-old-notification')->dailyAt('01:00');
+
+    // Rappels automatiques au patron pour les besoins (technicien) : une fois par jour à 8h
+    $schedule->command('app:send-besoin-reminders')->dailyAt('08:00');
+
+    // Rappels personnels technicien (J-1, J-2 ou J-3 avant date limite) : une fois par jour à 8h
+    $schedule->command('app:send-technician-reminders')->dailyAt('08:00');
     }
 
     /**

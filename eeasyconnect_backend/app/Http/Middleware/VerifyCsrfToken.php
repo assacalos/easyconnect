@@ -12,6 +12,8 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        //
+        // API : l'app utilise un token Bearer (pas de session cookie).
+        // Exclure les routes API évite "CSRF token mismatch" sur le navigateur (Flutter web).
+        'api/*',
     ];
 }

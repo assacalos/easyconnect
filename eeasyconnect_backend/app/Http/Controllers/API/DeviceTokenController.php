@@ -26,7 +26,10 @@ class DeviceTokenController extends Controller
      */
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Accepter "token" ou "fcm_token" (l'app Flutter envoie les deux ; en cas d'oubli, un seul suffit)
+        $tokenValue = $request->input('token') ?? $request->input('fcm_token');
+
+        $validator = Validator::make(array_merge($request->all(), ['token' => $tokenValue]), [
             'token' => 'required|string|max:500',
             'device_type' => 'nullable|string|in:ios,android,web',
             'device_id' => 'nullable|string|max:255',
@@ -53,7 +56,7 @@ class DeviceTokenController extends Controller
 
             $deviceToken = $this->pushService->registerDeviceToken(
                 $user->id,
-                $request->token,
+                $tokenValue,
                 [
                     'device_type' => $request->device_type,
                     'device_id' => $request->device_id,
@@ -113,28 +116,37 @@ class DeviceTokenController extends Controller
                 ], 401);
             }
 
-            $tokens = DeviceToken::where('user_id', $user->id)
+            $perPage = min((int) $request->get('per_page', 20), 100);
+            $tokensPaginated = DeviceToken::where('user_id', $user->id)
                 ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($token) {
-                    return [
-                        'id' => $token->id,
-                        'token' => substr($token->token, 0, 20) . '...', // Masquer le token complet
-                        'device_type' => $token->device_type,
-                        'device_id' => $token->device_id,
-                        'app_version' => $token->app_version,
-                        'is_active' => $token->is_active,
-                        'last_used_at' => $token->last_used_at,
-                        'created_at' => $token->created_at,
-                    ];
-                });
+                ->paginate($perPage);
+
+            $data = $tokensPaginated->getCollection()->map(function ($token) {
+                return [
+                    'id' => $token->id,
+                    'token' => substr($token->token, 0, 20) . '...',
+                    'device_type' => $token->device_type,
+                    'device_id' => $token->device_id,
+                    'app_version' => $token->app_version,
+                    'is_active' => $token->is_active,
+                    'last_used_at' => $token->last_used_at,
+                    'created_at' => $token->created_at,
+                ];
+            });
 
             return response()->json([
                 'success' => true,
+                'data' => $data->values(),
+                'pagination' => [
+                    'current_page' => $tokensPaginated->currentPage(),
+                    'last_page' => $tokensPaginated->lastPage(),
+                    'per_page' => $tokensPaginated->perPage(),
+                    'total' => $tokensPaginated->total(),
+                    'from' => $tokensPaginated->firstItem(),
+                    'to' => $tokensPaginated->lastItem(),
+                ],
                 'message' => 'Tokens d\'appareil récupérés avec succès',
-                'data' => $tokens,
-                'count' => $tokens->count()
-            ]);
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             Log::error("Erreur lors de la récupération des tokens d'appareil", [

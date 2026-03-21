@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Bordereau;
 use App\Models\BordereauItem;
@@ -16,6 +17,13 @@ use Illuminate\Support\Facades\DB;
 class BordereauController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     // Récupérer tous les bordereaux (avec filtre status facultatif)
     public function index(Request $request)
     {
@@ -44,20 +52,24 @@ class BordereauController extends Controller
                 $query->whereDate('date_creation', '<=', $request->end_date);
             }
 
-            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $bordereaux = $query->orderBy('created_at', 'desc')->paginate($perPage);
-            
+
+            $dataArray = BordereauResource::collection($bordereaux->items())->resolve();
+
             return response()->json([
                 'success' => true,
-                'data' => BordereauResource::collection($bordereaux->items()),
+                'data' => $dataArray,
                 'pagination' => [
                     'current_page' => $bordereaux->currentPage(),
                     'last_page' => $bordereaux->lastPage(),
                     'per_page' => $bordereaux->perPage(),
                     'total' => $bordereaux->total(),
+                    'from' => $bordereaux->firstItem(),
+                    'to' => $bordereaux->lastItem(),
                 ],
-                'message' => 'Liste des bordereaux récupérée avec succès'
-            ], 200);
+                'message' => 'Liste des bordereaux récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
             
         } catch (\Exception $e) {
             return response()->json([
@@ -75,28 +87,38 @@ class BordereauController extends Controller
         try {
             $validated = $request->validate([
                 'reference' => 'required|unique:bordereaus,reference',
+                'titre' => 'nullable|string|max:255',
                 'client_id' => 'required|exists:clients,id',
                 'devis_id' => 'nullable|exists:devis,id',
                 'user_id' => 'required|exists:users,id',
                 'date_creation' => 'required|date',
                 'items' => 'required|array|min:1',
+                'items.*.reference' => 'nullable|string|max:100',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
+                'etat_livraison' => 'nullable|string|max:100',
+                'garantie' => 'nullable|string|max:255',
+                'date_livraison' => 'nullable|date',
             ]);
 
             $bordereau = Bordereau::create([
                 'reference' => $validated['reference'],
+                'titre' => $validated['titre'] ?? null,
                 'client_id' => $validated['client_id'],
                 'devis_id' => $validated['devis_id'] ?? null,
                 'user_id' => $validated['user_id'],
                 'date_creation' => $validated['date_creation'],
                 'notes' => $request->notes ?? null,
                 'status' => 1, // soumis au patron
+                'etat_livraison' => $validated['etat_livraison'] ?? null,
+                'garantie' => $validated['garantie'] ?? null,
+                'date_livraison' => isset($validated['date_livraison']) ? $validated['date_livraison'] : null,
             ]);
 
             foreach ($validated['items'] as $item) {
                 BordereauItem::create([
                     'bordereau_id' => $bordereau->id,
+                    'reference' => $item['reference'] ?? null,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
                     'description' => $item['description'] ?? null,
@@ -122,15 +144,10 @@ class BordereauController extends Controller
             }
 
             // Notifier le patron lors de la création (status=1 = soumis)
-            try {
-                $this->notifyApproverOnSubmission($bordereau, 'bordereau', 'Bordereau', 6, $bordereau->reference);
-            } catch (\Exception $e) {
-                Log::warning('Failed to create notification for bordereau', [
-                    'bordereau_id' => $bordereau->id,
-                    'error' => $e->getMessage()
-                ]);
-                // Ne pas faire échouer la création si la notification échoue
-            }
+            $this->safeNotify(function () use ($bordereau) {
+                $bordereau->load('user');
+                $this->notificationService->notifyNewBordereau($bordereau);
+            });
 
             // Recharger le bordereau pour s'assurer d'avoir toutes les données
             $bordereau->refresh();
@@ -189,17 +206,13 @@ class BordereauController extends Controller
         ]);
     }
 
-    // Mettre à jour un bordereau (modification tant que status != 2)
+    // Mettre à jour un bordereau (quel que soit le statut)
     public function update(Request $request, $id)
     {
         $bordereau = Bordereau::findOrFail($id);
 
-        if ($bordereau->status == 2) { // validé
-            return response()->json(['message' => 'Impossible de modifier un bordereau validé'], 403);
-        }
-
         $bordereau->update($request->only([
-            'notes', 'status', 'commentaire'
+            'titre', 'notes', 'status', 'commentaire', 'etat_livraison', 'garantie', 'date_livraison'
         ]));
 
         // Mise à jour des items si fournis
@@ -208,6 +221,7 @@ class BordereauController extends Controller
             foreach ($request->items as $item) {
                 BordereauItem::create([
                     'bordereau_id' => $bordereau->id,
+                    'reference' => $item['reference'] ?? null,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
                     'description' => $item['description'] ?? null,
@@ -221,32 +235,20 @@ class BordereauController extends Controller
         ]);
     }
 
-    // Supprimer un bordereau (seulement si status != 2)
+    // Supprimer un bordereau (quel que soit le statut)
     public function destroy($id)
     {
         $bordereau = Bordereau::findOrFail($id);
-
-        if ($bordereau->status == 2) {
-            return response()->json(['message' => 'Impossible de supprimer un bordereau validé'], 403);
-        }
 
         $bordereau->delete();
         return response()->json(['message' => 'Bordereau supprimé']);
     }
 
-    // ✅ NOUVELLE MÉTHODE : Valider un bordereau
+    // Valider un bordereau (quel que soit le statut)
     public function validateBordereau(Request $request, $id)
     {
         try {
             $bordereau = Bordereau::findOrFail($id);
-            
-            // Vérifier que le bordereau est soumis (status = 1)
-            if ($bordereau->status != 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seuls les bordereaux soumis peuvent être validés'
-                ], 403);
-            }
 
             $bordereau->update([
                 'status' => 2, // validé
@@ -255,7 +257,12 @@ class BordereauController extends Controller
             ]);
 
             // Notifier l'auteur du bordereau
-            $this->notifySubmitterOnApproval($bordereau, 'bordereau', 'Bordereau', 'user_id', $bordereau->reference);
+            if ($bordereau->user_id) {
+                $this->safeNotify(function () use ($bordereau) {
+                    $bordereau->load('user');
+                    $this->notificationService->notifyBordereauValidated($bordereau);
+                });
+            }
 
             // Recharger le bordereau avec ses relations
             $bordereau->refresh();
@@ -311,7 +318,13 @@ class BordereauController extends Controller
             ]);
 
             // Notifier l'auteur du bordereau
-            $this->notifySubmitterOnRejection($bordereau, 'bordereau', 'Bordereau', $request->commentaire, 'user_id', $bordereau->reference);
+            if ($bordereau->user_id) {
+                $commentaire = $request->commentaire;
+                $this->safeNotify(function () use ($bordereau, $commentaire) {
+                    $bordereau->load('user');
+                    $this->notificationService->notifyBordereauRejected($bordereau, $commentaire);
+                });
+            }
 
             return response()->json([
                 'success' => true,

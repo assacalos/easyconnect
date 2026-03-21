@@ -1,10 +1,10 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/client_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -16,15 +16,11 @@ import 'package:easyconnect/services/storage_service.dart';
 class ClientService {
   final storage = GetStorage();
 
-  Map<String, String> _getHeaders(String? token, {bool isJson = false}) {
-    final headers = <String, String>{
-      'Accept': 'application/json',
-    };
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    if (isJson) headers['Content-Type'] = 'application/json; charset=utf-8';
-    return headers;
+  /// En-têtes JSON avec charset UTF-8 (compatibilité anciennes requêtes).
+  Map<String, String> _jsonUtf8Headers(Map<String, String> base) {
+    final m = Map<String, String>.from(base);
+    m['Content-Type'] = 'application/json; charset=utf-8';
+    return m;
   }
 
   /// Récupérer les clients avec pagination côté serveur
@@ -40,10 +36,10 @@ class ClientService {
     final effectiveTimeout = timeout ?? AppConfig.defaultTimeout;
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
-      if (token == null || token.isEmpty) {
+      if (!headers.containsKey('Authorization')) {
         AppLogger.warning('getClientsPaginated: pas de token (session)', tag: 'CLIENT_SERVICE');
       }
 
@@ -69,11 +65,8 @@ class ClientService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .get(
-                  uri,
-                  headers: _getHeaders(token),
-                )
+            () => HttpInterceptor
+                .get(uri, headers: headers)
                 .timeout(
                   effectiveTimeout,
                   onTimeout: () =>
@@ -136,7 +129,7 @@ class ClientService {
 
   Future<Client> createClient(Client client) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userId = storage.read('userId');
       final url = '${AppConfig.baseUrl}/clients-create';
 
@@ -148,10 +141,10 @@ class ClientService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
+            () => HttpInterceptor
                 .post(
                   Uri.parse(url),
-                  headers: _getHeaders(token as String?, isJson: true),
+                  headers: _jsonUtf8Headers(headers),
                   body: json.encode(clientData),
                 )
                 .timeout(
@@ -198,12 +191,12 @@ class ClientService {
 
   Future<Client> updateClient(Client client) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       // Backend attend POST pour clients-update (pas PUT)
-      final response = await http
+      final response = await HttpInterceptor
           .post(
             Uri.parse('${AppConfig.baseUrl}/clients-update/${client.id}'),
-            headers: _getHeaders(token as String?, isJson: true),
+            headers: _jsonUtf8Headers(headers),
             body: json.encode(client.toJson()),
           )
           .timeout(
@@ -228,12 +221,12 @@ class ClientService {
 
   Future<bool> approveClient(int clientId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       final url = '${AppConfig.baseUrl}/clients-validate/$clientId';
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: _getHeaders(token as String?),
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, considérer comme succès même si le body dit false
@@ -265,12 +258,12 @@ class ClientService {
 
   Future<bool> rejectClient(int clientId, String comment) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/clients-reject/$clientId';
       final body = json.encode({'commentaire': comment});
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: _getHeaders(token as String?, isJson: true),
+        headers: _jsonUtf8Headers(headers),
         body: body,
       );
 
@@ -291,10 +284,10 @@ class ClientService {
 
   Future<bool> deleteClient(int clientId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.delete(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/clients-delete/$clientId'),
-        headers: _getHeaders(token as String?),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -307,12 +300,12 @@ class ClientService {
   /// Créer un accès au portail client pour un client déjà enregistré (lié à la fiche client du commercial).
   /// Retourne les données de réponse (email, temporary_password, etc.) ou lance en cas d'erreur.
   Future<Map<String, dynamic>> createPortalAccess(int clientId, {String? password}) async {
-    final token = storage.read('token');
+    final headers = await ApiService.headersAsync();
     final url = '${AppConfig.baseUrl}/clients-create-portal-access/$clientId';
     final body = password != null ? json.encode({'password': password}) : null;
-    final response = await http.post(
+    final response = await HttpInterceptor.post(
       Uri.parse(url),
-      headers: _getHeaders(token as String?, isJson: body != null),
+      headers: body != null ? _jsonUtf8Headers(headers) : headers,
       body: body,
     );
     await AuthErrorHandler.handleHttpResponse(response);
@@ -326,11 +319,11 @@ class ClientService {
 
   Future<Map<String, dynamic>> getClientStats() async {
     try {
-      final token = storage.read('token');
-      final response = await http
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor
           .get(
             Uri.parse('${AppConfig.baseUrl}/clients/stats'),
-            headers: _getHeaders(token as String?),
+            headers: headers,
           )
           .timeout(
             AppConfig.defaultTimeout,

@@ -13,7 +13,6 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/error_helper.dart';
 import 'package:easyconnect/utils/validation_helper.dart';
-import 'package:easyconnect/utils/validation_helper_enhanced.dart';
 import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/notification_service_enhanced.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
@@ -306,17 +305,6 @@ class _MyAppState extends ConsumerState<MyApp> {
       );
     };
 
-    // ValidationHelperEnhanced
-    validationHelperEnhancedShowSnackbar = (String title, String message,
-        {Color? backgroundColor, Color? colorText, Duration? duration}) {
-      rootScaffoldMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('$title: $message'),
-          backgroundColor: backgroundColor ?? Colors.orange,
-          duration: duration ?? const Duration(seconds: 3),
-        ),
-      );
-    };
   }
 
   @override

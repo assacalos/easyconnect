@@ -4,6 +4,7 @@ import 'package:easyconnect/providers/stock_state.dart';
 import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/stock_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 
@@ -229,11 +230,22 @@ class StockNotifier extends Notifier<StockState> {
 
   Future<void> approveStock(Stock stock, {String? validationComment}) async {
     state = state.copyWith(isLoading: true);
+    CacheHelper.clearByPrefix('stocks_');
+    final list = List<Stock>.from(state.stocks);
+    final idx = list.indexWhere((s) => s.id == stock.id);
+    Stock? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'valide');
+      state = state.copyWith(stocks: list);
+    }
     try {
       await _stockService.approveStock(
         stockId: stock.id!,
         validationComment: validationComment,
       );
+      DashboardRefreshHelper.refreshPatronCounter('stock');
+      DashboardRefreshHelper.refreshComptableDashboard();
       NotificationHelper.notifyValidation(
         entityType: 'stock',
         entityName: NotificationHelper.getEntityDisplayName('stock', stock),
@@ -241,9 +253,17 @@ class StockNotifier extends Notifier<StockState> {
         route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
         entity: stock,
       );
-      CacheHelper.clearByPrefix('stocks_');
-      await loadStocks(forceRefresh: true);
-      await loadStockStats();
+      Future.microtask(() => loadStocks(forceRefresh: true).then((_) => loadStockStats()).catchError((_) {}));
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Stock>.from(state.stocks);
+        rollback[idx] = previousItem;
+        state = state.copyWith(stocks: rollback);
+      } else {
+        await loadStocks(forceRefresh: true);
+        await loadStockStats();
+      }
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }
@@ -251,11 +271,22 @@ class StockNotifier extends Notifier<StockState> {
 
   Future<void> rejectStock(Stock stock, String commentaire) async {
     state = state.copyWith(isLoading: true);
+    CacheHelper.clearByPrefix('stocks_');
+    final list = List<Stock>.from(state.stocks);
+    final idx = list.indexWhere((s) => s.id == stock.id);
+    Stock? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'rejete', commentaire: commentaire);
+      state = state.copyWith(stocks: list);
+    }
     try {
       await _stockService.rejectStock(
         stockId: stock.id!,
         commentaire: commentaire,
       );
+      DashboardRefreshHelper.refreshPatronCounter('stock');
+      DashboardRefreshHelper.refreshComptableDashboard();
       NotificationHelper.notifyRejection(
         entityType: 'stock',
         entityName: NotificationHelper.getEntityDisplayName('stock', stock),
@@ -264,9 +295,17 @@ class StockNotifier extends Notifier<StockState> {
         route: NotificationHelper.getEntityRoute('stock', stock.id.toString()),
         entity: stock,
       );
-      CacheHelper.clearByPrefix('stocks_');
-      await loadStocks(forceRefresh: true);
-      await loadStockStats();
+      Future.microtask(() => loadStocks(forceRefresh: true).then((_) => loadStockStats()).catchError((_) {}));
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Stock>.from(state.stocks);
+        rollback[idx] = previousItem;
+        state = state.copyWith(stocks: rollback);
+      } else {
+        await loadStocks(forceRefresh: true);
+        await loadStockStats();
+      }
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

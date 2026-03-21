@@ -149,23 +149,30 @@ class Expense extends Model
 
     public function getEmployeeNameAttribute()
     {
-        if (!$this->employee) return 'N/A';
-        $prenom = trim(str_replace(["\r", "\n"], '', $this->employee->prenom));
-        $nom = trim(str_replace(["\r", "\n"], '', $this->employee->nom));
-        return $prenom . ' ' . $nom;
+        if (!$this->relationLoaded('employee') || !$this->employee) {
+            return 'N/A';
+        }
+        $prenom = trim(str_replace(["\r", "\n"], '', (string) ($this->employee->prenom ?? '')));
+        $nom = trim(str_replace(["\r", "\n"], '', (string) ($this->employee->nom ?? '')));
+        return trim($prenom . ' ' . $nom) ?: 'N/A';
     }
 
     public function getCategoryNameAttribute()
     {
-        return $this->expenseCategory ? $this->expenseCategory->name : 'N/A';
+        if (!$this->relationLoaded('expenseCategory') || !$this->expenseCategory) {
+            return 'N/A';
+        }
+        return $this->expenseCategory->name ?? 'N/A';
     }
 
     public function getApproverNameAttribute()
     {
-        if (!$this->approver) return 'N/A';
-        $prenom = trim(str_replace(["\r", "\n"], '', $this->approver->prenom));
-        $nom = trim(str_replace(["\r", "\n"], '', $this->approver->nom));
-        return $prenom . ' ' . $nom;
+        if (!$this->relationLoaded('approver') || !$this->approver) {
+            return 'N/A';
+        }
+        $prenom = trim(str_replace(["\r", "\n"], '', (string) ($this->approver->prenom ?? '')));
+        $nom = trim(str_replace(["\r", "\n"], '', (string) ($this->approver->nom ?? '')));
+        return trim($prenom . ' ' . $nom) ?: 'N/A';
     }
 
     public function getFormattedAmountAttribute()

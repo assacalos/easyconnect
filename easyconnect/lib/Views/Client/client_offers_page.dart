@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easyconnect/services/client_portal_service.dart';
-import 'package:easyconnect/Views/Client/client_dashboard_page.dart';
 
 class ClientOffersPage extends StatefulWidget {
   const ClientOffersPage({super.key});

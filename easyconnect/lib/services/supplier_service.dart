@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/supplier_model.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class SupplierService {
   static final SupplierService _instance = SupplierService._();
@@ -20,14 +20,15 @@ class SupplierService {
   // Récupérer tous les fournisseurs
   Future<List<Supplier>> getSuppliers({String? status, String? search}) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       var queryParams = <String, String>{};
       if (status != null && status != 'all') {
         // Normaliser le statut vers le format backend
         String backendStatus = status;
         if (status == 'pending') backendStatus = 'en_attente';
-        if (status == 'approved' || status == 'validated')
+        if (status == 'approved' || status == 'validated') {
           backendStatus = 'valide';
+        }
         if (status == 'rejected') backendStatus = 'rejete';
         queryParams['statut'] = backendStatus;
       }
@@ -38,15 +39,12 @@ class SupplierService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final url = '$baseUrl/fournisseurs-list$queryString';
+      final url = '${AppConfig.baseUrl}/fournisseurs-list$queryString';
       
       // Si le status code est 200 ou 201, traiter directement
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
       
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -100,10 +98,10 @@ class SupplierService {
 
   // Récupérer un fournisseur par ID
   Future<Supplier> getSupplierById(int id) async {
-    final token = storage.read('token');
-    final response = await http.get(
-      Uri.parse('$baseUrl/fournisseurs-show/$id'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.get(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-show/$id'),
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -138,16 +136,11 @@ class SupplierService {
       throw Exception('Le pays est requis');
     }
 
-    final token = storage.read('token');
+    final headers = await ApiService.headersAsync();
     final supplierData = supplier.toJson();
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/fournisseurs-create'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+    final response = await HttpInterceptor.post(
+          Uri.parse('${AppConfig.baseUrl}/fournisseurs-create'),
+          headers: headers,
           body: json.encode(supplierData),
         )
         .timeout(
@@ -169,15 +162,10 @@ class SupplierService {
 
   // Mettre à jour un fournisseur
   Future<Supplier> updateSupplier(Supplier supplier) async {
-    final token = storage.read('token');
-    final response = await http
-        .put(
-          Uri.parse('$baseUrl/fournisseurs-update/${supplier.id}'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.put(
+          Uri.parse('${AppConfig.baseUrl}/fournisseurs-update/${supplier.id}'),
+          headers: headers,
           body: json.encode(supplier.toJson()),
         )
         .timeout(
@@ -198,10 +186,10 @@ class SupplierService {
 
   // Supprimer un fournisseur (soft delete)
   Future<bool> deleteSupplier(int supplierId) async {
-    final token = storage.read('token');
-    final response = await http.delete(
-      Uri.parse('$baseUrl/fournisseurs-destroy/$supplierId'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.delete(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-destroy/$supplierId'),
+      headers: headers,
     );
 
     return response.statusCode == 200;
@@ -209,10 +197,10 @@ class SupplierService {
 
   // Récupérer les statistiques
   Future<SupplierStats> getSupplierStats() async {
-    final token = storage.read('token');
-    final response = await http.get(
-      Uri.parse('$baseUrl/fournisseurs-stats'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.get(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-stats'),
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -227,10 +215,10 @@ class SupplierService {
 
   // Récupérer les fournisseurs en attente
   Future<List<Supplier>> getPendingSuppliers() async {
-    final token = storage.read('token');
-    final response = await http.get(
-      Uri.parse('$baseUrl/fournisseurs-list?statut=pending'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.get(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-list?statut=pending'),
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -250,8 +238,8 @@ class SupplierService {
     String? validationComment,
   }) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/fournisseurs-validate/$supplierId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/fournisseurs-validate/$supplierId';
       final body = {
         if (validationComment != null && validationComment.isNotEmpty)
           'validation_comment': validationComment,
@@ -263,13 +251,9 @@ class SupplierService {
         tag: 'SUPPLIER_SERVICE',
       );
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: json.encode(body),
       );
 
@@ -423,21 +407,17 @@ class SupplierService {
     String? rejectionComment,
   }) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/fournisseurs-reject/$supplierId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/fournisseurs-reject/$supplierId';
       final body = {
         'rejection_reason': rejectionReason,
         if (rejectionComment != null && rejectionComment.isNotEmpty)
           'rejection_comment': rejectionComment,
       };
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: json.encode(body),
       );
 
@@ -474,14 +454,10 @@ class SupplierService {
     double rating, {
     String? comments,
   }) async {
-    final token = storage.read('token');
-    final response = await http.post(
-      Uri.parse('$baseUrl/fournisseurs-rate/$supplierId'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.post(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-rate/$supplierId'),
+      headers: headers,
       body: json.encode({'rating': rating, 'comments': comments}),
     );
 
@@ -490,10 +466,10 @@ class SupplierService {
 
   // Soumettre un fournisseur
   Future<bool> submitSupplier(int supplierId) async {
-    final token = storage.read('token');
-    final response = await http.post(
-      Uri.parse('$baseUrl/fournisseurs-submit/$supplierId'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    final headers = await ApiService.headersAsync();
+    final response = await HttpInterceptor.post(
+      Uri.parse('${AppConfig.baseUrl}/fournisseurs-submit/$supplierId'),
+      headers: headers,
     );
 
     return response.statusCode == 200;

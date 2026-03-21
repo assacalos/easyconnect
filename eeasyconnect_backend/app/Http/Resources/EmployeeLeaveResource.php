@@ -17,6 +17,9 @@ class EmployeeLeaveResource extends JsonResource
         return [
             'id' => $this->id,
             'employee_id' => $this->employee_id,
+            'employee_name' => $this->relationLoaded('employee') && $this->employee
+                ? ($this->employee->full_name ?? 'N/A')
+                : 'N/A',
             'leave_type' => $this->type,
             'type' => $this->type,
             'start_date' => $this->start_date?->format('Y-m-d\TH:i:s\Z'),

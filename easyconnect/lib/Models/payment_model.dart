@@ -136,6 +136,60 @@ class PaymentModel {
     }
   }
 
+  PaymentModel copyWith({
+    int? id,
+    String? paymentNumber,
+    String? type,
+    int? clientId,
+    String? clientName,
+    String? clientEmail,
+    String? clientAddress,
+    int? comptableId,
+    String? comptableName,
+    DateTime? paymentDate,
+    DateTime? dueDate,
+    String? status,
+    double? amount,
+    String? currency,
+    String? paymentMethod,
+    String? description,
+    String? notes,
+    String? reference,
+    PaymentSchedule? schedule,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? submittedAt,
+    DateTime? approvedAt,
+    DateTime? paidAt,
+  }) {
+    return PaymentModel(
+      id: id ?? this.id,
+      paymentNumber: paymentNumber ?? this.paymentNumber,
+      type: type ?? this.type,
+      clientId: clientId ?? this.clientId,
+      clientName: clientName ?? this.clientName,
+      clientEmail: clientEmail ?? this.clientEmail,
+      clientAddress: clientAddress ?? this.clientAddress,
+      comptableId: comptableId ?? this.comptableId,
+      comptableName: comptableName ?? this.comptableName,
+      paymentDate: paymentDate ?? this.paymentDate,
+      dueDate: dueDate ?? this.dueDate,
+      status: status ?? this.status,
+      amount: amount ?? this.amount,
+      currency: currency ?? this.currency,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      description: description ?? this.description,
+      notes: notes ?? this.notes,
+      reference: reference ?? this.reference,
+      schedule: schedule ?? this.schedule,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      submittedAt: submittedAt ?? this.submittedAt,
+      approvedAt: approvedAt ?? this.approvedAt,
+      paidAt: paidAt ?? this.paidAt,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

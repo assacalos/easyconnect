@@ -198,6 +198,8 @@ class SupplierNotifier extends Notifier<SupplierState> {
         validationComment: validationComment,
       );
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('supplier');
+        DashboardRefreshHelper.refreshCommercialDashboard();
         CacheHelper.clearByPrefix('suppliers_');
         NotificationHelper.notifyValidation(
           entityType: 'supplier',
@@ -231,6 +233,8 @@ class SupplierNotifier extends Notifier<SupplierState> {
         rejectionComment: rejectionComment,
       );
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('supplier');
+        DashboardRefreshHelper.refreshCommercialDashboard();
         NotificationHelper.notifyRejection(
           entityType: 'supplier',
           entityName: NotificationHelper.getEntityDisplayName('supplier', supplier),

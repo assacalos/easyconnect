@@ -4,17 +4,26 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
 use App\Models\EquipmentNew;
 use App\Models\EquipmentCategory;
 use App\Models\EquipmentMaintenance;
 use App\Models\EquipmentAssignment;
 use App\Http\Resources\EquipmentResource;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class EquipmentController extends Controller
 {
-    use CachesData;
+    use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des équipements
      */
@@ -103,21 +112,22 @@ class EquipmentController extends Controller
                 });
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $equipment = $query->orderBy('name')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => EquipmentResource::collection($equipment->items()),
+                'data' => EquipmentResource::collection($equipment->items())->resolve(),
                 'pagination' => [
                     'current_page' => $equipment->currentPage(),
                     'last_page' => $equipment->lastPage(),
                     'per_page' => $equipment->perPage(),
                     'total' => $equipment->total(),
+                    'from' => $equipment->firstItem(),
+                    'to' => $equipment->lastItem(),
                 ],
-                'message' => 'Liste des équipements récupérée avec succès'
-            ]);
+                'message' => 'Liste des équipements récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -215,6 +225,11 @@ class EquipmentController extends Controller
             DB::commit();
 
             $equipment->load(['creator', 'updater', 'maintenance', 'assignments']);
+
+            // Notifier le patron pour validation
+            $this->safeNotify(function () use ($equipment) {
+                $this->notificationService->notifyNewEquipement($equipment);
+            });
 
             return response()->json([
                 'success' => true,

@@ -3,9 +3,13 @@
         Options -MultiViews -Indexes
     </IfModule>
 
-    RewriteEngine On
+    # Racine du site = app Flutter (index.html)
+    DirectoryIndex index.html index.php
 
-    # Handle Authorization Header
+    RewriteEngine On
+    RewriteBase /
+
+    # Handle Authorization Header (requis pour l'API Laravel)
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
@@ -14,8 +18,16 @@
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
-    # Send Requests To Front Controller...
-    RewriteCond %{REQUEST_FILENAME} !-d
+    # --- Laravel : /api, /sanctum, /broadcasting → index.php
     RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} ^/api [OR]
+    RewriteCond %{REQUEST_URI} ^/sanctum [OR]
+    RewriteCond %{REQUEST_URI} ^/broadcasting
     RewriteRule ^ index.php [L]
+
+    # --- Flutter SPA : tout le reste (fichiers réels déjà servis ci-dessus) → index.html
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.html [L]
 </IfModule>

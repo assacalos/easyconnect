@@ -131,17 +131,29 @@ class _PaymentListState extends ConsumerState<PaymentList>
             child: paymentState.isLoading
                 ? const SkeletonSearchResults(itemCount: 6)
                 : filtered.isEmpty
-                    ? const Center(child: Text('Aucun paiement trouvé'))
-                    : PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: paymentState.hasNextPage,
-                        isLoadingMore: paymentState.isLoadingMore,
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final payment = filtered[index];
-                          return _buildPaymentCard(payment, notifier);
-                        },
+                    ? RefreshIndicator(
+                        onRefresh: () => notifier.loadPayments(forceRefresh: true),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: 400,
+                            child: const Center(child: Text('Aucun paiement trouvé')),
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => notifier.loadPayments(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: paymentState.hasNextPage,
+                          isLoadingMore: paymentState.isLoadingMore,
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final payment = filtered[index];
+                            return _buildPaymentCard(payment, notifier);
+                          },
+                        ),
                       ),
           ),
         ],

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:easyconnect/providers/devis_notifier.dart';
 import 'package:easyconnect/Models/devis_model.dart';
 import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:easyconnect/services/devis_service.dart';
 
 class DevisDetailPage extends ConsumerWidget {
   final int devisId;
@@ -30,6 +31,28 @@ class DevisDetailPage extends ConsumerWidget {
       appBar: AppBar(
         leading: const AppBarBackButton(fallbackRoute: '/devis'),
         title: Text('Devis ${devis.reference}'),
+        actions: [
+          if (devis.status == 2)
+            IconButton(
+              icon: const Icon(Icons.paid),
+              tooltip: 'Marquer comme payé',
+              onPressed: () async {
+                final ok = await DevisService().markDevisAsPaid(devis.id!);
+                if (context.mounted) {
+                  if (ok) {
+                    ref.read(devisProvider.notifier).loadDevis(status: null, forceRefresh: true);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Devis marqué comme payé')),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Erreur lors du marquage')),
+                    );
+                  }
+                }
+              },
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

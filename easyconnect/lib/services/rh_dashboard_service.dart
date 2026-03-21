@@ -1,15 +1,13 @@
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class RhDashboardService {
-  final storage = GetStorage();
-
   // Récupérer les entités en attente
   Future<Map<String, int>> getPendingEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int pendingLeaves = 0;
       int pendingRecruitments = 0;
       int pendingAttendance = 0;
@@ -17,12 +15,9 @@ class RhDashboardService {
 
       // Récupérer les congés en attente
       try {
-        final leavesResponse = await http.get(
-          Uri.parse('$baseUrl/api/leaves-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final leavesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/leaves-list'),
+          headers: headers,
         );
         if (leavesResponse.statusCode == 200) {
           final leavesData = json.decode(leavesResponse.body);
@@ -34,16 +29,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les recrutements en attente
       try {
-        final recruitmentsResponse = await http.get(
-          Uri.parse('$baseUrl/api/recruitments-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final recruitmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/recruitments-list'),
+          headers: headers,
         );
         if (recruitmentsResponse.statusCode == 200) {
           final recruitmentsData = json.decode(recruitmentsResponse.body);
@@ -55,16 +48,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les pointages en attente
       try {
-        final attendanceResponse = await http.get(
-          Uri.parse('$baseUrl/api/attendance-punch-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final attendanceResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/attendance-punch-list'),
+          headers: headers,
         );
         if (attendanceResponse.statusCode == 200) {
           final attendanceData = json.decode(attendanceResponse.body);
@@ -76,16 +67,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les salaires en attente
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/api/salaries-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaries-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -97,6 +86,7 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       return {
@@ -113,7 +103,7 @@ class RhDashboardService {
   // Récupérer les entités validées
   Future<Map<String, int>> getValidatedEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int validatedEmployees = 0;
       int validatedLeaves = 0;
       int validatedRecruitments = 0;
@@ -121,12 +111,9 @@ class RhDashboardService {
 
       // Récupérer les employés validés
       try {
-        final employeesResponse = await http.get(
-          Uri.parse('$baseUrl/api/employees-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final employeesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/employees-list'),
+          headers: headers,
         );
         if (employeesResponse.statusCode == 200) {
           final employeesData = json.decode(employeesResponse.body);
@@ -138,16 +125,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les congés validés
       try {
-        final leavesResponse = await http.get(
-          Uri.parse('$baseUrl/api/leaves-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final leavesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/leaves-list'),
+          headers: headers,
         );
         if (leavesResponse.statusCode == 200) {
           final leavesData = json.decode(leavesResponse.body);
@@ -159,16 +144,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les recrutements validés
       try {
-        final recruitmentsResponse = await http.get(
-          Uri.parse('$baseUrl/api/recruitments-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final recruitmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/recruitments-list'),
+          headers: headers,
         );
         if (recruitmentsResponse.statusCode == 200) {
           final recruitmentsData = json.decode(recruitmentsResponse.body);
@@ -182,16 +165,14 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les salaires validés
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/api/salaries-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaries-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -207,6 +188,7 @@ class RhDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       return {
@@ -223,14 +205,11 @@ class RhDashboardService {
   // Récupérer les statistiques montants
   Future<Map<String, dynamic>> getStatistics() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/rh/dashboard/statistics'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/rh/dashboard/statistics'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -258,14 +237,11 @@ class RhDashboardService {
   // Récupérer les données complètes du dashboard
   Future<Map<String, dynamic>> getDashboardData() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/rh/dashboard/data'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/rh/dashboard/data'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

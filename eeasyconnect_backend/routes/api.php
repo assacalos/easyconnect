@@ -2,7 +2,6 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\API\PointageController;
 use App\Http\Controllers\API\BordereauController;
 use App\Http\Controllers\API\BonDeCommandeController;
 use App\Http\Controllers\API\CommandeEntrepriseController;
@@ -10,6 +9,7 @@ use App\Http\Controllers\API\DevisController;
 use App\Http\Controllers\API\FournisseurController;
 use App\Http\Controllers\API\TaxController;
 use App\Http\Controllers\API\StockController;
+use App\Http\Controllers\API\InventoryController;
 use App\Http\Controllers\API\ExpenseController;
 use App\Http\Controllers\API\EmployeeController;
 use App\Http\Controllers\API\RecruitmentController;
@@ -25,21 +25,27 @@ use App\Http\Controllers\API\ClientController;
 use App\Http\Controllers\API\FactureController;
 use App\Http\Controllers\API\PaiementController;
 use App\Http\Controllers\API\PaymentScheduleController;
+use App\Http\Controllers\API\JournalController;
+use App\Http\Controllers\API\TaskController;
 use App\Http\Controllers\API\AttendanceController;
 use App\Http\Controllers\API\UserController;
 use App\Http\Controllers\API\InterventionController;
+use App\Http\Controllers\API\BesoinController;
+use App\Http\Controllers\API\TechnicianReminderController;
 use App\Http\Controllers\API\EquipmentController;
 use App\Http\Controllers\API\SalaryController;
+use App\Http\Controllers\API\PatronReportsController;
 use App\Http\Controllers\API\LeaveRequestController;
 use App\Http\Controllers\API\LeaveBalanceController;
 use App\Http\Controllers\API\DeviceTokenController;
+use App\Http\Controllers\API\ClientPortalController;
 
 /* -------------------------------------------------------------- */
 /* ROUTES PUBLIQUES (SANS AUTHENTIFICATION) */
 /* -------------------------------------------------------------- */
 
 Route::post('/login', [UserController::class, 'login'])->middleware('throttle:login');
-
+Route::post('/register', [UserController::class, 'register'])->middleware('throttle:5,1');
 
 /* -------------------------------------------------------------- */
 /* ROUTES PROTÉGÉES PAR AUTHENTIFICATION */
@@ -50,6 +56,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Routes d'authentification
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
+    Route::put('/user-profile', [UserController::class, 'updateProfile']);
+    Route::post('/user-profile-photo', [UserController::class, 'updateProfilePhoto']);
+    Route::post('/refresh', [UserController::class, 'refresh']);
     
     // Routes de liste (accessibles à tous les utilisateurs authentifiés)
     Route::get('/clients-list', [ClientController::class, 'index']);
@@ -66,6 +75,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/devis/count', [DevisController::class, 'count']);
     Route::get('/devis/stats', [DevisController::class, 'stats']);
     Route::get('/bordereaux-list', [BordereauController::class, 'index']);
+    Route::get('/bordereaux', [BordereauController::class, 'index']);
     Route::get('/bordereaux/count', [BordereauController::class, 'count']);
     Route::get('/bordereaux/stats', [BordereauController::class, 'stats']);
     Route::get('/paiements-list', [PaiementController::class, 'index']);
@@ -74,6 +84,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/payments/stats', [PaiementController::class, 'stats']);
     Route::get('/paiements/count', [PaiementController::class, 'count']);
     Route::get('/paiements/stats', [PaiementController::class, 'stats']);
+    Route::get('/journal', [JournalController::class, 'index']);
+    Route::get('/journal-list', [JournalController::class, 'list']);
+    Route::get('/tasks-list', [TaskController::class, 'index']);
+    Route::get('/tasks-show/{id}', [TaskController::class, 'show']);
     Route::get('/payment-schedules', [PaymentScheduleController::class, 'index']);
     Route::get('/taxes-list', [TaxController::class, 'index']);
     Route::get('/salaires-list', [SalaryController::class, 'index']);
@@ -87,6 +101,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/stocks', [StockController::class, 'index']);
     Route::get('/stocks-list', [StockController::class, 'index']);
     Route::get('/interventions-list', [InterventionController::class, 'index']);
+    Route::get('/interventions', [InterventionController::class, 'index']);
+    Route::get('/besoins-list', [BesoinController::class, 'index']);
+    Route::get('/besoins-show/{id}', [BesoinController::class, 'show']);
+    Route::get('/technician-reminders-list', [TechnicianReminderController::class, 'index']);
+    Route::get('/technician-reminders-show/{id}', [TechnicianReminderController::class, 'show']);
     Route::get('/equipment-list', [EquipmentController::class, 'index']);
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees-list', [EmployeeController::class, 'index']);
@@ -96,6 +115,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/recruitment-interviews', [RecruitmentInterviewController::class, 'index']);
     Route::get('/contracts', [ContractController::class, 'index']);
     Route::get('/leave-requests', [LeaveRequestController::class, 'index']);
+    Route::post('/leave-requests', [LeaveRequestController::class, 'store']);
+    Route::put('/leave-requests/{id}', [LeaveRequestController::class, 'update']);
+    Route::delete('/leave-requests/{id}', [LeaveRequestController::class, 'destroy']);
     
     // Routes pour les notifications (tous les utilisateurs)
     // Nouvelles routes selon la documentation
@@ -113,6 +135,18 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::delete('/{id}', [DeviceTokenController::class, 'destroy']);
         Route::delete('/', [DeviceTokenController::class, 'destroyAll']);
     });
+
+    /* -------------------------------------------------------------- */
+    /* PORTAL CLIENT (rôle 7) */
+    /* -------------------------------------------------------------- */
+    Route::middleware(['role:7'])->prefix('client-portal')->group(function () {
+        Route::get('/announcements', [ClientPortalController::class, 'announcements']);
+        Route::get('/catalog', [ClientPortalController::class, 'catalog']);
+        Route::get('/offers', [ClientPortalController::class, 'offers']);
+        Route::get('/contact', [ClientPortalController::class, 'contact']);
+        Route::post('/intervention-requests', [ClientPortalController::class, 'storeInterventionRequest']);
+        Route::get('/my-interventions', [ClientPortalController::class, 'myInterventions']);
+    });
     
     // Routes existantes pour compatibilité
     Route::get('/notifications/{id}', [NotificationController::class, 'show']);
@@ -125,6 +159,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/notifications-statistics', [NotificationController::class, 'statistics']);
 
     // Routes pour les Reportings (tous les utilisateurs)
+    Route::get('/user-reportings', [UserReportingController::class, 'index']);
     Route::get('/user-reportings-list', [UserReportingController::class, 'index']);
     Route::get('/user-reportings-show/{id}', [UserReportingController::class, 'show']);
     Route::post('/user-reportings-create', [UserReportingController::class, 'store']);
@@ -148,6 +183,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::middleware(['role:1,2,3,4,5,6'])->group(function () {
         Route::get('/factures-show/{id}', [FactureController::class, 'show']);
 
+        // Journal (lecture/écriture) : tous les rôles internes pour enregistrer sorties/entrées
+        Route::get('/journal-show/{id}', [JournalController::class, 'show']);
+        Route::post('/journal-create', [JournalController::class, 'store']);
+        Route::put('/journal-update/{id}', [JournalController::class, 'update']);
+        Route::delete('/journal-destroy/{id}', [JournalController::class, 'destroy']);
+
         // Routes pour les pointages
         Route::get('/attendances', [AttendanceController::class, 'index']);
         Route::get('/attendances/{id}', [AttendanceController::class, 'show']);
@@ -160,6 +201,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/attendances/can-punch', [AttendanceController::class, 'canPunch']);
         Route::get('/attendances-statistics', [AttendanceController::class, 'statistics']);
         Route::get('/attendance-settings', [AttendanceController::class, 'settings']);
+
+        // Mise à jour tâche (statut) : tous les rôles (contrôleur vérifie assigné ou patron/admin)
+        Route::put('/tasks-update/{id}', [TaskController::class, 'update']);
     });
 
     /* -------------------------------------------------------------- */
@@ -168,9 +212,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::middleware(['role:1,2,3,6'])->group(function () {
         // Routes pour les clients
+        // Marquer une facture comme payée : Commercial, Comptable, Admin, Patron
+        Route::post('/factures/{id}/mark-paid', [FactureController::class, 'markAsPaid']);
+
         Route::post('/clients-create', [ClientController::class, 'store']);
         Route::post('/clients-update/{id}', [ClientController::class, 'update']);
         Route::get('/clients-destroy/{id}', [ClientController::class, 'destroy']);
+        Route::post('/clients-create-portal-access/{id}', [ClientController::class, 'createPortalAccess']);
 
         // Routes pour les bons de commande
         Route::get('/bons-de-commande-show/{id}', [BonDeCommandeController::class, 'show']);
@@ -199,9 +247,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Routes pour les bordereaux
         Route::get('/bordereaux-show/{id}', [BordereauController::class, 'show']);
         Route::post('/bordereaux-create', [BordereauController::class, 'store']);
-        Route::get('/bordereaux-update/{id}', [BordereauController::class, 'update']);
+        Route::put('/bordereaux-update/{id}', [BordereauController::class, 'update']);
         Route::delete('/bordereaux/{id}', [BordereauController::class, 'destroy']);
-        
+
+        // Marquer un devis (proforma validé) comme payé : Commercial, Comptable, Admin, Patron
+        Route::post('/devis-mark-paid/{id}', [DevisController::class, 'markAsPaid']);
     });
 
     /* -------------------------------------------------------------- */
@@ -217,6 +267,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/users-activate/{id}', [UserController::class, 'activate']);
         Route::post('/users-deactivate/{id}', [UserController::class, 'deactivate']);
         Route::get('/users-statistics', [UserController::class, 'statistics']);
+        // Inscriptions en attente (patron/admin)
+        Route::get('/users-pending-registrations', [UserController::class, 'pendingRegistrations']);
+        Route::post('/users-approve-registration/{id}', [UserController::class, 'approveRegistration']);
+        Route::post('/users-reject-registration/{id}', [UserController::class, 'rejectRegistration']);
 
         // Routes pour les pointages (approbation/rejet par patron/admin)
         Route::post('/attendances-validate/{id}', [AttendanceController::class, 'approve']);
@@ -263,10 +317,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/taxes-validate/{id}', [TaxController::class, 'validateTax']);
         Route::post('/taxes-reject/{id}', [TaxController::class, 'reject']);
 
-        // Routes pour les pointages
-        Route::post('/pointages-validate/{id}', [PointageController::class, 'validatePointage']);
-        Route::post('/pointages-reject/{id}', [PointageController::class, 'reject']);
-
         // Routes pour les factures
         Route::post('/factures-validate/{id}', [FactureController::class, 'validateFacture']);
         Route::post('/factures-reject/{id}', [FactureController::class, 'reject']);
@@ -291,7 +341,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Routes pour les reports
         Route::get('/paiements-reports', [PaiementController::class, 'reports']);
         Route::get('/bordereaux-reports', [BordereauController::class, 'reports']);
-        Route::get('/pointages-reports', [PointageController::class, 'reports']);
+        Route::get('/attendances-reports', [AttendanceController::class, 'reports']);
+        Route::get('/patron-reports', [PatronReportsController::class, 'reports']);
+        Route::get('/attendances-presence-summary', [AttendanceController::class, 'presenceSummary']);
+
+        // Routes pour les tâches (création/suppression réservées au patron/admin ; update est dans le groupe auth)
+        Route::post('/tasks-create', [TaskController::class, 'store']);
+        Route::delete('/tasks-destroy/{id}', [TaskController::class, 'destroy']);
     });
 
     /* -------------------------------------------------------------- */
@@ -304,7 +360,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/factures-update/{id}', [FactureController::class, 'update']);
         Route::post('/factures-cancel-rejection/{id}', [FactureController::class, 'cancelRejection']);
         Route::get('/factures-validation-history/{id}', [FactureController::class, 'validationHistory']);
-        Route::post('/factures/{id}/mark-paid', [FactureController::class, 'markAsPaid']);
         
         // Routes pour les paiements
         Route::get('/paiements-show/{id}', [PaiementController::class, 'show']);
@@ -324,7 +379,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/payments/{id}/mark-paid', [PaiementController::class, 'markAsPaid']);
         Route::patch('/payments/{id}/mark-paid', [PaiementController::class, 'markAsPaid']);
         Route::patch('/payments/{id}/reactivate', [PaiementController::class, 'reactivate']);
-        
+
         // Routes pour les plannings de paiement
         Route::get('/payment-schedules/{id}', [PaymentScheduleController::class, 'show']);
         
@@ -375,8 +430,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('stocks-transfer-stock/{id}', [StockController::class, 'transferStock']);
         Route::post('stocks-merge-stock/{id}', [StockController::class, 'mergeStock']);
         Route::post('stocks-split-stock/{id}', [StockController::class, 'splitStock']);
-        Route::post('stocks-merge-stock/{id}', [StockController::class, 'mergeStock']);
 
+        // Inventaire physique (sessions + écarts)
+        Route::get('/inventory-sessions', [InventoryController::class, 'index']);
+        Route::post('/inventory-sessions', [InventoryController::class, 'store']);
+        Route::get('/inventory-sessions/{id}', [InventoryController::class, 'show']);
+        Route::put('/inventory-sessions/{id}', [InventoryController::class, 'update']);
+        Route::post('/inventory-sessions/{id}/close', [InventoryController::class, 'close']);
+        Route::delete('/inventory-sessions/{id}', [InventoryController::class, 'destroy']);
+        Route::put('/inventory-sessions/{sessionId}/items/{itemId}', [InventoryController::class, 'updateItem']);
     });
 
     /* -------------------------------------------------------------- */
@@ -405,6 +467,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/interventions-due-soon', [InterventionController::class, 'dueSoon']);
         Route::get('/intervention-types', [InterventionController::class, 'types']);
         Route::get('/equipment', [InterventionController::class, 'equipment']);
+        // Besoins : technicien crée, patron marque traité
+        Route::post('/besoins-create', [BesoinController::class, 'store']);
+        Route::post('/besoins/{id}/mark-treated', [BesoinController::class, 'markTreated']);
+        Route::post('/besoins-mark-treated/{id}', [BesoinController::class, 'markTreated']);
+        // Rappels personnels technicien (mes rappels : piles à recharger, radio en maintenance, etc.)
+        Route::post('/technician-reminders-create', [TechnicianReminderController::class, 'store']);
+        Route::put('/technician-reminders-update/{id}', [TechnicianReminderController::class, 'update']);
+        Route::delete('/technician-reminders-destroy/{id}', [TechnicianReminderController::class, 'destroy']);
+        Route::post('/technician-reminders-mark-done/{id}', [TechnicianReminderController::class, 'markDone']);
 
         // Routes pour les équipements
         Route::get('/equipment/{id}', [EquipmentController::class, 'show']);
@@ -414,10 +485,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     /* -------------------------------------------------------------- */
-    /* ROUTES POUR LES RH, ADMIN ET PATRON */
+    /* ROUTES POUR LES CONGÉS : TOUS RÔLES INTERNES (demande + consultation) */
+    /* Approbation/rejet réservé au contrôleur : Admin, RH, Patron uniquement */
     /* -------------------------------------------------------------- */
 
-    Route::middleware(['role:1,3,4,6'])->group(function () {
+    Route::middleware(['role:1,2,3,4,5,6'])->group(function () {
         // Routes pour les employés
         Route::get('/employees/{id}', [EmployeeController::class, 'show']);
         Route::post('/employees', [EmployeeController::class, 'store']);
@@ -516,9 +588,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Routes pour les demandes de congé
         Route::get('/leave-requests/employee/{employeeId}', [LeaveRequestController::class, 'getEmployeeRequests']);
         Route::get('/leave-requests/{id}', [LeaveRequestController::class, 'show']);
-        Route::post('/leave-requests', [LeaveRequestController::class, 'store']);
-        Route::put('/leave-requests/{id}', [LeaveRequestController::class, 'update']);
-        Route::delete('/leave-requests/{id}', [LeaveRequestController::class, 'destroy']);
         Route::put('/leave-requests/{id}/approve', [LeaveRequestController::class, 'approve']);
         Route::put('/leave-requests/{id}/reject', [LeaveRequestController::class, 'reject']);
         Route::put('/leave-requests/{id}/cancel', [LeaveRequestController::class, 'cancel']);

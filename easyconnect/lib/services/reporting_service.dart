@@ -1,15 +1,14 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/reporting_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class ReportingService {
   static final ReportingService _instance = ReportingService._();
@@ -70,28 +69,22 @@ class ReportingService {
         'relance_date_heure': relanceDateHeure?.toIso8601String(),
       };
 
-      // Log pour déboguer
-      print('📤 [REPORTING_SERVICE] Création de rapport:');
-      print('📤 [REPORTING_SERVICE] user_id: $userId');
-      print('📤 [REPORTING_SERVICE] user_role: $userRole');
-      print(
-        '📤 [REPORTING_SERVICE] report_date: ${reportDate.toIso8601String()}',
-      );
-      print('📤 [REPORTING_SERVICE] nature: $nature');
-      print('📤 [REPORTING_SERVICE] nom_societe: $nomSociete');
-      print('📤 [REPORTING_SERVICE] moyen_contact: $moyenContact');
-
       final jsonBody = jsonEncode(requestBody);
-      print('📤 [REPORTING_SERVICE] Body JSON: $jsonBody');
+      AppLogger.debug(
+        'Création rapport user_id=$userId user_role=$userRole date=${reportDate.toIso8601String()} nature=$nature body=$jsonBody',
+        tag: 'Reporting',
+      );
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-create'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-create'),
+        headers: await ApiService.headersAsync(),
         body: jsonBody,
       );
 
-      print('📥 [REPORTING_SERVICE] Réponse status: ${response.statusCode}');
-      print('📥 [REPORTING_SERVICE] Réponse body: ${response.body}');
+      AppLogger.debug(
+        'Réponse ${response.statusCode}: ${response.body}',
+        tag: 'Reporting',
+      );
       if (response.statusCode == 201 || response.statusCode == 200) {
         final responseData = jsonDecode(response.body) as Map<String, dynamic>;
         // Essayer d'extraire le reporting créé
@@ -179,15 +172,15 @@ class ReportingService {
     DateTime? endDate,
   }) async {
     try {
-      String url = '$baseUrl/user-reportings-list';
+      String url = '${AppConfig.baseUrl}/user-reportings-list';
 
       if (startDate != null && endDate != null) {
         url +=
             '?start_date=${startDate.toIso8601String()}&end_date=${endDate.toIso8601String()}';
       }
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -313,8 +306,9 @@ class ReportingService {
     );
     AppLogger.httpRequest('GET', uri.toString(), tag: 'REPORTING_SERVICE');
 
+    final headers = await ApiService.headersAsync();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.get(uri, headers: ApiService.headers()),
+      operation: () => HttpInterceptor.get(uri, headers: headers),
       maxRetries: AppConfig.defaultMaxRetries,
     );
 
@@ -382,9 +376,9 @@ class ReportingService {
   // Soumettre un rapport
   Future<Map<String, dynamic>> submitReport(int reportId) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-submit/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-submit/$reportId'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -405,9 +399,9 @@ class ReportingService {
     String? patronNote,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-validate/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-validate/$reportId'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'patron_note': patronNote}),
       );
 
@@ -471,9 +465,9 @@ class ReportingService {
         if (relanceDateHeure != null)
           'relance_date_heure': relanceDateHeure.toIso8601String(),
       };
-      final response = await http.put(
-        Uri.parse('$baseUrl/user-reportings-update/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-update/$reportId'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(body),
       );
 
@@ -492,9 +486,9 @@ class ReportingService {
   // Supprimer un rapport
   Future<Map<String, dynamic>> deleteReport(int reportId) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/user-reportings-delete/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-delete/$reportId'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -512,9 +506,9 @@ class ReportingService {
   // Récupérer un rapport spécifique
   Future<ReportingModel> getReport(int reportId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/user-reportings-show/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-show/$reportId'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -539,9 +533,9 @@ class ReportingService {
     String? comments,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-generate'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-generate'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'user_id': userId,
           'user_role': userRole,
@@ -570,7 +564,7 @@ class ReportingService {
     String? userRole,
   }) async {
     try {
-      String url = '$baseUrl/user-reportings-stats';
+      String url = '${AppConfig.baseUrl}/user-reportings-stats';
       List<String> params = [];
 
       if (startDate != null) {
@@ -587,9 +581,9 @@ class ReportingService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -610,9 +604,9 @@ class ReportingService {
     String? comments,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-reject/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-reject/$reportId'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'comments': comments}),
       );
 
@@ -653,9 +647,9 @@ class ReportingService {
     String? note,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/user-reportings-note/$reportId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/user-reportings-note/$reportId'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'patron_note': note}),
       );
 

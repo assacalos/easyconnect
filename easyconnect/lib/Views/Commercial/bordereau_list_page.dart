@@ -115,43 +115,55 @@ class _BordereauListPageState extends ConsumerState<BordereauListPage>
     }
 
     if (bordereauList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              status == 1
-                  ? Icons.access_time
-                  : status == 2
-                  ? Icons.check_circle
-                  : Icons.cancel,
-              size: 64,
-              color: Colors.grey.shade400,
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadBordereaux(status: null, forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    status == 1
+                        ? Icons.access_time
+                        : status == 2
+                        ? Icons.check_circle
+                        : Icons.cancel,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    status == 1
+                        ? 'Aucun bordereau en attente'
+                        : status == 2
+                        ? 'Aucun bordereau validé'
+                        : 'Aucun bordereau rejeté',
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              status == 1
-                  ? 'Aucun bordereau en attente'
-                  : status == 2
-                  ? 'Aucun bordereau validé'
-                  : 'Aucun bordereau rejeté',
-              style: const TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return PaginatedListView(
-      scrollController: _scrollController,
-      onLoadMore: notifier.loadMore,
-      hasNextPage: bordereauState.hasNextPage,
-      isLoadingMore: bordereauState.isLoadingMore,
-      itemCount: bordereauList.length,
-      itemBuilder: (context, index) {
-        final bordereau = bordereauList[index];
-        return _buildBordereauCard(ref, bordereau);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadBordereaux(status: null, forceRefresh: true),
+      child: PaginatedListView(
+        scrollController: _scrollController,
+        onLoadMore: notifier.loadMore,
+        hasNextPage: bordereauState.hasNextPage,
+        isLoadingMore: bordereauState.isLoadingMore,
+        itemCount: bordereauList.length,
+        itemBuilder: (context, index) {
+          final bordereau = bordereauList[index];
+          return _buildBordereauCard(ref, bordereau);
+        },
+      ),
     );
   }
 

@@ -62,7 +62,6 @@ class _BonCommandeListPageState extends ConsumerState<BonCommandeListPage>
   Widget build(BuildContext context) {
     final state = ref.watch(bonCommandeProvider);
     final notifier = ref.read(bonCommandeProvider.notifier);
-    final userRole = ref.read(authProvider).user?.role;
 
     return Scaffold(
       appBar: AppBar(
@@ -123,19 +122,31 @@ class _BonCommandeListPageState extends ConsumerState<BonCommandeListPage>
   Widget _buildBonCommandeList(BonCommandeState state, BonCommandeNotifier notifier) {
     final filtered = state.getFilteredBonCommandes();
     if (filtered.isEmpty) {
-      return const Center(child: Text('Aucun bon de commande trouvé'));
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadBonCommandes(forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: const Center(child: Text('Aucun bon de commande trouvé')),
+          ),
+        ),
+      );
     }
-    return PaginatedListView(
-      scrollController: _scrollController,
-      onLoadMore: notifier.loadMore,
-      hasNextPage: state.hasNextPage,
-      isLoadingMore: state.isLoadingMore,
-      padding: const EdgeInsets.all(8),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        final bonCommande = filtered[index];
-        return _buildBonCommandeCard(ref, bonCommande);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadBonCommandes(forceRefresh: true),
+      child: PaginatedListView(
+        scrollController: _scrollController,
+        onLoadMore: notifier.loadMore,
+        hasNextPage: state.hasNextPage,
+        isLoadingMore: state.isLoadingMore,
+        padding: const EdgeInsets.all(8),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final bonCommande = filtered[index];
+          return _buildBonCommandeCard(ref, bonCommande);
+        },
+      ),
     );
   }
 

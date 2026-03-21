@@ -1,12 +1,11 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_de_commande_fournisseur_model.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class BonDeCommandeFournisseurService {
   final storage = GetStorage();
@@ -17,31 +16,30 @@ class BonDeCommandeFournisseurService {
     int? fournisseurId,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status.toString();
       if (clientId != null) queryParams['client_id'] = clientId.toString();
-      if (fournisseurId != null)
+      if (fournisseurId != null) {
         queryParams['fournisseur_id'] = fournisseurId.toString();
-      if (userRole == 2) queryParams['user_id'] = userId.toString();
+      }
+      if (userRole == 2) {
+        queryParams['user_id'] = userId.toString();
+      }
 
       final queryString =
           queryParams.isEmpty
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
-      final url = '$baseUrl/bons-de-commande-list$queryString';
+      final url = '${AppConfig.baseUrl}/bons-de-commande-list$queryString';
       AppLogger.httpRequest('GET', url, tag: 'BON_COMMANDE_FOURNISSEUR_SERVICE');
 
-      final response = await http
-          .get(
+      final response = await HttpInterceptor.get(
             Uri.parse(url),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
           )
           .timeout(
             AppConfig.extraLongTimeout,
@@ -138,17 +136,13 @@ class BonDeCommandeFournisseurService {
 
   Future<BonDeCommande> createBonDeCommande(BonDeCommande bonDeCommande) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       final bonDeCommandeJson = bonDeCommande.toJsonForCreate();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-create'),
+        headers: headers,
         body: json.encode(bonDeCommandeJson),
       );
 
@@ -276,14 +270,10 @@ class BonDeCommandeFournisseurService {
     BonDeCommande bonDeCommande,
   ) async {
     try {
-      final token = storage.read('token');
-      final response = await http.put(
-        Uri.parse('$baseUrl/bons-de-commande-update/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-update/$id'),
+        headers: headers,
         body: json.encode(bonDeCommande.toJsonForCreate()),
       );
 
@@ -318,13 +308,10 @@ class BonDeCommandeFournisseurService {
 
   Future<bool> deleteBonDeCommande(int bonDeCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.delete(
-        Uri.parse('$baseUrl/bons-de-commande-destroy/$bonDeCommandeId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-destroy/$bonDeCommandeId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -335,13 +322,10 @@ class BonDeCommandeFournisseurService {
 
   Future<BonDeCommande> getBonDeCommande(int id) async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/bons-de-commande-show/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-show/$id'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -376,13 +360,10 @@ class BonDeCommandeFournisseurService {
   // Valider/Approuver un bon de commande
   Future<bool> validateBonDeCommande(int bonDeCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-validate/$bonDeCommandeId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-validate/$bonDeCommandeId'),
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, considérer comme succès
@@ -412,14 +393,10 @@ class BonDeCommandeFournisseurService {
     String commentaire,
   ) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/bons-de-commande-reject/$bonDeCommandeId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/bons-de-commande-reject/$bonDeCommandeId'),
+        headers: headers,
         body: json.encode({'commentaire': commentaire}),
       );
 

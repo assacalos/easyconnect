@@ -107,12 +107,18 @@ class StockOrder extends Model
 
     public function getCreatorNameAttribute()
     {
-        return $this->creator ? $this->creator->prenom . ' ' . $this->creator->nom : 'N/A';
+        if (!$this->relationLoaded('creator') || !$this->creator) {
+            return 'N/A';
+        }
+        return trim(($this->creator->prenom ?? '') . ' ' . ($this->creator->nom ?? '')) ?: 'N/A';
     }
 
     public function getApproverNameAttribute()
     {
-        return $this->approver ? $this->approver->prenom . ' ' . $this->approver->nom : 'N/A';
+        if (!$this->relationLoaded('approver') || !$this->approver) {
+            return 'N/A';
+        }
+        return trim(($this->approver->prenom ?? '') . ' ' . ($this->approver->nom ?? '')) ?: 'N/A';
     }
 
     public function getFormattedTotalAmountAttribute()

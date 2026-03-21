@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\UserRole;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -32,13 +33,20 @@ class RoleMiddleware
             }
         }
         
-        // Convertir le rôle de l'utilisateur en entier pour la comparaison
-        $userRole = (int)$user->role;
+        // Convertir le rôle de l'utilisateur en entier (gère string "6" ou int 6)
+        $userRole = is_numeric($user->role) ? (int) $user->role : 0;
+
+        // Ne garder que des IDs de rôles connus (UserRole)
+        $allowedRoles = array_values(array_unique(array_filter(
+            $allowedRoles,
+            static fn (int $id) => UserRole::tryFrom($id) !== null
+        )));
+
+        // Règle métier conservée : admin et patron peuvent passer outre la liste de la route
+        $isAllowed = in_array($userRole, $allowedRoles, true)
+            || $user->hasAnyRole(UserRole::Admin, UserRole::Patron);
         
-        // Dédupliquer les rôles autorisés
-        $allowedRoles = array_unique($allowedRoles);
-        
-        if (!in_array($userRole, $allowedRoles)) {
+        if (!$isAllowed) {
             return response()->json([
                 'message' => 'Accès refusé. Rôle insuffisant.',
                 'required_roles' => array_values($allowedRoles), // array_values pour réindexer

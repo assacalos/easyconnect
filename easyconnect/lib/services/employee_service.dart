@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/employee_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -9,6 +8,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class EmployeeService {
   static final EmployeeService _instance = EmployeeService._();
@@ -53,9 +53,9 @@ class EmployeeService {
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'EMPLOYEE_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
-        operation: () => http
-            .get(uri, headers: ApiService.headers())
+        operation: () => HttpInterceptor.get(uri, headers: headers)
             .timeout(
               AppConfig.extraLongTimeout,
               onTimeout: () =>
@@ -146,9 +146,9 @@ class EmployeeService {
   // Récupérer un employé par ID
   Future<Employee> getEmployee(int id) async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/employees/$id'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -203,8 +203,9 @@ class EmployeeService {
 
       // Ajouter les champs optionnels seulement s'ils ne sont pas null
       if (phone != null && phone.isNotEmpty) employeeData['phone'] = phone;
-      if (address != null && address.isNotEmpty)
+      if (address != null && address.isNotEmpty) {
         employeeData['address'] = address;
+      }
       if (birthDate != null) {
         employeeData['birth_date'] =
             birthDate.toIso8601String().split('T')[0]; // Format YYYY-MM-DD
@@ -222,13 +223,15 @@ class EmployeeService {
       if (socialSecurityNumber != null && socialSecurityNumber.isNotEmpty) {
         employeeData['social_security_number'] = socialSecurityNumber;
       }
-      if (position != null && position.isNotEmpty)
+      if (position != null && position.isNotEmpty) {
         employeeData['position'] = position;
+      }
       if (department != null && department.isNotEmpty) {
         employeeData['department'] = department;
       }
-      if (manager != null && manager.isNotEmpty)
+      if (manager != null && manager.isNotEmpty) {
         employeeData['manager'] = manager;
+      }
       if (hireDate != null) {
         employeeData['hire_date'] =
             hireDate.toIso8601String().split('T')[0]; // Format YYYY-MM-DD
@@ -245,8 +248,9 @@ class EmployeeService {
         employeeData['contract_type'] = contractType;
       }
       if (salary != null && salary > 0) employeeData['salary'] = salary;
-      if (currency != null && currency.isNotEmpty)
+      if (currency != null && currency.isNotEmpty) {
         employeeData['currency'] = currency;
+      }
       if (workSchedule != null && workSchedule.isNotEmpty) {
         employeeData['work_schedule'] = workSchedule;
       }
@@ -260,11 +264,12 @@ class EmployeeService {
         tag: 'EMPLOYEE_SERVICE',
       );
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
+            () => HttpInterceptor.post(
               Uri.parse(url),
-              headers: ApiService.headers(),
+              headers: headers,
               body: jsonEncode(employeeData),
             ),
         maxRetries: AppConfig.defaultMaxRetries,
@@ -355,10 +360,9 @@ class EmployeeService {
     String? notes,
   }) async {
     try {
-      final response = await http
-          .put(
+      final response = await HttpInterceptor.put(
             Uri.parse('${AppConfig.baseUrl}/employees/$id'),
-            headers: ApiService.headers(),
+            headers: await ApiService.headersAsync(),
             body: jsonEncode({
               'first_name': firstName,
               'last_name': lastName,
@@ -407,9 +411,9 @@ class EmployeeService {
   // Supprimer un employé
   Future<Map<String, dynamic>> deleteEmployee(int id) async {
     try {
-      final response = await http.delete(
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/employees/$id'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -427,9 +431,9 @@ class EmployeeService {
   // Soumettre un employé pour approbation
   Future<Map<String, dynamic>> submitEmployeeForApproval(int id) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$id/submit'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -448,9 +452,9 @@ class EmployeeService {
     String? comments,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$id/approve'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'comments': comments}),
       );
 
@@ -472,9 +476,9 @@ class EmployeeService {
     required String reason,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$id/reject'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'reason': reason}),
       );
 
@@ -491,9 +495,9 @@ class EmployeeService {
   // Récupérer les statistiques des employés
   Future<EmployeeStats> getEmployeeStats() async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/employees/stats'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -512,9 +516,9 @@ class EmployeeService {
   // Récupérer les départements
   Future<List<String>> getDepartments() async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/employees/departments'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -553,9 +557,9 @@ class EmployeeService {
   // Récupérer les postes
   Future<List<String>> getPositions() async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/employees/positions'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -582,9 +586,9 @@ class EmployeeService {
     bool isRequired = false,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/documents'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'name': name,
           'type': type,
@@ -616,9 +620,9 @@ class EmployeeService {
     String? reason,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/leaves'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'type': type,
           'start_date': startDate.toIso8601String(),
@@ -645,9 +649,9 @@ class EmployeeService {
     String? comments,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/leaves/$leaveId/approve'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'comments': comments}),
       );
 
@@ -669,9 +673,9 @@ class EmployeeService {
     required String reason,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/leaves/$leaveId/reject'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'reason': reason}),
       );
 
@@ -698,9 +702,9 @@ class EmployeeService {
     String? areasForImprovement,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/employees/$employeeId/performances'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'period': period,
           'rating': rating,
@@ -726,9 +730,9 @@ class EmployeeService {
   // Rechercher des employés
   Future<List<Employee>> searchEmployees(String query) async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/employees/search?q=$query'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {

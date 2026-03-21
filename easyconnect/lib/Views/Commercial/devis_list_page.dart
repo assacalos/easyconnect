@@ -67,6 +67,7 @@ class _DevisListPageState extends ConsumerState<DevisListPage> {
             tabs: [
               Tab(text: 'En attente'),
               Tab(text: 'Validés'),
+              Tab(text: 'Payés'),
               Tab(text: 'Rejetés'),
             ],
           ),
@@ -77,6 +78,7 @@ class _DevisListPageState extends ConsumerState<DevisListPage> {
               children: [
                 _buildDevisList(context, 1, devisState, notifier),
                 _buildDevisList(context, 2, devisState, notifier),
+                _buildDevisList(context, 4, devisState, notifier),
                 _buildDevisList(context, 3, devisState, notifier),
               ],
             ),
@@ -107,26 +109,37 @@ class _DevisListPageState extends ConsumerState<DevisListPage> {
     }
 
     if (devisList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              status == 1 ? Icons.access_time : status == 2 ? Icons.check_circle : Icons.cancel,
-              size: 64,
-              color: Colors.grey.shade400,
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadDevis(status: null, forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    status == 1 ? Icons.access_time : status == 2 ? Icons.check_circle : status == 4 ? Icons.paid : Icons.cancel,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    status == 1 ? 'Aucun devis en attente' : status == 2 ? 'Aucun devis validé' : status == 4 ? 'Aucun devis payé' : 'Aucun devis rejeté',
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              status == 1 ? 'Aucun devis en attente' : status == 2 ? 'Aucun devis validé' : 'Aucun devis rejeté',
-              style: const TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return ResponsiveScrollView(
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadDevis(status: null, forceRefresh: true),
+      child: ResponsiveScrollView(
       padding: EdgeInsets.symmetric(
         horizontal: ResponsiveHelper.getHorizontalPadding(context),
         vertical: ResponsiveHelper.getVerticalPadding(context),
@@ -140,6 +153,7 @@ class _DevisListPageState extends ConsumerState<DevisListPage> {
           );
         }).toList(),
       ),
+    ),
     );
   }
 

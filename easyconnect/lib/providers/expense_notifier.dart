@@ -4,6 +4,7 @@ import 'package:easyconnect/providers/expense_state.dart';
 import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/expense_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 
@@ -187,12 +188,30 @@ class ExpenseNotifier extends Notifier<ExpenseState> {
 
   Future<void> approveExpense(Expense expense, {String? notes}) async {
     state = state.copyWith(isLoading: true);
+    final list = List<Expense>.from(state.expenses);
+    final idx = list.indexWhere((e) => e.id == expense.id);
+    Expense? previousExpense;
+    if (idx != -1) {
+      previousExpense = list[idx];
+      list[idx] = previousExpense.copyWith(status: 'approved');
+      state = state.copyWith(expenses: list);
+    }
+    final pendingList = List<Expense>.from(state.pendingExpenses);
+    final pendingIdx = pendingList.indexWhere((e) => e.id == expense.id);
+    Expense? previousPending;
+    if (pendingIdx != -1) {
+      previousPending = pendingList[pendingIdx];
+      pendingList[pendingIdx] = previousPending.copyWith(status: 'approved');
+      state = state.copyWith(pendingExpenses: pendingList);
+    }
     try {
       final success = await _expenseService.approveExpense(
         expense.id!,
         notes: notes,
       );
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('expense');
+        DashboardRefreshHelper.refreshComptableDashboard();
         NotificationHelper.notifyValidation(
           entityType: 'expense',
           entityName: NotificationHelper.getEntityDisplayName('expense', expense),
@@ -200,22 +219,63 @@ class ExpenseNotifier extends Notifier<ExpenseState> {
           route: NotificationHelper.getEntityRoute('expense', expense.id.toString()),
           entity: expense,
         );
-        await loadExpenses();
-        await loadExpenseStats();
-        await loadPendingExpenses();
+        Future.microtask(() => loadExpenses().then((_) async {
+          await loadExpenseStats();
+          await loadPendingExpenses();
+        }).catchError((_) {}));
       } else {
+        _rollbackExpenseState(previousExpense, idx, previousPending, pendingIdx);
         throw Exception('Erreur lors de l\'approbation');
       }
+    } catch (e) {
+      _rollbackExpenseState(previousExpense, idx, previousPending, pendingIdx);
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
+  void _rollbackExpenseState(Expense? previousExpense, int expenseIdx, Expense? previousPending, int pendingIdx) {
+    if (previousExpense != null && expenseIdx != -1) {
+      final rollback = List<Expense>.from(state.expenses);
+      rollback[expenseIdx] = previousExpense;
+      state = state.copyWith(expenses: rollback);
+    }
+    if (previousPending != null && pendingIdx != -1) {
+      final rollbackPending = List<Expense>.from(state.pendingExpenses);
+      rollbackPending[pendingIdx] = previousPending;
+      state = state.copyWith(pendingExpenses: rollbackPending);
+    }
+    if (previousExpense == null && previousPending == null) {
+      loadExpenses();
+      loadExpenseStats();
+      loadPendingExpenses();
+    }
+  }
+
   Future<void> rejectExpense(Expense expense, String reason) async {
     state = state.copyWith(isLoading: true);
+    final list = List<Expense>.from(state.expenses);
+    final idx = list.indexWhere((e) => e.id == expense.id);
+    Expense? previousExpense;
+    if (idx != -1) {
+      previousExpense = list[idx];
+      list[idx] = previousExpense.copyWith(status: 'rejected', rejectionReason: reason);
+      state = state.copyWith(expenses: list);
+    }
+    final pendingList = List<Expense>.from(state.pendingExpenses);
+    final pendingIdx = pendingList.indexWhere((e) => e.id == expense.id);
+    Expense? previousPending;
+    if (pendingIdx != -1) {
+      previousPending = pendingList[pendingIdx];
+      pendingList[pendingIdx] = previousPending.copyWith(status: 'rejected', rejectionReason: reason);
+      state = state.copyWith(pendingExpenses: pendingList);
+    }
     try {
       final success = await _expenseService.rejectExpense(expense.id!, reason: reason);
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('expense');
+        DashboardRefreshHelper.refreshComptableDashboard();
         NotificationHelper.notifyRejection(
           entityType: 'expense',
           entityName: NotificationHelper.getEntityDisplayName('expense', expense),
@@ -224,12 +284,17 @@ class ExpenseNotifier extends Notifier<ExpenseState> {
           route: NotificationHelper.getEntityRoute('expense', expense.id.toString()),
           entity: expense,
         );
-        await loadExpenses();
-        await loadExpenseStats();
-        await loadPendingExpenses();
+        Future.microtask(() => loadExpenses().then((_) async {
+          await loadExpenseStats();
+          await loadPendingExpenses();
+        }).catchError((_) {}));
       } else {
+        _rollbackExpenseState(previousExpense, idx, previousPending, pendingIdx);
         throw Exception('Erreur lors du rejet');
       }
+    } catch (e) {
+      _rollbackExpenseState(previousExpense, idx, previousPending, pendingIdx);
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

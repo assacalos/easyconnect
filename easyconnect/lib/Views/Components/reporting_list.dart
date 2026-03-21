@@ -44,9 +44,12 @@ class _ReportingListState extends ConsumerState<ReportingList> {
     final userRole = ref.watch(authProvider).user?.role;
     final userId = ref.watch(authProvider).user?.id;
 
+    final fallbackRoute = userRole == Roles.TECHNICIEN
+        ? '/technicien'
+        : (userRole == Roles.PATRON ? '/patron' : '/reporting');
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBarBackButton(fallbackRoute: '/reporting', iconColor: Colors.white),
+        leading: AppBarBackButton(fallbackRoute: fallbackRoute, iconColor: Colors.white),
         title: const Text('Rapports'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,

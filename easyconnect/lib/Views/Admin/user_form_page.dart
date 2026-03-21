@@ -5,6 +5,7 @@ import 'package:easyconnect/providers/user_management_notifier.dart';
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/services/user_service.dart';
 import 'package:easyconnect/utils/roles.dart';
+import 'package:easyconnect/utils/validation_helper.dart';
 
 class UserFormPage extends ConsumerStatefulWidget {
   final bool isEditing;
@@ -169,8 +170,10 @@ class _UserFormPageState extends ConsumerState<UserFormPage> {
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.person),
                         ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Le nom est requis' : null,
+                        validator: (v) => ValidationHelper.validateRequired(
+                          v,
+                          fieldName: 'Le nom',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -181,8 +184,10 @@ class _UserFormPageState extends ConsumerState<UserFormPage> {
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.person_outline),
                         ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Le prénom est requis' : null,
+                        validator: (v) => ValidationHelper.validateRequired(
+                          v,
+                          fieldName: 'Le prénom',
+                        ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -194,12 +199,7 @@ class _UserFormPageState extends ConsumerState<UserFormPage> {
                           prefixIcon: Icon(Icons.email),
                         ),
                         keyboardType: TextInputType.emailAddress,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'L\'email est requis';
-                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                              .hasMatch(v)) return 'Email valide requis';
-                          return null;
-                        },
+                        validator: ValidationHelper.validateEmail,
                       ),
                       const SizedBox(height: 16),
                       if (!widget.isEditing)
@@ -212,11 +212,11 @@ class _UserFormPageState extends ConsumerState<UserFormPage> {
                             prefixIcon: Icon(Icons.lock),
                           ),
                           obscureText: true,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) return 'Le mot de passe est requis';
-                            if (v.length < 6) return 'Au moins 6 caractères';
-                            return null;
-                          },
+                          validator: (v) => ValidationHelper.validateLength(
+                            v,
+                            min: 6,
+                            fieldName: 'Le mot de passe',
+                          ),
                         ),
                       if (!widget.isEditing) const SizedBox(height: 16),
                       const Text(

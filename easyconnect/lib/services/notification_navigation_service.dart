@@ -124,8 +124,8 @@ class NotificationNavigationService {
     return '/${segments.join('/')}';
   }
 
-  /// Routes dont la page détail attend Get.arguments (objet), pas seulement l'id.
-  /// Pour celles-ci on redirige vers la liste pour éviter un crash.
+  /// Routes dont l'écran détail attend souvent un modèle déjà résolu (pas un simple id en `extra`).
+  /// Depuis une notif on n'a pas toujours l'objet : on redirige vers la liste pour éviter un écran vide ou une erreur.
   static const _detailRoutesNeedingObject = [
     '/expenses/',
     '/leaves/',
@@ -200,6 +200,8 @@ class NotificationNavigationService {
         return '/interventions/$entityId';
       case 'besoin':
         return '/besoins/$entityId';
+      case 'technician_reminder':
+        return '/mes-rappels';
       case 'equipment':
       case 'equipement':
         return '/equipments/$entityId';
@@ -214,8 +216,8 @@ class NotificationNavigationService {
     }
   }
 
-  /// Navigue vers une route avec des arguments optionnels
-  /// Certaines pages détail attendent Get.arguments (objet) : on va alors vers la liste.
+  /// Navigue vers une route avec id optionnel.
+  /// Si la page détail n'est pas utilisable sans données préchargées, on envoie vers la liste correspondante.
   void _navigateToRoute(String route, String? entityId) {
     try {
       AppLogger.info(
@@ -229,7 +231,7 @@ class NotificationNavigationService {
         route = route.replaceAll(':entityId', entityId);
       }
 
-      // Page détail qui attend l'objet en Get.arguments : aller vers la liste
+      // Détail peu fiable depuis notif sans modèle : aller vers la liste
       for (final prefix in _detailRoutesNeedingObject) {
         if (route.startsWith(prefix) && route.length > prefix.length) {
           final listRoute = prefix.replaceAll('/', '');

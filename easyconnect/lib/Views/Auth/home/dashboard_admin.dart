@@ -1,6 +1,7 @@
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/providers/user_management_notifier.dart';
+import 'package:easyconnect/router/app_router.dart' show rootGoRouter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -73,7 +74,9 @@ class _AdminDashboardFullState extends ConsumerState<AdminDashboardFull> {
                 'Déconnexion',
                 Icons.logout,
                 onTap: () {
-                  ref.read(authProvider.notifier).logout();
+                  ref.read(authProvider.notifier).logout().then((_) {
+                    rootGoRouter?.go('/login');
+                  });
                 },
               ),
             ],

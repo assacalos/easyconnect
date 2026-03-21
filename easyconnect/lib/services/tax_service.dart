@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/tax_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
@@ -12,6 +10,7 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class TaxService {
   final storage = GetStorage();
@@ -19,14 +18,10 @@ class TaxService {
   // Tester la connectivité à l'API pour les impôts
   Future<bool> testTaxConnection() async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/taxes-list'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/taxes-list'),
+            headers: headers,
           )
           .timeout(AppConfig.extraLongTimeout);
       return response.statusCode == 200;
@@ -45,7 +40,7 @@ class TaxService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       String url = '${AppConfig.baseUrl}/taxes';
       List<String> params = [];
 
@@ -70,12 +65,9 @@ class TaxService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -154,7 +146,7 @@ class TaxService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
       if (type != null) queryParams['type'] = type;
@@ -165,13 +157,10 @@ class TaxService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final url = '$baseUrl/taxes-list$queryString';
-      final response = await http.get(
+      final url = '${AppConfig.baseUrl}/taxes-list$queryString';
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, traiter directement
@@ -270,14 +259,11 @@ class TaxService {
   // Récupérer un impôt par ID
   Future<Tax> getTaxById(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-show/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-show/$id'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -297,7 +283,7 @@ class TaxService {
   // Créer un impôt
   Future<Tax> createTax(Tax tax) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Validation des champs requis
       if (tax.category == null || tax.category!.isEmpty) {
@@ -321,13 +307,9 @@ class TaxService {
 
       // Préparer les données selon la documentation API (camelCase)
       final taxData = tax.toJson();
-      final response = await http.post(
-        Uri.parse('$baseUrl/taxes-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/taxes-create'),
+        headers: headers,
         body: json.encode(taxData),
       );
       final result = ApiService.parseResponse(response);
@@ -347,15 +329,11 @@ class TaxService {
   // Mettre à jour un impôt
   Future<Tax> updateTax(Tax tax) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/taxes-update/${tax.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/taxes-update/${tax.id}'),
+        headers: headers,
         body: json.encode(tax.toJson()),
       );
 
@@ -381,15 +359,11 @@ class TaxService {
     String? notes,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/taxes/$taxId/mark-paid'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/taxes/$taxId/mark-paid'),
+        headers: headers,
         body: json.encode({
           if (paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
           if (reference != null && reference.isNotEmpty) 'reference': reference,
@@ -405,14 +379,11 @@ class TaxService {
   // Supprimer un impôt
   Future<bool> deleteTax(int taxId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/taxes-delete/$taxId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/taxes-delete/$taxId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -424,14 +395,11 @@ class TaxService {
   // Récupérer les statistiques des impôts
   Future<TaxStats> getTaxStats() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-stats'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -461,14 +429,11 @@ class TaxService {
   // Récupérer les impôts en retard
   Future<List<Tax>> getOverdueTaxes() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-overdue'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-overdue'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -489,14 +454,11 @@ class TaxService {
   // Récupérer les impôts à échéance proche
   Future<List<Tax>> getUpcomingTaxes() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-upcoming'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-upcoming'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -517,7 +479,7 @@ class TaxService {
   // Récupérer les catégories d'impôts
   Future<List<TaxCategory>> getTaxCategories() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Essayer plusieurs endpoints possibles
       final endpoints = [
@@ -531,13 +493,9 @@ class TaxService {
 
       for (final endpoint in endpoints) {
         try {
-          final response = await http
-              .get(
-                Uri.parse('$baseUrl$endpoint'),
-                headers: {
-                  'Accept': 'application/json',
-                  'Authorization': 'Bearer $token',
-                },
+          final response = await HttpInterceptor.get(
+                Uri.parse('${AppConfig.baseUrl}$endpoint'),
+                headers: headers,
               )
               .timeout(AppConfig.extraLongTimeout);
           if (response.statusCode == 200) {
@@ -607,15 +565,11 @@ class TaxService {
   // Créer une catégorie d'impôt
   Future<Tax> createTaxCategory(Tax category) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/tax-categories-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/tax-categories-create'),
+        headers: headers,
         body: json.encode(category.toJson()),
       );
 
@@ -636,15 +590,11 @@ class TaxService {
   // Mettre à jour une catégorie d'impôt
   Future<Tax> updateTaxCategory(Tax category) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/tax-categories-update/${category.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/tax-categories-update/${category.id}'),
+        headers: headers,
         body: json.encode(category.toJson()),
       );
 
@@ -665,14 +615,11 @@ class TaxService {
   // Supprimer une catégorie d'impôt
   Future<bool> deleteTaxCategory(int categoryId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/tax-categories-delete/$categoryId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/tax-categories-delete/$categoryId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -684,14 +631,10 @@ class TaxService {
   // Approuver/Valider une taxe
   Future<bool> approveTax(int taxId, {String? notes}) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/taxes-validate/$taxId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/taxes-validate/$taxId'),
+        headers: headers,
         body: json.encode({
           if (notes != null && notes.isNotEmpty) 'validation_comment': notes,
         }),
@@ -713,14 +656,10 @@ class TaxService {
     String? notes,
   }) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/taxes-reject/$taxId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/taxes-reject/$taxId'),
+        headers: headers,
         body: json.encode({
           'rejection_reason': reason,
           if (notes != null && notes.isNotEmpty) 'rejection_comment': notes,
@@ -739,13 +678,10 @@ class TaxService {
   // Récupérer les taxes en attente d'approbation
   Future<List<Tax>> getPendingTaxes() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-pending'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-pending'),
+        headers: headers,
       );
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -776,13 +712,10 @@ class TaxService {
   // Récupérer l'historique des approbations/rejets
   Future<List<Map<String, dynamic>>> getTaxApprovalHistory(int taxId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/taxes-history/$taxId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/taxes-history/$taxId'),
+        headers: headers,
       );
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);

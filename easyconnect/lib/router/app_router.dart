@@ -107,6 +107,8 @@ import 'package:easyconnect/Views/Technicien/intervention_form.dart';
 import 'package:easyconnect/Views/Technicien/intervention_detail.dart';
 import 'package:easyconnect/Views/Technicien/besoin_list_page.dart';
 import 'package:easyconnect/Views/Technicien/besoin_form_page.dart';
+import 'package:easyconnect/Views/Technicien/technician_reminder_list_page.dart';
+import 'package:easyconnect/Views/Technicien/technician_reminder_form_page.dart';
 import 'package:easyconnect/Views/Technicien/equipment_list.dart';
 import 'package:easyconnect/Views/Technicien/equipment_form.dart';
 import 'package:easyconnect/Views/Technicien/equipment_detail.dart';
@@ -413,6 +415,8 @@ GoRouter createAppRouter() {
       ),
       GoRoute(path: '/besoins', builder: (_, __) => const BesoinListPage()),
       GoRoute(path: '/besoins/new', builder: (_, __) => const BesoinFormPage()),
+      GoRoute(path: '/mes-rappels', builder: (_, __) => const TechnicianReminderListPage()),
+      GoRoute(path: '/mes-rappels/new', builder: (_, __) => const TechnicianReminderFormPage()),
       GoRoute(path: '/equipments', builder: (_, __) => const EquipmentList()),
       GoRoute(path: '/equipments/new', builder: (_, __) => const EquipmentForm()),
       GoRoute(

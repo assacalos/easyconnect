@@ -1,14 +1,13 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/task_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/utils/app_config.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class TaskService {
   static final TaskService _instance = TaskService._();
@@ -43,12 +42,13 @@ class TaskService {
     if (assignedTo != null) queryParams['assigned_to'] = assignedTo.toString();
     if (status != null && status.isNotEmpty) queryParams['status'] = status;
 
-    final uri = Uri.parse('$baseUrl/tasks-list').replace(
+    final uri = Uri.parse('${AppConfig.baseUrl}/tasks-list').replace(
       queryParameters: queryParams,
     );
 
+    final headers = await ApiService.headersAsync();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.get(uri, headers: ApiService.headers()).timeout(
+      operation: () => HttpInterceptor.get(uri, headers: headers).timeout(
             AppConfig.extraLongTimeout,
             onTimeout: () =>
                 throw Exception('Timeout: le serveur ne répond pas'),
@@ -129,9 +129,9 @@ class TaskService {
 
   /// Détail d'une tâche
   Future<TaskModel> getTask(int id) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/tasks-show/$id'),
-      headers: ApiService.headers(),
+    final response = await HttpInterceptor.get(
+      Uri.parse('${AppConfig.baseUrl}/tasks-show/$id'),
+      headers: await ApiService.headersAsync(),
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -158,9 +158,9 @@ class TaskService {
       'priority': priority,
       if (dueDate != null && dueDate.isNotEmpty) 'due_date': dueDate,
     };
-    final response = await http.post(
-      Uri.parse('$baseUrl/tasks-create'),
-      headers: ApiService.headers(),
+    final response = await HttpInterceptor.post(
+      Uri.parse('${AppConfig.baseUrl}/tasks-create'),
+      headers: await ApiService.headersAsync(),
       body: jsonEncode(body),
     );
     if (response.statusCode == 201 || response.statusCode == 200) {
@@ -191,9 +191,9 @@ class TaskService {
     if (priority != null) body['priority'] = priority;
     if (dueDate != null) body['due_date'] = dueDate;
 
-    final response = await http.put(
-      Uri.parse('$baseUrl/tasks-update/$id'),
-      headers: ApiService.headers(),
+    final response = await HttpInterceptor.put(
+      Uri.parse('${AppConfig.baseUrl}/tasks-update/$id'),
+      headers: await ApiService.headersAsync(),
       body: jsonEncode(body),
     );
     if (response.statusCode == 200) {
@@ -213,9 +213,9 @@ class TaskService {
 
   /// Supprimer une tâche (Patron ou Admin)
   Future<void> deleteTask(int id) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/tasks-destroy/$id'),
-      headers: ApiService.headers(),
+    final response = await HttpInterceptor.delete(
+      Uri.parse('${AppConfig.baseUrl}/tasks-destroy/$id'),
+      headers: await ApiService.headersAsync(),
     );
     if (response.statusCode != 200) {
       final err = jsonDecode(response.body);

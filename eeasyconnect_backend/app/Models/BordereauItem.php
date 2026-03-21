@@ -13,6 +13,7 @@ class BordereauItem extends Model
 
     protected $fillable = [
         'bordereau_id',
+        'reference',
         'designation',
         'quantite',
         'description',

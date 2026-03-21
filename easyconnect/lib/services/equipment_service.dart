@@ -1,19 +1,17 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:get_storage/get_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:easyconnect/Models/equipment_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class EquipmentService {
-  final storage = GetStorage();
-
   /// Récupérer les équipements avec pagination côté serveur
   Future<PaginationResponse<Equipment>> getEquipmentsPaginated({
     String? status,
@@ -24,7 +22,7 @@ class EquipmentService {
     int perPage = 15,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       String url = '${AppConfig.baseUrl}/equipment';
       List<String> params = [];
 
@@ -52,12 +50,9 @@ class EquipmentService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -70,15 +65,15 @@ class EquipmentService {
       await AuthErrorHandler.handleHttpResponse(response);
 
       if (response.statusCode == 200) {
-        print('🔍 [EQUIPMENT_SERVICE] Status 200, début du parsing...');
+        debugPrint('🔍 [EQUIPMENT_SERVICE] Status 200, début du parsing...');
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        print('🔍 [EQUIPMENT_SERVICE] Parsing de la réponse paginée...');
-        print('🔍 [EQUIPMENT_SERVICE] Structure JSON: ${data.keys.toList()}');
-        print(
+        debugPrint('🔍 [EQUIPMENT_SERVICE] Parsing de la réponse paginée...');
+        debugPrint('🔍 [EQUIPMENT_SERVICE] Structure JSON: ${data.keys.toList()}');
+        debugPrint(
           '🔍 [EQUIPMENT_SERVICE] Type de data: ${data['data']?.runtimeType}',
         );
         if (data['data'] is List) {
-          print(
+          debugPrint(
             '🔍 [EQUIPMENT_SERVICE] data est une List avec ${(data['data'] as List).length} éléments',
           );
         }
@@ -87,44 +82,44 @@ class EquipmentService {
           final paginatedResponse = PaginationHelper.parseResponse<Equipment>(
             json: data,
             fromJsonT: (json) {
-              print(
+              debugPrint(
                 '🔍 [EQUIPMENT_SERVICE] Parsing d\'un équipement depuis pagination...',
               );
               try {
                 return Equipment.fromJson(json);
               } catch (e, stackTrace) {
-                print(
+                debugPrint(
                   '❌ [EQUIPMENT_SERVICE] Erreur lors du parsing d\'un équipement: $e',
                 );
-                print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
-                print('❌ [EQUIPMENT_SERVICE] JSON: $json');
+                debugPrint('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+                debugPrint('❌ [EQUIPMENT_SERVICE] JSON: $json');
                 rethrow;
               }
             },
           );
 
-          print(
+          debugPrint(
             '🔍 [EQUIPMENT_SERVICE] Réponse paginée parsée: ${paginatedResponse.data.length} équipements',
           );
           if (paginatedResponse.data.isNotEmpty) {
-            print(
+            debugPrint(
               '🔍 [EQUIPMENT_SERVICE] Premier équipement: ${paginatedResponse.data.first.name}, status: ${paginatedResponse.data.first.status}',
             );
           } else {
-            print(
+            debugPrint(
               '⚠️ [EQUIPMENT_SERVICE] ATTENTION: La réponse paginée contient 0 équipements!',
             );
           }
 
           return paginatedResponse;
         } catch (e, stackTrace) {
-          print(
+          debugPrint(
             '❌ [EQUIPMENT_SERVICE] Erreur dans PaginationHelper.parseResponse: $e',
           );
-          print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+          debugPrint('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
           // Si le parsing échoue, essayer de parser manuellement
           if (data.containsKey('data') && data['data'] is List) {
-            print('🔄 [EQUIPMENT_SERVICE] Tentative de parsing manuel...');
+            debugPrint('🔄 [EQUIPMENT_SERVICE] Tentative de parsing manuel...');
             final dataList = data['data'] as List;
             final equipments = <Equipment>[];
             for (var item in dataList) {
@@ -133,12 +128,12 @@ class EquipmentService {
                   equipments.add(Equipment.fromJson(item));
                 }
               } catch (e) {
-                print(
+                debugPrint(
                   '⚠️ [EQUIPMENT_SERVICE] Erreur lors du parsing manuel d\'un équipement: $e',
                 );
               }
             }
-            print(
+            debugPrint(
               '🔄 [EQUIPMENT_SERVICE] Parsing manuel: ${equipments.length} équipements parsés',
             );
             return PaginationResponse<Equipment>(
@@ -176,7 +171,7 @@ class EquipmentService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       var queryParams = <String, String>{};
       if (status != null) queryParams['status'] = status;
@@ -189,13 +184,9 @@ class EquipmentService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/equipment-list$queryString'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/equipment-list$queryString'),
+            headers: headers,
           )
           .timeout(
             AppConfig.extraLongTimeout,
@@ -206,10 +197,10 @@ class EquipmentService {
       if (response.statusCode == 200) {
         final decodedBody = json.decode(response.body);
 
-        print(
+        debugPrint(
           '🔍 [EQUIPMENT_SERVICE] Réponse brute (premiers 500 caractères): ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
         );
-        print(
+        debugPrint(
           '🔍 [EQUIPMENT_SERVICE] Type de decodedBody: ${decodedBody.runtimeType}',
         );
 
@@ -268,7 +259,7 @@ class EquipmentService {
 
         // Parser les équipements
         final equipments = <Equipment>[];
-        print(
+        debugPrint(
           '🔍 [EQUIPMENT_SERVICE] Nombre d\'éléments à parser: ${data.length}',
         );
         for (var item in data) {
@@ -276,32 +267,32 @@ class EquipmentService {
             if (item is Map<String, dynamic>) {
               // Debug: Afficher le statut brut du JSON
               final rawStatus = item['status'];
-              print(
+              debugPrint(
                 '🔍 [EQUIPMENT_SERVICE] Équipement "${item['name']}": status brut = $rawStatus (type: ${rawStatus.runtimeType})',
               );
 
               final equipment = Equipment.fromJson(item);
-              print(
+              debugPrint(
                 '🔍 [EQUIPMENT_SERVICE] Équipement "${equipment.name}": status parsé = "${equipment.status}"',
               );
               equipments.add(equipment);
             }
           } catch (e, stackTrace) {
-            print(
+            debugPrint(
               '❌ [EQUIPMENT_SERVICE] Erreur lors du parsing d\'un équipement: $e',
             );
-            print('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
-            print('❌ [EQUIPMENT_SERVICE] Item: $item');
+            debugPrint('❌ [EQUIPMENT_SERVICE] Stack trace: $stackTrace');
+            debugPrint('❌ [EQUIPMENT_SERVICE] Item: $item');
             // Ignorer les éléments invalides mais continuer
           }
         }
 
-        print(
+        debugPrint(
           '🔍 [EQUIPMENT_SERVICE] Nombre d\'équipements parsés: ${equipments.length}',
         );
         if (equipments.isNotEmpty) {
           final allStatuses = equipments.map((e) => e.status).toSet();
-          print('🔍 [EQUIPMENT_SERVICE] Tous les statuts parsés: $allStatuses');
+          debugPrint('🔍 [EQUIPMENT_SERVICE] Tous les statuts parsés: $allStatuses');
         }
 
         _saveEquipmentsToHive(equipments);
@@ -318,14 +309,11 @@ class EquipmentService {
   // Récupérer un équipement par ID
   Future<Equipment> getEquipmentById(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment/$id'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -342,27 +330,23 @@ class EquipmentService {
   // Créer un équipement
   Future<Equipment> createEquipment(Equipment equipment) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      print(
-        '📤 [EQUIPMENT_SERVICE] Envoi de la requête POST vers $baseUrl/equipment-create',
+      debugPrint(
+        '📤 [EQUIPMENT_SERVICE] Envoi de la requête POST vers ${AppConfig.baseUrl}/equipment-create',
       );
-      print('📤 [EQUIPMENT_SERVICE] Données: ${equipment.toJson()}');
+      debugPrint('📤 [EQUIPMENT_SERVICE] Données: ${equipment.toJson()}');
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/equipment-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/equipment-create'),
+        headers: headers,
         body: json.encode(equipment.toJson()),
       );
 
-      print(
+      debugPrint(
         '📥 [EQUIPMENT_SERVICE] Réponse reçue: Status ${response.statusCode}',
       );
-      print(
+      debugPrint(
         '📥 [EQUIPMENT_SERVICE] Body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}',
       );
 
@@ -382,7 +366,7 @@ class EquipmentService {
           throw Exception('Format de réponse inattendu pour la création');
         }
 
-        print(
+        debugPrint(
           '✅ [EQUIPMENT_SERVICE] Équipement créé avec succès: ID ${equipmentData['id']}',
         );
         return Equipment.fromJson(equipmentData);
@@ -390,12 +374,12 @@ class EquipmentService {
 
       // Gérer les erreurs 500 - vérifier si l'équipement a quand même été créé
       if (response.statusCode == 500) {
-        print(
+        debugPrint(
           '⚠️ [EQUIPMENT_SERVICE] Erreur 500 détectée, vérification si équipement créé...',
         );
         try {
           final errorBody = json.decode(response.body);
-          print('📋 [EQUIPMENT_SERVICE] Body de l\'erreur: $errorBody');
+          debugPrint('📋 [EQUIPMENT_SERVICE] Body de l\'erreur: $errorBody');
 
           // Chercher un ID dans la réponse d'erreur
           int? equipmentId;
@@ -417,7 +401,7 @@ class EquipmentService {
           }
 
           if (equipmentId != null) {
-            print(
+            debugPrint(
               '✅ [EQUIPMENT_SERVICE] ID trouvé dans l\'erreur 500: $equipmentId',
             );
             // Construire un équipement avec l'ID trouvé
@@ -426,28 +410,28 @@ class EquipmentService {
             equipmentData['created_at'] = DateTime.now().toIso8601String();
             equipmentData['updated_at'] = DateTime.now().toIso8601String();
 
-            print(
+            debugPrint(
               '✅ [EQUIPMENT_SERVICE] Équipement retourné malgré l\'erreur 500: ID $equipmentId',
             );
             return Equipment.fromJson(equipmentData);
           } else {
-            print('❌ [EQUIPMENT_SERVICE] Aucun ID trouvé dans l\'erreur 500');
+            debugPrint('❌ [EQUIPMENT_SERVICE] Aucun ID trouvé dans l\'erreur 500');
           }
         } catch (e) {
-          print(
+          debugPrint(
             '⚠️ [EQUIPMENT_SERVICE] Erreur lors de l\'analyse de l\'erreur 500: $e',
           );
         }
       }
 
-      print(
+      debugPrint(
         '❌ [EQUIPMENT_SERVICE] Erreur ${response.statusCode}: ${response.body}',
       );
       throw Exception(
         'Erreur lors de la création de l\'équipement: ${response.statusCode} - ${response.body}',
       );
     } catch (e) {
-      print('❌ [EQUIPMENT_SERVICE] Exception capturée: $e');
+      debugPrint('❌ [EQUIPMENT_SERVICE] Exception capturée: $e');
       throw Exception('Erreur lors de la création de l\'équipement: $e');
     }
   }
@@ -455,15 +439,11 @@ class EquipmentService {
   // Mettre à jour un équipement
   Future<Equipment> updateEquipment(Equipment equipment) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/equipment-update/${equipment.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/equipment-update/${equipment.id}'),
+        headers: headers,
         body: json.encode(equipment.toJson()),
       );
 
@@ -481,14 +461,11 @@ class EquipmentService {
   // Supprimer un équipement
   Future<bool> deleteEquipment(int equipmentId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/equipment-destroy/$equipmentId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/equipment-destroy/$equipmentId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -500,14 +477,11 @@ class EquipmentService {
   // Récupérer les statistiques des équipements
   Future<EquipmentStats> getEquipmentStats() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-statistics'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment-statistics'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -545,14 +519,11 @@ class EquipmentService {
   // Récupérer les catégories d'équipements
   Future<List<EquipmentCategory>> getEquipmentCategories() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-categories'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment-categories'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -570,14 +541,11 @@ class EquipmentService {
   // Récupérer les équipements nécessitant une maintenance
   Future<List<Equipment>> getEquipmentsNeedingMaintenance() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-needs-maintenance'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment-needs-maintenance'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -597,14 +565,11 @@ class EquipmentService {
   // Récupérer les équipements avec garantie expirant bientôt
   Future<List<Equipment>> getEquipmentsWithWarrantyExpiringSoon() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-warranty-expiring-soon'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment-warranty-expiring-soon'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -624,14 +589,11 @@ class EquipmentService {
   // Récupérer les équipements avec garantie expirée
   Future<List<Equipment>> getEquipmentsWithExpiredWarranty() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipment-warranty-expired'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipment-warranty-expired'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -653,14 +615,11 @@ class EquipmentService {
     int equipmentId,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipments/$equipmentId/maintenance'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipments/$equipmentId/maintenance'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -682,17 +641,13 @@ class EquipmentService {
     EquipmentMaintenance maintenance,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(
-          '$baseUrl/equipment/${maintenance.equipmentId}/schedule-maintenance',
+          '${AppConfig.baseUrl}/equipment/${maintenance.equipmentId}/schedule-maintenance',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode(maintenance.toJson()),
       );
 
@@ -712,15 +667,11 @@ class EquipmentService {
   // Mettre à jour le statut d'un équipement
   Future<bool> updateEquipmentStatus(int equipmentId, String status) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.patch(
-        Uri.parse('$baseUrl/equipments/$equipmentId/status'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.patch(
+        Uri.parse('${AppConfig.baseUrl}/equipments/$equipmentId/status'),
+        headers: headers,
         body: json.encode({'status': status}),
       );
 
@@ -736,15 +687,11 @@ class EquipmentService {
     String condition,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.patch(
-        Uri.parse('$baseUrl/equipments/$equipmentId/condition'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.patch(
+        Uri.parse('${AppConfig.baseUrl}/equipments/$equipmentId/condition'),
+        headers: headers,
         body: json.encode({'condition': condition}),
       );
 
@@ -757,15 +704,11 @@ class EquipmentService {
   // Assigner un équipement à un utilisateur
   Future<bool> assignEquipment(int equipmentId, String assignedTo) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/equipment/$equipmentId/assign'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/equipment/$equipmentId/assign'),
+        headers: headers,
         body: json.encode({'assigned_to': assignedTo}),
       );
 
@@ -778,14 +721,11 @@ class EquipmentService {
   // Retourner un équipement (désassigner)
   Future<bool> returnEquipment(int equipmentId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/equipment/$equipmentId/return'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/equipment/$equipmentId/return'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -802,14 +742,11 @@ class EquipmentService {
   // Ajouter une pièce jointe
   Future<bool> addAttachment(int equipmentId, String filePath) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/equipments/$equipmentId/attachments'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/equipments/$equipmentId/attachments'),
+        headers: headers,
         body: json.encode({'file_path': filePath}),
       );
 
@@ -822,14 +759,11 @@ class EquipmentService {
   // Supprimer une pièce jointe
   Future<bool> removeAttachment(int equipmentId, String filePath) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/equipments/$equipmentId/attachments'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/equipments/$equipmentId/attachments'),
+        headers: headers,
         body: json.encode({'file_path': filePath}),
       );
 
@@ -842,14 +776,11 @@ class EquipmentService {
   // Rechercher des équipements
   Future<List<Equipment>> searchEquipments(String query) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/equipments/search?q=$query'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/equipments/search?q=$query'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' show Response;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/stock_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
@@ -11,6 +11,7 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class StockService {
   static final StockService _instance = StockService._();
@@ -22,18 +23,15 @@ class StockService {
   // Tester la connectivité à l'API
   Future<bool> testConnection() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/stocks';
       AppLogger.httpRequest('GET', url, tag: 'STOCK_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       ).timeout(AppConfig.shortTimeout);
@@ -61,7 +59,7 @@ class StockService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       String url = '${AppConfig.baseUrl}/stocks';
       List<String> params = [];
 
@@ -86,12 +84,9 @@ class StockService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -132,7 +127,7 @@ class StockService {
     int? limit,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       String url = '${AppConfig.baseUrl}/stocks';
       List<String> params = [];
 
@@ -159,12 +154,9 @@ class StockService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -245,14 +237,11 @@ class StockService {
   // Récupérer un stock par ID
   Future<Stock> getStock(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/stocks/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -297,18 +286,19 @@ class StockService {
       }
 
       final stockData = stock.toJson();
+      final headers = await ApiService.headersAsync();
 
       // Essayer d'abord la route stocks-create, puis stocks en fallback
       String url = '${AppConfig.baseUrl}/stocks-create';
       AppLogger.httpRequest('POST', url, tag: 'STOCK_SERVICE');
 
-      http.Response response;
+      Response response;
       try {
         response = await RetryHelper.retryNetwork(
           operation:
-              () => http.post(
+              () => HttpInterceptor.post(
                 Uri.parse(url),
-                headers: ApiService.headers(),
+                headers: headers,
                 body: jsonEncode(stockData),
               ),
           maxRetries: AppConfig.defaultMaxRetries,
@@ -323,9 +313,9 @@ class StockService {
         );
         response = await RetryHelper.retryNetwork(
           operation:
-              () => http.post(
+              () => HttpInterceptor.post(
                 Uri.parse(url),
-                headers: ApiService.headers(),
+                headers: headers,
                 body: jsonEncode(stockData),
               ),
           maxRetries: AppConfig.defaultMaxRetries,
@@ -367,11 +357,12 @@ class StockService {
       final url = '${AppConfig.baseUrl}/stocks-update/${stock.id}';
       AppLogger.httpRequest('PUT', url, tag: 'STOCK_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.put(
+            () => HttpInterceptor.put(
               Uri.parse(url),
-              headers: ApiService.headers(),
+              headers: headers,
               body: jsonEncode(stockData),
             ),
         maxRetries: AppConfig.defaultMaxRetries,
@@ -398,9 +389,9 @@ class StockService {
   // Supprimer un stock
   Future<Map<String, dynamic>> deleteStock(int id) async {
     try {
-      final response = await http.delete(
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/stocks-destroy/$id'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -427,9 +418,9 @@ class StockService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks-add-stock/$stockId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'quantity': quantity,
           if (unitCost != null) 'unit_cost': unitCost,
@@ -461,9 +452,9 @@ class StockService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks-remove-stock/$stockId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'quantity': quantity,
           'reason': reason,
@@ -493,9 +484,9 @@ class StockService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks-adjust-stock/$stockId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'new_quantity': newQuantity,
           'reason': reason,
@@ -524,9 +515,9 @@ class StockService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks-transfer-stock/$stockId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'quantity': quantity,
           'location_to': locationTo,
@@ -558,9 +549,9 @@ class StockService {
     String? notes,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks-movements/$stockId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'type': type,
           'quantity': quantity,
@@ -617,9 +608,9 @@ class StockService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -660,9 +651,9 @@ class StockService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -683,9 +674,9 @@ class StockService {
   // Récupérer les catégories de stock
   Future<List<StockCategory>> getStockCategories() async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/stocks-categories'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
       final result = ApiService.parseResponse(response);
 
@@ -712,11 +703,11 @@ class StockService {
     String? parentCategory,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/stock-categories',
         ), // Correction: conforme à Laravel
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'name': name,
           'description': description,
@@ -758,9 +749,9 @@ class StockService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -784,9 +775,9 @@ class StockService {
   // Marquer une alerte comme lue
   Future<Map<String, dynamic>> markAlertAsRead(int alertId) async {
     try {
-      final response = await http.put(
+      final response = await HttpInterceptor.put(
         Uri.parse('${AppConfig.baseUrl}/stocks/alerts/$alertId/read'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -806,9 +797,9 @@ class StockService {
   // Rechercher des stocks par code-barres
   Future<Stock?> searchStockByBarcode(String barcode) async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/stocks/search/barcode/$barcode'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -834,9 +825,9 @@ class StockService {
     String? validationComment,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks/$stockId/valider'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           if (validationComment != null && validationComment.isNotEmpty)
             'validation_comment': validationComment,
@@ -861,9 +852,9 @@ class StockService {
     required String commentaire,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/stocks/$stockId/rejeter'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'commentaire': commentaire}),
       );
       final result = ApiService.parseResponse(response);

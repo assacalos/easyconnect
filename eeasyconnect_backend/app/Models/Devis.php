@@ -9,6 +9,30 @@ class Devis extends Model
 {
     use HasFactory;
 
+    /**
+     * Génère la prochaine référence unique pour l'année en cours.
+     * Format: DEV-YYYY-NNNN. Utilise le max des numéros existants + 1
+     * pour éviter les conflits après suppression de devis.
+     */
+    public static function generateNextReference(): string
+    {
+        $year = date('Y');
+        $prefix = 'DEV-' . $year . '-';
+
+        $maxNumber = static::where('reference', 'like', $prefix . '%')
+            ->get()
+            ->map(function ($devis) use ($prefix) {
+                $suffix = substr($devis->reference, strlen($prefix));
+                return is_numeric($suffix) ? (int) $suffix : 0;
+            })
+            ->filter(fn ($n) => $n > 0)
+            ->max();
+
+        $next = ($maxNumber ?? 0) + 1;
+
+        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+    }
+
     protected $fillable = [
         'client_id',
         'reference',
@@ -20,12 +44,17 @@ class Devis extends Model
         'tva',
         'conditions',
         'commentaire',
+        'titre',
+        'delai_livraison',
+        'garantie',
         'user_id',
+        'paid_at',
     ];
 
     protected $casts = [
         'date_creation' => 'date',
         'date_validite' => 'date',
+        'paid_at' => 'datetime',
         'remise_globale' => 'decimal:2',
         'tva' => 'decimal:2',
     ];

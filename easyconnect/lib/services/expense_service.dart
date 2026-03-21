@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/expense_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -11,6 +9,8 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class ExpenseService {
   final storage = GetStorage();
@@ -25,7 +25,7 @@ class ExpenseService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -57,12 +57,9 @@ class ExpenseService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -99,7 +96,7 @@ class ExpenseService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -117,12 +114,9 @@ class ExpenseService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/expenses-list$queryString'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/expenses-list$queryString'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -155,12 +149,10 @@ class ExpenseService {
               );
               parsedExpenses.add(expense);
             } catch (e) {
-              // Logger l'erreur mais continuer avec les autres dépenses
-              print(
-                '⚠️ [EXPENSE_SERVICE] Erreur lors du parsing d\'une dépense: $e',
+              AppLogger.warning(
+                'Erreur parsing dépense: $e — JSON: $jsonItem',
+                tag: 'Expense',
               );
-              print('⚠️ [EXPENSE_SERVICE] JSON problématique: $jsonItem');
-              // Continuer avec les autres dépenses
             }
           }
           _saveDepensesToHive(parsedExpenses, status, category);
@@ -182,14 +174,11 @@ class ExpenseService {
   // Récupérer une dépense par ID
   Future<Expense> getExpenseById(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/expenses-show/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/expenses-show/$id'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -207,17 +196,12 @@ class ExpenseService {
   // Créer une dépense
   Future<Expense> createExpense(Map<String, dynamic> expenseData) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final jsonBody = json.encode(expenseData);
 
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/expenses-create'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.post(
+            Uri.parse('${AppConfig.baseUrl}/expenses-create'),
+            headers: headers,
             body: jsonBody,
           )
           .timeout(
@@ -243,15 +227,10 @@ class ExpenseService {
     Map<String, dynamic> expenseData,
   ) async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/expenses-update/$id'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.put(
+            Uri.parse('${AppConfig.baseUrl}/expenses-update/$id'),
+            headers: headers,
             body: json.encode(expenseData),
           )
           .timeout(
@@ -274,14 +253,11 @@ class ExpenseService {
   // Supprimer une dépense
   Future<bool> deleteExpense(int expenseId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/expenses-destroy/$expenseId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/expenses-destroy/$expenseId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -293,14 +269,11 @@ class ExpenseService {
   // Soumettre une dépense au patron
   Future<bool> submitExpense(int expenseId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/expenses-submit/$expenseId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/expenses-submit/$expenseId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -312,16 +285,12 @@ class ExpenseService {
   // Approuver une dépense
   Future<bool> approveExpense(int expenseId, {String? notes}) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/expenses-validate/$expenseId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/expenses-validate/$expenseId';
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode({'notes': notes}),
       );
 
@@ -356,16 +325,12 @@ class ExpenseService {
   // Rejeter une dépense
   Future<bool> rejectExpense(int expenseId, {required String reason}) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/expenses-reject/$expenseId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/expenses-reject/$expenseId';
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode({'reason': reason}),
       );
 
@@ -399,14 +364,11 @@ class ExpenseService {
   // Récupérer les statistiques des dépenses
   Future<ExpenseStats> getExpenseStats() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/expenses-statistics'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/expenses-statistics'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -433,14 +395,11 @@ class ExpenseService {
   // Récupérer les catégories de dépenses
   Future<List<ExpenseCategory>> getExpenseCategories() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/expense-categories'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/expense-categories'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

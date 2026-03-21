@@ -151,6 +151,58 @@ class Salary {
     }
   }
 
+  Salary copyWith({
+    int? id,
+    int? employeeId,
+    String? employeeName,
+    String? employeeEmail,
+    double? baseSalary,
+    double? bonus,
+    double? deductions,
+    double? netSalary,
+    String? month,
+    int? year,
+    String? status,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? createdBy,
+    int? approvedBy,
+    String? approvedAt,
+    String? paidAt,
+    String? rejectionReason,
+    List<String>? justificatifs,
+    double? cnpsEmployeur,
+    double? cnpsSalarie,
+    double? impotRevenu,
+  }) {
+    return Salary(
+      id: id ?? this.id,
+      employeeId: employeeId ?? this.employeeId,
+      employeeName: employeeName ?? this.employeeName,
+      employeeEmail: employeeEmail ?? this.employeeEmail,
+      baseSalary: baseSalary ?? this.baseSalary,
+      bonus: bonus ?? this.bonus,
+      deductions: deductions ?? this.deductions,
+      netSalary: netSalary ?? this.netSalary,
+      month: month ?? this.month,
+      year: year ?? this.year,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      approvedBy: approvedBy ?? this.approvedBy,
+      approvedAt: approvedAt ?? this.approvedAt,
+      paidAt: paidAt ?? this.paidAt,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      justificatifs: justificatifs ?? this.justificatifs,
+      cnpsEmployeur: cnpsEmployeur ?? this.cnpsEmployeur,
+      cnpsSalarie: cnpsSalarie ?? this.cnpsSalarie,
+      impotRevenu: impotRevenu ?? this.impotRevenu,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

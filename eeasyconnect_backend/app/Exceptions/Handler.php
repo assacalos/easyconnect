@@ -150,7 +150,7 @@ class Handler extends ExceptionHandler
             ],
         ]);
 
-        // En mode debug, retourner l'erreur détaillée
+        // En mode debug, retourner l'erreur détaillée (fichier, ligne, trace)
         if (config('app.debug')) {
             return response()->json([
                 'success' => false,
@@ -162,10 +162,10 @@ class Handler extends ExceptionHandler
             ], 500);
         }
 
-        // Production error response
+        // Production : retourner le message d'erreur réel pour les API (pour faciliter le diagnostic)
         return response()->json([
             'success' => false,
-            'message' => 'Une erreur est survenue. Veuillez réessayer plus tard.',
+            'message' => $e->getMessage(),
             'statusCode' => 500,
         ], 500);
     }

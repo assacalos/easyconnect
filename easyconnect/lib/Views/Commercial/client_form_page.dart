@@ -1,5 +1,6 @@
 import 'package:easyconnect/providers/client_notifier.dart';
 import 'package:easyconnect/Views/Components/app_bar_back_button.dart';
+import 'package:easyconnect/utils/validation_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,11 +26,6 @@ class _ClientFormPageState extends ConsumerState<ClientFormPage> {
   late final TextEditingController telephoneController;
   late final TextEditingController adresseController;
   late final TextEditingController numeroContribuableController;
-
-  static bool _isEmail(String? value) {
-    if (value == null || value.isEmpty) return false;
-    return value.contains('@') && value.contains('.');
-  }
 
   @override
   void initState() {
@@ -117,40 +113,42 @@ class _ClientFormPageState extends ConsumerState<ClientFormPage> {
                 TextFormField(
                   controller: nomEntrepriseController,
                   decoration: InputDecoration(labelText: "Nom Entreprise *"),
-                  validator:
-                      (value) =>
-                          value!.isEmpty ? "Nom Entreprise requis" : null,
+                  validator: (value) => ValidationHelper.validateRequired(
+                    value,
+                    fieldName: 'Le nom de l\'entreprise',
+                  ),
                 ),
                 SizedBox(height: 10),
                 TextFormField(
                   controller: nomController,
                   decoration: InputDecoration(labelText: "Nom"),
-                  validator: (value) => value!.isEmpty ? "Nom requis" : null,
+                  validator: (value) => ValidationHelper.validateRequired(
+                    value,
+                    fieldName: 'Le nom',
+                  ),
                 ),
                 SizedBox(height: 10),
                 TextFormField(
                   controller: prenomController,
                   decoration: InputDecoration(labelText: "Prénom"),
-                  validator: (value) => value!.isEmpty ? "Prénom requis" : null,
+                  validator: (value) => ValidationHelper.validateRequired(
+                    value,
+                    fieldName: 'Le prénom',
+                  ),
                 ),
                 SizedBox(height: 10),
                 TextFormField(
                   controller: emailController,
                   decoration: InputDecoration(labelText: "Email"),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value!.isEmpty) return "Email requis";
-                    if (!_isEmail(value)) return "Email invalide";
-                    return null;
-                  },
+                  validator: ValidationHelper.validateEmail,
                 ),
                 SizedBox(height: 10),
                 TextFormField(
                   controller: telephoneController,
                   decoration: InputDecoration(labelText: "Contact"),
                   keyboardType: TextInputType.phone,
-                  validator:
-                      (value) => value!.isEmpty ? "Contact requis" : null,
+                  validator: ValidationHelper.validatePhone,
                 ),
                 SizedBox(height: 10),
                 TextFormField(
@@ -164,11 +162,10 @@ class _ClientFormPageState extends ConsumerState<ClientFormPage> {
                   decoration: InputDecoration(
                     labelText: "Situation Géographique",
                   ),
-                  validator:
-                      (value) =>
-                          value!.isEmpty
-                              ? "Situation Géographique requise"
-                              : null,
+                  validator: (value) => ValidationHelper.validateRequired(
+                    value,
+                    fieldName: 'La situation géographique',
+                  ),
                 ),
                 SizedBox(height: 10),
                 TextFormField(

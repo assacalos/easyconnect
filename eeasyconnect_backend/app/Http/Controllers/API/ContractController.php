@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Contract;
 use App\Models\ContractClause;
@@ -19,6 +20,13 @@ use Illuminate\Support\Facades\Log;
 class ContractController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des contrats
      */
@@ -93,21 +101,22 @@ class ContractController extends Controller
                 }
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $contracts = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => ContractResource::collection($contracts->items()),
+                'data' => ContractResource::collection($contracts->items())->resolve(),
                 'pagination' => [
                     'current_page' => $contracts->currentPage(),
                     'last_page' => $contracts->lastPage(),
                     'per_page' => $contracts->perPage(),
                     'total' => $contracts->total(),
+                    'from' => $contracts->firstItem(),
+                    'to' => $contracts->lastItem(),
                 ],
-                'message' => 'Liste des contrats récupérée avec succès'
-            ]);
+                'message' => 'Liste des contrats récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -446,7 +455,9 @@ class ContractController extends Controller
             $contract->submit();
 
             // Notifier le patron
-            $this->notifyApproverOnSubmission($contract, 'contract', 'Contrat', 6, $contract->contract_number ?? $contract->id);
+            $this->safeNotify(function () use ($contract) {
+                $this->notificationService->notifyNewContrat($contract);
+            });
 
             return response()->json([
                 'success' => true,
@@ -490,7 +501,12 @@ class ContractController extends Controller
             $contract->approve(request()->user()->id);
 
             // Notifier l'employé concerné
-            $this->notifySubmitterOnApproval($contract, 'contract', 'Contrat', 'employee_id', $contract->contract_number ?? $contract->id);
+            if ($contract->employee_id) {
+                $this->safeNotify(function () use ($contract) {
+                    $contract->load('employee');
+                    $this->notificationService->notifyContratValidated($contract);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -545,7 +561,12 @@ class ContractController extends Controller
             $contract->reject(request()->user()->id, $rejectionReason);
 
             // Notifier l'employé concerné
-            $this->notifySubmitterOnRejection($contract, 'contract', 'Contrat', $rejectionReason, 'employee_id', $contract->contract_number ?? $contract->id);
+            if ($contract->employee_id) {
+                $this->safeNotify(function () use ($contract, $rejectionReason) {
+                    $contract->load('employee');
+                    $this->notificationService->notifyContratRejected($contract, $rejectionReason);
+                });
+            }
 
             return response()->json([
                 'success' => true,

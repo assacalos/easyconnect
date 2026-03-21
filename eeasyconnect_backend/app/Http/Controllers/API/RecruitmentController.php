@@ -3,15 +3,24 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\RecruitmentRequest;
 use App\Models\RecruitmentApplication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RecruitmentController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des demandes de recrutement
      */
@@ -79,40 +88,26 @@ class RecruitmentController extends Controller
                 }
             }
 
-            // Pagination optionnelle
-            $perPage = $request->get('per_page');
-            $limit = $request->get('limit');
-            
-            // Si per_page ou limit n'est pas fourni, retourner tous les résultats sans pagination
-            if (!$perPage && !$limit) {
-                $requests = $query->orderBy('created_at', 'desc')->get();
-                
-                // Transformer les données au format Flutter
-                $formattedRequests = $requests->map(function ($request) {
-                    return $this->formatRecruitmentRequest($request);
-                });
-
-                return response()->json([
-                    'success' => true,
-                    'data' => $formattedRequests,
-                    'message' => 'Liste des demandes de recrutement récupérée avec succès'
-                ]);
-            }
-            
-            // Sinon, utiliser la pagination
-            $perPage = $perPage ?? $limit ?? 15;
+            $perPage = min((int) $request->get('per_page', $request->get('limit', 20)), 100);
             $requests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-            // Transformer les données au format Flutter
-            $requests->getCollection()->transform(function ($request) {
-                return $this->formatRecruitmentRequest($request);
-            });
+            $data = $requests->getCollection()->map(function ($item) {
+                return $this->formatRecruitmentRequest($item);
+            })->values();
 
             return response()->json([
                 'success' => true,
-                'data' => $requests,
-                'message' => 'Liste des demandes de recrutement récupérée avec succès'
-            ]);
+                'data' => $data,
+                'pagination' => [
+                    'current_page' => $requests->currentPage(),
+                    'last_page' => $requests->lastPage(),
+                    'per_page' => $requests->perPage(),
+                    'total' => $requests->total(),
+                    'from' => $requests->firstItem(),
+                    'to' => $requests->lastItem(),
+                ],
+                'message' => 'Liste des demandes de recrutement récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -325,7 +320,9 @@ class RecruitmentController extends Controller
             $recruitmentRequest->publish(request()->user()->id);
 
             // Notifier le patron lors de la publication
-            $this->notifyApproverOnSubmission($recruitmentRequest, 'recruitment', 'Demande de Recrutement', 6, $recruitmentRequest->id);
+            $this->safeNotify(function () use ($recruitmentRequest) {
+                $this->notificationService->notifyNewRecrutement($recruitmentRequest);
+            });
 
             return response()->json([
                 'success' => true,
@@ -453,7 +450,12 @@ class RecruitmentController extends Controller
 
             // Notifier le créateur de la demande
             $reason = $rejectionReason ?? 'Rejeté';
-            $this->notifySubmitterOnRejection($recruitmentRequest, 'recruitment', 'Demande de Recrutement', $reason, 'created_by', $recruitmentRequest->id);
+            if ($recruitmentRequest->created_by) {
+                $this->safeNotify(function () use ($recruitmentRequest, $reason) {
+                    $recruitmentRequest->load('creator');
+                    $this->notificationService->notifyRecrutementRejected($recruitmentRequest, $reason);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -487,7 +489,12 @@ class RecruitmentController extends Controller
             $recruitmentRequest->approve(request()->user()->id);
 
             // Notifier le créateur de la demande
-            $this->notifySubmitterOnApproval($recruitmentRequest, 'recruitment', 'Demande de Recrutement', 'created_by', $recruitmentRequest->id);
+            if ($recruitmentRequest->created_by) {
+                $this->safeNotify(function () use ($recruitmentRequest) {
+                    $recruitmentRequest->load('creator');
+                    $this->notificationService->notifyRecrutementValidated($recruitmentRequest);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -916,4 +923,3 @@ class RecruitmentController extends Controller
         return $data;
     }
 }
-

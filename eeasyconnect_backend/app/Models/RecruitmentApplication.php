@@ -124,7 +124,10 @@ class RecruitmentApplication extends Model
 
     public function getReviewerNameAttribute()
     {
-        return $this->reviewer ? $this->reviewer->prenom . ' ' . $this->reviewer->nom : 'N/A';
+        if (!$this->relationLoaded('reviewer') || !$this->reviewer) {
+            return 'N/A';
+        }
+        return trim(($this->reviewer->prenom ?? '') . ' ' . ($this->reviewer->nom ?? '')) ?: 'N/A';
     }
 
     public function getIsPendingAttribute()

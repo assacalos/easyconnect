@@ -291,6 +291,27 @@ class BonDeCommandeFournisseurNotifier
   Future<void> approveBonDeCommande(int bonDeCommandeId) async {
     state = state.copyWith(isLoading: true);
     CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
+    final list = List<BonDeCommande>.from(state.bonDeCommandes);
+    final idx = list.indexWhere((b) => b.id == bonDeCommandeId);
+    BonDeCommande? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = BonDeCommande(
+        id: previousItem.id,
+        clientId: previousItem.clientId,
+        fournisseurId: previousItem.fournisseurId,
+        numeroCommande: previousItem.numeroCommande,
+        dateCommande: previousItem.dateCommande,
+        description: previousItem.description,
+        statut: 'valide',
+        commentaire: previousItem.commentaire,
+        conditionsPaiement: previousItem.conditionsPaiement,
+        delaiLivraison: previousItem.delaiLivraison,
+        montantTotal: previousItem.montantTotal,
+        items: previousItem.items,
+      );
+      state = state.copyWith(bonDeCommandes: list);
+    }
     try {
       final success = await _service.validateBonDeCommande(bonDeCommandeId);
       if (success) {
@@ -321,8 +342,23 @@ class BonDeCommandeFournisseurNotifier
         Future.delayed(const Duration(milliseconds: 500),
             () => loadBonDeCommandes(status: state.currentStatus).catchError((_) {}));
       } else {
+        if (previousItem != null && idx != -1) {
+          final rollback = List<BonDeCommande>.from(state.bonDeCommandes);
+          rollback[idx] = previousItem;
+          state = state.copyWith(bonDeCommandes: rollback);
+        } else {
+          await loadBonDeCommandes(status: state.currentStatus);
+        }
+      }
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<BonDeCommande>.from(state.bonDeCommandes);
+        rollback[idx] = previousItem;
+        state = state.copyWith(bonDeCommandes: rollback);
+      } else {
         await loadBonDeCommandes(status: state.currentStatus);
       }
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }
@@ -331,6 +367,27 @@ class BonDeCommandeFournisseurNotifier
   Future<void> rejectBonDeCommande(int bonDeCommandeId, String commentaire) async {
     state = state.copyWith(isLoading: true);
     CacheHelper.clearByPrefix('bon_de_commandes_fournisseur_');
+    final list = List<BonDeCommande>.from(state.bonDeCommandes);
+    final idx = list.indexWhere((b) => b.id == bonDeCommandeId);
+    BonDeCommande? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = BonDeCommande(
+        id: previousItem.id,
+        clientId: previousItem.clientId,
+        fournisseurId: previousItem.fournisseurId,
+        numeroCommande: previousItem.numeroCommande,
+        dateCommande: previousItem.dateCommande,
+        description: previousItem.description,
+        statut: 'rejete',
+        commentaire: commentaire,
+        conditionsPaiement: previousItem.conditionsPaiement,
+        delaiLivraison: previousItem.delaiLivraison,
+        montantTotal: previousItem.montantTotal,
+        items: previousItem.items,
+      );
+      state = state.copyWith(bonDeCommandes: list);
+    }
     try {
       final success =
           await _service.rejectBonDeCommande(bonDeCommandeId, commentaire);
@@ -363,9 +420,24 @@ class BonDeCommandeFournisseurNotifier
         Future.delayed(const Duration(milliseconds: 500),
             () => loadBonDeCommandes(status: state.currentStatus).catchError((_) {}));
       } else {
-        await loadBonDeCommandes(status: state.currentStatus);
+        if (previousItem != null && idx != -1) {
+          final rollback = List<BonDeCommande>.from(state.bonDeCommandes);
+          rollback[idx] = previousItem;
+          state = state.copyWith(bonDeCommandes: rollback);
+        } else {
+          await loadBonDeCommandes(status: state.currentStatus);
+        }
         throw Exception('Erreur lors du rejet');
       }
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<BonDeCommande>.from(state.bonDeCommandes);
+        rollback[idx] = previousItem;
+        state = state.copyWith(bonDeCommandes: rollback);
+      } else {
+        await loadBonDeCommandes(status: state.currentStatus);
+      }
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

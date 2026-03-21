@@ -179,6 +179,14 @@ class InterventionNotifier extends Notifier<InterventionState> {
   Future<void> approveIntervention(Intervention intervention, {String? notes}) async {
     if (intervention.id == null) return;
     CacheHelper.clearByPrefix('interventions_');
+    final list = List<Intervention>.from(state.interventions);
+    final idx = list.indexWhere((i) => i.id == intervention.id);
+    Intervention? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'approved');
+      state = state.copyWith(interventions: list);
+    }
     try {
       final success = await _service.approveIntervention(intervention.id!, notes: notes);
       if (success) {
@@ -191,13 +199,32 @@ class InterventionNotifier extends Notifier<InterventionState> {
           route: NotificationHelper.getEntityRoute('intervention', intervention.id.toString()),
           entity: intervention,
         );
-        await loadInterventions(statusFilter: _currentStatusFilter);
-        await loadInterventionStats();
-        await loadPendingInterventions();
+        Future.microtask(() => loadInterventions(statusFilter: _currentStatusFilter).then((_) async {
+          await loadInterventionStats();
+          await loadPendingInterventions();
+        }).catchError((_) {}));
       } else {
+        if (previousItem != null && idx != -1) {
+          final rollback = List<Intervention>.from(state.interventions);
+          rollback[idx] = previousItem;
+          state = state.copyWith(interventions: rollback);
+        } else {
+          await loadInterventions(statusFilter: _currentStatusFilter);
+          await loadInterventionStats();
+          await loadPendingInterventions();
+        }
         throw Exception('Échec de l\'approbation');
       }
     } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Intervention>.from(state.interventions);
+        rollback[idx] = previousItem;
+        state = state.copyWith(interventions: rollback);
+      } else {
+        await loadInterventions(statusFilter: _currentStatusFilter);
+        await loadInterventionStats();
+        await loadPendingInterventions();
+      }
       rethrow;
     }
   }
@@ -205,6 +232,14 @@ class InterventionNotifier extends Notifier<InterventionState> {
   Future<void> rejectIntervention(Intervention intervention, String reason) async {
     if (intervention.id == null) return;
     CacheHelper.clearByPrefix('interventions_');
+    final list = List<Intervention>.from(state.interventions);
+    final idx = list.indexWhere((i) => i.id == intervention.id);
+    Intervention? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'rejected', rejectionReason: reason);
+      state = state.copyWith(interventions: list);
+    }
     try {
       final success = await _service.rejectIntervention(intervention.id!, reason: reason);
       if (success) {
@@ -218,13 +253,32 @@ class InterventionNotifier extends Notifier<InterventionState> {
           route: NotificationHelper.getEntityRoute('intervention', intervention.id.toString()),
           entity: intervention,
         );
-        await loadInterventions(statusFilter: _currentStatusFilter);
-        await loadInterventionStats();
-        await loadPendingInterventions();
+        Future.microtask(() => loadInterventions(statusFilter: _currentStatusFilter).then((_) async {
+          await loadInterventionStats();
+          await loadPendingInterventions();
+        }).catchError((_) {}));
       } else {
+        if (previousItem != null && idx != -1) {
+          final rollback = List<Intervention>.from(state.interventions);
+          rollback[idx] = previousItem;
+          state = state.copyWith(interventions: rollback);
+        } else {
+          await loadInterventions(statusFilter: _currentStatusFilter);
+          await loadInterventionStats();
+          await loadPendingInterventions();
+        }
         throw Exception('Échec du rejet');
       }
     } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Intervention>.from(state.interventions);
+        rollback[idx] = previousItem;
+        state = state.copyWith(interventions: rollback);
+      } else {
+        await loadInterventions(statusFilter: _currentStatusFilter);
+        await loadInterventionStats();
+        await loadPendingInterventions();
+      }
       rethrow;
     }
   }

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
@@ -71,7 +70,7 @@ class ApiService {
     try {
       await _ensureCsrfCookieIfWeb();
 
-      final url = "$baseUrl/login";
+      final url = "${AppConfig.baseUrl}/login";
       final requestHeaders = headers();
       final requestBody = jsonEncode({"email": email, "password": password});
 
@@ -155,7 +154,7 @@ class ApiService {
     try {
       await _ensureCsrfCookieIfWeb();
 
-      final url = '$baseUrl/register';
+      final url = '${AppConfig.baseUrl}/register';
 
       if (photo != null) {
         final request = http.MultipartRequest('POST', Uri.parse(url));
@@ -207,7 +206,7 @@ class ApiService {
   static Future<Map<String, dynamic>> logout() async {
     try {
       final response = await http.post(
-        Uri.parse("$baseUrl/logout"),
+        Uri.parse("${AppConfig.baseUrl}/logout"),
         headers: headers(),
       );
       final result = parseResponse(response);
@@ -219,13 +218,13 @@ class ApiService {
 
   // -------------------- USERS --------------------
   static Future<Map<String, dynamic>> getUsers() async {
-    final res = await http.get(Uri.parse('$baseUrl/users'), headers: headers());
+    final res = await http.get(Uri.parse('${AppConfig.baseUrl}/users'), headers: headers());
     return parseResponse(res);
   }
 
   /// Récupère les données de l'utilisateur connecté
   static Future<Map<String, dynamic>> getUser() async {
-    final res = await http.get(Uri.parse('$baseUrl/user'), headers: headers());
+    final res = await http.get(Uri.parse('${AppConfig.baseUrl}/user'), headers: headers());
     return parseResponse(res);
   }
 
@@ -238,7 +237,7 @@ class ApiService {
   }) async {
     try {
       final res = await http.put(
-        Uri.parse('$baseUrl/user-profile'),
+        Uri.parse('${AppConfig.baseUrl}/user-profile'),
         headers: headers(),
         body: jsonEncode({
           'nom': nom,
@@ -261,7 +260,7 @@ class ApiService {
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/user-profile-photo'),
+        Uri.parse('${AppConfig.baseUrl}/user-profile-photo'),
       );
       final h = headers();
       h.remove('Content-Type');
@@ -287,7 +286,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> updateUserRole(int id, int role) async {
     final res = await http.put(
-      Uri.parse('$baseUrl/users/$id'),
+      Uri.parse('${AppConfig.baseUrl}/users/$id'),
       headers: headers(),
       body: jsonEncode({'role': role}),
     );
@@ -298,7 +297,7 @@ class ApiService {
   static Future<Map<String, dynamic>> getPendingRegistrations() async {
     final h = await headersAsync();
     final res = await http.get(
-      Uri.parse('$baseUrl/users-pending-registrations'),
+      Uri.parse('${AppConfig.baseUrl}/users-pending-registrations'),
       headers: h,
     );
     return parseResponse(res);
@@ -308,7 +307,7 @@ class ApiService {
   static Future<Map<String, dynamic>> approveRegistration(int id, int role) async {
     final h = await headersAsync();
     final res = await http.post(
-      Uri.parse('$baseUrl/users-approve-registration/$id'),
+      Uri.parse('${AppConfig.baseUrl}/users-approve-registration/$id'),
       headers: h,
       body: jsonEncode({'role': role}),
     );
@@ -319,7 +318,7 @@ class ApiService {
   static Future<Map<String, dynamic>> rejectRegistration(int id) async {
     final h = await headersAsync();
     final res = await http.post(
-      Uri.parse('$baseUrl/users-reject-registration/$id'),
+      Uri.parse('${AppConfig.baseUrl}/users-reject-registration/$id'),
       headers: h,
     );
     return parseResponse(res);
@@ -328,7 +327,7 @@ class ApiService {
   // -------------------- CLIENTS --------------------
   static Future<Map<String, dynamic>> getClients() async {
     final res = await http.get(
-      Uri.parse('$baseUrl/clients'),
+      Uri.parse('${AppConfig.baseUrl}/clients'),
       headers: headers(),
     );
     return parseResponse(res);
@@ -336,7 +335,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createClient(Map data) async {
     final res = await http.post(
-      Uri.parse('$baseUrl/clients'),
+      Uri.parse('${AppConfig.baseUrl}/clients'),
       headers: headers(),
       body: jsonEncode(data),
     );
@@ -345,7 +344,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> updateClient(int id, Map data) async {
     final res = await http.put(
-      Uri.parse('$baseUrl/clients/$id'),
+      Uri.parse('${AppConfig.baseUrl}/clients/$id'),
       headers: headers(),
       body: jsonEncode(data),
     );
@@ -354,7 +353,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> deleteClient(int id) async {
     final res = await http.delete(
-      Uri.parse('$baseUrl/clients/$id'),
+      Uri.parse('${AppConfig.baseUrl}/clients/$id'),
       headers: headers(),
     );
     return parseResponse(res);
@@ -363,7 +362,7 @@ class ApiService {
   // -------------------- QUOTES --------------------
   static Future<Map<String, dynamic>> getQuotes() async {
     final res = await http.get(
-      Uri.parse('$baseUrl/quotes'),
+      Uri.parse('${AppConfig.baseUrl}/quotes'),
       headers: headers(),
     );
     return parseResponse(res);
@@ -371,7 +370,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createQuote(Map data) async {
     final res = await http.post(
-      Uri.parse('$baseUrl/quotes'),
+      Uri.parse('${AppConfig.baseUrl}/quotes'),
       headers: headers(),
       body: jsonEncode(data),
     );
@@ -381,7 +380,7 @@ class ApiService {
   // -------------------- INVOICES --------------------
   static Future<Map<String, dynamic>> getInvoices() async {
     final res = await http.get(
-      Uri.parse('$baseUrl/invoices'),
+      Uri.parse('${AppConfig.baseUrl}/invoices'),
       headers: headers(),
     );
     return parseResponse(res);
@@ -398,7 +397,7 @@ class ApiService {
       q['date_debut'] = dateDebut;
       q['date_fin'] = dateFin;
     }
-    final uri = Uri.parse('$baseUrl/journal').replace(queryParameters: q.isEmpty ? null : q);
+    final uri = Uri.parse('${AppConfig.baseUrl}/journal').replace(queryParameters: q.isEmpty ? null : q);
     final res = await http.get(uri, headers: headers());
     return parseResponse(res);
   }
@@ -413,19 +412,19 @@ class ApiService {
       q['date_debut'] = dateDebut;
       q['date_fin'] = dateFin;
     }
-    final uri = Uri.parse('$baseUrl/journal-list').replace(queryParameters: q);
+    final uri = Uri.parse('${AppConfig.baseUrl}/journal-list').replace(queryParameters: q);
     final res = await http.get(uri, headers: headers());
     return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> getJournalShow(int id) async {
-    final res = await http.get(Uri.parse('$baseUrl/journal-show/$id'), headers: headers());
+    final res = await http.get(Uri.parse('${AppConfig.baseUrl}/journal-show/$id'), headers: headers());
     return parseResponse(res);
   }
 
   static Future<Map<String, dynamic>> journalCreate(Map<String, dynamic> data) async {
     final res = await http.post(
-      Uri.parse('$baseUrl/journal-create'),
+      Uri.parse('${AppConfig.baseUrl}/journal-create'),
       headers: headers(),
       body: jsonEncode(data),
     );
@@ -434,7 +433,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> journalUpdate(int id, Map<String, dynamic> data) async {
     final res = await http.put(
-      Uri.parse('$baseUrl/journal-update/$id'),
+      Uri.parse('${AppConfig.baseUrl}/journal-update/$id'),
       headers: headers(),
       body: jsonEncode(data),
     );
@@ -442,7 +441,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> journalDestroy(int id) async {
-    final res = await http.delete(Uri.parse('$baseUrl/journal-destroy/$id'), headers: headers());
+    final res = await http.delete(Uri.parse('${AppConfig.baseUrl}/journal-destroy/$id'), headers: headers());
     return parseResponse(res);
   }
 

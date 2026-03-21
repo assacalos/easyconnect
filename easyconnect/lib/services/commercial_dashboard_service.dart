@@ -1,15 +1,13 @@
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class CommercialDashboardService {
-  final storage = GetStorage();
-
   // Récupérer les entités en attente
   Future<Map<String, int>> getPendingEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int pendingClients = 0;
       int pendingDevis = 0;
       int pendingBordereaux = 0;
@@ -17,12 +15,9 @@ class CommercialDashboardService {
 
       // Récupérer les clients en attente
       try {
-        final clientsResponse = await http.get(
-          Uri.parse('$baseUrl/api/clients-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final clientsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/clients-list'),
+          headers: headers,
         );
         if (clientsResponse.statusCode == 200) {
           final clientsData = json.decode(clientsResponse.body);
@@ -43,16 +38,15 @@ class CommercialDashboardService {
                   )
                   .length; // 0 = en attente pour clients
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les devis en attente
       try {
-        final devisResponse = await http.get(
-          Uri.parse('$baseUrl/api/devis-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final devisResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/devis-list'),
+          headers: headers,
         );
         if (devisResponse.statusCode == 200) {
           final devisData = json.decode(devisResponse.body);
@@ -70,16 +64,15 @@ class CommercialDashboardService {
                   .where((devis) => devis['status'] == 1)
                   .length; // 1 = en attente
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les bordereaux en attente
       try {
-        final bordereauxResponse = await http.get(
-          Uri.parse('$baseUrl/api/bordereaux-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bordereauxResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bordereaux-list'),
+          headers: headers,
         );
         if (bordereauxResponse.statusCode == 200) {
           final bordereauxData = json.decode(bordereauxResponse.body);
@@ -97,16 +90,15 @@ class CommercialDashboardService {
                   .where((bordereau) => bordereau['status'] == 1)
                   .length; // 1 = en attente
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les bons de commande en attente
       try {
-        final bonCommandesResponse = await http.get(
-          Uri.parse('$baseUrl/api/bons-de-commande-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bonCommandesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bons-de-commande-list'),
+          headers: headers,
         );
         if (bonCommandesResponse.statusCode == 200) {
           final bonCommandesData = json.decode(bonCommandesResponse.body);
@@ -118,7 +110,9 @@ class CommercialDashboardService {
                     .length; // 1 = en attente
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       return {
         'clients': pendingClients,
@@ -134,7 +128,7 @@ class CommercialDashboardService {
   // Récupérer les entités validées
   Future<Map<String, int>> getValidatedEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int validatedClients = 0;
       int validatedDevis = 0;
       int validatedBordereaux = 0;
@@ -142,12 +136,9 @@ class CommercialDashboardService {
 
       // Récupérer les clients validés
       try {
-        final clientsResponse = await http.get(
-          Uri.parse('$baseUrl/api/clients-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final clientsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/clients-list'),
+          headers: headers,
         );
         if (clientsResponse.statusCode == 200) {
           final clientsData = json.decode(clientsResponse.body);
@@ -156,16 +147,15 @@ class CommercialDashboardService {
                 clientsData.where((client) => client['status'] == 1).length;
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les devis validés
       try {
-        final devisResponse = await http.get(
-          Uri.parse('$baseUrl/api/devis-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final devisResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/devis-list'),
+          headers: headers,
         );
         if (devisResponse.statusCode == 200) {
           final devisData = json.decode(devisResponse.body);
@@ -176,16 +166,15 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les bordereaux validés
       try {
-        final bordereauxResponse = await http.get(
-          Uri.parse('$baseUrl/api/bordereaux-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bordereauxResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bordereaux-list'),
+          headers: headers,
         );
         if (bordereauxResponse.statusCode == 200) {
           final bordereauxData = json.decode(bordereauxResponse.body);
@@ -196,16 +185,15 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les bons de commande validés
       try {
-        final bonCommandesResponse = await http.get(
-          Uri.parse('$baseUrl/api/bons-de-commande-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bonCommandesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bons-de-commande-list'),
+          headers: headers,
         );
         if (bonCommandesResponse.statusCode == 200) {
           final bonCommandesData = json.decode(bonCommandesResponse.body);
@@ -217,7 +205,9 @@ class CommercialDashboardService {
                     .length; // 2 = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       return {
         'clients': validatedClients,
@@ -233,19 +223,16 @@ class CommercialDashboardService {
   // Récupérer les statistiques montants
   Future<Map<String, dynamic>> getStatistics() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       double totalRevenue = 0.0;
       double pendingDevisAmount = 0.0;
       double paidBordereauxAmount = 0.0;
 
       // Calculer le chiffre d'affaires total à partir des bordereaux payés
       try {
-        final bordereauxResponse = await http.get(
-          Uri.parse('$baseUrl/api/bordereaux-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bordereauxResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bordereaux-list'),
+          headers: headers,
         );
         if (bordereauxResponse.statusCode == 200) {
           final bordereauxData = json.decode(bordereauxResponse.body);
@@ -269,16 +256,15 @@ class CommercialDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Calculer le montant des devis en attente
       try {
-        final devisResponse = await http.get(
-          Uri.parse('$baseUrl/api/devis-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final devisResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/devis-list'),
+          headers: headers,
         );
         if (devisResponse.statusCode == 200) {
           final devisData = json.decode(devisResponse.body);
@@ -302,7 +288,9 @@ class CommercialDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Le montant des bordereaux payés est déjà calculé dans totalRevenue
       paidBordereauxAmount = totalRevenue;
@@ -324,14 +312,11 @@ class CommercialDashboardService {
   // Récupérer les données complètes du dashboard
   Future<Map<String, dynamic>> getDashboardData() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/commercial/dashboard/data'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/commercial/dashboard/data'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

@@ -218,12 +218,18 @@ class Stock extends Model
 
     public function getCreatorNameAttribute()
     {
-        return $this->creator ? $this->creator->prenom . ' ' . $this->creator->nom : 'N/A';
+        if (!$this->relationLoaded('creator') || !$this->creator) {
+            return 'N/A';
+        }
+        return trim(($this->creator->prenom ?? '') . ' ' . ($this->creator->nom ?? '')) ?: 'N/A';
     }
 
     public function getUpdaterNameAttribute()
     {
-        return $this->updater ? $this->updater->prenom . ' ' . $this->updater->nom : 'N/A';
+        if (!$this->relationLoaded('updater') || !$this->updater) {
+            return 'N/A';
+        }
+        return trim(($this->updater->prenom ?? '') . ' ' . ($this->updater->nom ?? '')) ?: 'N/A';
     }
 
     public function getFormattedUnitCostAttribute()
@@ -296,24 +302,20 @@ class Stock extends Model
         $unitCost = $unitCost ?? $this->unit_cost;
         $totalCost = $quantity * $unitCost;
 
-        // Créer le mouvement
+        // Créer le mouvement (colonnes réelles : stock_id, type, quantity, reason, status, user_id)
         $movement = StockMovement::create([
             'stock_id' => $this->id,
             'type' => 'in',
             'reason' => $reason,
             'quantity' => $quantity,
-            'unit_cost' => $unitCost,
-            'total_cost' => $totalCost,
-            'reference' => $reference,
-            'notes' => $notes,
-            'created_by' => $createdBy ?? auth()->id()
+            'status' => 'valide',
+            'user_id' => $createdBy ?? auth()->id(),
         ]);
 
         // Mettre à jour la quantité
         $this->update([
             'current_quantity' => $this->current_quantity + $quantity,
             'unit_cost' => $unitCost,
-            'updated_by' => $createdBy ?? auth()->id()
         ]);
 
         // Vérifier les alertes
@@ -328,23 +330,19 @@ class Stock extends Model
             throw new \Exception('Quantité insuffisante en stock');
         }
 
-        // Créer le mouvement
+        // Créer le mouvement (colonnes réelles : stock_id, type, quantity, reason, status, user_id)
         $movement = StockMovement::create([
             'stock_id' => $this->id,
             'type' => 'out',
             'reason' => $reason,
             'quantity' => $quantity,
-            'unit_cost' => $this->unit_cost,
-            'total_cost' => $quantity * $this->unit_cost,
-            'reference' => $reference,
-            'notes' => $notes,
-            'created_by' => $createdBy ?? auth()->id()
+            'status' => 'valide',
+            'user_id' => $createdBy ?? auth()->id(),
         ]);
 
         // Mettre à jour la quantité
         $this->update([
             'current_quantity' => $this->current_quantity - $quantity,
-            'updated_by' => $createdBy ?? auth()->id()
         ]);
 
         // Vérifier les alertes
@@ -359,22 +357,19 @@ class Stock extends Model
         $type = $difference > 0 ? 'in' : 'out';
         $quantity = abs($difference);
 
-        // Créer le mouvement
+        // Créer le mouvement (colonnes réelles : stock_id, type, quantity, reason, status, user_id)
         $movement = StockMovement::create([
             'stock_id' => $this->id,
             'type' => $type,
             'reason' => $reason,
             'quantity' => $quantity,
-            'unit_cost' => $this->unit_cost,
-            'total_cost' => $quantity * $this->unit_cost,
-            'notes' => $notes,
-            'created_by' => $createdBy ?? auth()->id()
+            'status' => 'valide',
+            'user_id' => $createdBy ?? auth()->id(),
         ]);
 
         // Mettre à jour la quantité
         $this->update([
             'current_quantity' => $newQuantity,
-            'updated_by' => $createdBy ?? auth()->id()
         ]);
 
         // Vérifier les alertes
@@ -389,24 +384,19 @@ class Stock extends Model
             throw new \Exception('Quantité insuffisante en stock');
         }
 
-        // Créer le mouvement
+        // Créer le mouvement (type doit être 'in' ou 'out' dans la migration → on enregistre une sortie)
         $movement = StockMovement::create([
             'stock_id' => $this->id,
-            'type' => 'transfer',
+            'type' => 'out',
             'reason' => 'transfer',
             'quantity' => $quantity,
-            'unit_cost' => $this->unit_cost,
-            'total_cost' => $quantity * $this->unit_cost,
-            'location_from' => $this->location,
-            'location_to' => $locationTo,
-            'notes' => $notes,
-            'created_by' => $createdBy ?? auth()->id()
+            'status' => 'valide',
+            'user_id' => $createdBy ?? auth()->id(),
         ]);
 
         // Mettre à jour la quantité
         $this->update([
             'current_quantity' => $this->current_quantity - $quantity,
-            'updated_by' => $createdBy ?? auth()->id()
         ]);
 
         // Vérifier les alertes

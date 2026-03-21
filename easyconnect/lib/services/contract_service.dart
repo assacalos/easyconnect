@@ -1,15 +1,14 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/contract_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class ContractService {
   static final ContractService _instance = ContractService._();
@@ -65,30 +64,30 @@ class ContractService {
           'clauses': clauses.map((c) => c.toJson()).toList(),
       };
 
-      print('=== DEBUG CREATE CONTRACT SERVICE ===');
-      print('URL: $baseUrl/contracts');
-      print('Request Body: ${jsonEncode(requestBody)}');
+      AppLogger.debug('=== DEBUG CREATE CONTRACT SERVICE ===', tag: 'Contract');
+      AppLogger.debug('URL: ${AppConfig.baseUrl}/contracts', tag: 'Contract');
+      AppLogger.debug('Request Body: ${jsonEncode(requestBody)}', tag: 'Contract');
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/contracts'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/contracts'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(requestBody),
       );
 
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
+      AppLogger.debug('Status Code: ${response.statusCode}', tag: 'Contract');
+      AppLogger.debug('Response Body: ${response.body}', tag: 'Contract');
 
       if (response.statusCode == 201) {
         return jsonDecode(response.body);
       } else {
         final errorBody = response.body;
-        print('Error Response: $errorBody');
+        AppLogger.debug('Error Response: $errorBody', tag: 'Contract');
         throw Exception(
           'Erreur lors de la création du contrat: ${response.statusCode} - $errorBody',
         );
       }
     } catch (e) {
-      print('Exception in createContract: $e');
+      AppLogger.error('Exception in createContract', tag: 'Contract', error: e);
       rethrow;
     }
   }
@@ -132,8 +131,9 @@ class ContractService {
 
       AppLogger.httpRequest('GET', url, tag: 'CONTRACT_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
-        operation: () => http.get(Uri.parse(url), headers: ApiService.headers()),
+        operation: () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -172,7 +172,7 @@ class ContractService {
     int? employeeId,
   }) async {
     try {
-      String url = '$baseUrl/contracts';
+      String url = '${AppConfig.baseUrl}/contracts';
       List<String> params = [];
 
       if (status != null) {
@@ -192,8 +192,7 @@ class ContractService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http
-          .get(Uri.parse(url), headers: ApiService.headers())
+      final response = await HttpInterceptor.get(Uri.parse(url), headers: await ApiService.headersAsync())
           .timeout(
             AppConfig.defaultTimeout,
             onTimeout: () =>
@@ -236,10 +235,9 @@ class ContractService {
   // Récupérer un contrat par ID
   Future<Contract> getContract(int id) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/contracts/$id'),
-            headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/contracts/$id'),
+            headers: await ApiService.headersAsync(),
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -263,9 +261,9 @@ class ContractService {
   // Soumettre un contrat pour approbation
   Future<Map<String, dynamic>> submitContract(int id) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id/submit'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id/submit'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -281,9 +279,9 @@ class ContractService {
   // Approuver un contrat
   Future<Map<String, dynamic>> approveContract(int id, {String? notes}) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id/approve'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id/approve'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'notes': notes}),
       );
 
@@ -305,9 +303,9 @@ class ContractService {
     required String reason,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id/reject'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id/reject'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'rejection_reason': reason}),
       );
 
@@ -354,8 +352,9 @@ class ContractService {
       if (grossSalary != null) body['gross_salary'] = grossSalary;
       if (netSalary != null) body['net_salary'] = netSalary;
       if (salaryCurrency != null) body['salary_currency'] = salaryCurrency;
-      if (paymentFrequency != null)
+      if (paymentFrequency != null) {
         body['payment_frequency'] = paymentFrequency;
+      }
       if (startDate != null) body['start_date'] = startDate.toIso8601String();
       if (endDate != null) body['end_date'] = endDate.toIso8601String();
       if (durationMonths != null) body['duration_months'] = durationMonths;
@@ -364,12 +363,13 @@ class ContractService {
       if (weeklyHours != null) body['weekly_hours'] = weeklyHours;
       if (probationPeriod != null) body['probation_period'] = probationPeriod;
       if (notes != null) body['notes'] = notes;
-      if (clauses != null)
+      if (clauses != null) {
         body['clauses'] = clauses.map((c) => c.toJson()).toList();
+      }
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(body),
       );
 
@@ -393,9 +393,9 @@ class ContractService {
     String? notes,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id/terminate'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id/terminate'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'termination_reason': reason,
           'termination_date': terminationDate.toIso8601String(),
@@ -418,9 +418,9 @@ class ContractService {
   // Annuler un contrat
   Future<Map<String, dynamic>> cancelContract(int id, {String? reason}) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/contracts/$id/cancel'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id/cancel'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'reason': reason}),
       );
 
@@ -437,9 +437,9 @@ class ContractService {
   // Supprimer un contrat
   Future<Map<String, dynamic>> deleteContract(int id) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/contracts/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -457,9 +457,9 @@ class ContractService {
   // Récupérer les clauses d'un contrat
   Future<List<ContractClause>> getContractClauses(int contractId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/contracts/$contractId/clauses'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$contractId/clauses'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -487,9 +487,9 @@ class ContractService {
     int? order,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/contracts/$contractId/clauses'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$contractId/clauses'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'title': title,
           'content': content,
@@ -516,9 +516,9 @@ class ContractService {
     int contractId,
   ) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/contracts/$contractId/attachments'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$contractId/attachments'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -547,9 +547,9 @@ class ContractService {
     String? description,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/contracts/$contractId/attachments'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/contracts/$contractId/attachments'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'file_name': fileName,
           'file_path': filePath,
@@ -578,7 +578,7 @@ class ContractService {
     String? department,
   }) async {
     try {
-      String url = '$baseUrl/contract-templates';
+      String url = '${AppConfig.baseUrl}/contract-templates';
       List<String> params = [];
 
       if (contractType != null) {
@@ -592,9 +592,9 @@ class ContractService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -620,7 +620,7 @@ class ContractService {
     String? contractType,
   }) async {
     try {
-      String url = '$baseUrl/contract-stats';
+      String url = '${AppConfig.baseUrl}/contract-stats';
       List<String> params = [];
 
       if (startDate != null) {
@@ -640,9 +640,9 @@ class ContractService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -661,9 +661,9 @@ class ContractService {
   // Récupérer les contrats expirant bientôt
   Future<List<Contract>> getExpiringContracts({int daysAhead = 30}) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/contracts/expiring?days_ahead=$daysAhead'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/contracts/expiring?days_ahead=$daysAhead'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -684,9 +684,9 @@ class ContractService {
   // Récupérer les employés disponibles pour un nouveau contrat
   Future<List<Map<String, dynamic>>> getAvailableEmployees() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/employees/available-for-contract'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/employees/available-for-contract'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -742,9 +742,9 @@ class ContractService {
   // Générer un numéro de contrat
   Future<String> generateContractNumber() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/contracts/generate-number'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/contracts/generate-number'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {

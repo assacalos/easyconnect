@@ -13,7 +13,7 @@ import 'package:easyconnect/utils/logger.dart';
 class SessionService {
   // Stockage sécurisé pour les données sensibles (tokens)
   static final _secureStorage = FlutterSecureStorage(
-    aOptions: const AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: const AndroidOptions(),
     iOptions: const IOSOptions(
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),
@@ -134,10 +134,12 @@ class SessionService {
           try {
             final userMap = jsonDecode(secureUserJson) as Map<String, dynamic>;
             _storage.write(_userKey, userMap);
-            if (userMap['id'] != null)
+            if (userMap['id'] != null) {
               _storage.write(_userIdKey, userMap['id']);
-            if (userMap['role'] != null)
+            }
+            if (userMap['role'] != null) {
               _storage.write(_userRoleKey, userMap['role']);
+            }
             AppLogger.info(
               'Utilisateur resynchronisé depuis SecureStorage (connexion permanente)',
               tag: 'SESSION_SERVICE',
@@ -386,7 +388,8 @@ class SessionService {
         tag: 'SESSION_SERVICE',
       );
 
-      // L'endpoint requiert l'authentification Sanctum (token dans le header)
+      // Requête volontairement hors HttpInterceptor (évite boucle refresh ↔ intercepteur).
+      // Même User-Agent que [ApiService.headers] (WAF / Tiger Protect).
       final response = await http
           .post(
             Uri.parse(url),
@@ -394,6 +397,8 @@ class SessionService {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $currentToken',
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             },
           )
           .timeout(

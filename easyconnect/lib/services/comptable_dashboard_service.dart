@@ -1,15 +1,13 @@
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class ComptableDashboardService {
-  final storage = GetStorage();
-
   // Récupérer les entités en attente
   Future<Map<String, int>> getPendingEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int pendingFactures = 0;
       int pendingPaiements = 0;
       int pendingDepenses = 0;
@@ -17,12 +15,9 @@ class ComptableDashboardService {
 
       // Récupérer les factures en attente
       try {
-        final facturesResponse = await http.get(
-          Uri.parse('$baseUrl/factures-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final facturesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/factures-list'),
+          headers: headers,
         );
         if (facturesResponse.statusCode == 200) {
           final facturesData = json.decode(facturesResponse.body);
@@ -33,16 +28,15 @@ class ComptableDashboardService {
                     .length; // 'draft' = en attente
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les paiements en attente
       try {
-        final paiementsResponse = await http.get(
-          Uri.parse('$baseUrl/paiements-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final paiementsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/paiements-list'),
+          headers: headers,
         );
         if (paiementsResponse.statusCode == 200) {
           final paiementsData = json.decode(paiementsResponse.body);
@@ -57,16 +51,15 @@ class ComptableDashboardService {
                     .length; // 'pending' ou 'submitted' = en attente
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les dépenses en attente
       try {
-        final depensesResponse = await http.get(
-          Uri.parse('$baseUrl/depenses-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final depensesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/depenses-list'),
+          headers: headers,
         );
         if (depensesResponse.statusCode == 200) {
           final depensesData = json.decode(depensesResponse.body);
@@ -77,16 +70,15 @@ class ComptableDashboardService {
                     .length; // 'pending' = en attente
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les salaires en attente
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/salaires-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaires-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -97,7 +89,9 @@ class ComptableDashboardService {
                     .length; // 'pending' = en attente
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       return {
         'factures': pendingFactures,
@@ -113,7 +107,7 @@ class ComptableDashboardService {
   // Récupérer les entités validées
   Future<Map<String, int>> getValidatedEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int validatedFactures = 0;
       int validatedPaiements = 0;
       int validatedDepenses = 0;
@@ -121,12 +115,9 @@ class ComptableDashboardService {
 
       // Récupérer les factures validées
       try {
-        final facturesResponse = await http.get(
-          Uri.parse('$baseUrl/factures-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final facturesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/factures-list'),
+          headers: headers,
         );
         if (facturesResponse.statusCode == 200) {
           final facturesData = json.decode(facturesResponse.body);
@@ -141,16 +132,15 @@ class ComptableDashboardService {
                     .length; // 'sent' ou 'paid' = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les paiements validés
       try {
-        final paiementsResponse = await http.get(
-          Uri.parse('$baseUrl/paiements-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final paiementsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/paiements-list'),
+          headers: headers,
         );
         if (paiementsResponse.statusCode == 200) {
           final paiementsData = json.decode(paiementsResponse.body);
@@ -165,16 +155,15 @@ class ComptableDashboardService {
                     .length; // 'approved' ou 'paid' = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les dépenses validées
       try {
-        final depensesResponse = await http.get(
-          Uri.parse('$baseUrl/depenses-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final depensesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/depenses-list'),
+          headers: headers,
         );
         if (depensesResponse.statusCode == 200) {
           final depensesData = json.decode(depensesResponse.body);
@@ -185,16 +174,15 @@ class ComptableDashboardService {
                     .length; // 'approved' = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Récupérer les salaires validés
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/salaires-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaires-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -209,7 +197,9 @@ class ComptableDashboardService {
                     .length; // 'approved' ou 'paid' = validé
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       return {
         'factures': validatedFactures,
@@ -225,7 +215,7 @@ class ComptableDashboardService {
   // Récupérer les statistiques montants
   Future<Map<String, dynamic>> getStatistics() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       double totalRevenue = 0.0;
       double totalPayments = 0.0;
       double totalExpenses = 0.0;
@@ -233,12 +223,9 @@ class ComptableDashboardService {
 
       // Calculer le chiffre d'affaires total à partir des factures validées
       try {
-        final facturesResponse = await http.get(
-          Uri.parse('$baseUrl/factures-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final facturesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/factures-list'),
+          headers: headers,
         );
         if (facturesResponse.statusCode == 200) {
           final facturesData = json.decode(facturesResponse.body);
@@ -259,16 +246,15 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Calculer le total des paiements
       try {
-        final paiementsResponse = await http.get(
-          Uri.parse('$baseUrl/paiements-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final paiementsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/paiements-list'),
+          headers: headers,
         );
         if (paiementsResponse.statusCode == 200) {
           final paiementsData = json.decode(paiementsResponse.body);
@@ -283,16 +269,15 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Calculer le total des dépenses
       try {
-        final depensesResponse = await http.get(
-          Uri.parse('$baseUrl/depenses-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final depensesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/depenses-list'),
+          headers: headers,
         );
         if (depensesResponse.statusCode == 200) {
           final depensesData = json.decode(depensesResponse.body);
@@ -306,16 +291,15 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       // Calculer le total des salaires
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/salaires-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaires-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -330,7 +314,9 @@ class ComptableDashboardService {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
+      }
 
       double netProfit = totalRevenue - totalExpenses - totalSalaries;
 
@@ -355,14 +341,11 @@ class ComptableDashboardService {
   // Récupérer les données complètes du dashboard
   Future<Map<String, dynamic>> getDashboardData() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/comptable/dashboard/data'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/comptable/dashboard/data'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

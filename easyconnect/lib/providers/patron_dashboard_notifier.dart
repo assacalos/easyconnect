@@ -231,6 +231,46 @@ class PatronDashboardNotifier extends AsyncNotifier<PatronDashboardState> {
       }
     } catch (_) {}
 
+    // Devis tous statuts pour KPI CA et encaissable
+    final devisAll = await _safeLoadList(() => devisService.getDevis(status: null), 'devis_all');
+
+    // Sorties du journal pour KPI dépenses (jour, semaine, mois)
+    double journalSortiesJour = 0.0, journalSortiesSemaine = 0.0, journalSortiesMois = 0.0;
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+    final startOfWeekDay = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+    final endOfWeek = startOfWeekDay.add(const Duration(days: 7));
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final endOfMonth = DateTime(now.year, now.month + 1, 0);
+    try {
+      final jDay = await ApiService.getJournal(
+        dateDebut: '${startOfDay.year}-${startOfDay.month.toString().padLeft(2, '0')}-${startOfDay.day.toString().padLeft(2, '0')}',
+        dateFin: '${endOfDay.year}-${endOfDay.month.toString().padLeft(2, '0')}-${endOfDay.day.toString().padLeft(2, '0')}',
+      );
+      final jWeek = await ApiService.getJournal(
+        dateDebut: '${startOfWeekDay.year}-${startOfWeekDay.month.toString().padLeft(2, '0')}-${startOfWeekDay.day.toString().padLeft(2, '0')}',
+        dateFin: '${endOfWeek.year}-${endOfWeek.month.toString().padLeft(2, '0')}-${endOfWeek.day.toString().padLeft(2, '0')}',
+      );
+      final jMonth = await ApiService.getJournal(
+        dateDebut: '${startOfMonth.year}-${startOfMonth.month.toString().padLeft(2, '0')}-${startOfMonth.day.toString().padLeft(2, '0')}',
+        dateFin: '${endOfMonth.year}-${endOfMonth.month.toString().padLeft(2, '0')}-${endOfMonth.day.toString().padLeft(2, '0')}',
+      );
+      if (jDay['success'] == true && jDay['data'] != null) {
+        final d = jDay['data'] as Map<String, dynamic>;
+        journalSortiesJour = (d['total_sorties'] is num) ? (d['total_sorties'] as num).toDouble() : 0.0;
+      }
+      if (jWeek['success'] == true && jWeek['data'] != null) {
+        final d = jWeek['data'] as Map<String, dynamic>;
+        journalSortiesSemaine = (d['total_sorties'] is num) ? (d['total_sorties'] as num).toDouble() : 0.0;
+      }
+      if (jMonth['success'] == true && jMonth['data'] != null) {
+        final d = jMonth['data'] as Map<String, dynamic>;
+        journalSortiesMois = (d['total_sorties'] is num) ? (d['total_sorties'] as num).toDouble() : 0.0;
+      }
+    } catch (_) {}
+
     CacheHelper.set('dashboard_patron_pendingClients', pendingClients);
     CacheHelper.set('dashboard_patron_pendingDevis', pendingDevis);
     CacheHelper.set('dashboard_patron_pendingBordereaux', pendingBordereaux);
@@ -300,26 +340,40 @@ class PatronDashboardNotifier extends AsyncNotifier<PatronDashboardState> {
       ));
     }
 
-    // KPIs : CA et dépenses par période (jour, semaine, mois), encaissable
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final startOfWeekDay = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
-    final startOfMonth = DateTime(now.year, now.month, 1);
+    // KPIs : CA (factures payées + devis payés), encaissable (proformas validés + factures validées non payées), dépenses (dépenses approuvées + sorties journal)
+    final startOfDayKpi = DateTime(now.year, now.month, now.day);
+    final startOfWeekKpi = now.subtract(Duration(days: now.weekday - 1));
+    final startOfWeekDayKpi = DateTime(startOfWeekKpi.year, startOfWeekKpi.month, startOfWeekKpi.day);
+    final startOfMonthKpi = DateTime(now.year, now.month, 1);
 
     double kpiCaJour = 0.0, kpiCaSemaine = 0.0, kpiCaMois = 0.0;
     double kpiEncaissable = 0.0;
     for (final f in factures) {
       final status = (f.status as String?)?.toLowerCase() ?? '';
       final total = (f.totalAmount is num) ? (f.totalAmount as num).toDouble() : 0.0;
-      if (status == 'paid' && f.paidAt != null) {
+      final isPaid = status == 'paid' || status == 'payee';
+      if (isPaid && f.paidAt != null) {
         final paidAt = f.paidAt is DateTime ? f.paidAt as DateTime : DateTime.tryParse(f.paidAt.toString());
         if (paidAt != null) {
-          if (!paidAt.isBefore(startOfDay)) kpiCaJour += total;
-          if (!paidAt.isBefore(startOfWeekDay)) kpiCaSemaine += total;
-          if (!paidAt.isBefore(startOfMonth)) kpiCaMois += total;
+          if (!paidAt.isBefore(startOfDayKpi)) kpiCaJour += total;
+          if (!paidAt.isBefore(startOfWeekDayKpi)) kpiCaSemaine += total;
+          if (!paidAt.isBefore(startOfMonthKpi)) kpiCaMois += total;
         }
-      } else if (status == 'sent' || status == 'draft') {
+      } else if (status == 'valide') {
+        kpiEncaissable += total;
+      }
+    }
+    for (final d in devisAll) {
+      final total = d.totalTTC;
+      final status = d.status;
+      if (status == 4) {
+        final paidAt = d.paidAt is DateTime ? d.paidAt as DateTime : (d.paidAt != null ? DateTime.tryParse(d.paidAt.toString()) : null);
+        if (paidAt != null) {
+          if (!paidAt.isBefore(startOfDayKpi)) kpiCaJour += total;
+          if (!paidAt.isBefore(startOfWeekDayKpi)) kpiCaSemaine += total;
+          if (!paidAt.isBefore(startOfMonthKpi)) kpiCaMois += total;
+        }
+      } else if (status == 2) {
         kpiEncaissable += total;
       }
     }
@@ -331,11 +385,14 @@ class PatronDashboardNotifier extends AsyncNotifier<PatronDashboardState> {
       if (date == null && d.approvedAt != null) date = DateTime.tryParse(d.approvedAt.toString());
       if (date == null && d.expenseDate != null) date = DateTime.tryParse(d.expenseDate.toString());
       if (date != null) {
-        if (!date.isBefore(startOfDay)) kpiDepensesJour += amount;
-        if (!date.isBefore(startOfWeekDay)) kpiDepensesSemaine += amount;
-        if (!date.isBefore(startOfMonth)) kpiDepensesMois += amount;
+        if (!date.isBefore(startOfDayKpi)) kpiDepensesJour += amount;
+        if (!date.isBefore(startOfWeekDayKpi)) kpiDepensesSemaine += amount;
+        if (!date.isBefore(startOfMonthKpi)) kpiDepensesMois += amount;
       }
     }
+    kpiDepensesJour += journalSortiesJour;
+    kpiDepensesSemaine += journalSortiesSemaine;
+    kpiDepensesMois += journalSortiesMois;
     final kpiMargeJour = kpiCaJour - kpiDepensesJour;
     final kpiMargeSemaine = kpiCaSemaine - kpiDepensesSemaine;
     final kpiMargeBrute = kpiCaMois - kpiDepensesMois;
@@ -371,7 +428,7 @@ class PatronDashboardNotifier extends AsyncNotifier<PatronDashboardState> {
     final totalPending = pendingClients + pendingDevis + pendingFactures + pendingDepenses +
         pendingLeaves + pendingInterventions + pendingPointages + pendingReporting;
     if (totalPending > 0) rappels.add('$totalPending élément(s) en attente de validation');
-    if (kpiEncaissable > 0) rappels.add('Factures à encaisser : ${NumberFormat('#,##0', 'fr_FR').format(kpiEncaissable)} FCFA');
+    if (kpiEncaissable > 0) rappels.add('Proformas et factures à encaisser : ${NumberFormat('#,##0', 'fr_FR').format(kpiEncaissable)} FCFA');
     if (stockAlertsCount > 0) rappels.add('$stockAlertsCount alerte(s) stock (rupture ou sous seuil)');
 
     return s.copyWith(

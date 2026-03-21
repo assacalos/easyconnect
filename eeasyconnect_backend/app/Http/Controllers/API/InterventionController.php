@@ -3,19 +3,29 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
-use App\Traits\SendsNotifications;
+use App\Services\NotificationService;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
 use App\Models\Intervention;
 use App\Models\Equipment;
 use App\Models\InterventionReport;
 use App\Models\Client;
 use App\Http\Resources\InterventionResource;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class InterventionController extends Controller
 {
-    use SendsNotifications, CachesData;
+    use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des interventions
      */
@@ -72,21 +82,24 @@ class InterventionController extends Controller
                 $query->where('created_by', $user->id);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $interventions = $query->orderBy('scheduled_date', 'desc')->paginate($perPage);
+
+            $dataArray = InterventionResource::collection($interventions->items())->resolve();
 
             return response()->json([
                 'success' => true,
-                'data' => InterventionResource::collection($interventions->items()),
+                'data' => $dataArray,
                 'pagination' => [
                     'current_page' => $interventions->currentPage(),
                     'last_page' => $interventions->lastPage(),
                     'per_page' => $interventions->perPage(),
                     'total' => $interventions->total(),
+                    'from' => $interventions->firstItem(),
+                    'to' => $interventions->lastItem(),
                 ],
-                'message' => 'Liste des interventions récupérée avec succès'
-            ]);
+                'message' => 'Liste des interventions récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -197,7 +210,9 @@ class InterventionController extends Controller
             DB::commit();
 
             // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($intervention, 'intervention', 'Intervention', 6, $intervention->id);
+            $this->safeNotify(function () use ($intervention) {
+                $this->notificationService->notifyNewIntervention($intervention);
+            });
 
             return response()->json([
                 'success' => true,
@@ -340,7 +355,12 @@ class InterventionController extends Controller
 
             if ($intervention->approve($request->user()->id, $notes)) {
                 // Notifier le créateur de l'intervention
-                $this->notifySubmitterOnApproval($intervention, 'intervention', 'Intervention', 'created_by', $intervention->id);
+                if ($intervention->created_by) {
+                    $this->safeNotify(function () use ($intervention) {
+                        $intervention->load('creator');
+                        $this->notificationService->notifyInterventionValidated($intervention);
+                    });
+                }
 
                 return response()->json([
                     'success' => true,
@@ -389,7 +409,12 @@ class InterventionController extends Controller
 
             if ($intervention->reject($rejectionReason)) {
                 // Notifier le créateur de l'intervention
-                $this->notifySubmitterOnRejection($intervention, 'intervention', 'Intervention', $rejectionReason, 'created_by', $intervention->id);
+                if ($intervention->created_by) {
+                    $this->safeNotify(function () use ($intervention, $rejectionReason) {
+                        $intervention->load('creator');
+                        $this->notificationService->notifyInterventionRejected($intervention, $rejectionReason);
+                    });
+                }
 
                 return response()->json([
                     'success' => true,
@@ -589,7 +614,7 @@ class InterventionController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => InterventionResource::collection($interventions->items()),
+                'data' => InterventionResource::collection($interventions->items())->resolve(),
                 'pagination' => [
                     'current_page' => $interventions->currentPage(),
                     'last_page' => $interventions->lastPage(),

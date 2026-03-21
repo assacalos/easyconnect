@@ -9,26 +9,18 @@ class StockMovement extends Model
 {
     use HasFactory;
 
+    // Colonnes réelles de la migration consolidate_stocks_table : stock_id, type, quantity, reason, status, user_id
     protected $fillable = [
         'stock_id',
         'type',
         'reason',
         'quantity',
-        'unit_cost',
-        'total_cost',
-        'reference',
-        'location_from',
-        'location_to',
-        'notes',
-        'attachments',
-        'created_by'
+        'status',
+        'user_id',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:3',
-        'unit_cost' => 'decimal:2',
-        'total_cost' => 'decimal:2',
-        'attachments' => 'array'
     ];
 
     // Relations
@@ -39,7 +31,7 @@ class StockMovement extends Model
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     // Scopes
@@ -104,11 +96,12 @@ class StockMovement extends Model
             'sale' => 'Vente',
             'transfer' => 'Transfert',
             'adjustment' => 'Ajustement',
+            'inventaire' => 'Inventaire physique',
             'return' => 'Retour',
             'loss' => 'Perte',
             'damage' => 'Dommage',
             'expired' => 'Expiré',
-            'other' => 'Autre'
+            'other' => 'Autre',
         ];
 
         return $reasons[$this->reason] ?? $this->reason;
@@ -116,7 +109,10 @@ class StockMovement extends Model
 
     public function getCreatorNameAttribute()
     {
-        return $this->creator ? $this->creator->prenom . ' ' . $this->creator->nom : 'N/A';
+        if (!$this->relationLoaded('creator') || !$this->creator) {
+            return 'N/A';
+        }
+        return trim(($this->creator->prenom ?? '') . ' ' . ($this->creator->nom ?? '')) ?: 'N/A';
     }
 
     public function getFormattedQuantityAttribute()
@@ -126,12 +122,12 @@ class StockMovement extends Model
 
     public function getFormattedUnitCostAttribute()
     {
-        return $this->unit_cost ? number_format($this->unit_cost, 2, ',', ' ') . ' €' : 'N/A';
+        return isset($this->attributes['unit_cost']) && $this->attributes['unit_cost'] ? number_format((float) $this->attributes['unit_cost'], 2, ',', ' ') . ' €' : 'N/A';
     }
 
     public function getFormattedTotalCostAttribute()
     {
-        return $this->total_cost ? number_format($this->total_cost, 2, ',', ' ') . ' €' : 'N/A';
+        return isset($this->attributes['total_cost']) && $this->attributes['total_cost'] ? number_format((float) $this->attributes['total_cost'], 2, ',', ' ') . ' €' : 'N/A';
     }
 
     public function getIsInAttribute()

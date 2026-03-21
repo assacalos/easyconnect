@@ -14,5 +14,11 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    return response()->json([
+        'name'    => 'EasyConnect API',
+        'version' => '1.0',
+        'status'  => 'ok',
+        'docs'    => url('/api'),
+    ], 200, ['Content-Type' => 'application/json']);
 });
+

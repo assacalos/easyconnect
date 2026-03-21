@@ -12,51 +12,32 @@ class Reporting extends Model
     protected $fillable = [
         'user_id',
         'report_date',
-        'metrics',
+        'nature',
+        'nom_societe',
+        'contact_societe',
+        'nom_personne',
+        'contact_personne',
+        'moyen_contact',
+        'produit_demarche',
+        'commentaire',
+        'type_relance',
+        'relance_date_heure',
         'status',
         'submitted_at',
         'approved_at',
         'approved_by',
-        'comments',
+        'rejected_at',
+        'rejected_by',
+        'rejection_reason',
         'patron_note',
-        // Notes pour les métriques commerciales
-        'notes_clients_prospectes',
-        'notes_rdv_obtenus',
-        'notes_devis_crees',
-        'notes_devis_acceptes',
-        'notes_nouveaux_clients',
-        'notes_appels_effectues',
-        'notes_emails_envoyes',
-        'notes_visites_realisees',
-        // Notes pour les métriques comptables
-        'notes_factures_emises',
-        'notes_factures_payees',
-        'notes_montant_facture',
-        'notes_montant_encaissement',
-        'notes_bordereaux_traites',
-        'notes_bons_commande_traites',
-        'notes_clients_factures',
-        'notes_relances_effectuees',
-        'notes_encaissements',
-        // Notes pour les métriques techniques
-        'notes_interventions_planifiees',
-        'notes_interventions_realisees',
-        'notes_interventions_annulees',
-        'notes_clients_visites',
-        'notes_problemes_resolus',
-        'notes_problemes_en_cours',
-        'notes_temps_travail',
-        'notes_deplacements',
-        'notes_techniques',
-        // Notes générales
-        'notes_generales'
     ];
 
     protected $casts = [
         'report_date' => 'date',
-        'metrics' => 'array',
         'submitted_at' => 'datetime',
-        'approved_at' => 'datetime'
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
+        'relance_date_heure' => 'datetime'
     ];
 
     // Relations
@@ -70,12 +51,12 @@ class Reporting extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
-    // Scopes
-    public function scopeDraft($query)
+    public function rejector()
     {
-        return $query->where('status', 'draft');
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 
+    // Scopes
     public function scopeSubmitted($query)
     {
         return $query->where('status', 'submitted');
@@ -84,6 +65,11 @@ class Reporting extends Model
     public function scopeApproved($query)
     {
         return $query->where('status', 'approved');
+    }
+
+    public function scopeRejected($query)
+    {
+        return $query->where('status', 'rejected');
     }
 
     public function scopeByUser($query, $userId)
@@ -99,14 +85,7 @@ class Reporting extends Model
     // Méthodes utilitaires
     public function canBeEdited()
     {
-        // Permettre l'édition des reportings soumis (non approuvés)
-        // Plus de draft, donc on peut éditer les reportings soumis
-        return in_array($this->status, ['draft', 'submitted']);
-    }
-
-    public function canBeSubmitted()
-    {
-        return $this->status === 'draft';
+        return $this->status === 'submitted';
     }
 
     public function canBeApproved()
@@ -114,26 +93,33 @@ class Reporting extends Model
         return $this->status === 'submitted';
     }
 
-    public function submit()
+    public function canBeRejected()
     {
-        if ($this->canBeSubmitted()) {
-            $this->update([
-                'status' => 'submitted',
-                'submitted_at' => now()
-            ]);
-            return true;
-        }
-        return false;
+        return $this->status === 'submitted';
     }
 
-    public function approve($approvedBy, $comments = null)
+    public function approve($approvedBy, $patronNote = null)
     {
         if ($this->canBeApproved()) {
             $this->update([
                 'status' => 'approved',
                 'approved_at' => now(),
                 'approved_by' => $approvedBy,
-                'comments' => $comments
+                'patron_note' => $patronNote
+            ]);
+            return true;
+        }
+        return false;
+    }
+
+    public function reject($rejectedBy, $reason = null)
+    {
+        if ($this->canBeRejected()) {
+            $this->update([
+                'status' => 'rejected',
+                'rejected_at' => now(),
+                'rejected_by' => $rejectedBy,
+                'rejection_reason' => $reason
             ]);
             return true;
         }
@@ -143,12 +129,17 @@ class Reporting extends Model
     // Accesseurs
     public function getUserNameAttribute()
     {
-        return $this->user ? $this->user->nom . ' ' . $this->user->prenom : 'Utilisateur inconnu';
+        if (!$this->relationLoaded('user') || !$this->user) {
+            return 'Utilisateur inconnu';
+        }
+        return trim(($this->user->nom ?? '') . ' ' . ($this->user->prenom ?? '')) ?: 'Utilisateur inconnu';
     }
 
     public function getUserRoleAttribute()
     {
-        if (!$this->user) return 'Inconnu';
+        if (!$this->relationLoaded('user') || !$this->user) {
+            return 'Inconnu';
+        }
         
         $roles = [
             1 => 'Admin',
@@ -165,153 +156,47 @@ class Reporting extends Model
     public function getStatusLibelleAttribute()
     {
         $statuses = [
-            'draft' => 'Brouillon',
             'submitted' => 'Soumis',
-            'approved' => 'Approuvé'
+            'approved' => 'Approuvé',
+            'rejected' => 'Rejeté'
         ];
 
         return $statuses[$this->status] ?? $this->status;
     }
 
-    // Méthodes pour gérer les notes par colonne
-    public function getNotesForColumn($columnName)
+    public function getNatureLibelleAttribute()
     {
-        $notesField = 'notes_' . $columnName;
-        return $this->$notesField ?? null;
-    }
-
-    public function setNotesForColumn($columnName, $notes)
-    {
-        $notesField = 'notes_' . $columnName;
-        $this->$notesField = $notes;
-        return $this;
-    }
-
-    public function getAllNotes()
-    {
-        $notes = [];
-        $fillableFields = $this->getFillable();
-        
-        foreach ($fillableFields as $field) {
-            if (str_starts_with($field, 'notes_') && $field !== 'notes_generales') {
-                $columnName = str_replace('notes_', '', $field);
-                $notes[$columnName] = $this->$field;
-            }
-        }
-        
-        $notes['generales'] = $this->notes_generales;
-        return $notes;
-    }
-
-    public function updateNotes($notesData)
-    {
-        foreach ($notesData as $columnName => $notes) {
-            if ($columnName === 'generales') {
-                $this->notes_generales = $notes;
-            } else {
-                $notesField = 'notes_' . $columnName;
-                if (in_array($notesField, $this->getFillable())) {
-                    $this->$notesField = $notes;
-                }
-            }
-        }
-        return $this;
-    }
-
-    // Méthodes pour générer les métriques selon le rôle
-    public function generateCommercialMetrics($startDate, $endDate)
-    {
-        $userId = $this->user_id;
-        
-        // Récupérer les données du commercial
-        $clientsProspectes = Client::where('user_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        $devisCrees = Devis::where('user_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        $devisAcceptes = Devis::where('user_id', $userId)
-            ->where('status', 2) // Accepté
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        return [
-            'clients_prospectes' => $clientsProspectes,
-            'rdv_obtenus' => rand(5, 15), // À implémenter avec une vraie table RDV
-            'rdv_list' => [], // À implémenter
-            'devis_crees' => $devisCrees,
-            'devis_acceptes' => $devisAcceptes,
-            'nouveaux_clients' => $clientsProspectes,
-            'appels_effectues' => rand(20, 50),
-            'emails_envoyes' => rand(30, 80),
-            'visites_realisees' => rand(10, 25)
+        $natures = [
+            'echange_telephonique' => 'Échange téléphonique',
+            'visite' => 'Visite',
+            'depannage_visite' => 'Dépannage visite',
+            'depannage_bureau' => 'Dépannage bureau',
+            'depannage_telephonique' => 'Dépannage téléphonique',
+            'programmation' => 'Programmation',
         ];
+
+        return $natures[$this->nature] ?? $this->nature;
     }
 
-    public function generateComptableMetrics($startDate, $endDate)
+    public function getMoyenContactLibelleAttribute()
     {
-        $userId = $this->user_id;
-        
-        $facturesEmises = Facture::where('user_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        $facturesPayees = Facture::where('user_id', $userId)
-            ->where('statut', 'payee')
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        $montantFacture = Facture::where('user_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('montant_ttc');
-
-        $bordereauxTraites = Bordereau::where('commercial_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        $bonsCommandeTraites = BonDeCommande::where('user_id', $userId)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
-
-        return [
-            'factures_emises' => $facturesEmises,
-            'factures_payees' => $facturesPayees,
-            'montant_facture' => $montantFacture,
-            'montant_encaissement' => $montantFacture * 0.8, // 80% encaissé
-            'bordereaux_traites' => $bordereauxTraites,
-            'bons_commande_traites' => $bonsCommandeTraites,
-            'clients_factures' => $facturesEmises,
-            'relances_effectuees' => rand(5, 15),
-            'encaissements' => $montantFacture * 0.8
+        $moyens = [
+            'mail' => 'Email',
+            'whatsapp' => 'WhatsApp',
+            'linkedin' => 'LinkedIn'
         ];
+
+        return $moyens[$this->moyen_contact] ?? $this->moyen_contact;
     }
 
-    public function generateTechnicienMetrics($startDate, $endDate)
+    public function getTypeRelanceLibelleAttribute()
     {
-        $userId = $this->user_id;
-        
-        // Récupérer les pointages du technicien
-        $pointages = Pointage::where('user_id', $userId)
-            ->whereBetween('date', [$startDate, $endDate])
-            ->get();
-
-        $interventionsPlanifiees = rand(15, 30);
-        $interventionsRealisees = rand(10, 25);
-        $interventionsAnnulees = $interventionsPlanifiees - $interventionsRealisees;
-
-        return [
-            'interventions_planifiees' => $interventionsPlanifiees,
-            'interventions_realisees' => $interventionsRealisees,
-            'interventions_annulees' => $interventionsAnnulees,
-            'interventions_list' => [], // À implémenter avec une vraie table interventions
-            'clients_visites' => rand(8, 20),
-            'problemes_resolus' => rand(15, 30),
-            'problemes_en_cours' => rand(2, 8),
-            'temps_travail' => $pointages->count() * 8, // 8h par jour
-            'deplacements' => rand(20, 40),
-            'notes_techniques' => 'Rapport technique détaillé'
+        $types = [
+            'telephonique' => 'Relance téléphonique',
+            'mail' => 'Relance par mail',
+            'rdv' => 'Relance par RDV'
         ];
+
+        return $types[$this->type_relance] ?? $this->type_relance;
     }
 }

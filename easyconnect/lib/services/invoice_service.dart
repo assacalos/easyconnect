@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/invoice_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
@@ -7,10 +6,10 @@ import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
-import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class InvoiceService {
   static final InvoiceService _instance = InvoiceService._();
@@ -71,12 +70,12 @@ class InvoiceService {
         tag: 'INVOICE_SERVICE',
       );
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .post(
+            () => HttpInterceptor.post(
                   Uri.parse(url),
-                  headers: ApiService.headers(),
+                  headers: headers,
                   body: jsonEncode(requestData),
                 )
                 .timeout(
@@ -257,9 +256,10 @@ class InvoiceService {
 
       AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -330,9 +330,10 @@ class InvoiceService {
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'INVOICE_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(uri, headers: ApiService.headers()),
+            () => HttpInterceptor.get(uri, headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -391,9 +392,9 @@ class InvoiceService {
   // Récupérer une facture par ID
   Future<InvoiceModel> getInvoiceById(int invoiceId) async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/factures-show/$invoiceId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -427,10 +428,9 @@ class InvoiceService {
     required Map<String, dynamic> data,
   }) async {
     try {
-      final response = await http
-          .put(
+      final response = await HttpInterceptor.put(
             Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
-            headers: ApiService.headers(),
+            headers: await ApiService.headersAsync(),
             body: jsonEncode(data),
           )
           .timeout(
@@ -467,9 +467,9 @@ class InvoiceService {
   Future<Map<String, dynamic>> submitInvoiceToPatron(int invoiceId) async {
     try {
       // Route non disponible dans Laravel - utiliser factures-create à la place
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/factures-create'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -502,9 +502,9 @@ class InvoiceService {
     String? comments,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/factures-validate/$invoiceId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'comments': comments}),
       );
 
@@ -560,9 +560,9 @@ class InvoiceService {
     required String reason,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/factures-reject/$invoiceId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'reason': reason}),
       );
 
@@ -609,9 +609,9 @@ class InvoiceService {
   }) async {
     try {
       // Route non disponible dans Laravel - utiliser factures-create à la place
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/factures-create'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'email': email, 'message': message}),
       );
 
@@ -645,9 +645,9 @@ class InvoiceService {
     required PaymentInfo paymentInfo,
   }) async {
     try {
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/factures/$invoiceId/mark-paid'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(paymentInfo.toJson()),
       );
 
@@ -679,9 +679,9 @@ class InvoiceService {
   Future<Map<String, dynamic>> deleteInvoice(int invoiceId) async {
     try {
       // Route de suppression non disponible dans Laravel
-      final response = await http.delete(
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/factures-update/$invoiceId'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -734,9 +734,10 @@ class InvoiceService {
 
       AppLogger.httpRequest('GET', url, tag: 'INVOICE_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -773,9 +774,9 @@ class InvoiceService {
   // Récupérer les factures en attente d'approbation (pour le patron)
   Future<List<InvoiceModel>> getPendingInvoices() async {
     try {
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/factures-list?status=pending'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -808,9 +809,9 @@ class InvoiceService {
   Future<String> generateInvoiceNumber() async {
     try {
       // Route non disponible dans Laravel - générer côté client
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/factures-list'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -842,9 +843,9 @@ class InvoiceService {
   Future<List<InvoiceTemplate>> getInvoiceTemplates() async {
     try {
       // Route non disponible dans Laravel - utiliser factures-reports
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/factures-reports'),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {

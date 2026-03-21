@@ -120,12 +120,18 @@ class TaxDeclaration extends Model
 
     public function getComptableNameAttribute()
     {
-        return $this->comptable ? $this->comptable->prenom . ' ' . $this->comptable->nom : 'N/A';
+        if (!$this->relationLoaded('comptable') || !$this->comptable) {
+            return 'N/A';
+        }
+        return trim(($this->comptable->prenom ?? '') . ' ' . ($this->comptable->nom ?? '')) ?: 'N/A';
     }
 
     public function getCategoryNameAttribute()
     {
-        return $this->taxCategory ? $this->taxCategory->name : 'N/A';
+        if (!$this->relationLoaded('taxCategory') || !$this->taxCategory) {
+            return 'N/A';
+        }
+        return $this->taxCategory->name ?? 'N/A';
     }
 
     public function getDaysUntilSubmissionAttribute()

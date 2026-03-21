@@ -70,17 +70,26 @@ class _InvoiceListState extends ConsumerState<InvoiceList> {
           if (state.isLoading)
             const SkeletonSearchResults(itemCount: 6)
           else if (state.invoices.isEmpty)
-            const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.receipt_long, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'Aucune facture trouvée',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
+            RefreshIndicator(
+              onRefresh: () => notifier.loadInvoices(forceRefresh: true),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: 400,
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.receipt_long, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'Aucune facture trouvée',
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             )
           else
@@ -108,21 +117,24 @@ class _InvoiceListState extends ConsumerState<InvoiceList> {
                                 invoice.clientId == widget.clientId)
                             .toList();
                       }
-                      return PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: state.hasNextPage,
-                        isLoadingMore: state.isLoadingMore,
-                        itemCount: filteredInvoices.length,
-                        itemBuilder: (context, index) {
-                          final invoice = filteredInvoices[index];
-                          return _buildInvoiceCard(
-                            context,
-                            invoice,
-                            notifier,
-                            role,
-                          );
-                        },
+                      return RefreshIndicator(
+                        onRefresh: () => notifier.loadInvoices(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: state.hasNextPage,
+                          isLoadingMore: state.isLoadingMore,
+                          itemCount: filteredInvoices.length,
+                          itemBuilder: (context, index) {
+                            final invoice = filteredInvoices[index];
+                            return _buildInvoiceCard(
+                              context,
+                              invoice,
+                              notifier,
+                              role,
+                            );
+                          },
+                        ),
                       );
                     },
                   ),

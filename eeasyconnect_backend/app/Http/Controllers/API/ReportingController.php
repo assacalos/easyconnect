@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\Client;
 use App\Models\Facture;
 use App\Models\Paiement;
-use App\Models\Pointage;
+use App\Models\Attendance;
 use App\Models\BonDeCommande;
 use App\Models\Fournisseur;
 use App\Models\User;
@@ -45,9 +45,12 @@ class ReportingController extends Controller
             $montantTotalPaiements = $paiements->sum('montant');
             $paiementsValides = $paiements->where('statut', 'valide')->count();
             
-            // Statistiques des pointages
-            $pointages = Pointage::whereBetween('date_pointage', [$dateDebut, $dateFin])->get();
-            $pointagesValides = $pointages->where('statut', 'valide')->count();
+            // Statistiques des pointages (attendances)
+            $pointages = Attendance::where(function($q) use ($dateDebut, $dateFin) {
+                $q->whereBetween('check_in_time', [$dateDebut, $dateFin])
+                  ->orWhereBetween('check_out_time', [$dateDebut, $dateFin]);
+            })->get();
+            $pointagesValides = $pointages->where('status', 'valide')->count();
             
             // Statistiques des bons de commande
             $bonsDeCommande = BonDeCommande::whereBetween('date_commande', [$dateDebut, $dateFin])->get();
@@ -183,19 +186,23 @@ class ReportingController extends Controller
                 'par_utilisateur' => $users->map(function($user) use ($pointages) {
                     $userPointages = $pointages->where('user_id', $user->id);
                     return [
-                        'user' => $user->nom . ' ' . $user->prenom,
+                        'user' => trim(($user->nom ?? '') . ' ' . ($user->prenom ?? '')),
                         'role' => $user->getRoleName(),
                         'total_pointages' => $userPointages->count(),
-                        'pointages_valides' => $userPointages->where('statut', 'valide')->count(),
-                        'taux_presence' => $userPointages->count() > 0 ? round(($userPointages->where('statut', 'valide')->count() / $userPointages->count()) * 100, 2) : 0
+                        'pointages_valides' => $userPointages->where('status', 'valide')->count(),
+                        'taux_presence' => $userPointages->count() > 0 ? round(($userPointages->where('status', 'valide')->count() / $userPointages->count()) * 100, 2) : 0
                     ];
                 }),
-                'par_type_pointage' => $pointages->groupBy('type_pointage')->map(function($group) {
-                    return [
-                        'count' => $group->count(),
-                        'valides' => $group->where('statut', 'valide')->count()
-                    ];
-                })
+                'par_type_pointage' => [
+                    'check_in' => [
+                        'count' => $pointages->whereNotNull('check_in_time')->count(),
+                        'valides' => $pointages->whereNotNull('check_in_time')->where('status', 'valide')->count()
+                    ],
+                    'check_out' => [
+                        'count' => $pointages->whereNotNull('check_out_time')->count(),
+                        'valides' => $pointages->whereNotNull('check_out_time')->where('status', 'valide')->count()
+                    ]
+                ]
             ];
         });
         

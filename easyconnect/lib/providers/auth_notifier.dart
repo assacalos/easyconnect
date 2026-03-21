@@ -11,10 +11,10 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:state_notifier/state_notifier.dart';
 
 /// Écouteur pour que GoRouter réévalue la redirect quand l'auth change.
-final ValueNotifier<void> authRefreshNotifier = ValueNotifier<void>(null);
+/// Incrémenté pour que GoRouter réévalue les redirections (évite notifyListeners protégé).
+final ValueNotifier<int> authRefreshNotifier = ValueNotifier<int>(0);
 
 /// Dernier état auth connu (pour la redirect GoRouter qui n'a pas accès à ref).
 AuthState? get currentAuthState => _currentAuthState;
@@ -22,7 +22,7 @@ AuthState? _currentAuthState;
 
 void _setCurrentAuthState(AuthState s) {
   _currentAuthState = s;
-  authRefreshNotifier.notifyListeners();
+  authRefreshNotifier.value++;
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {

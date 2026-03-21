@@ -118,23 +118,35 @@ class _StockListState extends ConsumerState<StockList>
             child: state.isLoading && state.stocks.isEmpty
                 ? const SkeletonSearchResults(itemCount: 6)
                 : state.stocks.isEmpty
-                    ? const Center(child: Text('Aucun produit trouvé'))
-                    : PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: state.hasNextPage,
-                        isLoadingMore: state.isLoadingMore,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: state.stocks.length,
-                        itemBuilder: (context, index) {
-                          final stock = state.stocks[index];
-                          return _buildStockCard(
-                            context,
-                            stock,
-                            formatCurrency,
-                            notifier,
-                          );
-                        },
+                    ? RefreshIndicator(
+                        onRefresh: () => notifier.loadStocks(forceRefresh: true),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: 400,
+                            child: const Center(child: Text('Aucun produit trouvé')),
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => notifier.loadStocks(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: state.hasNextPage,
+                          isLoadingMore: state.isLoadingMore,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: state.stocks.length,
+                          itemBuilder: (context, index) {
+                            final stock = state.stocks[index];
+                            return _buildStockCard(
+                              context,
+                              stock,
+                              formatCurrency,
+                              notifier,
+                            );
+                          },
+                        ),
                       ),
           ),
         ],

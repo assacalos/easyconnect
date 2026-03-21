@@ -3,20 +3,30 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Attendance;
 use App\Models\User;
 use App\Http\Resources\AttendanceResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Enregistrer un pointage (arrivée ou départ)
      */
@@ -123,28 +133,54 @@ class AttendanceController extends Controller
                     'status' => 'en_attente',
                 ]);
             } else {
-                // Créer un nouveau pointage de départ
-                $checkOutLocation = [
-                    'check_out_location' => [
-                        'latitude' => $request->latitude,
-                        'longitude' => $request->longitude,
-                        'address' => $request->address,
-                        'accuracy' => $request->accuracy,
-                    ]
-                ];
-                
-                $attendance = Attendance::create([
-                    'user_id' => $user->id,
-                    'check_in_time' => null, // Pas de check-in
-                    'check_out_time' => now(),
-                    'location' => array_merge($locationData, $checkOutLocation),
-                    'photo_path' => $photoPath,
-                    'notes' => $request->notes,
-                    'status' => 'en_attente',
-                ]);
+                // Pointage de départ : mettre à jour le dernier pointage d'arrivée du jour (sans départ), s'il existe
+                $todayStart = now()->startOfDay();
+                $todayEnd = now()->endOfDay();
+                $attendance = Attendance::where('user_id', $user->id)
+                    ->whereNotNull('check_in_time')
+                    ->whereNull('check_out_time')
+                    ->whereBetween('check_in_time', [$todayStart, $todayEnd])
+                    ->orderByDesc('check_in_time')
+                    ->first();
+
+                if ($attendance) {
+                    // Cas normal : mettre à jour le pointage d'arrivée du jour avec l'heure de départ
+                    $checkOutLocation = [
+                        'check_out_location' => [
+                            'latitude' => $request->latitude,
+                            'longitude' => $request->longitude,
+                            'address' => $request->address,
+                            'accuracy' => $request->accuracy,
+                        ]
+                    ];
+                    $existingLocation = $attendance->location ?? [];
+                    $mergedLocation = is_array($existingLocation) ? array_merge($existingLocation, $checkOutLocation) : $checkOutLocation;
+
+                    $attendance->update([
+                        'check_out_time' => now(),
+                        'location' => $mergedLocation,
+                        'notes' => $attendance->notes ? $attendance->notes . "\n[Départ] " . ($request->notes ?? '') : ($request->notes ?? null),
+                    ]);
+                } else {
+                    // Pas d'arrivée enregistrée aujourd'hui : créer un pointage "départ uniquement"
+                    // La table exige check_in_time NOT NULL, on crée avec check_in_time = check_out_time = now() (durée 0)
+                    $locationData['departure_only'] = true;
+                    $departureNote = '[Départ uniquement - pas d\'arrivée enregistrée]';
+                    $notesFinal = $request->notes ? $departureNote . "\n" . $request->notes : $departureNote;
+
+                    $attendance = Attendance::create([
+                        'user_id' => $user->id,
+                        'check_in_time' => now(),
+                        'check_out_time' => now(),
+                        'location' => $locationData,
+                        'photo_path' => $photoPath,
+                        'notes' => $notesFinal,
+                        'status' => 'en_attente',
+                    ]);
+                }
             }
 
-            Log::info('Attendance created', ['attendance_id' => $attendance->id]);
+            Log::info($request->type === 'check_in' ? 'Attendance created' : 'Attendance updated (check-out)', ['attendance_id' => $attendance->id]);
 
             // Charger la relation user avec gestion d'erreur
             try {
@@ -155,6 +191,13 @@ class AttendanceController extends Controller
                     'error' => $e->getMessage()
                 ]);
                 // Continuer même si la relation ne peut pas être chargée
+            }
+
+            // Notifier le patron uniquement pour un nouveau pointage (arrivée), pas pour la mise à jour (départ)
+            if ($request->type === 'check_in') {
+                $this->safeNotify(function () use ($attendance) {
+                    $this->notificationService->notifyNewAttendance($attendance);
+                });
             }
 
             return response()->json([
@@ -228,18 +271,22 @@ class AttendanceController extends Controller
             $query->whereDate('check_in_time', '<=', $request->date_to);
         }
 
-        $attendances = $query->orderBy('check_in_time', 'desc')->paginate(20);
+        $perPage = min((int) $request->get('per_page', 20), 100);
+        $attendances = $query->orderBy('check_in_time', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => AttendanceResource::collection($attendances->items()),
+            'data' => AttendanceResource::collection($attendances->items())->resolve(),
             'pagination' => [
                 'current_page' => $attendances->currentPage(),
                 'last_page' => $attendances->lastPage(),
                 'per_page' => $attendances->perPage(),
                 'total' => $attendances->total(),
-            ]
-        ]);
+                'from' => $attendances->firstItem(),
+                'to' => $attendances->lastItem(),
+            ],
+            'message' => 'Liste des pointages récupérée avec succès',
+        ], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             Log::error('Attendance index error', [
                 'message' => $e->getMessage(),
@@ -342,8 +389,12 @@ class AttendanceController extends Controller
             ]);
             
             // Notifier l'utilisateur concerné
-            $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
-            $this->notifySubmitterOnApproval($attendance, 'attendance', "Pointage du {$dateFormatted}", 'user_id');
+            if ($attendance->user_id) {
+                $this->safeNotify(function () use ($attendance) {
+                    $attendance->load('user');
+                    $this->notificationService->notifyAttendanceValidated($attendance);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -432,8 +483,13 @@ class AttendanceController extends Controller
             $attendance->load(['user', 'rejector']);
             
             // Notifier l'utilisateur concerné
-            $dateFormatted = $attendance->check_in_time ? $attendance->check_in_time->format('d/m/Y') : 'date inconnue';
-            $this->notifySubmitterOnRejection($attendance, 'attendance', "Pointage du {$dateFormatted}", $request->reason, 'user_id');
+            if ($attendance->user_id) {
+                $reason = $request->reason;
+                $this->safeNotify(function () use ($attendance, $reason) {
+                    $attendance->load('user');
+                    $this->notificationService->notifyAttendanceRejected($attendance, $reason);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -618,6 +674,171 @@ class AttendanceController extends Controller
         // Ajouter le type check_out à la requête
         $request->merge(['type' => 'check_out']);
         return $this->store($request);
+    }
+
+    /**
+     * Rapports de pointages (attendances)
+     * Accessible par RH, Patron et Admin
+     */
+    public function reports(Request $request): JsonResponse
+    {
+        try {
+            $query = Attendance::with('user');
+            
+            // Filtrage par période
+            if ($request->has('date_debut')) {
+                $query->where(function($q) use ($request) {
+                    $q->whereDate('check_in_time', '>=', $request->date_debut)
+                      ->orWhereDate('check_out_time', '>=', $request->date_debut);
+                });
+            }
+            
+            if ($request->has('date_fin')) {
+                $query->where(function($q) use ($request) {
+                    $q->whereDate('check_in_time', '<=', $request->date_fin)
+                      ->orWhereDate('check_out_time', '<=', $request->date_fin);
+                });
+            }
+            
+            if ($request->has('user_id')) {
+                $query->where('user_id', $request->user_id);
+            }
+            
+            $attendances = $query->get();
+            
+            $rapport = [
+                'total_pointages' => $attendances->count(),
+                'pointages_valides' => $attendances->where('status', 'valide')->count(),
+                'pointages_en_attente' => $attendances->where('status', 'en_attente')->count(),
+                'pointages_rejetes' => $attendances->where('status', 'rejete')->count(),
+                'par_utilisateur' => $attendances->groupBy('user_id')->map(function($group, $userId) {
+                    $user = User::find($userId);
+                    return [
+                        'user' => $user ? trim(($user->nom ?? '') . ' ' . ($user->prenom ?? '')) : 'Utilisateur inconnu',
+                        'total_pointages' => $group->count(),
+                        'pointages_valides' => $group->where('status', 'valide')->count()
+                    ];
+                }),
+                'par_type' => [
+                    'check_in' => [
+                        'count' => $attendances->whereNotNull('check_in_time')->count(),
+                        'valides' => $attendances->whereNotNull('check_in_time')->where('status', 'valide')->count()
+                    ],
+                    'check_out' => [
+                        'count' => $attendances->whereNotNull('check_out_time')->count(),
+                        'valides' => $attendances->whereNotNull('check_out_time')->where('status', 'valide')->count()
+                    ]
+                ]
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'rapport' => $rapport,
+                'message' => 'Rapport de pointages généré avec succès'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la génération du rapport de pointages', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la génération du rapport: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Nombre de présences par employé (par semaine, mois ou année).
+     * Une présence = un jour distinct avec au moins un pointage (check_in) dans la période.
+     * Accessible par patron / admin / RH.
+     */
+    public function presenceSummary(Request $request): JsonResponse
+    {
+        try {
+            $period = $request->get('period', 'month'); // week | month | year
+            $year = (int) $request->get('year', now()->year);
+            $month = (int) $request->get('month', now()->month);
+            $week = (int) $request->get('week', now()->isoWeek());
+
+            if (!in_array($period, ['week', 'month', 'year'])) {
+                $period = 'month';
+            }
+
+            $dateDebut = null;
+            $dateFin = null;
+            $periodLabel = '';
+
+            if ($period === 'week') {
+                $dateDebut = Carbon::now()->setISODate($year, $week)->startOfWeek()->toDateString();
+                $dateFin = Carbon::now()->setISODate($year, $week)->endOfWeek()->toDateString();
+                $periodLabel = "Semaine {$week} de {$year}";
+            } elseif ($period === 'month') {
+                $dateDebut = Carbon::createFromDate($year, $month, 1)->toDateString();
+                $dateFin = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+                $periodLabel = Carbon::createFromDate($year, $month, 1)->locale('fr')->monthName . ' ' . $year;
+            } else {
+                $dateDebut = "{$year}-01-01";
+                $dateFin = "{$year}-12-31";
+                $periodLabel = (string) $year;
+            }
+
+            $driver = DB::connection()->getDriverName();
+            if ($driver === 'sqlite') {
+                $dateExpr = "date(attendances.check_in_time)";
+            } elseif ($driver === 'pgsql') {
+                $dateExpr = "(attendances.check_in_time)::date";
+            } else {
+                $dateExpr = 'DATE(attendances.check_in_time)';
+            }
+
+            $summary = DB::table('attendances')
+                ->whereNotNull('attendances.check_in_time')
+                ->whereBetween('attendances.check_in_time', [$dateDebut . ' 00:00:00', $dateFin . ' 23:59:59'])
+                ->join('users', 'attendances.user_id', '=', 'users.id')
+                ->select(
+                    'attendances.user_id',
+                    'users.nom',
+                    'users.prenom',
+                    DB::raw('COUNT(DISTINCT ' . $dateExpr . ') as presence_count')
+                )
+                ->groupBy('attendances.user_id', 'users.nom', 'users.prenom')
+                ->orderByDesc('presence_count')
+                ->get()
+                ->map(function ($row) {
+                    $nom = trim(($row->nom ?? '') . ' ' . ($row->prenom ?? ''));
+                    if ($nom === '') {
+                        $nom = 'Utilisateur #' . $row->user_id;
+                    }
+                    return [
+                        'user_id' => $row->user_id,
+                        'nom' => $nom,
+                        'prenom' => $row->prenom,
+                        'nom_complet' => $nom,
+                        'presence_count' => (int) $row->presence_count,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'period' => $period,
+                'period_label' => $periodLabel,
+                'date_debut' => $dateDebut,
+                'date_fin' => $dateFin,
+                'employees' => $summary,
+                'message' => 'Résumé des présences récupéré avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            Log::error('Erreur présence summary', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors du calcul des présences: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

@@ -205,32 +205,44 @@ class _SupplierListState extends ConsumerState<SupplierList> {
       return const SkeletonSearchResults(itemCount: 6);
     }
     if (state.suppliers.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.business_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Aucun fournisseur trouvé',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadSuppliers(forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.business_outlined, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Aucun fournisseur trouvé',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Commencez par ajouter un fournisseur',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Commencez par ajouter un fournisseur',
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-          ],
+          ),
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: state.suppliers.length,
-      itemBuilder: (context, index) {
-        final supplier = state.suppliers[index];
-        return _buildSupplierCard(context, supplier, notifier);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadSuppliers(forceRefresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: state.suppliers.length,
+        itemBuilder: (context, index) {
+          final supplier = state.suppliers[index];
+          return _buildSupplierCard(context, supplier, notifier);
+        },
+      ),
     );
   }
 

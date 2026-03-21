@@ -5,7 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\API\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\Pointage;
+use App\Models\Attendance;
 use Carbon\Carbon;
 
 class HRController extends Controller
@@ -51,14 +51,19 @@ class HRController extends Controller
         $employee = User::findOrFail($id);
         
         // Statistiques de l'employé
-        $pointages = Pointage::where('user_id', $id)->get();
+        $pointages = Attendance::where('user_id', $id)->get();
         $statistiques = [
             'total_pointages' => $pointages->count(),
-            'pointages_valides' => $pointages->where('statut', 'valide')->count(),
-            'pointages_en_attente' => $pointages->where('statut', 'en_attente')->count(),
-            'pointages_rejetes' => $pointages->where('statut', 'rejete')->count(),
-            'dernier_pointage' => $pointages->sortByDesc('date_pointage')->first(),
-            'pointages_ce_mois' => $pointages->where('date_pointage', '>=', Carbon::now()->startOfMonth())->count()
+            'pointages_valides' => $pointages->where('status', 'valide')->count(),
+            'pointages_en_attente' => $pointages->where('status', 'en_attente')->count(),
+            'pointages_rejetes' => $pointages->where('status', 'rejete')->count(),
+            'dernier_pointage' => $pointages->sortByDesc(function($p) {
+                return $p->check_in_time ?? $p->check_out_time ?? $p->created_at;
+            })->first(),
+            'pointages_ce_mois' => $pointages->filter(function($p) {
+                $date = $p->check_in_time ?? $p->check_out_time ?? $p->created_at;
+                return $date && Carbon::parse($date)->isCurrentMonth();
+            })->count()
         ];
         
         return response()->json([
@@ -150,8 +155,11 @@ class HRController extends Controller
         $dateFin = $request->get('date_fin', Carbon::now()->endOfMonth());
         $userId = $request->get('user_id');
         
-        $query = Pointage::with('user')
-            ->whereBetween('date_pointage', [$dateDebut, $dateFin]);
+        $query = Attendance::with('user')
+            ->where(function($q) use ($dateDebut, $dateFin) {
+                $q->whereBetween('check_in_time', [$dateDebut, $dateFin])
+                  ->orWhereBetween('check_out_time', [$dateDebut, $dateFin]);
+            });
         
         if ($userId) {
             $query->where('user_id', $userId);
@@ -165,25 +173,28 @@ class HRController extends Controller
                 'fin' => $dateFin
             ],
             'total_pointages' => $pointages->count(),
-            'pointages_valides' => $pointages->where('statut', 'valide')->count(),
-            'pointages_en_attente' => $pointages->where('statut', 'en_attente')->count(),
-            'pointages_rejetes' => $pointages->where('statut', 'rejete')->count(),
+            'pointages_valides' => $pointages->where('status', 'valide')->count(),
+            'pointages_en_attente' => $pointages->where('status', 'en_attente')->count(),
+            'pointages_rejetes' => $pointages->where('status', 'rejete')->count(),
             'par_employe' => $pointages->groupBy('user_id')->map(function($group, $userId) {
                 $user = User::find($userId);
                 return [
-                    'employe' => $user ? $user->nom . ' ' . $user->prenom : 'Employé inconnu',
+                    'employe' => $user ? trim(($user->nom ?? '') . ' ' . ($user->prenom ?? '')) : 'Employé inconnu',
                     'total_pointages' => $group->count(),
-                    'pointages_valides' => $group->where('statut', 'valide')->count(),
-                    'taux_presence' => $group->count() > 0 ? round(($group->where('statut', 'valide')->count() / $group->count()) * 100, 2) : 0
+                    'pointages_valides' => $group->where('status', 'valide')->count(),
+                    'taux_presence' => $group->count() > 0 ? round(($group->where('status', 'valide')->count() / $group->count()) * 100, 2) : 0
                 ];
             }),
-            'par_type' => $pointages->groupBy('type_pointage')->map(function($group) {
-                return [
-                    'type' => $group->first()->type_pointage,
-                    'count' => $group->count(),
-                    'valides' => $group->where('statut', 'valide')->count()
-                ];
-            })
+            'par_type' => [
+                'check_in' => [
+                    'count' => $pointages->whereNotNull('check_in_time')->count(),
+                    'valides' => $pointages->whereNotNull('check_in_time')->where('status', 'valide')->count()
+                ],
+                'check_out' => [
+                    'count' => $pointages->whereNotNull('check_out_time')->count(),
+                    'valides' => $pointages->whereNotNull('check_out_time')->where('status', 'valide')->count()
+                ]
+            ]
         ];
         
         return response()->json([
@@ -218,9 +229,14 @@ class HRController extends Controller
                 ];
             });
         
-        $pointagesAujourdhui = Pointage::where('date_pointage', Carbon::today())->count();
-        $pointagesValidesAujourdhui = Pointage::where('date_pointage', Carbon::today())
-            ->where('statut', 'valide')->count();
+        $pointagesAujourdhui = Attendance::whereDate('check_in_time', Carbon::today())
+            ->orWhereDate('check_out_time', Carbon::today())
+            ->count();
+        $pointagesValidesAujourdhui = Attendance::where(function($q) {
+                $q->whereDate('check_in_time', Carbon::today())
+                  ->orWhereDate('check_out_time', Carbon::today());
+            })
+            ->where('status', 'valide')->count();
         
         $statistiques = [
             'total_employees' => $totalEmployees,

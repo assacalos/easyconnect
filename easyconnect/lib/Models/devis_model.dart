@@ -65,7 +65,8 @@ class Devis {
   final DateTime dateCreation;
   final DateTime? dateValidite;
   final String? notes;
-  final int status; // 1: envoyé, 2: accepté, 3: refusé
+  final int status; // 1: envoyé, 2: accepté/validé, 3: refusé, 4: payé
+  final DateTime? paidAt;
   final List<DevisItem> items;
   final double? remiseGlobale;
   final double? tva;
@@ -103,6 +104,7 @@ class Devis {
     this.delaiLivraison,
     this.garantie,
     this.clientNomEntreprise,
+    this.paidAt,
   });
 
   double get sousTotal {
@@ -151,6 +153,8 @@ class Devis {
         return "Validé";
       case 3:
         return "Rejeté";
+      case 4:
+        return "Payé";
       default:
         return "Inconnu";
     }
@@ -164,6 +168,8 @@ class Devis {
         return Colors.green;
       case 3:
         return Colors.red;
+      case 4:
+        return Colors.blue;
       default:
         return Colors.grey;
     }
@@ -177,6 +183,8 @@ class Devis {
         return Icons.check_circle;
       case 3:
         return Icons.cancel;
+      case 4:
+        return Icons.paid;
       default:
         return Icons.help;
     }
@@ -223,11 +231,12 @@ class Devis {
               : null,
       notes: json['notes'],
       status: () {
-        // BDD: 0=en attente, 2=validé, 3=rejeté. App: 1=attente, 2=validé, 3=rejeté
+        // BDD: 0=brouillon, 1=envoyé, 2=validé, 3=rejeté, 4=payé. App: 1=attente, 2=validé, 3=rejeté, 4=payé
         final p = _parseInt(json['status']);
         if (p == null) return 1;
-        return p == 0 ? 1 : p; // 0 → 1 (en attente) ; 2, 3 inchangés
+        return p == 0 ? 1 : p; // 0 → 1 (en attente) ; 2, 3, 4 inchangés
       }(),
+      paidAt: json['paid_at'] != null ? DateTime.tryParse(json['paid_at'].toString()) : null,
       items:
           ((json['items'] as List?) ?? [])
               .map((item) => DevisItem.fromJson(item as Map<String, dynamic>))

@@ -186,43 +186,55 @@ class _ClientsPageState extends ConsumerState<ClientsPage>
         .toList();
 
     if (clientList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              status == 0
-                  ? Icons.access_time
-                  : status == 1
-                  ? Icons.check_circle
-                  : Icons.cancel,
-              size: 64,
-              color: Colors.grey.shade400,
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadClients(status: null, forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    status == 0
+                        ? Icons.access_time
+                        : status == 1
+                        ? Icons.check_circle
+                        : Icons.cancel,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    status == 0
+                        ? 'Aucun client en attente'
+                        : status == 1
+                        ? 'Aucun client validé'
+                        : 'Aucun client rejeté',
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              status == 0
-                  ? 'Aucun client en attente'
-                  : status == 1
-                  ? 'Aucun client validé'
-                  : 'Aucun client rejeté',
-              style: const TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return PaginatedListView(
-      scrollController: _scrollController,
-      onLoadMore: notifier.loadMore,
-      hasNextPage: clientState.hasNextPage,
-      isLoadingMore: clientState.isLoadingMore,
-      itemCount: clientList.length,
-      itemBuilder: (context, index) {
-        final client = clientList[index];
-        return _buildClientCard(client);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadClients(status: null, forceRefresh: true),
+      child: PaginatedListView(
+        scrollController: _scrollController,
+        onLoadMore: notifier.loadMore,
+        hasNextPage: clientState.hasNextPage,
+        isLoadingMore: clientState.isLoadingMore,
+        itemCount: clientList.length,
+        itemBuilder: (context, index) {
+          final client = clientList[index];
+          return _buildClientCard(client);
+        },
+      ),
     );
   }
 

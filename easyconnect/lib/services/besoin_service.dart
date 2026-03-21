@@ -1,10 +1,10 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:easyconnect/Models/besoin_model.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class BesoinService {
   String get _baseUrl => AppConfig.baseUrl;
@@ -16,7 +16,7 @@ class BesoinService {
     };
     if (status != null && status.isNotEmpty) params['status'] = status;
     final uri = Uri.parse('$_baseUrl/besoins-list').replace(queryParameters: params);
-    final response = await http.get(uri, headers: ApiService.headers());
+    final response = await HttpInterceptor.get(uri, headers: await ApiService.headersAsync());
     await AuthErrorHandler.handleHttpResponse(response);
     if (response.statusCode != 200) {
       throw Exception('Erreur ${response.statusCode}');
@@ -52,9 +52,9 @@ class BesoinService {
   }
 
   Future<Besoin> getBesoin(int id) async {
-    final response = await http.get(
+    final response = await HttpInterceptor.get(
       Uri.parse('$_baseUrl/besoins-show/$id'),
-      headers: ApiService.headers(),
+      headers: await ApiService.headersAsync(),
     );
     await AuthErrorHandler.handleHttpResponse(response);
     if (response.statusCode != 200) throw Exception('Besoin introuvable');
@@ -67,9 +67,9 @@ class BesoinService {
     String? description,
     required String reminderFrequency,
   }) async {
-    final response = await http.post(
+    final response = await HttpInterceptor.post(
       Uri.parse('$_baseUrl/besoins-create'),
-      headers: ApiService.headers(),
+      headers: await ApiService.headersAsync(),
       body: jsonEncode({
         'title': title,
         'description': description,
@@ -88,9 +88,9 @@ class BesoinService {
   Future<Besoin> markTreated(int id, {String? treatedNote}) async {
     final body = <String, dynamic>{};
     if (treatedNote != null && treatedNote.isNotEmpty) body['treated_note'] = treatedNote;
-    final response = await http.post(
+    final response = await HttpInterceptor.post(
       Uri.parse('$_baseUrl/besoins-mark-treated/$id'),
-      headers: ApiService.headers(),
+      headers: await ApiService.headersAsync(),
       body: jsonEncode(body),
     );
     await AuthErrorHandler.handleHttpResponse(response);

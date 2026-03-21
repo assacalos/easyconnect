@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/notification_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
@@ -7,6 +6,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 /// Service API pour récupérer les notifications depuis le backend
 class NotificationApiService {
@@ -24,6 +24,7 @@ class NotificationApiService {
     int perPage = 20,
   }) async {
     try {
+      final headers = await ApiService.headersAsync();
       final params = <String, String>{
         'page': page.toString(),
         'per_page': perPage.toString(),
@@ -40,7 +41,7 @@ class NotificationApiService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -125,13 +126,14 @@ class NotificationApiService {
   /// Marquer une notification comme lue
   Future<bool> markAsRead(String notificationId) async {
     try {
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/notifications/$notificationId/read';
 
       AppLogger.httpRequest('PUT', url, tag: 'NOTIFICATION_API_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.put(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.put(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -160,13 +162,14 @@ class NotificationApiService {
   /// Marquer toutes les notifications comme lues
   Future<bool> markAllAsRead() async {
     try {
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/notifications/read-all';
 
       AppLogger.httpRequest('PUT', url, tag: 'NOTIFICATION_API_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.put(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.put(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -195,13 +198,14 @@ class NotificationApiService {
   /// Obtenir le nombre de notifications non lues
   Future<int> getUnreadCount() async {
     try {
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/notifications/unread';
 
       AppLogger.httpRequest('GET', url, tag: 'NOTIFICATION_API_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -232,13 +236,14 @@ class NotificationApiService {
   /// Supprimer une notification
   Future<bool> deleteNotification(String notificationId) async {
     try {
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/notifications/$notificationId';
 
       AppLogger.httpRequest('DELETE', url, tag: 'NOTIFICATION_API_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.delete(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.delete(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -279,6 +284,7 @@ class NotificationApiService {
     String? recipientRole,
   }) async {
     try {
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/notifications';
 
       final body = {
@@ -300,12 +306,9 @@ class NotificationApiService {
       );
 
       final response = await RetryHelper.retryNetwork(
-        operation: () => http.post(
+        operation: () => HttpInterceptor.post(
           Uri.parse(url),
-          headers: {
-            ...ApiService.headers(),
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: jsonEncode(body),
         ),
         maxRetries: AppConfig.defaultMaxRetries,

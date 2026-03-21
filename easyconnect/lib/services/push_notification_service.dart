@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/app_config.dart';
 import '../services/session_service.dart';
+import '../services/api_service.dart';
 import '../utils/logger.dart';
 import '../utils/encoding_helper.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 /// Service de gestion des notifications push Firebase Cloud Messaging
 class PushNotificationService {
@@ -187,10 +188,7 @@ class PushNotificationService {
       final deviceId = await _getDeviceId();
       final appVersion = await _getAppVersion();
 
-      final authToken = await SessionService.getToken();
-      if (authToken == null || authToken.isEmpty) {
-        return;
-      }
+      final headers = await ApiService.headersAsync();
 
       final url = '${AppConfig.baseUrl}/device-tokens';
       final payload = {
@@ -202,13 +200,9 @@ class PushNotificationService {
         'app_version': appVersion,
       };
 
-      final response = await http
-          .post(
+      final response = await HttpInterceptor.post(
             Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $authToken',
-            },
+            headers: headers,
             body: jsonEncode(payload),
           )
           .timeout(
@@ -581,14 +575,14 @@ class PushNotificationService {
     }
 
     try {
-      final token = await SessionService.getToken();
-      if (token == null || token.isEmpty) {
+      final headers = await ApiService.headersAsync();
+      if (!headers.containsKey('Authorization')) {
         return;
       }
 
-      final response = await http.delete(
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/device-tokens'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

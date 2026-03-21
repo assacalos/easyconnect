@@ -1,4 +1,3 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/devis_model.dart';
@@ -10,6 +9,8 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class DevisService {
   final storage = GetStorage();
@@ -24,7 +25,6 @@ class DevisService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -45,13 +45,11 @@ class DevisService {
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'DEVIS_SERVICE');
 
-      final headers = <String, String>{'Accept': 'application/json'};
-      if (token != null && token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
+      final headers = await ApiService.headersAsync();
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .get(uri, headers: headers)
+            () => HttpInterceptor.get(uri, headers: headers)
                 .timeout(
                   AppConfig.defaultTimeout,
                   onTimeout:
@@ -121,12 +119,15 @@ class DevisService {
 
   Future<Devis> createDevis(Devis devis) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final devisData = devis.toJson();
       final url = '${AppConfig.baseUrl}/devis-create';
 
       AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
-      AppLogger.debug('Token présent: ${token != null}', tag: 'DEVIS_SERVICE');
+      AppLogger.debug(
+        'Token présent: ${headers.containsKey('Authorization')}',
+        tag: 'DEVIS_SERVICE',
+      );
       AppLogger.debug(
         'Données: ${json.encode(devisData)}',
         tag: 'DEVIS_SERVICE',
@@ -134,14 +135,9 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .post(
+            () => HttpInterceptor.post(
                   Uri.parse(url),
-                  headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                   body: json.encode(devisData),
                 )
                 .timeout(
@@ -204,20 +200,15 @@ class DevisService {
 
   Future<Devis> updateDevis(Devis devis) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/devis-update/${devis.id}';
       AppLogger.httpRequest('PUT', url, tag: 'DEVIS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .put(
+            () => HttpInterceptor.put(
                   Uri.parse(url),
-                  headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                   body: json.encode(devis.toJson()),
                 )
                 .timeout(
@@ -248,18 +239,15 @@ class DevisService {
 
   Future<bool> deleteDevis(int devisId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/devis-delete/$devisId';
       AppLogger.httpRequest('DELETE', url, tag: 'DEVIS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.delete(
+            () => HttpInterceptor.delete(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -281,18 +269,15 @@ class DevisService {
 
   Future<bool> sendDevis(int devisId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/devis/$devisId/send';
       AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
+            () => HttpInterceptor.post(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -315,14 +300,10 @@ class DevisService {
   // Soumettre un devis au patron pour validation
   Future<bool> submitDevis(int devisId) async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
             Uri.parse('${AppConfig.baseUrl}/devis-submit/$devisId'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -338,19 +319,16 @@ class DevisService {
 
   Future<bool> acceptDevis(int devisId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/devis-validate/$devisId';
 
       AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
+            () => HttpInterceptor.post(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -372,7 +350,7 @@ class DevisService {
 
   Future<bool> rejectDevis(int devisId, String commentaire) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/devis-reject/$devisId';
       final body = json.encode({'commentaire': commentaire});
 
@@ -380,13 +358,9 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
+            () => HttpInterceptor.post(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
               body: body,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
@@ -407,16 +381,34 @@ class DevisService {
     }
   }
 
+  /// Marquer un devis validé (proforma) comme payé. Statut 4.
+  Future<bool> markDevisAsPaid(int devisId) async {
+    try {
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/devis-mark-paid/$devisId';
+      AppLogger.httpRequest('POST', url, tag: 'DEVIS_SERVICE');
+      final response = await RetryHelper.retryNetwork(
+        operation: () => HttpInterceptor.post(
+          Uri.parse(url),
+          headers: headers,
+        ),
+        maxRetries: AppConfig.defaultMaxRetries,
+      );
+      AppLogger.httpResponse(response.statusCode, url, tag: 'DEVIS_SERVICE');
+      await AuthErrorHandler.handleHttpResponse(response);
+      return response.statusCode == 200;
+    } catch (e) {
+      AppLogger.error('Erreur marquer devis payé: $e', tag: 'DEVIS_SERVICE');
+      return false;
+    }
+  }
+
   Future<String> generatePDF(int devisId) async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .get(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
             Uri.parse('${AppConfig.baseUrl}/devis/$devisId/pdf'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -435,14 +427,10 @@ class DevisService {
 
   Future<Map<String, dynamic>> getDevisStats() async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .get(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
             Uri.parse('${AppConfig.baseUrl}/devis/stats'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -462,7 +450,7 @@ class DevisService {
   /// Endpoint de debug pour diagnostiquer les problèmes de chargement
   Future<Map<String, dynamic>> getDevisDebug() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -475,13 +463,9 @@ class DevisService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .get(
+            () => HttpInterceptor.get(
                   Uri.parse(url),
-                  headers: {
-                    'Accept': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                 )
                 .timeout(
                   AppConfig.defaultTimeout,

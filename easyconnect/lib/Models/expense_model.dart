@@ -83,6 +83,42 @@ class Expense {
     );
   }
 
+  Expense copyWith({
+    int? id,
+    String? title,
+    String? description,
+    double? amount,
+    String? category,
+    String? status,
+    DateTime? expenseDate,
+    String? receiptPath,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? createdBy,
+    int? approvedBy,
+    String? rejectionReason,
+    String? approvedAt,
+  }) {
+    return Expense(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      status: status ?? this.status,
+      expenseDate: expenseDate ?? this.expenseDate,
+      receiptPath: receiptPath ?? this.receiptPath,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      approvedBy: approvedBy ?? this.approvedBy,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      approvedAt: approvedAt ?? this.approvedAt,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

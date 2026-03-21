@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\BonDeCommande;
@@ -11,10 +12,18 @@ use App\Models\Fournisseur;
 use App\Models\User;
 use App\Http\Resources\BonDeCommandeResource;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class BonDeCommandeController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des bons de commande avec filtres avancés
      * Accessible par Commercial, Comptable, Patron et Admin
@@ -79,21 +88,22 @@ class BonDeCommandeController extends Controller
             //           ->where('statut', '!=', 'livre');
             // }
             
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $bons = $query->orderBy('date_commande', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => BonDeCommandeResource::collection($bons->items()),
+                'data' => BonDeCommandeResource::collection($bons->items())->resolve(),
                 'pagination' => [
                     'current_page' => $bons->currentPage(),
                     'last_page' => $bons->lastPage(),
                     'per_page' => $bons->perPage(),
                     'total' => $bons->total(),
+                    'from' => $bons->firstItem(),
+                    'to' => $bons->lastItem(),
                 ],
-                'message' => 'Bons de commande récupérés avec succès'
-            ]);
+                'message' => 'Bons de commande récupérés avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
             
         } catch (\Exception $e) {
             \Log::error('Erreur lors de la récupération des bons de commande', [
@@ -202,7 +212,10 @@ class BonDeCommandeController extends Controller
 
             // Notifier le patron si le bon est en attente
             if ($bon->statut === 'en_attente') {
-                $this->notifyApproverOnSubmission($bon, 'bon_commande', 'Bon de Commande', 6, $bon->numero_commande);
+                $this->safeNotify(function () use ($bon) {
+                    $bon->load('user');
+                    $this->notificationService->notifyNewBonCommandeFournisseur($bon);
+                });
             }
 
             $bon->load(['fournisseur', 'createur', 'items']);
@@ -336,7 +349,12 @@ class BonDeCommandeController extends Controller
         ]);
 
         // Notifier l'auteur du bon de commande
-        $this->notifySubmitterOnApproval($bon, 'bon_commande', 'Bon de Commande', 'user_id', $bon->numero_commande);
+        if ($bon->user_id) {
+            $this->safeNotify(function () use ($bon) {
+                $bon->load('user');
+                $this->notificationService->notifyBonCommandeFournisseurValidated($bon);
+            });
+        }
 
         return response()->json([
             'success' => true,
@@ -372,7 +390,13 @@ class BonDeCommandeController extends Controller
         ]);
 
         // Notifier l'auteur du bon de commande
-        $this->notifySubmitterOnRejection($bon, 'bon_commande', 'Bon de Commande', $request->commentaire, 'user_id', $bon->numero_commande);
+        if ($bon->user_id) {
+            $commentaire = $request->commentaire;
+            $this->safeNotify(function () use ($bon, $commentaire) {
+                $bon->load('user');
+                $this->notificationService->notifyBonCommandeFournisseurRejected($bon, $commentaire);
+            });
+        }
 
         return response()->json([
             'success' => true,

@@ -157,12 +157,18 @@ class StockAlert extends Model
 
     public function getAcknowledgedByNameAttribute()
     {
-        return $this->acknowledgedBy ? $this->acknowledgedBy->prenom . ' ' . $this->acknowledgedBy->nom : 'N/A';
+        if (!$this->relationLoaded('acknowledgedBy') || !$this->acknowledgedBy) {
+            return 'N/A';
+        }
+        return trim(($this->acknowledgedBy->prenom ?? '') . ' ' . ($this->acknowledgedBy->nom ?? '')) ?: 'N/A';
     }
 
     public function getResolvedByNameAttribute()
     {
-        return $this->resolvedBy ? $this->resolvedBy->prenom . ' ' . $this->resolvedBy->nom : 'N/A';
+        if (!$this->relationLoaded('resolvedBy') || !$this->resolvedBy) {
+            return 'N/A';
+        }
+        return trim(($this->resolvedBy->prenom ?? '') . ' ' . ($this->resolvedBy->nom ?? '')) ?: 'N/A';
     }
 
     public function getIsActiveAttribute()

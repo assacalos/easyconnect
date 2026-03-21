@@ -335,34 +335,31 @@ class DevisNotifier extends Notifier<DevisState> {
   }
 
   Future<void> rejectDevis(int devisId, String commentaire) async {
+    Devis? original;
+    int idx = -1;
     try {
       state = state.copyWith(isLoading: true);
       final devisList = List<Devis>.from(state.devis);
-      final idx = devisList.indexWhere((d) => d.id == devisId);
-      Devis? original;
+      idx = devisList.indexWhere((d) => d.id == devisId);
       if (idx != -1) {
         original = devisList[idx];
-        if (state.currentStatus == 1) {
-          devisList.removeAt(idx);
-        } else {
-          devisList[idx] = Devis(
-            id: original.id,
-            clientId: original.clientId,
-            reference: original.reference,
-            dateCreation: original.dateCreation,
-            dateValidite: original.dateValidite,
-            notes: original.notes,
-            status: 3,
-            items: original.items,
-            remiseGlobale: original.remiseGlobale,
-            tva: original.tva,
-            conditions: original.conditions,
-            commercialId: original.commercialId,
-            titre: original.titre,
-            delaiLivraison: original.delaiLivraison,
-            garantie: original.garantie,
-          );
-        }
+        devisList[idx] = Devis(
+          id: original.id,
+          clientId: original.clientId,
+          reference: original.reference,
+          dateCreation: original.dateCreation,
+          dateValidite: original.dateValidite,
+          notes: original.notes,
+          status: 3,
+          items: original.items,
+          remiseGlobale: original.remiseGlobale,
+          tva: original.tva,
+          conditions: original.conditions,
+          commercialId: original.commercialId,
+          titre: original.titre,
+          delaiLivraison: original.delaiLivraison,
+          garantie: original.garantie,
+        );
         state = state.copyWith(devis: devisList);
       }
       final success = await _devisService.rejectDevis(devisId, commentaire);
@@ -385,10 +382,11 @@ class DevisNotifier extends Notifier<DevisState> {
         loadDevis(status: state.currentStatus).catchError((_) {});
       } else {
         if (original != null && idx != -1) {
-          final restore = List<Devis>.from(state.devis);
-          if (idx < restore.length) restore.insert(idx, original);
-          else restore.add(original);
-          state = state.copyWith(devis: restore);
+          final rollback = List<Devis>.from(state.devis);
+          rollback[idx] = original;
+          state = state.copyWith(devis: rollback);
+        } else {
+          loadDevis(status: state.currentStatus).catchError((_) {});
         }
         throw Exception('Erreur lors du rejet du devis');
       }
@@ -399,7 +397,14 @@ class DevisNotifier extends Notifier<DevisState> {
         return;
       }
       if (s.contains('401') || s.contains('403') || s.contains('unauthorized') || s.contains('forbidden')) rethrow;
-      loadDevis().catchError((_) {});
+      if (original != null && idx != -1) {
+        final rollback = List<Devis>.from(state.devis);
+        rollback[idx] = original;
+        state = state.copyWith(devis: rollback);
+      } else {
+        loadDevis().catchError((_) {});
+      }
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

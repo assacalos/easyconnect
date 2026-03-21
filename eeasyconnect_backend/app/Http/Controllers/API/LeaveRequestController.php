@@ -3,19 +3,28 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
-use App\Traits\SendsNotifications;
+use App\Services\NotificationService;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
 use App\Models\EmployeeLeave;
 use App\Models\Employee;
 use App\Http\Resources\EmployeeLeaveResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class LeaveRequestController extends Controller
 {
-    use SendsNotifications, CachesData;
+    use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste de toutes les demandes de congé
      */
@@ -63,21 +72,22 @@ class LeaveRequestController extends Controller
                 $query->where('end_date', '<=', $request->end_date);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $leaves = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => EmployeeLeaveResource::collection($leaves->items()),
+                'data' => EmployeeLeaveResource::collection($leaves->items())->resolve(),
                 'pagination' => [
                     'current_page' => $leaves->currentPage(),
                     'last_page' => $leaves->lastPage(),
                     'per_page' => $leaves->perPage(),
                     'total' => $leaves->total(),
+                    'from' => $leaves->firstItem(),
+                    'to' => $leaves->lastItem(),
                 ],
-                'message' => 'Liste des demandes de congé récupérée avec succès'
-            ]);
+                'message' => 'Liste des demandes de congé récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -116,7 +126,7 @@ class LeaveRequestController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => EmployeeLeaveResource::collection($leaves->items()),
+                'data' => EmployeeLeaveResource::collection($leaves->items())->resolve(),
                 'pagination' => [
                     'current_page' => $leaves->currentPage(),
                     'last_page' => $leaves->lastPage(),
@@ -226,7 +236,9 @@ class LeaveRequestController extends Controller
             $leave->load(['employee', 'creator']);
 
             // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($leave, 'leave_request', 'Demande de Congé');
+            $this->safeNotify(function () use ($leave) {
+                $this->notificationService->notifyNewLeaveRequest($leave);
+            });
 
             return response()->json([
                 'success' => true,
@@ -372,10 +384,18 @@ class LeaveRequestController extends Controller
     }
 
     /**
-     * Approuver une demande de congé
+     * Approuver une demande de congé. Réservé à Admin, RH, Patron.
      */
     public function approve(Request $request, $id)
     {
+        $user = $request->user();
+        if (!$user->isAdmin() && !$user->isRH() && !$user->isPatron()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seul l\'administrateur, le RH ou le patron peut approuver une demande de congé.',
+            ], 403);
+        }
+
         try {
             $leave = EmployeeLeave::with(['employee', 'approver', 'creator'])->find($id);
 
@@ -404,7 +424,14 @@ class LeaveRequestController extends Controller
             // TODO: Mettre à jour le solde de congés
 
             // Notifier l'employé concerné
-            $this->notifySubmitterOnApproval($leave, 'leave_request', 'Demande de Congé', 'employee_id');
+            if ($leave->employee_id || $leave->created_by) {
+                $this->safeNotify(function () use ($leave) {
+                    if ($leave->employee_id) {
+                        $leave->load('employee');
+                    }
+                    $this->notificationService->notifyLeaveRequestApproved($leave);
+                });
+            }
 
             DB::commit();
 
@@ -424,10 +451,18 @@ class LeaveRequestController extends Controller
     }
 
     /**
-     * Rejeter une demande de congé
+     * Rejeter une demande de congé. Réservé à Admin, RH, Patron.
      */
     public function reject(Request $request, $id)
     {
+        $user = $request->user();
+        if (!$user->isAdmin() && !$user->isRH() && !$user->isPatron()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seul l\'administrateur, le RH ou le patron peut rejeter une demande de congé.',
+            ], 403);
+        }
+
         try {
             $leave = EmployeeLeave::with(['employee', 'approver', 'creator'])->find($id);
 
@@ -452,7 +487,15 @@ class LeaveRequestController extends Controller
             $leave->reject($request->user()->id, $validated['rejection_reason']);
 
             // Notifier l'employé concerné
-            $this->notifySubmitterOnRejection($leave, 'leave_request', 'Demande de Congé', $validated['rejection_reason'], 'employee_id');
+            if ($leave->employee_id || $leave->created_by) {
+                $reason = $validated['rejection_reason'];
+                $this->safeNotify(function () use ($leave, $reason) {
+                    if ($leave->employee_id) {
+                        $leave->load('employee');
+                    }
+                    $this->notificationService->notifyLeaveRequestRejected($leave, $reason);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -833,4 +876,3 @@ class LeaveRequestController extends Controller
         })->map->count()->toArray();
     }
 }
-

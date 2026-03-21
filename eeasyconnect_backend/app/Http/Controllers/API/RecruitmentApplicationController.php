@@ -3,13 +3,24 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
+use App\Traits\SendsNotifications;
 use App\Models\RecruitmentApplication;
 use App\Models\RecruitmentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RecruitmentApplicationController extends Controller
 {
+    use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des candidatures
      */
@@ -33,20 +44,26 @@ class RecruitmentApplicationController extends Controller
                 $query->where('candidate_email', $request->candidate_email);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $applications = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-            // Transformer les données
-            $applications->getCollection()->transform(function ($application) {
+            $data = $applications->getCollection()->map(function ($application) {
                 return $this->formatApplication($application, true);
-            });
+            })->values();
 
             return response()->json([
                 'success' => true,
-                'data' => $applications,
-                'message' => 'Liste des candidatures récupérée avec succès'
-            ]);
+                'data' => $data,
+                'pagination' => [
+                    'current_page' => $applications->currentPage(),
+                    'last_page' => $applications->lastPage(),
+                    'per_page' => $applications->perPage(),
+                    'total' => $applications->total(),
+                    'from' => $applications->firstItem(),
+                    'to' => $applications->lastItem(),
+                ],
+                'message' => 'Liste des candidatures récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -128,6 +145,14 @@ class RecruitmentApplicationController extends Controller
             ]);
 
             DB::commit();
+
+            // Notifier le patron pour validation de la candidature
+            $this->safeNotify(function () use ($recruitmentRequest) {
+                $recruitmentRequest->load('user');
+                if ($recruitmentRequest->user) {
+                    $this->notificationService->notifyNewRecrutement($recruitmentRequest);
+                }
+            });
 
             return response()->json([
                 'success' => true,
@@ -298,6 +323,16 @@ class RecruitmentApplicationController extends Controller
             ]);
 
             $application->reject($request->user()->id, $validated['rejection_reason']);
+
+            // Notifier le créateur de la demande de recrutement
+            $reason = $validated['rejection_reason'];
+            $this->safeNotify(function () use ($application, $reason) {
+                $application->load('recruitmentRequest.user');
+                if ($application->recruitmentRequest && $application->recruitmentRequest->user_id) {
+                    $recruitmentRequest = $application->recruitmentRequest;
+                    $this->notificationService->notifyRecrutementRejected($recruitmentRequest, $reason);
+                }
+            });
 
             return response()->json([
                 'success' => true,

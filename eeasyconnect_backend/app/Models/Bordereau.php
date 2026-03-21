@@ -13,6 +13,7 @@ class Bordereau extends Model
 
     protected $fillable = [
         'reference',
+        'titre',
         'client_id',
         'devis_id',
         'user_id',
@@ -21,11 +22,15 @@ class Bordereau extends Model
         'notes',
         'status',
         'commentaire',
+        'etat_livraison',
+        'garantie',
+        'date_livraison',
     ];
 
     protected $casts = [
         'date_creation' => 'date',
         'date_validation' => 'date',
+        'date_livraison' => 'date',
     ];
 
     public function client() {

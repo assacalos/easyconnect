@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Paiement;
@@ -10,10 +11,18 @@ use App\Models\Facture;
 use App\Models\Client;
 use App\Models\PaymentSchedule;
 use App\Http\Resources\PaiementResource;
+use Illuminate\Support\Facades\Log;
 
 class PaiementController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des paiements
      * Accessible par Comptable, Patron et Admin
@@ -68,21 +77,22 @@ class PaiementController extends Controller
                 $query->where('comptable_id', $user->id);
             }
             
-            // Pagination
-            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $paiements = $query->orderBy('created_at', 'desc')->paginate($perPage);
             
             return response()->json([
                 'success' => true,
-                'data' => PaiementResource::collection($paiements->items()),
+                'data' => PaiementResource::collection($paiements->items())->resolve(),
                 'pagination' => [
                     'current_page' => $paiements->currentPage(),
                     'last_page' => $paiements->lastPage(),
                     'per_page' => $paiements->perPage(),
                     'total' => $paiements->total(),
+                    'from' => $paiements->firstItem(),
+                    'to' => $paiements->lastItem(),
                 ],
-                'message' => 'Liste des paiements récupérée avec succès'
-            ], 200);
+                'message' => 'Liste des paiements récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
             
         } catch (\Exception $e) {
             return response()->json([
@@ -427,8 +437,10 @@ class PaiementController extends Controller
 
                 // Notifier l'auteur du paiement
                 if ($paiement->comptable_id) {
-                    $reference = $paiement->reference ?? $paiement->id;
-                    $this->notifySubmitterOnApproval($paiement, 'payment', 'Paiement', 'comptable_id', $reference);
+                    $this->safeNotify(function () use ($paiement) {
+                        $paiement->load('comptable');
+                        $this->notificationService->notifyPaiementValidated($paiement);
+                    });
                 }
 
                 // Recharger le paiement avec ses relations
@@ -476,8 +488,12 @@ class PaiementController extends Controller
         if (method_exists($paiement, 'reject')) {
             if ($paiement->reject(auth()->id(), $reason, $comment)) {
                 // Notifier le comptable
-                $reference = $paiement->reference ?? $paiement->id;
-                $this->notifySubmitterOnRejection($paiement, 'payment', 'Paiement', $reason, 'comptable_id', $reference);
+                if ($paiement->comptable_id) {
+                    $this->safeNotify(function () use ($paiement, $reason) {
+                        $paiement->load('comptable');
+                        $this->notificationService->notifyPaiementRejected($paiement, $reason);
+                    });
+                }
                 
                 $paiement->load('client', 'comptable', 'schedule');
                 return response()->json([
@@ -499,8 +515,10 @@ class PaiementController extends Controller
 
         // Notifier l'auteur du paiement
         if ($paiement->comptable_id) {
-            $reference = $paiement->reference ?? $paiement->id;
-            $this->notifySubmitterOnRejection($paiement, 'payment', 'Paiement', $reason, 'comptable_id', $reference);
+            $this->safeNotify(function () use ($paiement, $reason) {
+                $paiement->load('comptable');
+                $this->notificationService->notifyPaiementRejected($paiement, $reason);
+            });
         }
 
         $paiement->load('client', 'comptable', 'schedule');
@@ -587,8 +605,9 @@ class PaiementController extends Controller
 
         if ($paiement->submit()) {
             // Notifier le patron
-            $reference = $paiement->reference ?? $paiement->id;
-            $this->notifyApproverOnSubmission($paiement, 'payment', 'Paiement', 6, $reference);
+            $this->safeNotify(function () use ($paiement) {
+                $this->notificationService->notifyNewPaiement($paiement);
+            });
 
             return response()->json([
                 'success' => true,
@@ -620,8 +639,12 @@ class PaiementController extends Controller
 
         if ($paiement->approve(auth()->id(), $comment)) {
             // Notifier l'auteur du paiement (comptable)
-            $reference = $paiement->reference ?? $paiement->id;
-            $this->notifySubmitterOnApproval($paiement, 'payment', 'Paiement', 'comptable_id', $reference);
+            if ($paiement->comptable_id) {
+                $this->safeNotify(function () use ($paiement) {
+                    $paiement->load('comptable');
+                    $this->notificationService->notifyPaiementValidated($paiement);
+                });
+            }
 
             return response()->json([
                 'success' => true,

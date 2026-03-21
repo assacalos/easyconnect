@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/intervention_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
@@ -11,6 +10,7 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class InterventionService {
   final storage = GetStorage();
@@ -25,7 +25,7 @@ class InterventionService {
     int perPage = 15,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -60,12 +60,9 @@ class InterventionService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -109,7 +106,7 @@ class InterventionService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -129,15 +126,11 @@ class InterventionService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final url = '$baseUrl/interventions-list$queryString';
+      final url = '${AppConfig.baseUrl}/interventions-list$queryString';
 
-      final response = await http
-          .get(
+      final response = await HttpInterceptor.get(
             Uri.parse(url),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
           )
           .timeout(
             AppConfig.extraLongTimeout,
@@ -170,7 +163,7 @@ class InterventionService {
           data = [];
         }
 
-        print('✅ [INTERVENTION] ${data.length} interventions trouvées');
+        debugPrint('✅ [INTERVENTION] ${data.length} interventions trouvées');
         final list = data.map((json) => Intervention.fromJson(json)).toList();
         _saveInterventionsToHive(list);
         return list;
@@ -187,14 +180,11 @@ class InterventionService {
   // Récupérer une intervention par ID
   Future<Intervention> getInterventionById(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/interventions-show/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/interventions-show/$id'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -215,16 +205,11 @@ class InterventionService {
   // Créer une intervention
   Future<Intervention> createIntervention(Intervention intervention) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/interventions-create'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.post(
+            Uri.parse('${AppConfig.baseUrl}/interventions-create'),
+            headers: headers,
             body: json.encode(intervention.toJson()),
           )
           .timeout(
@@ -301,16 +286,11 @@ class InterventionService {
   // Mettre à jour une intervention
   Future<Intervention> updateIntervention(Intervention intervention) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/interventions-update/${intervention.id}'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.put(
+            Uri.parse('${AppConfig.baseUrl}/interventions-update/${intervention.id}'),
+            headers: headers,
             body: json.encode(intervention.toJson()),
           )
           .timeout(
@@ -336,15 +316,11 @@ class InterventionService {
   // Approuver une intervention
   Future<bool> approveIntervention(int interventionId, {String? notes}) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions-approve/$interventionId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/interventions-approve/$interventionId'),
+        headers: headers,
         body: json.encode({'notes': notes}),
       );
 
@@ -366,15 +342,11 @@ class InterventionService {
     required String reason,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions-reject/$interventionId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/interventions-reject/$interventionId'),
+        headers: headers,
         body: json.encode({'reason': reason}),
       );
 
@@ -388,15 +360,11 @@ class InterventionService {
   // Démarrer une intervention
   Future<bool> startIntervention(int interventionId, {String? notes}) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions-start/$interventionId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/interventions-start/$interventionId'),
+        headers: headers,
         body: json.encode({'notes': notes}),
       );
 
@@ -416,15 +384,11 @@ class InterventionService {
     double? cost,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions-complete/$interventionId'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/interventions-complete/$interventionId'),
+        headers: headers,
         body: json.encode({
           'solution': solution,
           'completion_notes': completionNotes,
@@ -443,14 +407,11 @@ class InterventionService {
   // Supprimer une intervention
   Future<bool> deleteIntervention(int interventionId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/interventions-delete/$interventionId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/interventions-delete/$interventionId'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -463,14 +424,11 @@ class InterventionService {
   // Récupérer les statistiques des interventions
   Future<InterventionStats> getInterventionStats() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/interventions-stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/interventions-stats'),
+        headers: headers,
       );
       final result = ApiService.parseResponse(response);
 
@@ -518,7 +476,7 @@ class InterventionService {
   // Récupérer les interventions en attente
   Future<List<Intervention>> getPendingInterventions() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -534,12 +492,9 @@ class InterventionService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/interventions/pending$queryString'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/interventions/pending$queryString'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -568,14 +523,11 @@ class InterventionService {
     int technicianId,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/interventions/technician/$technicianId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/interventions/technician/$technicianId'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -602,14 +554,11 @@ class InterventionService {
   // Ajouter une pièce jointe
   Future<bool> addAttachment(int interventionId, String filePath) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/interventions/$interventionId/attachments'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/interventions/$interventionId/attachments'),
+        headers: headers,
         body: json.encode({'file_path': filePath}),
       );
 
@@ -623,14 +572,11 @@ class InterventionService {
   // Supprimer une pièce jointe
   Future<bool> removeAttachment(int interventionId, String filePath) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/interventions/$interventionId/attachments'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/interventions/$interventionId/attachments'),
+        headers: headers,
         body: json.encode({'file_path': filePath}),
       );
 

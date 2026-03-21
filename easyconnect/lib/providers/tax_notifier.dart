@@ -179,11 +179,21 @@ class TaxNotifier extends Notifier<TaxState> {
 
   Future<void> validateTax(Tax tax, {String? validationComment}) async {
     state = state.copyWith(isLoading: true);
+    CacheHelper.clearByPrefix('taxes_');
+    final list = List<Tax>.from(state.allTaxes);
+    final idx = list.indexWhere((t) => t.id == tax.id);
+    Tax? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'valide');
+      state = state.copyWith(allTaxes: list);
+      _applyFilters();
+    }
     try {
-      CacheHelper.clearByPrefix('taxes_');
       final success = await _taxService.approveTax(tax.id!, notes: validationComment);
       if (success) {
         DashboardRefreshHelper.refreshPatronCounter('tax');
+        DashboardRefreshHelper.refreshComptableDashboard();
         NotificationHelper.notifyValidation(
           entityType: 'taxe',
           entityName: NotificationHelper.getEntityDisplayName('taxe', tax),
@@ -191,15 +201,28 @@ class TaxNotifier extends Notifier<TaxState> {
           route: NotificationHelper.getEntityRoute('taxe', tax.id.toString()),
           entity: tax,
         );
-        await loadTaxes(statusFilter: _currentStatusFilter);
-        await loadTaxStats();
+        Future.microtask(() => loadTaxes(statusFilter: _currentStatusFilter).then((_) => loadTaxStats()).catchError((_) {}));
       } else {
-        await loadTaxes(statusFilter: _currentStatusFilter);
+        if (previousItem != null && idx != -1) {
+          final rollback = List<Tax>.from(state.allTaxes);
+          rollback[idx] = previousItem;
+          state = state.copyWith(allTaxes: rollback);
+          _applyFilters();
+        } else {
+          await loadTaxes(statusFilter: _currentStatusFilter);
+        }
         throw Exception('Erreur lors de la validation');
       }
     } catch (e) {
-      await loadTaxes(statusFilter: _currentStatusFilter);
-      await loadTaxStats();
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Tax>.from(state.allTaxes);
+        rollback[idx] = previousItem;
+        state = state.copyWith(allTaxes: rollback);
+        _applyFilters();
+      } else {
+        await loadTaxes(statusFilter: _currentStatusFilter);
+        await loadTaxStats();
+      }
       rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
@@ -208,11 +231,21 @@ class TaxNotifier extends Notifier<TaxState> {
 
   Future<void> rejectTax(Tax tax, String reason, {String? rejectionComment}) async {
     state = state.copyWith(isLoading: true);
+    CacheHelper.clearByPrefix('taxes_');
+    final list = List<Tax>.from(state.allTaxes);
+    final idx = list.indexWhere((t) => t.id == tax.id);
+    Tax? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'rejete', rejectionReason: reason);
+      state = state.copyWith(allTaxes: list);
+      _applyFilters();
+    }
     try {
-      CacheHelper.clearByPrefix('taxes_');
       final success = await _taxService.rejectTax(tax.id!, reason: reason, notes: rejectionComment);
       if (success) {
         DashboardRefreshHelper.refreshPatronCounter('tax');
+        DashboardRefreshHelper.refreshComptableDashboard();
         NotificationHelper.notifyRejection(
           entityType: 'taxe',
           entityName: NotificationHelper.getEntityDisplayName('taxe', tax),
@@ -221,15 +254,28 @@ class TaxNotifier extends Notifier<TaxState> {
           route: NotificationHelper.getEntityRoute('taxe', tax.id.toString()),
           entity: tax,
         );
-        await loadTaxes(statusFilter: _currentStatusFilter);
-        await loadTaxStats();
+        Future.microtask(() => loadTaxes(statusFilter: _currentStatusFilter).then((_) => loadTaxStats()).catchError((_) {}));
       } else {
-        await loadTaxes(statusFilter: _currentStatusFilter);
+        if (previousItem != null && idx != -1) {
+          final rollback = List<Tax>.from(state.allTaxes);
+          rollback[idx] = previousItem;
+          state = state.copyWith(allTaxes: rollback);
+          _applyFilters();
+        } else {
+          await loadTaxes(statusFilter: _currentStatusFilter);
+        }
         throw Exception('Erreur lors du rejet');
       }
     } catch (e) {
-      await loadTaxes(statusFilter: _currentStatusFilter);
-      await loadTaxStats();
+      if (previousItem != null && idx != -1) {
+        final rollback = List<Tax>.from(state.allTaxes);
+        rollback[idx] = previousItem;
+        state = state.copyWith(allTaxes: rollback);
+        _applyFilters();
+      } else {
+        await loadTaxes(statusFilter: _currentStatusFilter);
+        await loadTaxStats();
+      }
       rethrow;
     } finally {
       state = state.copyWith(isLoading: false);

@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:get_storage/get_storage.dart';
+import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 /// Réponse de l'API GET /patron-reports (trésorerie + âge des créances).
 class PatronReportsApiResponse {
@@ -54,7 +54,6 @@ class PatronReportsService {
   factory PatronReportsService() => _instance;
   PatronReportsService._();
 
-  final _storage = GetStorage();
   String get _baseUrl => AppConfig.baseUrl;
 
   /// GET /patron-reports?start_date=...&end_date=...
@@ -64,7 +63,7 @@ class PatronReportsService {
     required DateTime endDate,
   }) async {
     try {
-      final token = _storage.read('token');
+      final headers = await ApiService.headersAsync();
       final queryParams = <String, String>{
         'start_date': startDate.toIso8601String().split('T').first,
         'end_date': endDate.toIso8601String().split('T').first,
@@ -75,12 +74,9 @@ class PatronReportsService {
       AppLogger.httpRequest('GET', uri.toString(), tag: 'PATRON_REPORTS_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
-        operation: () => http.get(
+        operation: () => HttpInterceptor.get(
           uri,
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+          headers: headers,
         ),
         maxRetries: AppConfig.defaultMaxRetries,
       );

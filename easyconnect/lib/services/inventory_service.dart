@@ -1,26 +1,18 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:get_storage/get_storage.dart';
+import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/Models/inventory_session_model.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class InventoryService {
   static final InventoryService _instance = InventoryService._();
   factory InventoryService() => _instance;
   InventoryService._();
-  final _storage = GetStorage();
 
-  Future<Map<String, String>> _headers() async {
-    final token = _storage.read('token');
-    return {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-  }
+  Future<Map<String, String>> _headers() async => ApiService.headersAsync();
 
   /// Liste des sessions d'inventaire (paginée)
   Future<InventorySessionListResponse> getSessions({
@@ -38,7 +30,7 @@ class InventoryService {
     AppLogger.httpRequest('GET', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.get(url, headers: headers),
+      operation: () => HttpInterceptor.get(url, headers: headers),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -70,7 +62,7 @@ class InventoryService {
     AppLogger.httpRequest('POST', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.post(url, headers: headers, body: jsonEncode(body)),
+      operation: () => HttpInterceptor.post(url, headers: headers, body: jsonEncode(body)),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -89,7 +81,7 @@ class InventoryService {
     AppLogger.httpRequest('GET', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.get(url, headers: headers),
+      operation: () => HttpInterceptor.get(url, headers: headers),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -117,7 +109,7 @@ class InventoryService {
     AppLogger.httpRequest('PUT', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.put(url, headers: headers, body: jsonEncode(body)),
+      operation: () => HttpInterceptor.put(url, headers: headers, body: jsonEncode(body)),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -141,7 +133,7 @@ class InventoryService {
     AppLogger.httpRequest('PUT', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.put(url, headers: headers, body: jsonEncode(body)),
+      operation: () => HttpInterceptor.put(url, headers: headers, body: jsonEncode(body)),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -160,7 +152,7 @@ class InventoryService {
     AppLogger.httpRequest('POST', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.post(url, headers: headers),
+      operation: () => HttpInterceptor.post(url, headers: headers),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');
@@ -179,7 +171,7 @@ class InventoryService {
     AppLogger.httpRequest('DELETE', url.toString(), tag: 'INVENTORY_SERVICE');
     final headers = await _headers();
     final response = await RetryHelper.retryNetwork(
-      operation: () => http.delete(url, headers: headers),
+      operation: () => HttpInterceptor.delete(url, headers: headers),
       maxRetries: AppConfig.defaultMaxRetries,
     );
     AppLogger.httpResponse(response.statusCode, url.toString(), tag: 'INVENTORY_SERVICE');

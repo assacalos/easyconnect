@@ -1,4 +1,3 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bon_commande_model.dart';
@@ -9,6 +8,8 @@ import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class BonCommandeService {
   final storage = GetStorage();
@@ -21,7 +22,7 @@ class BonCommandeService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -40,13 +41,9 @@ class BonCommandeService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .get(
+            () => HttpInterceptor.get(
                   uri,
-                  headers: {
-                    'Accept': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                 )
                 .timeout(
                   AppConfig.extraLongTimeout,
@@ -105,7 +102,7 @@ class BonCommandeService {
 
   Future<BonCommande> createBonCommande(BonCommande bonCommande) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/commandes-entreprise-create';
       AppLogger.httpRequest('POST', url, tag: 'BON_COMMANDE_SERVICE');
 
@@ -114,14 +111,9 @@ class BonCommandeService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .post(
+            () => HttpInterceptor.post(
                   Uri.parse(url),
-                  headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                   body: json.encode(bonCommandeJson),
                 )
                 .timeout(
@@ -231,17 +223,12 @@ class BonCommandeService {
 
   Future<BonCommande> updateBonCommande(BonCommande bonCommande) async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .put(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.put(
             Uri.parse(
               '${AppConfig.baseUrl}/commandes-entreprise-update/${bonCommande.id}',
             ),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
             body: json.encode(bonCommande.toJson()),
           )
           .timeout(
@@ -261,15 +248,12 @@ class BonCommandeService {
 
   Future<bool> deleteBonCommande(int bonCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.delete(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.delete(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-destroy/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -280,15 +264,12 @@ class BonCommandeService {
 
   Future<bool> submitBonCommande(int bonCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-submit/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -299,15 +280,12 @@ class BonCommandeService {
 
   Future<bool> approveBonCommande(int bonCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-validate/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, considérer comme succès
@@ -333,16 +311,12 @@ class BonCommandeService {
 
   Future<bool> rejectBonCommande(int bonCommandeId, String commentaire) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-reject/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode({'commentaire': commentaire}),
       );
 
@@ -354,15 +328,12 @@ class BonCommandeService {
 
   Future<bool> markAsDelivered(int bonCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-mark-delivered/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -373,15 +344,12 @@ class BonCommandeService {
 
   Future<bool> generateInvoice(int bonCommandeId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
           '${AppConfig.baseUrl}/commandes-entreprise-mark-invoiced/$bonCommandeId',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -392,13 +360,10 @@ class BonCommandeService {
 
   Future<Map<String, dynamic>> getBonCommandeStats() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/bon-commandes/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

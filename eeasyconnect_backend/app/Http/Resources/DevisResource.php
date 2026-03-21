@@ -48,8 +48,12 @@ class DevisResource extends JsonResource
             'notes' => $this->notes,
             'conditions' => $this->conditions,
             'commentaire' => $this->commentaire,
+            'titre' => $this->titre,
+            'delai_livraison' => $this->delai_livraison,
+            'garantie' => $this->garantie,
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
+            'paid_at' => $this->paid_at?->toIso8601String(),
             // Relations
             'client' => $this->whenLoaded('client', function () {
                 if (!$this->client) {
@@ -72,6 +76,7 @@ class DevisResource extends JsonResource
                 return $this->items->map(function ($item) {
                     return [
                         'id' => $item->id,
+                        'reference' => $item->reference,
                         'designation' => $item->designation,
                         'quantite' => $item->quantite,
                         'prix_unitaire' => (float) $item->prix_unitaire,

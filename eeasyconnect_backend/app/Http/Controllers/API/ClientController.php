@@ -3,16 +3,28 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
-use App\Traits\SendsNotifications;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use App\Models\Client;
+use App\Models\User;
 use App\Http\Resources\ClientResource;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ClientController extends Controller
 {
     use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     // Liste des clients avec filtre rôle et statut
     // Accessible aux commerciaux, comptables, techniciens, admin et patron
     // Seuls les commerciaux (role 2) voient uniquement leurs propres clients
@@ -43,7 +55,7 @@ class ClientController extends Controller
                 }
             }
 
-            // Filtre par recherche (nom, email, entreprise)
+            // Filtre par recherche (nom, email, entreprise, numero_contribuable)
             if ($request->has('search')) {
                 $search = $request->query('search');
                 $query->where(function($q) use ($search) {
@@ -51,30 +63,36 @@ class ClientController extends Controller
                       ->orWhere('prenom', 'like', '%' . $search . '%')
                       ->orWhere('email', 'like', '%' . $search . '%')
                       ->orWhere('nom_entreprise', 'like', '%' . $search . '%')
-                      ->orWhere('contact', 'like', '%' . $search . '%');
+                      ->orWhere('contact', 'like', '%' . $search . '%')
+                      ->orWhere('numero_contribuable', 'like', '%' . $search . '%');
                 });
             }
-
             // Si commercial (role 2) → filtre uniquement ses clients
+
             // Les comptables (role 3), techniciens (role 5) et autres voient tous les clients
             if ($user->role == 2) { // 2 = commercial
                 $query->where('user_id', $user->id);
             }
 
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $clients = $query->orderBy('nom')->orderBy('prenom')->paginate($perPage);
+
+            // Retourner un tableau plat pour que le client (Flutter) reçoive data: [...]
+            $dataArray = ClientResource::collection($clients->items())->resolve();
 
             return response()->json([
                 'success' => true,
-                'data' => ClientResource::collection($clients->items()),
+                'data' => $dataArray,
                 'pagination' => [
                     'current_page' => $clients->currentPage(),
                     'last_page' => $clients->lastPage(),
                     'per_page' => $clients->perPage(),
                     'total' => $clients->total(),
+                    'from' => $clients->firstItem(),
+                    'to' => $clients->lastItem(),
                 ],
-                'message' => 'Liste des clients récupérée avec succès'
-            ], 200);
+                'message' => 'Liste des clients récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -119,6 +137,7 @@ class ClientController extends Controller
             'contact' => 'required|string|max:255',
             'adresse' => 'required|string|max:255',
             'nom_entreprise' => 'required|string|max:255',
+            'numero_contribuable' => 'nullable|string|max:255',
             'situation_geographique' => 'required|string|max:255',
             'status' => 'nullable|integer|in:0,1,2'
         ]);
@@ -132,17 +151,10 @@ class ClientController extends Controller
 
         // Notifier le patron lors de la création (seulement si le statut est "en attente")
         if ($client->status == 0) {
-            \Log::info("Tentative de notification du patron pour nouveau client", [
-                'client_id' => $client->id,
-                'user_id' => $client->user_id,
-                'status' => $client->status
-            ]);
-            $this->notifyApproverOnSubmission($client, 'client', 'Client', 6, $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom));
-        } else {
-            \Log::info("Pas de notification : client créé avec statut différent de 'en attente'", [
-                'client_id' => $client->id,
-                'status' => $client->status
-            ]);
+            $this->safeNotify(function () use ($client) {
+                $client->load('user');
+                $this->notificationService->notifyNewClient($client);
+            });
         }
 
             return response()->json([
@@ -177,6 +189,7 @@ class ClientController extends Controller
             'contact' => 'required|string|max:255',
             'adresse' => 'required|string|max:255',
             'nom_entreprise' => 'required|string|max:255',
+            'numero_contribuable' => 'nullable|string|max:255',
             'situation_geographique' => 'required|string|max:255',
         ]);
 
@@ -219,7 +232,10 @@ class ClientController extends Controller
             
             // Ne notifier que si le soumetteur est différent du patron
             if ($submitter && $approver && $submitter->id !== $approver->id) {
-                $this->notifySubmitterOnApproval($client, 'client', 'Client', 'user_id', $clientName);
+                $this->safeNotify(function () use ($client) {
+                    $client->load('user');
+                    $this->notificationService->notifyClientValidated($client);
+                });
             } else {
                 \Log::info("Pas de notification d'approbation : le patron a créé le client lui-même", [
                     'client_id' => $client->id,
@@ -249,9 +265,10 @@ class ClientController extends Controller
         $client->load(['user']);
 
         // Notifier l'auteur du client
-        $reason = $request->commentaire ?? 'Rejeté';
-        $clientName = $client->nom_entreprise ?? ($client->nom . ' ' . $client->prenom);
-        $this->notifySubmitterOnRejection($client, 'client', 'Client', $reason, 'user_id', $clientName);
+        $this->safeNotify(function () use ($client) {
+            $client->load('user');
+            $this->notificationService->notifyClientRejected($client);
+        });
 
         return response()->json([
             'success' => true,
@@ -315,5 +332,84 @@ class ClientController extends Controller
             'success' => true,
             'data' => $data
         ], 200);
+    }
+
+    /**
+     * Créer un accès au portail client pour un client déjà enregistré par le commercial.
+     * Crée un utilisateur (rôle 7) avec l'email du client et lie le client via portal_user_id.
+     * Réservé aux rôles Admin, Commercial, Patron.
+     */
+    public function createPortalAccess(Request $request, $id)
+    {
+        $client = Client::find($id);
+        if (!$client) {
+            return response()->json(['success' => false, 'message' => 'Client non trouvé'], 404);
+        }
+        if ($client->portal_user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce client a déjà un accès au portail client.',
+            ], 422);
+        }
+        $email = $client->email;
+        if (empty($email)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Un email est requis sur la fiche client pour créer un accès portail.',
+            ], 422);
+        }
+
+        $temporaryPassword = $request->input('password') ?? Str::random(10);
+
+        try {
+            $existingUser = User::where('email', $email)->first();
+            if ($existingUser) {
+                if ((int) $existingUser->role === 7) {
+                    $client->portal_user_id = $existingUser->id;
+                    $client->save();
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Un compte portail existe déjà pour cet email. Accès lié au client.',
+                        'data' => [
+                            'email' => $email,
+                            'portal_user_id' => $existingUser->id,
+                            'already_existed' => true,
+                        ],
+                    ], 200);
+                }
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Un compte utilisateur existe déjà avec cet email (autre rôle). Utilisez un email différent pour le client ou contactez l\'administrateur.',
+                ], 422);
+            }
+
+            $user = User::create([
+                'nom' => $client->nom ?? '',
+                'prenom' => $client->prenom ?? '',
+                'email' => $email,
+                'password' => Hash::make($temporaryPassword),
+                'role' => 7,
+                'is_active' => true,
+            ]);
+
+            $client->portal_user_id = $user->id;
+            $client->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Accès portail client créé. Transmettez les identifiants au client.',
+                'data' => [
+                    'email' => $email,
+                    'temporary_password' => $temporaryPassword,
+                    'portal_user_id' => $user->id,
+                ],
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Client createPortalAccess: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la création de l\'accès portail: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

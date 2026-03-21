@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/logger.dart';
 
+/// Erreurs **métier / réseau / affichage** (snackbars rouges, validation orange).
+///
+/// Les **401** et déconnexion passent par [AuthErrorHandler] (souvent après
+/// [HttpInterceptor] dans les services). Ne pas dupliquer la logique de session ici.
+///
 /// Callback pour afficher un snackbar (défini par l'app, ex: ScaffoldMessenger).
 void Function(String title, String message,
     {Color? backgroundColor,

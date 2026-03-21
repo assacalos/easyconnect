@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Stock;
 use App\Models\StockMovement;
@@ -12,10 +13,18 @@ use App\Models\StockOrderItem;
 use App\Http\Resources\StockResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class StockController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des stocks
      */
@@ -80,21 +89,22 @@ class StockController extends Controller
                 }
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $stocks = $query->orderBy('name')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => StockResource::collection($stocks->items()),
+                'data' => StockResource::collection($stocks->items())->resolve(),
                 'pagination' => [
                     'current_page' => $stocks->currentPage(),
                     'last_page' => $stocks->lastPage(),
                     'per_page' => $stocks->perPage(),
                     'total' => $stocks->total(),
+                    'from' => $stocks->firstItem(),
+                    'to' => $stocks->lastItem(),
                 ],
-                'message' => 'Liste des stocks récupérée avec succès'
-            ]);
+                'message' => 'Liste des stocks récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             \Log::error('Erreur StockController@index: ' . $e->getMessage(), [
@@ -203,8 +213,12 @@ class StockController extends Controller
 
             DB::commit();
 
-            // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($stock, 'stock', 'Stock', 6, $stock->name);
+            // Notifier le patron lors de la création si le stock est en attente
+            if ($stock->status === 'en_attente' || $stock->status === 'pending') {
+                $this->safeNotify(function () use ($stock) {
+                    $this->notificationService->notifyNewStock($stock);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -732,7 +746,12 @@ class StockController extends Controller
             $stock = Stock::find($id);
 
             // Notifier l'auteur du stock
-            $this->notifySubmitterOnApproval($stock, 'stock', 'Stock', 'created_by', $stock->name);
+            if ($stock->created_by) {
+                $this->safeNotify(function () use ($stock) {
+                    $stock->load('creator');
+                    $this->notificationService->notifyStockValidated($stock);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -784,7 +803,13 @@ class StockController extends Controller
             $stock = Stock::find($id);
 
             // Notifier l'auteur du stock
-            $this->notifySubmitterOnRejection($stock, 'stock', 'Stock', $validated['commentaire'], 'created_by', $stock->name);
+            if ($stock->created_by) {
+                $commentaire = $validated['commentaire'];
+                $this->safeNotify(function () use ($stock, $commentaire) {
+                    $stock->load('creator');
+                    $this->notificationService->notifyStockRejected($stock, $commentaire);
+                });
+            }
 
             return response()->json([
                 'success' => true,

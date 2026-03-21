@@ -1,15 +1,13 @@
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class TechnicienDashboardService {
-  final storage = GetStorage();
-
   // Récupérer les entités en attente
   Future<Map<String, int>> getPendingEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int pendingInterventions = 0;
       int pendingMaintenance = 0;
       int pendingReports = 0;
@@ -17,12 +15,9 @@ class TechnicienDashboardService {
 
       // Récupérer les interventions en attente
       try {
-        final interventionsResponse = await http.get(
-          Uri.parse('$baseUrl/interventions-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final interventionsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/interventions-list'),
+          headers: headers,
         );
         if (interventionsResponse.statusCode == 200) {
           final interventionsData = json.decode(interventionsResponse.body);
@@ -36,16 +31,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les équipements nécessitant une maintenance
       try {
-        final equipmentsResponse = await http.get(
-          Uri.parse('$baseUrl/equipments/needing-maintenance'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final equipmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/equipments/needing-maintenance'),
+          headers: headers,
         );
         if (equipmentsResponse.statusCode == 200) {
           final equipmentsData = json.decode(equipmentsResponse.body);
@@ -54,16 +47,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les rapports en attente (utiliser les interventions comme proxy)
       try {
-        final reportsResponse = await http.get(
-          Uri.parse('$baseUrl/interventions-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final reportsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/interventions-list'),
+          headers: headers,
         );
         if (reportsResponse.statusCode == 200) {
           final reportsData = json.decode(reportsResponse.body);
@@ -75,16 +66,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les équipements en attente
       try {
-        final equipmentsResponse = await http.get(
-          Uri.parse('$baseUrl/equipments'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final equipmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/equipments'),
+          headers: headers,
         );
         if (equipmentsResponse.statusCode == 200) {
           final equipmentsData = json.decode(equipmentsResponse.body);
@@ -96,6 +85,7 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       return {
@@ -117,7 +107,7 @@ class TechnicienDashboardService {
   // Récupérer les entités validées
   Future<Map<String, int>> getValidatedEntities() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       int validatedInterventions = 0;
       int validatedMaintenance = 0;
       int validatedReports = 0;
@@ -125,12 +115,9 @@ class TechnicienDashboardService {
 
       // Récupérer les interventions validées
       try {
-        final interventionsResponse = await http.get(
-          Uri.parse('$baseUrl/interventions-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final interventionsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/interventions-list'),
+          headers: headers,
         );
         if (interventionsResponse.statusCode == 200) {
           final interventionsData = json.decode(interventionsResponse.body);
@@ -146,16 +133,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les équipements opérationnels
       try {
-        final equipmentsResponse = await http.get(
-          Uri.parse('$baseUrl/equipments'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final equipmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/equipments'),
+          headers: headers,
         );
         if (equipmentsResponse.statusCode == 200) {
           final equipmentsData = json.decode(equipmentsResponse.body);
@@ -171,16 +156,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les rapports validés (utiliser les interventions comme proxy)
       try {
-        final reportsResponse = await http.get(
-          Uri.parse('$baseUrl/interventions-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final reportsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/interventions-list'),
+          headers: headers,
         );
         if (reportsResponse.statusCode == 200) {
           final reportsData = json.decode(reportsResponse.body);
@@ -196,6 +179,7 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       return {
@@ -217,7 +201,7 @@ class TechnicienDashboardService {
   // Récupérer les statistiques montants
   Future<Map<String, dynamic>> getStatistics() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       double interventionCost = 0.0;
       double maintenanceCost = 0.0;
       double equipmentValue = 0.0;
@@ -225,12 +209,9 @@ class TechnicienDashboardService {
 
       // Calculer le coût des interventions
       try {
-        final interventionsResponse = await http.get(
-          Uri.parse('$baseUrl/interventions-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final interventionsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/interventions-list'),
+          headers: headers,
         );
         if (interventionsResponse.statusCode == 200) {
           final interventionsData = json.decode(interventionsResponse.body);
@@ -247,16 +228,14 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Calculer le coût de maintenance
       try {
-        final equipmentsResponse = await http.get(
-          Uri.parse('$baseUrl/equipments'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final equipmentsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/equipments'),
+          headers: headers,
         );
         if (equipmentsResponse.statusCode == 200) {
           final equipmentsData = json.decode(equipmentsResponse.body);
@@ -276,6 +255,7 @@ class TechnicienDashboardService {
           }
         }
       } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Calculer les économies (différence entre coût préventif et correctif)
@@ -300,14 +280,11 @@ class TechnicienDashboardService {
   // Récupérer les données complètes du dashboard
   Future<Map<String, dynamic>> getDashboardData() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/technicien/dashboard/data'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/technicien/dashboard/data'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

@@ -4,8 +4,14 @@ import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 
-/// Intercepteur HTTP pour gérer automatiquement le rafraîchissement du token
-/// et les erreurs d'authentification
+/// Point d’entrée unique pour les requêtes API authentifiées (GET/POST/PUT/PATCH/DELETE).
+///
+/// Enchaînement : `ensureValidToken` → requête → si **401**, `refreshToken` puis **une**
+/// nouvelle tentative. Si le refresh échoue, délégation à
+/// `AuthErrorHandler.handleHttpResponse` avec `skipRefresh: true` (pas de double
+/// refresh côté handler). Les services appellent ensuite à nouveau
+/// `AuthErrorHandler.handleHttpResponse` (défaut `skipRefresh: true`) pour un
+/// traitement 401 cohérent sans boucle de refresh.
 class HttpInterceptor {
   /// Intercepte une requête HTTP et gère automatiquement le rafraîchissement du token
   /// en cas d'erreur 401
@@ -40,21 +46,27 @@ class HttpInterceptor {
           'Échec du rafraîchissement - Déconnexion requise',
           tag: 'HTTP_INTERCEPTOR',
         );
-        await AuthErrorHandler.handleHttpResponse(response);
+        await AuthErrorHandler.handleHttpResponse(
+          response,
+          skipRefresh: true,
+        );
       }
     }
 
     return response;
   }
 
-  /// Wrapper pour les requêtes GET
+  /// Wrapper pour les requêtes GET (en-têtes via [ApiService.headersAsync] si non fournis)
   static Future<http.Response> get(
     Uri url, {
     Map<String, String>? headers,
     int maxRetries = 1,
   }) async {
     return await interceptRequest(
-      () => http.get(url, headers: headers ?? ApiService.headers()),
+      () async {
+        final h = headers ?? await ApiService.headersAsync();
+        return http.get(url, headers: h);
+      },
       maxRetries: maxRetries,
     );
   }
@@ -67,8 +79,10 @@ class HttpInterceptor {
     int maxRetries = 1,
   }) async {
     return await interceptRequest(
-      () =>
-          http.post(url, headers: headers ?? ApiService.headers(), body: body),
+      () async {
+        final h = headers ?? await ApiService.headersAsync();
+        return http.post(url, headers: h, body: body);
+      },
       maxRetries: maxRetries,
     );
   }
@@ -81,7 +95,10 @@ class HttpInterceptor {
     int maxRetries = 1,
   }) async {
     return await interceptRequest(
-      () => http.put(url, headers: headers ?? ApiService.headers(), body: body),
+      () async {
+        final h = headers ?? await ApiService.headersAsync();
+        return http.put(url, headers: h, body: body);
+      },
       maxRetries: maxRetries,
     );
   }
@@ -90,10 +107,30 @@ class HttpInterceptor {
   static Future<http.Response> delete(
     Uri url, {
     Map<String, String>? headers,
+    Object? body,
     int maxRetries = 1,
   }) async {
     return await interceptRequest(
-      () => http.delete(url, headers: headers ?? ApiService.headers()),
+      () async {
+        final h = headers ?? await ApiService.headersAsync();
+        return http.delete(url, headers: h, body: body);
+      },
+      maxRetries: maxRetries,
+    );
+  }
+
+  /// Wrapper pour les requêtes PATCH
+  static Future<http.Response> patch(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    int maxRetries = 1,
+  }) async {
+    return await interceptRequest(
+      () async {
+        final h = headers ?? await ApiService.headersAsync();
+        return http.patch(url, headers: h, body: body);
+      },
       maxRetries: maxRetries,
     );
   }

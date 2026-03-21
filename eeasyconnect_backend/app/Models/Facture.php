@@ -29,7 +29,8 @@ class Facture extends Model
         'rejected_by',
         'rejected_at',
         'rejection_reason',
-        'rejection_comment'
+        'rejection_comment',
+        'paid_at'
     ];
 
     protected $casts = [
@@ -39,7 +40,8 @@ class Facture extends Model
         'tva' => 'decimal:2',
         'montant_ttc' => 'decimal:2',
         'validated_at' => 'datetime',
-        'rejected_at' => 'datetime'
+        'rejected_at' => 'datetime',
+        'paid_at' => 'datetime'
     ];
 
     /**
@@ -114,6 +116,11 @@ class Facture extends Model
         return $this->status === 'rejete';
     }
 
+    public function isPaid()
+    {
+        return $this->status === 'payee';
+    }
+
     /**
      * Vérifier si la facture peut être validée
      */
@@ -138,7 +145,8 @@ class Facture extends Model
         $statuses = [
             'en_attente' => 'En attente',
             'valide' => 'Validé',
-            'rejete' => 'Rejeté'
+            'rejete' => 'Rejeté',
+            'payee' => 'Payé'
         ];
 
         return $statuses[$this->status] ?? $this->status;

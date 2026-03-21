@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Salary;
 use App\Models\SalaryComponent;
@@ -14,10 +15,18 @@ use App\Models\Employee;
 use App\Http\Resources\SalaryResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SalaryController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des salaires
      */
@@ -71,21 +80,22 @@ class SalaryController extends Controller
                 }
             }
 
-            // Pagination
-            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $salaries = $query->orderBy('salary_date', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => SalaryResource::collection($salaries->items()),
+                'data' => SalaryResource::collection($salaries->items())->resolve(),
                 'pagination' => [
                     'current_page' => $salaries->currentPage(),
                     'last_page' => $salaries->lastPage(),
                     'per_page' => $salaries->perPage(),
                     'total' => $salaries->total(),
+                    'from' => $salaries->firstItem(),
+                    'to' => $salaries->lastItem(),
                 ],
-                'message' => 'Liste des salaires récupérée avec succès'
-            ]);
+                'message' => 'Liste des salaires récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -360,7 +370,9 @@ class SalaryController extends Controller
             ];
 
             // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($salary, 'salary', 'Salaire', 6, $salary->id);
+            $this->safeNotify(function () use ($salary) {
+                $this->notificationService->notifyNewSalaire($salary);
+            });
 
             return response()->json([
                 'success' => true,
@@ -538,7 +550,12 @@ class SalaryController extends Controller
 
             if ($salary->approve($request->user()->id, $notes)) {
                 // Notifier l'employé concerné
-                $this->notifySubmitterOnApproval($salary, 'salary', 'Salaire', 'employee_id', $salary->id);
+                if ($salary->employee_id) {
+                    $this->safeNotify(function () use ($salary) {
+                        $salary->load('employee');
+                        $this->notificationService->notifySalaireValidated($salary);
+                    });
+                }
 
                 // Recharger le salaire avec ses relations
                 $salary->refresh();
@@ -754,7 +771,12 @@ class SalaryController extends Controller
             if ($salary->cancel($validated['reason'] ?? null)) {
                 // Notifier l'employé concerné
                 $reason = $validated['reason'] ?? 'Rejeté';
-                $this->notifySubmitterOnRejection($salary, 'salary', 'Salaire', $reason, 'employee_id', $salary->id);
+                if ($salary->employee_id) {
+                    $this->safeNotify(function () use ($salary, $reason) {
+                        $salary->load('employee');
+                        $this->notificationService->notifySalaireRejected($salary, $reason);
+                    });
+                }
 
                 return response()->json([
                     'success' => true,

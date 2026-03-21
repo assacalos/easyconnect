@@ -136,23 +136,35 @@ class _SalaryListState extends ConsumerState<SalaryList>
             child: state.isLoading && state.salaries.isEmpty
                 ? const SkeletonSearchResults(itemCount: 6)
                 : state.salaries.isEmpty
-                    ? const Center(child: Text('Aucun salaire trouvé'))
-                    : PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: state.hasNextPage,
-                        isLoadingMore: state.isLoadingMore,
-                        itemCount: state.salaries.length,
-                        itemBuilder: (context, index) {
-                          final salary = state.salaries[index];
-                          return _buildSalaryCard(
-                            context,
-                            salary,
-                            formatCurrency,
-                            canManage,
-                            notifier,
-                          );
-                        },
+                    ? RefreshIndicator(
+                        onRefresh: () => notifier.loadSalaries(forceRefresh: true),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: 400,
+                            child: const Center(child: Text('Aucun salaire trouvé')),
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => notifier.loadSalaries(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: state.hasNextPage,
+                          isLoadingMore: state.isLoadingMore,
+                          itemCount: state.salaries.length,
+                          itemBuilder: (context, index) {
+                            final salary = state.salaries[index];
+                            return _buildSalaryCard(
+                              context,
+                              salary,
+                              formatCurrency,
+                              canManage,
+                              notifier,
+                            );
+                          },
+                        ),
                       ),
           ),
         ],

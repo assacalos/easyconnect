@@ -4,6 +4,7 @@ import 'package:easyconnect/providers/salary_state.dart';
 import 'package:easyconnect/providers/auth_notifier.dart';
 import 'package:easyconnect/services/salary_service.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
+import 'package:easyconnect/utils/dashboard_refresh_helper.dart';
 import 'package:easyconnect/utils/notification_helper.dart';
 import 'package:easyconnect/utils/logger.dart';
 
@@ -236,9 +237,27 @@ class SalaryNotifier extends Notifier<SalaryState> {
 
   Future<void> approveSalary(Salary salary, {String? notes}) async {
     state = state.copyWith(isLoading: true);
+    final list = List<Salary>.from(state.salaries);
+    final idx = list.indexWhere((s) => s.id == salary.id);
+    Salary? previousSalary;
+    if (idx != -1) {
+      previousSalary = list[idx];
+      list[idx] = previousSalary.copyWith(status: 'approved');
+      state = state.copyWith(salaries: list);
+    }
+    final pendingList = List<Salary>.from(state.pendingSalaries);
+    final pendingIdx = pendingList.indexWhere((s) => s.id == salary.id);
+    Salary? previousPending;
+    if (pendingIdx != -1) {
+      previousPending = pendingList[pendingIdx];
+      pendingList[pendingIdx] = previousPending.copyWith(status: 'approved');
+      state = state.copyWith(pendingSalaries: pendingList);
+    }
     try {
       final success = await _salaryService.approveSalary(salary.id!, notes: notes);
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('salary');
+        DashboardRefreshHelper.refreshRhDashboard();
         NotificationHelper.notifyValidation(
           entityType: 'salary',
           entityName: NotificationHelper.getEntityDisplayName('salary', salary),
@@ -246,22 +265,63 @@ class SalaryNotifier extends Notifier<SalaryState> {
           route: NotificationHelper.getEntityRoute('salary', salary.id.toString()),
           entity: salary,
         );
-        await loadSalaries(forceRefresh: true);
-        await loadSalaryStats();
-        await loadPendingSalaries();
+        Future.microtask(() => loadSalaries(forceRefresh: true).then((_) async {
+          await loadSalaryStats();
+          await loadPendingSalaries();
+        }).catchError((_) {}));
       } else {
+        _rollbackSalaryState(previousSalary, idx, previousPending, pendingIdx);
         throw Exception('Erreur lors de l\'approbation');
       }
+    } catch (e) {
+      _rollbackSalaryState(previousSalary, idx, previousPending, pendingIdx);
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
+  void _rollbackSalaryState(Salary? previousSalary, int salaryIdx, Salary? previousPending, int pendingIdx) {
+    if (previousSalary != null && salaryIdx != -1) {
+      final rollback = List<Salary>.from(state.salaries);
+      rollback[salaryIdx] = previousSalary;
+      state = state.copyWith(salaries: rollback);
+    }
+    if (previousPending != null && pendingIdx != -1) {
+      final rollbackPending = List<Salary>.from(state.pendingSalaries);
+      rollbackPending[pendingIdx] = previousPending;
+      state = state.copyWith(pendingSalaries: rollbackPending);
+    }
+    if (previousSalary == null && previousPending == null) {
+      loadSalaries(forceRefresh: true);
+      loadSalaryStats();
+      loadPendingSalaries();
+    }
+  }
+
   Future<void> rejectSalary(Salary salary, String reason) async {
     state = state.copyWith(isLoading: true);
+    final list = List<Salary>.from(state.salaries);
+    final idx = list.indexWhere((s) => s.id == salary.id);
+    Salary? previousSalary;
+    if (idx != -1) {
+      previousSalary = list[idx];
+      list[idx] = previousSalary.copyWith(status: 'rejected', rejectionReason: reason);
+      state = state.copyWith(salaries: list);
+    }
+    final pendingList = List<Salary>.from(state.pendingSalaries);
+    final pendingIdx = pendingList.indexWhere((s) => s.id == salary.id);
+    Salary? previousPending;
+    if (pendingIdx != -1) {
+      previousPending = pendingList[pendingIdx];
+      pendingList[pendingIdx] = previousPending.copyWith(status: 'rejected', rejectionReason: reason);
+      state = state.copyWith(pendingSalaries: pendingList);
+    }
     try {
       final success = await _salaryService.rejectSalary(salary.id!, reason: reason);
       if (success) {
+        DashboardRefreshHelper.refreshPatronCounter('salary');
+        DashboardRefreshHelper.refreshRhDashboard();
         NotificationHelper.notifyRejection(
           entityType: 'salary',
           entityName: NotificationHelper.getEntityDisplayName('salary', salary),
@@ -270,12 +330,17 @@ class SalaryNotifier extends Notifier<SalaryState> {
           route: NotificationHelper.getEntityRoute('salary', salary.id.toString()),
           entity: salary,
         );
-        await loadSalaries(forceRefresh: true);
-        await loadSalaryStats();
-        await loadPendingSalaries();
+        Future.microtask(() => loadSalaries(forceRefresh: true).then((_) async {
+          await loadSalaryStats();
+          await loadPendingSalaries();
+        }).catchError((_) {}));
       } else {
+        _rollbackSalaryState(previousSalary, idx, previousPending, pendingIdx);
         throw Exception('Erreur lors du rejet');
       }
+    } catch (e) {
+      _rollbackSalaryState(previousSalary, idx, previousPending, pendingIdx);
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

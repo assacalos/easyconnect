@@ -304,46 +304,100 @@ class PaymentNotifier extends Notifier<PaymentState> {
 
   Future<void> approvePayment(int paymentId, {String? comments}) async {
     CacheHelper.clearByPrefix('payments_');
-    final result = await _paymentService.approvePayment(paymentId, comments: comments);
-    if (result['success'] == true) {
-      DashboardRefreshHelper.refreshPatronCounter('payment');
-      if (result['data'] != null) {
-        try {
-          NotificationHelper.notifyValidation(
-            entityType: 'payment',
-            entityName: NotificationHelper.getEntityDisplayName('payment', result['data']),
-            entityId: paymentId.toString(),
-            route: NotificationHelper.getEntityRoute('payment', paymentId.toString()),
-            entity: result['data'],
-          );
-        } catch (_) {}
+    final list = List<PaymentModel>.from(state.payments);
+    final idx = list.indexWhere((p) => p.id == paymentId);
+    PaymentModel? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'approved', updatedAt: DateTime.now());
+      state = state.copyWith(payments: list);
+    }
+    try {
+      final result = await _paymentService.approvePayment(paymentId, comments: comments);
+      if (result['success'] == true) {
+        DashboardRefreshHelper.refreshPatronCounter('payment');
+        DashboardRefreshHelper.refreshComptableDashboard();
+        if (previousItem != null) {
+          try {
+            NotificationHelper.notifyValidation(
+              entityType: 'payment',
+              entityName: NotificationHelper.getEntityDisplayName('payment', previousItem),
+              entityId: paymentId.toString(),
+              route: NotificationHelper.getEntityRoute('payment', paymentId.toString()),
+              entity: previousItem,
+            );
+          } catch (_) {}
+        }
+        Future.microtask(() => loadPayments(approvalStatusFilter: _currentApprovalStatusFilter).catchError((_) {}));
+      } else {
+        if (previousItem != null && idx != -1) {
+          final rollback = List<PaymentModel>.from(state.payments);
+          rollback[idx] = previousItem;
+          state = state.copyWith(payments: rollback);
+        } else {
+          await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
+        }
+        throw Exception(result['message']?.toString() ?? 'Erreur');
       }
-      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
-    } else {
-      throw Exception(result['message']?.toString() ?? 'Erreur');
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<PaymentModel>.from(state.payments);
+        rollback[idx] = previousItem;
+        state = state.copyWith(payments: rollback);
+      } else {
+        await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
+      }
+      rethrow;
     }
   }
 
   Future<void> rejectPayment(int paymentId, {required String reason}) async {
     CacheHelper.clearByPrefix('payments_');
-    final result = await _paymentService.rejectPayment(paymentId, reason: reason);
-    if (result['success'] == true) {
-      DashboardRefreshHelper.refreshPatronCounter('payment');
-      if (result['data'] != null) {
-        try {
-          NotificationHelper.notifyRejection(
-            entityType: 'payment',
-            entityName: NotificationHelper.getEntityDisplayName('payment', result['data']),
-            entityId: paymentId.toString(),
-            reason: reason,
-            route: NotificationHelper.getEntityRoute('payment', paymentId.toString()),
-            entity: result['data'],
-          );
-        } catch (_) {}
+    final list = List<PaymentModel>.from(state.payments);
+    final idx = list.indexWhere((p) => p.id == paymentId);
+    PaymentModel? previousItem;
+    if (idx != -1) {
+      previousItem = list[idx];
+      list[idx] = previousItem.copyWith(status: 'rejected', updatedAt: DateTime.now());
+      state = state.copyWith(payments: list);
+    }
+    try {
+      final result = await _paymentService.rejectPayment(paymentId, reason: reason);
+      if (result['success'] == true) {
+        DashboardRefreshHelper.refreshPatronCounter('payment');
+        DashboardRefreshHelper.refreshComptableDashboard();
+        if (previousItem != null) {
+          try {
+            NotificationHelper.notifyRejection(
+              entityType: 'payment',
+              entityName: NotificationHelper.getEntityDisplayName('payment', previousItem),
+              entityId: paymentId.toString(),
+              reason: reason,
+              route: NotificationHelper.getEntityRoute('payment', paymentId.toString()),
+              entity: previousItem,
+            );
+          } catch (_) {}
+        }
+        Future.microtask(() => loadPayments(approvalStatusFilter: _currentApprovalStatusFilter).catchError((_) {}));
+      } else {
+        if (previousItem != null && idx != -1) {
+          final rollback = List<PaymentModel>.from(state.payments);
+          rollback[idx] = previousItem;
+          state = state.copyWith(payments: rollback);
+        } else {
+          await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
+        }
+        throw Exception(result['message']?.toString() ?? 'Erreur');
       }
-      await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
-    } else {
-      throw Exception(result['message']?.toString() ?? 'Erreur');
+    } catch (e) {
+      if (previousItem != null && idx != -1) {
+        final rollback = List<PaymentModel>.from(state.payments);
+        rollback[idx] = previousItem;
+        state = state.copyWith(payments: rollback);
+      } else {
+        await loadPayments(approvalStatusFilter: _currentApprovalStatusFilter);
+      }
+      rethrow;
     }
   }
 

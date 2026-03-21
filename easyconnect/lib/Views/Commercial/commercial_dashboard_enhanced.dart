@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +11,7 @@ import 'package:easyconnect/Views/Components/user_profile_card.dart';
 import 'package:easyconnect/Views/Components/paginated_data_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/dashboard_entity_colors.dart';
+import 'package:easyconnect/utils/responsive_helper.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 import 'package:easyconnect/Views/Components/dashboard_web_chart_section.dart';
 import 'package:easyconnect/Views/Components/rendements_et_alertes_card.dart';
@@ -154,7 +154,7 @@ class _CommercialDashboardEnhancedState
                 const Color(0xFF8B5CF6),
               ),
               const SizedBox(height: 12),
-              if (kIsWeb) _buildMontantsWeb(context, state) else _buildStatisticsSection(context, state),
+              ResponsiveHelper.isMobile(context) ? _buildStatisticsSection(context, state) : _buildMontantsWeb(context, state),
             ],
           ),
         ),
@@ -812,6 +812,27 @@ class _CommercialDashboardEnhancedState
               DashboardEntityColors.bonCommandesFournisseur,
               () => _nav(context, '/bons-de-commande-fournisseur'),
             ),
+            _drawerItem(
+              Icons.book,
+              'Journal des comptes',
+              DashboardEntityColors.journal,
+              () => _nav(context, '/journal'),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.beach_access,
+                color: DashboardEntityColors.conges,
+                size: 22,
+              ),
+              title: const Text(
+                'Demande de congé',
+                style: TextStyle(color: Colors.white70),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/leaves');
+              },
+            ),
             const Divider(color: Colors.white54),
             ListTile(
               leading: Icon(
@@ -874,6 +895,16 @@ class _CommercialDashboardEnhancedState
                   context.go('/admin/settings');
                 },
               ),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent, size: 22),
+              title: const Text('Déconnexion', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+              onTap: () async {
+                Navigator.pop(context);
+                await ref.read(authProvider.notifier).logout();
+                if (context.mounted) context.go('/login');
+              },
+            ),
           ],
         ),
       ),

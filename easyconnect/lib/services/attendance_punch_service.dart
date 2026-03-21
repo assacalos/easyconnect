@@ -1,3 +1,4 @@
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -5,14 +6,13 @@ import '../Models/attendance_punch_model.dart';
 import '../Models/pagination_response.dart';
 import '../services/location_service.dart';
 import '../services/camera_service.dart';
-import '../utils/constant.dart';
-import '../utils/app_config.dart';
 import '../services/api_service.dart';
 import '../utils/auth_error_handler.dart';
 import '../utils/logger.dart';
 import '../utils/retry_helper.dart';
 import '../utils/pagination_helper.dart';
 import 'storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class AttendancePunchService {
   static final AttendancePunchService _instance =
@@ -41,11 +41,11 @@ class AttendancePunchService {
           type == 'check_in'
               ? '/attendances/check-in'
               : '/attendances/check-out';
-      final url = '$baseUrl$endpoint';
+      final url = '${AppConfig.baseUrl}$endpoint';
 
       final request = http.MultipartRequest('POST', Uri.parse(url));
 
-      final headers = ApiService.headers();
+      final headers = await ApiService.headersAsync();
       headers.remove('Content-Type');
       request.headers.addAll(headers);
 
@@ -181,7 +181,9 @@ class AttendancePunchService {
                     'created_at': now.toIso8601String(),
                     'updated_at': now.toIso8601String(),
                   });
-                } catch (e2) {}
+                } catch (e2) {
+                  // Fallback : données partielles uniquement.
+                }
               }
             } else {
               // Construire un pointage minimal avec l'ID et les données disponibles
@@ -200,7 +202,9 @@ class AttendancePunchService {
                   'created_at': now.toIso8601String(),
                   'updated_at': now.toIso8601String(),
                 });
-              } catch (e) {}
+              } catch (e) {
+                // Parsing local impossible ; attendanceData reste null.
+              }
             }
 
             if (attendanceData != null) {
@@ -382,16 +386,16 @@ class AttendancePunchService {
 
     /* CODE ANCIEN (désactivé) - Gardé pour référence si besoin de réactiver
     try {
-      final url = '$baseUrl/attendances/current-status?type=$type';
+      final url = '${AppConfig.baseUrl}/attendances/current-status?type=$type';
 
       print('🔵 [ATTENDANCE_PUNCH_SERVICE] ===== DÉBUT canPunch =====');
       print('🔵 [ATTENDANCE_PUNCH_SERVICE] URL: $url');
       print('🔵 [ATTENDANCE_PUNCH_SERVICE] Type demandé: $type');
       http.Response response;
       try {
-        response = await http.get(
+        response = await HttpInterceptor.get(
           Uri.parse(url),
-          headers: ApiService.headers(),
+          headers: await ApiService.headersAsync(),
         );
       } catch (e) {
         print('🔴 [ATTENDANCE_PUNCH_SERVICE] Erreur lors de l\'appel API: $e');
@@ -844,9 +848,9 @@ class AttendancePunchService {
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'ATTENDANCE_PUNCH_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
-        operation: () => http
-            .get(uri, headers: ApiService.headers())
+        operation: () => HttpInterceptor.get(uri, headers: headers)
             .timeout(
               AppConfig.defaultTimeout,
               onTimeout: () =>
@@ -927,10 +931,9 @@ class AttendancePunchService {
   // Approuver un pointage
   Future<Map<String, dynamic>> approveAttendance(int attendanceId) async {
     try {
-      var response = await http
-          .post(
-            Uri.parse('$baseUrl/attendances-validate/$attendanceId'),
-            headers: ApiService.headers(jsonContent: true),
+      var response = await HttpInterceptor.post(
+            Uri.parse('${AppConfig.baseUrl}/attendances-validate/$attendanceId'),
+            headers: await ApiService.headersAsync(jsonContent: true),
             body: jsonEncode({'comment': ''}),
           )
           .timeout(
@@ -940,10 +943,9 @@ class AttendancePunchService {
           );
 
       if (response.statusCode == 500 || response.statusCode == 400) {
-        response = await http
-            .put(
-              Uri.parse('$baseUrl/attendances/$attendanceId'),
-              headers: ApiService.headers(jsonContent: true),
+        response = await HttpInterceptor.put(
+              Uri.parse('${AppConfig.baseUrl}/attendances/$attendanceId'),
+              headers: await ApiService.headersAsync(jsonContent: true),
               body: jsonEncode({
                 'status': 'valide',
                 'validated_by': null,
@@ -995,10 +997,9 @@ class AttendancePunchService {
     String reason,
   ) async {
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/attendances-reject/$attendanceId'),
-            headers: ApiService.headers(jsonContent: true),
+      final response = await HttpInterceptor.post(
+            Uri.parse('${AppConfig.baseUrl}/attendances-reject/$attendanceId'),
+            headers: await ApiService.headersAsync(jsonContent: true),
             body: jsonEncode({'reason': reason}),
           )
           .timeout(
@@ -1045,7 +1046,9 @@ class AttendancePunchService {
         HiveStorageService.keyAttendances,
         list.map((e) => e.toJson()).toList(),
       );
-    } catch (_) {}
+    } catch (_) {
+      // Cache non bloquant.
+    }
   }
 
   /// Cache Hive : liste des pointages pour affichage instantané.
@@ -1079,11 +1082,11 @@ class AttendancePunchService {
         if (period == 'week') 'week': week.toString(),
       };
       final qs = query.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
-      final url = '$baseUrl/attendances-presence-summary?$qs';
+      final url = '${AppConfig.baseUrl}/attendances-presence-summary?$qs';
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       final data = jsonDecode(response.body);

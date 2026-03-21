@@ -52,19 +52,22 @@ class PaymentScheduleController extends Controller
             $query->where('end_date', '<=', $request->end_date);
         }
 
-        $schedules = $query->orderBy('created_at', 'desc')->paginate($request->get('per_page', 15));
+        $perPage = min((int) $request->get('per_page', 20), 100);
+        $schedules = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => PaymentScheduleResource::collection($schedules->items()),
+            'data' => PaymentScheduleResource::collection($schedules->items())->resolve(),
             'pagination' => [
                 'current_page' => $schedules->currentPage(),
                 'last_page' => $schedules->lastPage(),
                 'per_page' => $schedules->perPage(),
                 'total' => $schedules->total(),
+                'from' => $schedules->firstItem(),
+                'to' => $schedules->lastItem(),
             ],
-            'message' => 'Liste des plannings récupérée avec succès'
-        ]);
+            'message' => 'Liste des plannings récupérée avec succès',
+        ], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

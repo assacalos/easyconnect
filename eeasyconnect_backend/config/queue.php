@@ -11,6 +11,10 @@ return [
     | API, giving you convenient access to each back-end using the same
     | syntax for every one. Here you may define a default connection.
     |
+    | Pour o2switch (hébergement partagé), utiliser le driver "database"
+    | et définir QUEUE_CONNECTION=database dans .env. Penser à lancer
+    | un worker : php artisan queue:work
+    |
     */
 
     'default' => env('QUEUE_CONNECTION', 'sync'),

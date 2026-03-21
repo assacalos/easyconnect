@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
+
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -22,6 +24,7 @@ class User extends Authenticatable
         'prenom',
         'email',
         'password',
+        'avatar',
         'role',
         'is_active',
     ];
@@ -47,70 +50,109 @@ class User extends Authenticatable
     ];
 
     /**
+     * Rôle typé (aligné sur users.role).
+     */
+    public function roleEnum(): ?UserRole
+    {
+        return UserRole::tryFromColumn($this->role);
+    }
+
+    public function hasRole(UserRole $role): bool
+    {
+        return $role->matchesColumn($this->role);
+    }
+
+    public function hasAnyRole(UserRole ...$roles): bool
+    {
+        foreach ($roles as $role) {
+            if ($this->hasRole($role)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Vérifier si l'utilisateur est admin
      */
-    public function isAdmin()
+    public function isAdmin(): bool
     {
-        return $this->role == 1;
+        return $this->hasRole(UserRole::Admin);
     }
 
     /**
      * Vérifier si l'utilisateur est commercial
      */
-    public function isCommercial()
+    public function isCommercial(): bool
     {
-        return $this->role == 2;
+        return $this->hasRole(UserRole::Commercial);
     }
 
     /**
      * Vérifier si l'utilisateur est comptable
      */
-    public function isComptable()
+    public function isComptable(): bool
     {
-        return $this->role == 3;
+        return $this->hasRole(UserRole::Comptable);
     }
 
     /**
      * Vérifier si l'utilisateur est RH
      */
-    public function isRH()
+    public function isRH(): bool
     {
-        return $this->role == 4;
+        return $this->hasRole(UserRole::RH);
     }
 
     /**
      * Vérifier si l'utilisateur est technicien
      */
-    public function isTechnicien()
+    public function isTechnicien(): bool
     {
-        return $this->role == 5;
+        return $this->hasRole(UserRole::Technicien);
     }
 
     /**
      * Vérifier si l'utilisateur est patron
      */
-    public function isPatron()
+    public function isPatron(): bool
     {
-        return $this->role == 6;
+        return $this->hasRole(UserRole::Patron);
+    }
+
+    /**
+     * Vérifier si l'utilisateur est client (portail client)
+     */
+    public function isClient(): bool
+    {
+        return $this->hasRole(UserRole::Client);
     }
 
     /**
      * Obtenir le nom du rôle (avec cache)
      */
-    public function getRoleName()
+    public function getRoleName(): string
     {
         return \Illuminate\Support\Facades\Cache::remember("role_name:{$this->role}", 86400, function () {
-            $roles = [
-                1 => 'Admin',
-                2 => 'Commercial',
-                3 => 'Comptable',
-                4 => 'RH',
-                5 => 'Technicien',
-                6 => 'Patron'
-            ];
-
-            return $roles[$this->role] ?? 'Inconnu';
+            return $this->roleEnum()?->label() ?? 'Inconnu';
         });
+    }
+
+    /**
+     * Tâches assignées à cet utilisateur
+     */
+    public function assignedTasks()
+    {
+        return $this->hasMany(Task::class, 'assigned_to');
+    }
+
+    /**
+     * Tâches créées par cet utilisateur (patron/admin)
+     */
+    public function createdTasks()
+    {
+        return $this->hasMany(Task::class, 'assigned_by');
     }
 
     /**

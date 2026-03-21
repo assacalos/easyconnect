@@ -4,6 +4,7 @@ import 'package:pusher_client/pusher_client.dart';
 import 'package:laravel_echo/laravel_echo.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/providers/notification_notifier.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
@@ -34,10 +35,10 @@ class WebSocketService {
     if (!AppConfig.websocketEnabled) return;
 
     try {
-      final token = await SessionService.getToken();
+      final authHeaders = await ApiService.headersAsync();
       final userId = SessionService.getUserId();
 
-      if (token == null || userId == null) return;
+      if (!authHeaders.containsKey('Authorization') || userId == null) return;
 
       AppLogger.info('🔌 Connexion Pusher pour user $userId', tag: 'WEBSOCKET');
 
@@ -48,11 +49,7 @@ class WebSocketService {
         encrypted: true,
         auth: PusherAuth(
           authUrl,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
+          headers: authHeaders,
         ),
       );
 

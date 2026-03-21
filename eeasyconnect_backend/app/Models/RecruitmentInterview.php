@@ -112,7 +112,10 @@ class RecruitmentInterview extends Model
 
     public function getInterviewerNameAttribute()
     {
-        return $this->interviewer ? $this->interviewer->prenom . ' ' . $this->interviewer->nom : 'N/A';
+        if (!$this->relationLoaded('interviewer') || !$this->interviewer) {
+            return 'N/A';
+        }
+        return trim(($this->interviewer->prenom ?? '') . ' ' . ($this->interviewer->nom ?? '')) ?: 'N/A';
     }
 
     public function getIsScheduledAttribute()

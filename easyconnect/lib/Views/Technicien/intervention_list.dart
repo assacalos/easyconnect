@@ -141,37 +141,49 @@ class _InterventionListState extends ConsumerState<InterventionList> {
     }
 
     if (interventions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              _getEmptyMessage(status),
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+      return RefreshIndicator(
+        onRefresh: () => notifier.loadInterventions(forceRefresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(_getEmptyIcon(status), size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    _getEmptyMessage(status),
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _getEmptySubMessage(status),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              _getEmptySubMessage(status),
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return PaginatedListView(
-      scrollController: _scrollController,
-      onLoadMore: notifier.loadMore,
-      hasNextPage: state.hasNextPage,
-      isLoadingMore: state.isLoadingMore,
-      padding: const EdgeInsets.all(12),
-      itemCount: interventions.length,
-      itemBuilder: (context, index) {
-        final intervention = interventions[index];
-        return _buildInterventionCard(context, intervention, state, notifier);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.loadInterventions(forceRefresh: true),
+      child: PaginatedListView(
+        scrollController: _scrollController,
+        onLoadMore: notifier.loadMore,
+        hasNextPage: state.hasNextPage,
+        isLoadingMore: state.isLoadingMore,
+        padding: const EdgeInsets.all(12),
+        itemCount: interventions.length,
+        itemBuilder: (context, index) {
+          final intervention = interventions[index];
+          return _buildInterventionCard(context, intervention, state, notifier);
+        },
+      ),
     );
   }
 

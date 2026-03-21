@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +17,13 @@ use Illuminate\Support\Facades\Validator;
 class FournisseurController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des fournisseurs
      * Accessible par tous les utilisateurs authentifiés
@@ -57,14 +65,14 @@ class FournisseurController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $suppliers = $query->paginate($perPage);
+
+            $dataArray = SupplierResource::collection($suppliers->items())->resolve();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Fournisseurs récupérés avec succès',
-                'data' => SupplierResource::collection($suppliers->items()),
+                'data' => $dataArray,
                 'pagination' => [
                     'current_page' => $suppliers->currentPage(),
                     'last_page' => $suppliers->lastPage(),
@@ -72,8 +80,9 @@ class FournisseurController extends Controller
                     'total' => $suppliers->total(),
                     'from' => $suppliers->firstItem(),
                     'to' => $suppliers->lastItem(),
-                ]
-            ]);
+                ],
+                'message' => 'Fournisseurs récupérés avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             $user = $request->user();
@@ -215,7 +224,9 @@ class FournisseurController extends Controller
             DB::commit();
 
             // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($fournisseur, 'supplier', 'Fournisseur', 6, $fournisseur->nom);
+            $this->safeNotify(function () use ($fournisseur) {
+                $this->notificationService->notifyNewFournisseur($fournisseur);
+            });
 
             Log::info('API: Fournisseur créé avec succès', [
                 'fournisseur_id' => $fournisseur->id,
@@ -410,7 +421,12 @@ class FournisseurController extends Controller
             DB::commit();
 
             // Notifier l'auteur du fournisseur
-            $this->notifySubmitterOnApproval($fournisseur, 'supplier', 'Fournisseur', 'created_by', $fournisseur->nom);
+            if ($fournisseur->created_by) {
+                $this->safeNotify(function () use ($fournisseur) {
+                    $fournisseur->load('createdBy');
+                    $this->notificationService->notifyFournisseurValidated($fournisseur);
+                });
+            }
 
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();
@@ -481,7 +497,13 @@ class FournisseurController extends Controller
             DB::commit();
 
             // Notifier l'auteur du fournisseur
-            $this->notifySubmitterOnRejection($fournisseur, 'supplier', 'Fournisseur', $request->reason, 'created_by', $fournisseur->nom);
+            if ($fournisseur->created_by) {
+                $reason = $request->reason;
+                $this->safeNotify(function () use ($fournisseur, $reason) {
+                    $fournisseur->load('createdBy');
+                    $this->notificationService->notifyFournisseurRejected($fournisseur, $reason);
+                });
+            }
 
             // Recharger le fournisseur avec ses relations
             $fournisseur->refresh();
@@ -639,7 +661,7 @@ class FournisseurController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Fournisseurs en attente récupérés avec succès',
-                'data' => SupplierResource::collection($suppliers)
+                'data' => SupplierResource::collection($suppliers)->resolve()
             ]);
 
         } catch (\Exception $e) {

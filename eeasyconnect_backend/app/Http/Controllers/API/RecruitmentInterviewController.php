@@ -38,20 +38,26 @@ class RecruitmentInterviewController extends Controller
                 $query->where('type', $request->type);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $interviews = $query->orderBy('scheduled_at', 'desc')->paginate($perPage);
 
-            // Transformer les données
-            $interviews->getCollection()->transform(function ($interview) {
+            $data = $interviews->getCollection()->map(function ($interview) {
                 return $this->formatInterview($interview);
-            });
+            })->values();
 
             return response()->json([
                 'success' => true,
-                'data' => $interviews,
-                'message' => 'Liste des entretiens récupérée avec succès'
-            ]);
+                'data' => $data,
+                'pagination' => [
+                    'current_page' => $interviews->currentPage(),
+                    'last_page' => $interviews->lastPage(),
+                    'per_page' => $interviews->perPage(),
+                    'total' => $interviews->total(),
+                    'from' => $interviews->firstItem(),
+                    'to' => $interviews->lastItem(),
+                ],
+                'message' => 'Liste des entretiens récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([

@@ -13,6 +13,18 @@ use Illuminate\Support\Facades\Broadcast;
 |
 */
 
+// Ne définir les channels que si le broadcasting est activé et configuré
+$broadcastDriver = config('broadcasting.default');
+$canDefineBroadcastChannels = $broadcastDriver !== 'null';
+
+// Vérifier aussi que les credentials sont présentes selon le driver
+if ($broadcastDriver === 'pusher') {
+    $canDefineBroadcastChannels = $canDefineBroadcastChannels && config('broadcasting.connections.pusher.key');
+} elseif ($broadcastDriver === 'reverb') {
+    $canDefineBroadcastChannels = $canDefineBroadcastChannels && config('broadcasting.connections.reverb.key');
+}
+
+if ($canDefineBroadcastChannels) {
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
@@ -27,6 +39,11 @@ Broadcast::channel('notifications', function ($user) {
     return $user->role == 1; // Seuls les admins
 });
 
+// Canal pour le PATRON (Soumissions des commerciaux, RH, etc.)
+Broadcast::channel('patron-approvals', function ($user) {
+    return $user->isAdmin() || $user->isPatron();
+});
+
 // Canal pour les notifications RH
 Broadcast::channel('hr-notifications', function ($user) {
     return in_array($user->role, [1, 4]); // Admin et RH
@@ -36,3 +53,9 @@ Broadcast::channel('hr-notifications', function ($user) {
 Broadcast::channel('tech-notifications', function ($user) {
     return in_array($user->role, [1, 5]); // Admin et Technicien
 });
+
+// Canal global Admin
+Broadcast::channel('admin-only', function ($user) {
+    return $user->isAdmin();
+});
+}

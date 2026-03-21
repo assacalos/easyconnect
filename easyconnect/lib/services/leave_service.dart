@@ -1,15 +1,14 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/leave_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
 import 'package:easyconnect/services/api_service.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class LeaveService {
   static final LeaveService _instance = LeaveService._();
@@ -28,10 +27,9 @@ class LeaveService {
     List<String>? attachmentPaths,
   }) async {
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/leave-requests'),
-            headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+            Uri.parse('${AppConfig.baseUrl}/leave-requests'),
+            headers: await ApiService.headersAsync(),
             body: jsonEncode({
               'employee_id': employeeId,
               'leave_type': leaveType,
@@ -68,7 +66,7 @@ class LeaveService {
     String? status,
   }) async {
     try {
-      String url = '$baseUrl/leave-requests/employee/$employeeId';
+      String url = '${AppConfig.baseUrl}/leave-requests/employee/$employeeId';
       List<String> params = [];
 
       if (startDate != null) {
@@ -85,8 +83,7 @@ class LeaveService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http
-          .get(Uri.parse(url), headers: ApiService.headers())
+      final response = await HttpInterceptor.get(Uri.parse(url), headers: await ApiService.headersAsync())
           .timeout(
             AppConfig.defaultTimeout,
             onTimeout: () =>
@@ -151,9 +148,10 @@ class LeaveService {
 
       AppLogger.httpRequest('GET', url, tag: 'LEAVE_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -193,7 +191,7 @@ class LeaveService {
     int? employeeId,
   }) async {
     try {
-      String url = '$baseUrl/leave-requests';
+      String url = '${AppConfig.baseUrl}/leave-requests';
       List<String> params = [];
 
       if (startDate != null) {
@@ -216,8 +214,7 @@ class LeaveService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http
-          .get(Uri.parse(url), headers: ApiService.headers())
+      final response = await HttpInterceptor.get(Uri.parse(url), headers: await ApiService.headersAsync())
           .timeout(
             AppConfig.defaultTimeout,
             onTimeout: () =>
@@ -244,10 +241,9 @@ class LeaveService {
   // Récupérer une demande de congé par ID
   Future<LeaveRequest> getLeaveRequest(int id) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/leave-requests/$id'),
-            headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/leave-requests/$id'),
+            headers: await ApiService.headersAsync(),
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -274,9 +270,9 @@ class LeaveService {
     String? comments,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/leave-requests/$id/approve'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/$id/approve'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'comments': comments}),
       );
 
@@ -298,9 +294,9 @@ class LeaveService {
     required String rejectionReason,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/leave-requests/$id/reject'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/$id/reject'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'rejection_reason': rejectionReason}),
       );
 
@@ -317,9 +313,9 @@ class LeaveService {
   // Annuler une demande de congé
   Future<Map<String, dynamic>> cancelLeaveRequest(int id) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/leave-requests/$id/cancel'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/$id/cancel'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -350,9 +346,9 @@ class LeaveService {
       if (reason != null) body['reason'] = reason;
       if (comments != null) body['comments'] = comments;
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/leave-requests/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/$id'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(body),
       );
 
@@ -371,9 +367,9 @@ class LeaveService {
   // Supprimer une demande de congé
   Future<Map<String, dynamic>> deleteLeaveRequest(int id) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/leave-requests/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -391,9 +387,9 @@ class LeaveService {
   // Récupérer le solde de congés d'un employé
   Future<LeaveBalance> getEmployeeLeaveBalance(int employeeId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/leave-balance/$employeeId'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/leave-balance/$employeeId'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -416,7 +412,7 @@ class LeaveService {
     int? employeeId,
   }) async {
     try {
-      String url = '$baseUrl/leave-stats';
+      String url = '${AppConfig.baseUrl}/leave-stats';
       List<String> params = [];
 
       if (startDate != null) {
@@ -433,8 +429,7 @@ class LeaveService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http
-          .get(Uri.parse(url), headers: ApiService.headers())
+      final response = await HttpInterceptor.get(Uri.parse(url), headers: await ApiService.headersAsync())
           .timeout(
             AppConfig.defaultTimeout,
             onTimeout: () =>
@@ -457,10 +452,9 @@ class LeaveService {
   // Récupérer les types de congés disponibles
   Future<List<LeaveType>> getLeaveTypes() async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/leave-types'),
-            headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/leave-types'),
+            headers: await ApiService.headersAsync(),
           )
           .timeout(
             AppConfig.defaultTimeout,
@@ -499,9 +493,9 @@ class LeaveService {
     int? excludeRequestId,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/leave-requests/check-conflicts'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/leave-requests/check-conflicts'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'employee_id': employeeId,
           'start_date': startDate.toIso8601String(),
@@ -525,9 +519,9 @@ class LeaveService {
   // Télécharger un justificatif
   Future<String> downloadAttachment(int attachmentId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/leave-attachments/$attachmentId/download'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/leave-attachments/$attachmentId/download'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {

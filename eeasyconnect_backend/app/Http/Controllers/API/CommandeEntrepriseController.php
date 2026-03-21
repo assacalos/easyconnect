@@ -3,14 +3,23 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\CommandeEntreprise;
 use App\Http\Resources\CommandeEntrepriseResource;
+use Illuminate\Support\Facades\Log;
 
 class CommandeEntrepriseController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des commandes entreprise avec filtres
      */
@@ -48,21 +57,22 @@ class CommandeEntrepriseController extends Controller
                 $query->where('user_id', $user->id);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $commandes = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => CommandeEntrepriseResource::collection($commandes->items()),
+                'data' => CommandeEntrepriseResource::collection($commandes->items())->resolve(),
                 'pagination' => [
                     'current_page' => $commandes->currentPage(),
                     'last_page' => $commandes->lastPage(),
                     'per_page' => $commandes->perPage(),
                     'total' => $commandes->total(),
+                    'from' => $commandes->firstItem(),
+                    'to' => $commandes->lastItem(),
                 ],
-                'message' => 'Liste des commandes récupérée avec succès'
-            ]);
+                'message' => 'Liste des commandes récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -254,7 +264,10 @@ class CommandeEntrepriseController extends Controller
 
             // Notifier l'auteur de la commande
             if ($commande->user_id) {
-                $this->notifySubmitterOnApproval($commande, 'commande_entreprise', 'Commande', 'user_id', $commande->id);
+                $this->safeNotify(function () use ($commande) {
+                    $commande->load('user');
+                    $this->notificationService->notifyCommandeEntrepriseValidated($commande);
+                });
             }
 
             $commande->load(['client', 'commercial']);
@@ -314,7 +327,10 @@ class CommandeEntrepriseController extends Controller
 
             // Notifier l'auteur de la commande
             if ($commande->user_id) {
-                $this->notifySubmitterOnRejection($commande, 'commande_entreprise', 'Commande', $reason, 'user_id', $commande->id);
+                $this->safeNotify(function () use ($commande, $reason) {
+                    $commande->load('user');
+                    $this->notificationService->notifyCommandeEntrepriseRejected($commande, $reason);
+                });
             }
 
             $commande->load(['client', 'commercial']);

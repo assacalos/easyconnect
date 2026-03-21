@@ -126,18 +126,30 @@ class _TaxListState extends ConsumerState<TaxList>
             child: state.isLoading && state.taxes.isEmpty
                 ? const SkeletonSearchResults(itemCount: 6)
                 : state.taxes.isEmpty
-                    ? const Center(child: Text('Aucune taxe trouvée'))
-                    : PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: state.hasNextPage,
-                        isLoadingMore: state.isLoadingMore,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: state.taxes.length,
-                        itemBuilder: (context, index) {
-                          final tax = state.taxes[index];
-                          return _buildTaxCard(tax, formatCurrency, notifier);
-                        },
+                    ? RefreshIndicator(
+                        onRefresh: () => notifier.loadTaxes(forceRefresh: true),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: 400,
+                            child: const Center(child: Text('Aucune taxe trouvée')),
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => notifier.loadTaxes(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: state.hasNextPage,
+                          isLoadingMore: state.isLoadingMore,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: state.taxes.length,
+                          itemBuilder: (context, index) {
+                            final tax = state.taxes[index];
+                            return _buildTaxCard(tax, formatCurrency, notifier);
+                          },
+                        ),
                       ),
           ),
         ],

@@ -10,6 +10,56 @@ use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
+    /**
+     * Inscription publique : crée un utilisateur en attente de validation (is_active = false).
+     * Le patron attribuera le rôle et validera le compte.
+     */
+    public function register(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'nom' => 'required|string|max:255',
+                'prenom' => 'required|string|max:255',
+                'email' => 'required|string|email|max:255|unique:users',
+                'password' => 'required|string|min:6|confirmed',
+                'photo' => 'nullable|image|max:2048', // 2 Mo max, multipart accepté
+            ]);
+
+            $avatarPath = null;
+            if ($request->hasFile('photo')) {
+                $file = $request->file('photo');
+                $path = $file->store('avatars', 'public'); // storage/app/public/avatars
+                $avatarPath = $path; // ex: avatars/xxx.jpg
+            }
+
+            $user = \App\Models\User::create([
+                'nom' => $validated['nom'],
+                'prenom' => $validated['prenom'],
+                'email' => $validated['email'],
+                'password' => bcrypt($validated['password']),
+                'avatar' => $avatarPath,
+                'role' => 2, // Commercial par défaut, le patron changera lors de la validation
+                'is_active' => false,
+            ]);
+
+            return $this->successResponse([
+                'id' => $user->id,
+                'nom' => $user->nom,
+                'prenom' => $user->prenom,
+                'email' => $user->email,
+                'avatar' => $user->avatar ? asset('storage/' . $user->avatar) : null,
+            ], 'Inscription enregistrée. Votre compte sera activé après validation par l\'administrateur.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->handleValidationException($e);
+        } catch (\Exception $e) {
+            \Log::error('Erreur API - Register', [
+                'email' => $request->input('email'),
+                'error' => $e->getMessage(),
+            ]);
+            return $this->errorResponse('Une erreur est survenue lors de l\'inscription.', 500);
+        }
+    }
+
     public function login(LoginRequest $request)
     {
         try {
@@ -49,7 +99,10 @@ class UserController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return $this->errorResponse('Une erreur est survenue. Veuillez réessayer plus tard.', 500);
+            $message = config('app.debug')
+                ? 'Erreur serveur (login): ' . $e->getMessage()
+                : 'Une erreur est survenue. Veuillez réessayer plus tard.';
+            return $this->errorResponse($message, 500);
         }
     }
 
@@ -98,6 +151,121 @@ class UserController extends Controller
             return $this->errorResponse('Erreur lors de la récupération des informations utilisateur', 500);
         }
     }
+
+    /**
+     * Mise à jour du profil de l'utilisateur connecté (nom, prénom, email).
+     * Permet à chaque utilisateur de renseigner ou modifier son email pour recevoir les notifications par mail.
+     */
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse('Utilisateur non authentifié');
+            }
+
+            $validated = $request->validate([
+                'nom' => 'required|string|max:255',
+                'prenom' => 'required|string|max:255',
+                'email' => 'required|email|max:255|unique:users,email,' . $user->id,
+            ]);
+
+            $user->update([
+                'nom' => $validated['nom'],
+                'prenom' => $validated['prenom'],
+                'email' => $validated['email'],
+            ]);
+
+            return $this->successResponse(new UserResource($user->fresh()), 'Profil mis à jour avec succès.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->handleValidationException($e);
+        } catch (\Exception $e) {
+            \Log::error('Update profile error', [
+                'user_id' => $request->user()?->id,
+                'message' => $e->getMessage(),
+            ]);
+            return $this->errorResponse('Erreur lors de la mise à jour du profil.', 500);
+        }
+    }
+
+    /**
+     * Mise à jour de la photo de profil (avatar) de l'utilisateur connecté.
+     */
+    public function updateProfilePhoto(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse('Utilisateur non authentifié');
+            }
+
+            $request->validate([
+                'photo' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            ]);
+
+            $file = $request->file('photo');
+            $path = $file->store('avatars', 'public');
+
+            // Supprimer l'ancien avatar s'il existe
+            if ($user->avatar) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($user->avatar);
+            }
+
+            $user->update(['avatar' => $path]);
+
+            return $this->successResponse(
+                new UserResource($user->fresh()),
+                'Photo de profil mise à jour avec succès.'
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->handleValidationException($e);
+        } catch (\Exception $e) {
+            \Log::error('Update profile photo error', [
+                'user_id' => $request->user()?->id,
+                'message' => $e->getMessage(),
+            ]);
+            return $this->errorResponse('Erreur lors de la mise à jour de la photo.', 500);
+        }
+    }
+
+    public function refresh(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return $this->unauthorizedResponse('Utilisateur non authentifié');
+            }
+
+            // Vérifier si l'utilisateur est actif
+            if (!$user->is_active) {
+                return $this->errorResponse('Votre compte a été désactivé. Contactez l\'administrateur.', 403);
+            }
+
+            // Supprimer l'ancien token
+            $request->user()->currentAccessToken()->delete();
+
+            // Créer un nouveau token
+            $token = $user->createToken('mobile-app')->plainTextToken;
+
+            return $this->successResponse([
+                'token' => $token,
+                'user' => new UserResource($user),
+            ], 'Token rafraîchi avec succès');
+        } catch (\Exception $e) {
+            \Log::error('Erreur API - Refresh', [
+                'endpoint' => $request->path(),
+                'method' => $request->method(),
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse('Une erreur est survenue lors du rafraîchissement du token', 500);
+        }
+    }
     /**
      * Liste des utilisateurs (Admin uniquement)
      */
@@ -138,19 +306,22 @@ class UserController extends Controller
                 });
             }
 
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $users = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => UserResource::collection($users->items()),
+                'data' => UserResource::collection($users->items())->resolve(),
                 'pagination' => [
                     'current_page' => $users->currentPage(),
                     'last_page' => $users->lastPage(),
                     'per_page' => $users->perPage(),
                     'total' => $users->total(),
-                ]
-            ], 200);
+                    'from' => $users->firstItem(),
+                    'to' => $users->lastItem(),
+                ],
+                'message' => 'Liste des utilisateurs récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -357,6 +528,128 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la désactivation: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Liste des inscriptions en attente (Patron ou Admin)
+     */
+    public function pendingRegistrations(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, [1, 6])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Non autorisé',
+                ], 403);
+            }
+
+            $pending = \App\Models\User::where('is_active', false)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($u) {
+                    return [
+                        'id' => $u->id,
+                        'nom' => $u->nom,
+                        'prenom' => $u->prenom,
+                        'email' => $u->email,
+                        'role' => $u->role,
+                        'created_at' => $u->created_at?->toIso8601String(),
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $pending,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Valider une inscription : attribuer le rôle et activer le compte (Patron ou Admin)
+     */
+    public function approveRegistration(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, [1, 6])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Non autorisé',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'role' => 'required|integer|in:1,2,3,4,5,6',
+            ]);
+
+            $targetUser = \App\Models\User::findOrFail($id);
+            if ($targetUser->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cet utilisateur est déjà actif.',
+                ], 400);
+            }
+
+            $targetUser->update([
+                'role' => $validated['role'],
+                'is_active' => true,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Inscription validée avec succès',
+                'data' => new UserResource($targetUser),
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->handleValidationException($e);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Rejeter une inscription (Patron ou Admin) : supprimer ou garder inactif
+     */
+    public function rejectRegistration(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, [1, 6])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Non autorisé',
+                ], 403);
+            }
+
+            $targetUser = \App\Models\User::findOrFail($id);
+            if ($targetUser->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cet utilisateur est déjà actif.',
+                ], 400);
+            }
+
+            $targetUser->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Inscription rejetée',
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur: ' . $e->getMessage(),
             ], 500);
         }
     }

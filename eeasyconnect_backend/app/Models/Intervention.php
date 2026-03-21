@@ -36,7 +36,7 @@ class Intervention extends Model
         'approved_by',
         'approved_at',
         'rejection_reason',
-        'completion_notes'
+        'completion_notes',
     ];
 
     protected $casts = [

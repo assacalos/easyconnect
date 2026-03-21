@@ -284,30 +284,28 @@ class ClientNotifier extends Notifier<ClientState> {
   }
 
   Future<void> approveClient(int clientId) async {
+    Client? previousClient;
+    int clientIndex = -1;
     try {
       CacheHelper.clearByPrefix('clients_');
       CacheHelper.clearByPrefix('dashboard_');
 
       final clients = List<Client>.from(state.clients);
-      final clientIndex = clients.indexWhere((c) => c.id == clientId);
+      clientIndex = clients.indexWhere((c) => c.id == clientId);
       if (clientIndex != -1) {
-        if (state.currentStatus == 0) {
-          clients.removeAt(clientIndex);
-        } else {
-          final o = clients[clientIndex];
-          clients[clientIndex] = Client(
-            id: o.id,
-            nomEntreprise: o.nomEntreprise,
-            nom: o.nom,
-            prenom: o.prenom,
-            email: o.email,
-            contact: o.contact,
-            adresse: o.adresse,
-            status: 1,
-            createdAt: o.createdAt,
-            updatedAt: o.updatedAt,
-          );
-        }
+        previousClient = clients[clientIndex];
+        clients[clientIndex] = Client(
+          id: previousClient.id,
+          nomEntreprise: previousClient.nomEntreprise,
+          nom: previousClient.nom,
+          prenom: previousClient.prenom,
+          email: previousClient.email,
+          contact: previousClient.contact,
+          adresse: previousClient.adresse,
+          status: 1,
+          createdAt: previousClient.createdAt,
+          updatedAt: previousClient.updatedAt,
+        );
         state = state.copyWith(clients: clients);
       }
 
@@ -335,7 +333,13 @@ class ClientNotifier extends Notifier<ClientState> {
           loadClients(status: state.currentStatus).catchError((_) {});
         });
       } else {
-        await loadClients(status: state.currentStatus);
+        if (previousClient != null && clientIndex != -1) {
+          final rollback = List<Client>.from(state.clients);
+          rollback[clientIndex] = previousClient;
+          state = state.copyWith(clients: rollback);
+        } else {
+          await loadClients(status: state.currentStatus);
+        }
         throw Exception('La validation peut avoir réussi. Veuillez vérifier.');
       }
     } catch (e) {
@@ -354,35 +358,40 @@ class ClientNotifier extends Notifier<ClientState> {
           errorStr.contains('forbidden')) {
         rethrow;
       }
-      loadClients(status: state.currentStatus).catchError((_) {});
+      if (previousClient != null && clientIndex != -1) {
+        final rollback = List<Client>.from(state.clients);
+        rollback[clientIndex] = previousClient;
+        state = state.copyWith(clients: rollback);
+      } else {
+        loadClients(status: state.currentStatus).catchError((_) {});
+      }
+      rethrow;
     }
   }
 
   Future<void> rejectClient(int clientId, String comment) async {
+    Client? previousClient;
+    int clientIndex = -1;
     try {
       CacheHelper.clearByPrefix('clients_');
       CacheHelper.clearByPrefix('dashboard_');
 
       final clients = List<Client>.from(state.clients);
-      final clientIndex = clients.indexWhere((c) => c.id == clientId);
+      clientIndex = clients.indexWhere((c) => c.id == clientId);
       if (clientIndex != -1) {
-        if (state.currentStatus == 0) {
-          clients.removeAt(clientIndex);
-        } else {
-          final o = clients[clientIndex];
-          clients[clientIndex] = Client(
-            id: o.id,
-            nomEntreprise: o.nomEntreprise,
-            nom: o.nom,
-            prenom: o.prenom,
-            email: o.email,
-            contact: o.contact,
-            adresse: o.adresse,
-            status: 2,
-            createdAt: o.createdAt,
-            updatedAt: o.updatedAt,
-          );
-        }
+        previousClient = clients[clientIndex];
+        clients[clientIndex] = Client(
+          id: previousClient.id,
+          nomEntreprise: previousClient.nomEntreprise,
+          nom: previousClient.nom,
+          prenom: previousClient.prenom,
+          email: previousClient.email,
+          contact: previousClient.contact,
+          adresse: previousClient.adresse,
+          status: 2,
+          createdAt: previousClient.createdAt,
+          updatedAt: previousClient.updatedAt,
+        );
         state = state.copyWith(clients: clients);
       }
 
@@ -411,7 +420,13 @@ class ClientNotifier extends Notifier<ClientState> {
           loadClients(status: state.currentStatus).catchError((_) {});
         });
       } else {
-        await loadClients(status: state.currentStatus);
+        if (previousClient != null && clientIndex != -1) {
+          final rollback = List<Client>.from(state.clients);
+          rollback[clientIndex] = previousClient;
+          state = state.copyWith(clients: rollback);
+        } else {
+          await loadClients(status: state.currentStatus);
+        }
         throw Exception('Erreur lors du rejet - Service a retourné false');
       }
     } catch (e) {
@@ -430,7 +445,14 @@ class ClientNotifier extends Notifier<ClientState> {
           errorStr.contains('forbidden')) {
         rethrow;
       }
-      loadClients(status: state.currentStatus).catchError((_) {});
+      if (previousClient != null && clientIndex != -1) {
+        final rollback = List<Client>.from(state.clients);
+        rollback[clientIndex] = previousClient;
+        state = state.copyWith(clients: rollback);
+      } else {
+        loadClients(status: state.currentStatus).catchError((_) {});
+      }
+      rethrow;
     }
   }
 

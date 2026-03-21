@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' show Response;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/payment_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
@@ -12,6 +11,7 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class PaymentService {
   static final PaymentService _instance = PaymentService._();
@@ -26,15 +26,11 @@ class PaymentService {
   // Tester la connectivité à l'API pour les paiements
   Future<bool> testPaymentConnection() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/payments'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/payments'),
+            headers: headers,
           )
           .timeout(AppConfig.extraLongTimeout);
 
@@ -59,7 +55,7 @@ class PaymentService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       final queryParams = <String, String>{
         'page': page.toString(),
         'per_page': perPage.toString(),
@@ -70,19 +66,16 @@ class PaymentService {
       if (type != null) queryParams['type'] = type;
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      final uri = Uri.parse('$baseUrl/payments').replace(
+      final uri = Uri.parse('${AppConfig.baseUrl}/payments').replace(
         queryParameters: queryParams,
       );
       AppLogger.httpRequest('GET', uri.toString(), tag: 'PAYMENT_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               uri,
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -145,13 +138,10 @@ class PaymentService {
   // Récupérer un paiement par ID
   Future<PaymentModel> getPaymentById(int paymentId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/payments/$paymentId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/payments/$paymentId'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -181,8 +171,8 @@ class PaymentService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
-      String url = '$baseUrl/payments';
+      final headers = await ApiService.headersAsync();
+      String url = '${AppConfig.baseUrl}/payments';
       List<String> params = [];
 
       params.add('comptable_id=$comptableId');
@@ -213,12 +203,9 @@ class PaymentService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(
+            () => HttpInterceptor.get(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -259,10 +246,10 @@ class PaymentService {
     String? type,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Utiliser la nouvelle route organisée
-      String url = '$baseUrl/payments';
+      String url = '${AppConfig.baseUrl}/payments';
       List<String> params = [];
 
       params.add('comptable_id=$comptableId');
@@ -283,12 +270,9 @@ class PaymentService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -438,32 +422,24 @@ class PaymentService {
     String? comments,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Essayer d'abord la route française (POST)
-      String url = '$baseUrl/paiements-validate/$paymentId';
-      http.Response response;
+      String url = '${AppConfig.baseUrl}/paiements-validate/$paymentId';
+      Response response;
 
       try {
-        response = await http.post(
+        response = await HttpInterceptor.post(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: comments != null ? jsonEncode({'comments': comments}) : '{}',
         );
       } catch (e) {
         // Si la route française échoue, essayer la route anglaise (PATCH)
-        url = '$baseUrl/payments/$paymentId/approve';
-        response = await http.patch(
+        url = '${AppConfig.baseUrl}/payments/$paymentId/approve';
+        response = await HttpInterceptor.patch(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: comments != null ? jsonEncode({'comments': comments}) : null,
         );
       }
@@ -498,32 +474,24 @@ class PaymentService {
     String? reason,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Essayer d'abord la route française (POST)
-      String url = '$baseUrl/paiements-reject/$paymentId';
-      http.Response response;
+      String url = '${AppConfig.baseUrl}/paiements-reject/$paymentId';
+      Response response;
 
       try {
-        response = await http.post(
+        response = await HttpInterceptor.post(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: reason != null ? jsonEncode({'reason': reason}) : '{}',
         );
       } catch (e) {
         // Si la route française échoue, essayer la route anglaise (PATCH)
-        url = '$baseUrl/payments/$paymentId/reject';
-        response = await http.patch(
+        url = '${AppConfig.baseUrl}/payments/$paymentId/reject';
+        response = await HttpInterceptor.patch(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: reason != null ? jsonEncode({'reason': reason}) : null,
         );
       }
@@ -546,14 +514,10 @@ class PaymentService {
     String? notes,
   }) async {
     try {
-      final token = storage.read('token');
-      final response = await http.patch(
-        Uri.parse('$baseUrl/payments/$paymentId/mark-paid'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.patch(
+        Uri.parse('${AppConfig.baseUrl}/payments/$paymentId/mark-paid'),
+        headers: headers,
         body: jsonEncode({
           'payment_reference': paymentReference,
           'notes': notes,
@@ -575,13 +539,10 @@ class PaymentService {
   // Réactiver un paiement rejeté
   Future<Map<String, dynamic>> reactivatePayment(int paymentId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.patch(
-        Uri.parse('$baseUrl/payments/$paymentId/reactivate'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.patch(
+        Uri.parse('${AppConfig.baseUrl}/payments/$paymentId/reactivate'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -601,13 +562,10 @@ class PaymentService {
   // Récupérer les plannings de paiement
   Future<List<Map<String, dynamic>>> getPaymentSchedules() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/payment-schedules'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/payment-schedules'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -631,13 +589,10 @@ class PaymentService {
   // Mettre en pause un planning
   Future<Map<String, dynamic>> pauseSchedule(int scheduleId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/payment-schedules/$scheduleId/pause'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/payment-schedules/$scheduleId/pause'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -653,13 +608,10 @@ class PaymentService {
   // Reprendre un planning
   Future<Map<String, dynamic>> resumeSchedule(int scheduleId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/payment-schedules/$scheduleId/resume'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/payment-schedules/$scheduleId/resume'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -675,13 +627,10 @@ class PaymentService {
   // Annuler un planning
   Future<Map<String, dynamic>> cancelSchedule(int scheduleId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/payment-schedules/$scheduleId/cancel'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/payment-schedules/$scheduleId/cancel'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -700,15 +649,12 @@ class PaymentService {
     int installmentId,
   ) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse(
-          '$baseUrl/payment-schedules/$scheduleId/installments/$installmentId/mark-paid',
+          '${AppConfig.baseUrl}/payment-schedules/$scheduleId/installments/$installmentId/mark-paid',
         ),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -728,13 +674,10 @@ class PaymentService {
   // Récupérer les statistiques des plannings
   Future<Map<String, dynamic>> getScheduleStats() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/payment-stats/schedules'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/payment-stats/schedules'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -752,13 +695,10 @@ class PaymentService {
   // Récupérer les paiements à venir
   Future<List<Map<String, dynamic>>> getUpcomingPayments() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/payment-stats/upcoming'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/payment-stats/upcoming'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -777,13 +717,10 @@ class PaymentService {
   // Récupérer les paiements en retard
   Future<List<Map<String, dynamic>>> getOverduePayments() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/payment-stats/overdue'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/payment-stats/overdue'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -820,7 +757,7 @@ class PaymentService {
     PaymentSchedule? schedule,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Validation des données avant envoi
       if (clientName.trim().isEmpty) {
@@ -978,19 +915,15 @@ class PaymentService {
 
       AppLogger.httpRequest(
         'POST',
-        '$baseUrl/payments',
+        '${AppConfig.baseUrl}/payments',
         tag: 'PAYMENT_SERVICE',
       );
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.post(
-              Uri.parse('$baseUrl/payments'),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-              },
+            () => HttpInterceptor.post(
+              Uri.parse('${AppConfig.baseUrl}/payments'),
+              headers: headers,
               body: jsonBody,
             ),
         maxRetries: AppConfig.defaultMaxRetries,
@@ -998,7 +931,7 @@ class PaymentService {
 
       AppLogger.httpResponse(
         response.statusCode,
-        '$baseUrl/payments',
+        '${AppConfig.baseUrl}/payments',
         tag: 'PAYMENT_SERVICE',
       );
 
@@ -1150,13 +1083,10 @@ class PaymentService {
   // Soumettre un paiement au patron
   Future<Map<String, dynamic>> submitPaymentToPatron(int paymentId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
-        Uri.parse('$baseUrl/payments/$paymentId/submit'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/payments/$paymentId/submit'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -1172,13 +1102,10 @@ class PaymentService {
   // Supprimer un paiement
   Future<Map<String, dynamic>> deletePayment(int paymentId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.delete(
-        Uri.parse('$baseUrl/payments/$paymentId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/payments/$paymentId'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -1200,8 +1127,8 @@ class PaymentService {
     String? reason,
   }) async {
     try {
-      final token = storage.read('token');
-      String url = '$baseUrl/payment-schedules/$paymentId';
+      final headers = await ApiService.headersAsync();
+      String url = '${AppConfig.baseUrl}/payment-schedules/$paymentId';
 
       switch (action) {
         case 'pause':
@@ -1217,12 +1144,9 @@ class PaymentService {
           throw Exception('Action non supportée: $action');
       }
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: reason != null ? jsonEncode({'reason': reason}) : null,
       );
 
@@ -1243,8 +1167,8 @@ class PaymentService {
     String? type,
   }) async {
     try {
-      final token = storage.read('token');
-      String url = '$baseUrl/payment-stats';
+      final headers = await ApiService.headersAsync();
+      String url = '${AppConfig.baseUrl}/payment-stats';
       List<String> params = [];
 
       if (startDate != null) {
@@ -1261,12 +1185,9 @@ class PaymentService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

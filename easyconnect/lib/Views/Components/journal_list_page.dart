@@ -227,17 +227,30 @@ class _JournalListPageState extends ConsumerState<JournalListPage> {
     );
   }
 
+  static String? _userDisplay(Map<String, dynamic>? user) {
+    if (user == null) return null;
+    final prenom = (user['prenom']?.toString() ?? '').trim();
+    final nom = (user['nom']?.toString() ?? '').trim();
+    if (prenom.isNotEmpty && nom.isNotEmpty) return '$prenom $nom';
+    if (nom.isNotEmpty) return nom;
+    if (prenom.isNotEmpty) return prenom;
+    return null;
+  }
+
   Widget _buildLineTile(
       BuildContext context, JournalNotifier notifier, dynamic line) {
     final id = line['id'];
     final date = line['date']?.toString() ?? '';
     final libelle = line['libelle']?.toString() ?? '';
+    final categorie = line['categorie']?.toString();
     final entree =
         (line['entree'] is num) ? (line['entree'] as num).toDouble() : 0.0;
     final sortie =
         (line['sortie'] is num) ? (line['sortie'] as num).toDouble() : 0.0;
     final solde =
         (line['solde'] is num) ? (line['solde'] as num).toDouble() : 0.0;
+    final user = line['user'] is Map ? line['user'] as Map<String, dynamic>? : null;
+    final userDisplay = _userDisplay(user);
 
     final entryId = id is int ? id : int.tryParse(id.toString());
     return Card(
@@ -255,7 +268,23 @@ class _JournalListPageState extends ConsumerState<JournalListPage> {
             : null,
         title: Text(libelle,
             maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(date),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(date),
+            if (userDisplay != null && userDisplay.isNotEmpty)
+              Text(
+                'Par: $userDisplay',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            if (categorie != null && categorie.isNotEmpty)
+              Text(
+                categorie,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+          ],
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

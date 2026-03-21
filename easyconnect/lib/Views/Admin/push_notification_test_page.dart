@@ -4,7 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:easyconnect/services/push_notification_service.dart';
 import 'package:easyconnect/services/session_service.dart';
 import 'package:easyconnect/utils/error_helper.dart';
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/services/http_interceptor.dart';
 import 'dart:convert';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -195,8 +195,8 @@ class _PushNotificationTestPageState extends State<PushNotificationTestPage> {
     _addLog('🔍 Test 4: Enregistrement du token sur le backend...');
 
     try {
-      final authToken = SessionService.getToken();
-      if (authToken == null) {
+      final authToken = await SessionService.getToken();
+      if (authToken == null || authToken.isEmpty) {
         _addLog('❌ Token d\'authentification manquant');
         setState(() {
           _testStatus = '❌ Non authentifié';
@@ -213,12 +213,8 @@ class _PushNotificationTestPageState extends State<PushNotificationTestPage> {
       _addLog('🆔 Device ID: $deviceId');
       _addLog('📦 App Version: $appVersion');
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/device-tokens'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $authToken',
-        },
         body: jsonEncode({
           'token': _fcmToken,
           'device_type': deviceType,

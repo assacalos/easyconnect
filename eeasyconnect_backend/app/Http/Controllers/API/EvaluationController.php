@@ -64,20 +64,22 @@ class EvaluationController extends Controller
             $query->where('user_id', $user->id);
         }
         
-        $perPage = $request->get('per_page', 15);
+        $perPage = min((int) $request->get('per_page', 20), 100);
         $evaluations = $query->orderBy('date_evaluation', 'desc')->paginate($perPage);
         
         return response()->json([
             'success' => true,
-            'data' => EvaluationResource::collection($evaluations->items()),
+            'data' => EvaluationResource::collection($evaluations->items())->resolve(),
             'pagination' => [
                 'current_page' => $evaluations->currentPage(),
                 'last_page' => $evaluations->lastPage(),
                 'per_page' => $evaluations->perPage(),
                 'total' => $evaluations->total(),
+                'from' => $evaluations->firstItem(),
+                'to' => $evaluations->lastItem(),
             ],
-            'message' => 'Liste des évaluations récupérée avec succès'
-        ], 200);
+            'message' => 'Liste des évaluations récupérée avec succès',
+        ], 200, [], JSON_UNESCAPED_UNICODE);
         
         } catch (\Exception $e) {
             return response()->json([
@@ -88,7 +90,7 @@ class EvaluationController extends Controller
         
         return response()->json([
             'success' => true,
-            'data' => EvaluationResource::collection($evaluations->items()),
+            'data' => EvaluationResource::collection($evaluations->items())->resolve(),
             'pagination' => [
                 'current_page' => $evaluations->currentPage(),
                 'last_page' => $evaluations->lastPage(),

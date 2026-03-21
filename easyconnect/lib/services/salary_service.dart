@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/salary_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/logger.dart';
@@ -12,6 +10,7 @@ import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
 import 'package:easyconnect/services/session_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class SalaryService {
   final storage = GetStorage();
@@ -19,15 +18,11 @@ class SalaryService {
   // Tester la connectivité à l'API pour les salaires
   Future<bool> testSalaryConnection() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/salaries-list'),
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+      final response = await HttpInterceptor.get(
+            Uri.parse('${AppConfig.baseUrl}/salaries-list'),
+            headers: headers,
           )
           .timeout(AppConfig.extraLongTimeout);
 
@@ -48,7 +43,7 @@ class SalaryService {
   }) async {
     try {
       await SessionService.ensureValidToken();
-      final token = SessionService.getTokenSync();
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -82,12 +77,9 @@ class SalaryService {
       AppLogger.httpRequest('GET', url, tag: 'SALARY_SERVICE');
 
       final response = await RetryHelper.retryNetwork(
-        operation: () => http.get(
+        operation: () => HttpInterceptor.get(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+          headers: headers,
         ),
         maxRetries: AppConfig.defaultMaxRetries,
       );
@@ -127,7 +119,7 @@ class SalaryService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -146,14 +138,11 @@ class SalaryService {
               ? ''
               : '?${Uri(queryParameters: queryParams).query}';
 
-      final url = '$baseUrl/salaries-list$queryString';
+      final url = '${AppConfig.baseUrl}/salaries-list$queryString';
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, considérer comme succès même si parseResponse dit false
@@ -254,14 +243,11 @@ class SalaryService {
   // Récupérer un salaire par ID
   Future<Salary> getSalaryById(int id) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/salaries-show/$id'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/salaries-show/$id'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -281,7 +267,7 @@ class SalaryService {
   // Créer un salaire
   Future<Salary> createSalary(Salary salary) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Validation des champs requis
       if (salary.employeeId == 0) {
@@ -326,13 +312,9 @@ class SalaryService {
               salary
                   .justificatifs, // Note: le backend attend 'justificatif' (singulier) comme array
       };
-      final response = await http.post(
-        Uri.parse('$baseUrl/salaries-create'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/salaries-create'),
+        headers: headers,
         body: json.encode(salaryData),
       );
       final result = ApiService.parseResponse(response);
@@ -352,7 +334,7 @@ class SalaryService {
   // Mettre à jour un salaire
   Future<Salary> updateSalary(Salary salary) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       // Validation des champs requis
       if (salary.id == null) {
@@ -400,13 +382,9 @@ class SalaryService {
               salary
                   .justificatifs, // Note: le backend attend 'justificatif' (singulier) comme array
       };
-      final response = await http.put(
-        Uri.parse('$baseUrl/salaries-update/${salary.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/salaries-update/${salary.id}'),
+        headers: headers,
         body: json.encode(salaryData),
       );
       final result = ApiService.parseResponse(response);
@@ -426,16 +404,12 @@ class SalaryService {
   // Approuver un salaire
   Future<bool> approveSalary(int salaryId, {String? notes}) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/salaries-validate/$salaryId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/salaries-validate/$salaryId';
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode({'notes': notes}),
       );
 
@@ -456,16 +430,12 @@ class SalaryService {
   // Rejeter un salaire
   Future<bool> rejectSalary(int salaryId, {required String reason}) async {
     try {
-      final token = storage.read('token');
-      final url = '$baseUrl/salaries-reject/$salaryId';
+      final headers = await ApiService.headersAsync();
+      final url = '${AppConfig.baseUrl}/salaries-reject/$salaryId';
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
         body: json.encode({'reason': reason}),
       );
 
@@ -486,15 +456,11 @@ class SalaryService {
   // Marquer comme payé
   Future<bool> markSalaryAsPaid(int salaryId, {String? notes}) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/salaries/$salaryId/pay'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/salaries/$salaryId/pay'),
+        headers: headers,
         body: json.encode({'notes': notes}),
       );
 
@@ -507,14 +473,11 @@ class SalaryService {
   // Supprimer un salaire
   Future<bool> deleteSalary(int salaryId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/salaries-delete/$salaryId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/salaries-delete/$salaryId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -526,14 +489,11 @@ class SalaryService {
   // Récupérer les statistiques des salaires
   Future<SalaryStats> getSalaryStats() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/salaries/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/salaries/stats'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -564,13 +524,10 @@ class SalaryService {
   // Récupérer les salaires en attente
   Future<List<Salary>> getPendingSalaries() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/salaries-pending'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/salaries-pending'),
+        headers: headers,
       );
 
       final result = ApiService.parseResponse(response);
@@ -611,9 +568,10 @@ class SalaryService {
       final url = '${AppConfig.baseUrl}/employees-list';
       AppLogger.httpRequest('GET', url, tag: 'SALARY_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -759,13 +717,10 @@ class SalaryService {
   // Récupérer les composants de salaire
   Future<List<SalaryComponent>> getSalaryComponents() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
-        Uri.parse('$baseUrl/salary-components'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/salary-components'),
+        headers: headers,
       );
       final result = ApiService.parseResponse(response);
 
@@ -848,15 +803,11 @@ class SalaryService {
     SalaryComponent component,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/salary-components'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/salary-components'),
+        headers: headers,
         body: json.encode(component.toJson()),
       );
 
@@ -879,15 +830,11 @@ class SalaryService {
     SalaryComponent component,
   ) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/salary-components/${component.id}'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/salary-components/${component.id}'),
+        headers: headers,
         body: json.encode(component.toJson()),
       );
 
@@ -908,14 +855,11 @@ class SalaryService {
   // Supprimer un composant de salaire
   Future<bool> deleteSalaryComponent(int componentId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/salary-components/$componentId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/salary-components/$componentId'),
+        headers: headers,
       );
 
       return response.statusCode == 200;

@@ -109,12 +109,18 @@ class TaxPayment extends Model
 
     public function getComptableNameAttribute()
     {
-        return $this->comptable ? $this->comptable->prenom . ' ' . $this->comptable->nom : 'N/A';
+        if (!$this->relationLoaded('comptable') || !$this->comptable) {
+            return 'N/A';
+        }
+        return trim(($this->comptable->prenom ?? '') . ' ' . ($this->comptable->nom ?? '')) ?: 'N/A';
     }
 
     public function getValidatorNameAttribute()
     {
-        return $this->validator ? $this->validator->prenom . ' ' . $this->validator->nom : 'N/A';
+        if (!$this->relationLoaded('validator') || !$this->validator) {
+            return 'N/A';
+        }
+        return trim(($this->validator->prenom ?? '') . ' ' . ($this->validator->nom ?? '')) ?: 'N/A';
     }
 
     public function getTaxReferenceAttribute()

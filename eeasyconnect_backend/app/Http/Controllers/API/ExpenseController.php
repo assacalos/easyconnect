@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
@@ -13,10 +14,18 @@ use App\Http\Resources\ExpenseResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class ExpenseController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des dépenses
      */
@@ -52,21 +61,22 @@ class ExpenseController extends Controller
                 $query->where('employee_id', $user->id);
             }
 
-            // Pagination
-            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $expenses = $query->orderBy('expense_date', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => ExpenseResource::collection($expenses->items()),
+                'data' => ExpenseResource::collection($expenses->items())->resolve(),
                 'pagination' => [
                     'current_page' => $expenses->currentPage(),
                     'last_page' => $expenses->lastPage(),
                     'per_page' => $expenses->perPage(),
                     'total' => $expenses->total(),
+                    'from' => $expenses->firstItem(),
+                    'to' => $expenses->lastItem(),
                 ],
-                'message' => 'Liste des dépenses récupérée avec succès'
-            ]);
+                'message' => 'Liste des dépenses récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -424,7 +434,10 @@ class ExpenseController extends Controller
 
             if ($expense->submit()) {
                 // Notifier le patron
-                $this->notifyApproverOnSubmission($expense, 'expense', 'Dépense', 6, $expense->expense_number ?? $expense->id);
+                $this->safeNotify(function () use ($expense) {
+                    $expense->load('employee');
+                    $this->notificationService->notifyNewDepense($expense);
+                });
 
                 return response()->json([
                     'success' => true,
@@ -476,7 +489,12 @@ class ExpenseController extends Controller
 
             if ($expense->approve($request->user()->id, $comments)) {
                 // Notifier l'auteur de la dépense
-                $this->notifySubmitterOnApproval($expense, 'expense', 'Dépense', 'employee_id', $expense->expense_number ?? $expense->id);
+                if ($expense->employee_id) {
+                    $this->safeNotify(function () use ($expense) {
+                        $expense->load('employee');
+                        $this->notificationService->notifyDepenseValidated($expense);
+                    });
+                }
 
                 // Recharger la dépense avec ses relations
                 $expense->refresh();
@@ -535,7 +553,13 @@ class ExpenseController extends Controller
 
             if ($expense->reject($request->user()->id, $validated['reason'])) {
                 // Notifier l'auteur de la dépense
-                $this->notifySubmitterOnRejection($expense, 'expense', 'Dépense', $validated['reason'], 'employee_id', $expense->expense_number ?? $expense->id);
+                if ($expense->employee_id) {
+                    $reason = $validated['reason'];
+                    $this->safeNotify(function () use ($expense, $reason) {
+                        $expense->load('employee');
+                        $this->notificationService->notifyDepenseRejected($expense, $reason);
+                    });
+                }
 
                 // Recharger la dépense avec ses relations
                 $expense->refresh();

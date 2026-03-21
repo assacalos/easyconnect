@@ -1,16 +1,16 @@
-import 'package:http/http.dart' as http;
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:get_storage/get_storage.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
+import 'package:easyconnect/services/session_service.dart';
 
 class PatronDashboardService {
-  final storage = GetStorage();
-
   // Récupérer les données de validation en attente
   Future<Map<String, int>> getPendingValidations() async {
     try {
-      final token = storage.read('token');
-      if (token == null) {
+      final headers = await ApiService.headersAsync();
+      final token = await SessionService.getToken();
+      if (token == null || token.isEmpty) {
         return {
           'clients': 0,
           'proformas': 0,
@@ -37,12 +37,9 @@ class PatronDashboardService {
 
       // Récupérer les clients en attente
       try {
-        final clientsResponse = await http.get(
-          Uri.parse('$baseUrl/clients-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final clientsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/clients-list'),
+          headers: headers,
         );
         if (clientsResponse.statusCode == 200) {
           final clientsData = json.decode(clientsResponse.body);
@@ -72,17 +69,15 @@ class PatronDashboardService {
                   .length; // 0 = en attente pour clients
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les devis en attente
       try {
-        final devisResponse = await http.get(
-          Uri.parse('$baseUrl/devis-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final devisResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/devis-list'),
+          headers: headers,
         );
         if (devisResponse.statusCode == 200) {
           final devisData = json.decode(devisResponse.body);
@@ -118,17 +113,15 @@ class PatronDashboardService {
               }).length; // 1 = en attente
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les bordereaux en attente
       try {
-        final bordereauxResponse = await http.get(
-          Uri.parse('$baseUrl/bordereaux-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final bordereauxResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/bordereaux-list'),
+          headers: headers,
         );
         if (bordereauxResponse.statusCode == 200) {
           final bordereauxData = json.decode(bordereauxResponse.body);
@@ -164,17 +157,15 @@ class PatronDashboardService {
               }).length; // 1 = en attente
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer les factures en attente
       try {
-        final facturesResponse = await http.get(
-          Uri.parse('$baseUrl/invoices-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final facturesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/invoices-list'),
+          headers: headers,
         );
         if (facturesResponse.statusCode == 200) {
           final facturesData = json.decode(facturesResponse.body);
@@ -201,17 +192,15 @@ class PatronDashboardService {
                   .length; // 'draft' = en attente
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer TOUS les paiements (tous statuts) pour compter ceux en attente
       try {
-        final paiementsResponse = await http.get(
-          Uri.parse('$baseUrl/payments-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final paiementsResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/payments-list'),
+          headers: headers,
         );
         if (paiementsResponse.statusCode == 200) {
           final paiementsData = json.decode(paiementsResponse.body);
@@ -243,17 +232,15 @@ class PatronDashboardService {
                   .length;
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer TOUTES les dépenses (tous statuts) pour compter celles en attente
       try {
-        final depensesResponse = await http.get(
-          Uri.parse('$baseUrl/expenses-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final depensesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/expenses-list'),
+          headers: headers,
         );
         if (depensesResponse.statusCode == 200) {
           final depensesData = json.decode(depensesResponse.body);
@@ -281,17 +268,15 @@ class PatronDashboardService {
                   .length;
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer TOUS les salaires (tous statuts) pour compter ceux en attente
       try {
-        final salariesResponse = await http.get(
-          Uri.parse('$baseUrl/salaries-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final salariesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/salaries-list'),
+          headers: headers,
         );
         if (salariesResponse.statusCode == 200) {
           final salariesData = json.decode(salariesResponse.body);
@@ -319,17 +304,15 @@ class PatronDashboardService {
                   .length;
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer TOUS les rapports (tous statuts) pour compter ceux en attente
       try {
-        final reportingResponse = await http.get(
-          Uri.parse('$baseUrl/reporting-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final reportingResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/reporting-list'),
+          headers: headers,
         );
         if (reportingResponse.statusCode == 200) {
           final reportingData = json.decode(reportingResponse.body);
@@ -357,17 +340,15 @@ class PatronDashboardService {
                   .length;
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       // Récupérer TOUS les pointages (tous statuts) pour compter ceux en attente
       try {
-        final pointagesResponse = await http.get(
-          Uri.parse('$baseUrl/attendance-punch-list'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+        final pointagesResponse = await HttpInterceptor.get(
+          Uri.parse('${AppConfig.baseUrl}/attendance-punch-list'),
+          headers: headers,
         );
         if (pointagesResponse.statusCode == 200) {
           final pointagesData = json.decode(pointagesResponse.body);
@@ -395,7 +376,8 @@ class PatronDashboardService {
                   .length;
         } else {
         }
-      } catch (e, stackTrace) {
+      } catch (e) {
+        // Agrégat optionnel : ignorer l’échec d’un compteur.
       }
 
       final result = {
@@ -410,7 +392,7 @@ class PatronDashboardService {
         'pointages': pendingPointages,
       };
       return result;
-    } catch (e, stackTrace) {
+    } catch (e) {
       return {
         'clients': 0,
         'proformas': 0,
@@ -428,14 +410,11 @@ class PatronDashboardService {
   // Récupérer les métriques de performance
   Future<Map<String, dynamic>> getPerformanceMetrics() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/patron/dashboard/performance-metrics'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/patron/dashboard/performance-metrics'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -464,14 +443,11 @@ class PatronDashboardService {
   // Récupérer les données complètes du dashboard
   Future<Map<String, dynamic>> getDashboardData() async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
-      final response = await http.get(
-        Uri.parse('$baseUrl/patron/dashboard/data'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/patron/dashboard/data'),
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

@@ -5,389 +5,177 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\API\Controller;
 use Illuminate\Http\Request;
 use App\Models\Notification;
-use Carbon\Carbon;
+use App\Models\User;
+use App\Services\NotificationService;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class NotificationController extends Controller
 {
-    /**
-     * Liste des notifications
-     * Accessible par tous les utilisateurs authentifiés
-     * Compatible avec la nouvelle structure de la documentation
-     */
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     public function index(Request $request)
     {
         $user = $request->user();
-        
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Utilisateur non authentifié'
-            ], 401);
+            return response()->json(['success' => false, 'message' => 'Non authentifié'], 401);
         }
-        
-        $query = Notification::where('user_id', $user->id)
-            ->orderBy('created_at', 'desc');
-        
-        // Filtrage par type si fourni (nouveau format: info, success, warning, error, task)
+
+        $query = Notification::where('user_id', $user->id)->orderBy('created_at', 'desc');
+
         if ($request->has('type')) {
             $query->where('type', $request->type);
         }
-        
-        // Filtrer les non lues si demandé
+
         if ($request->boolean('unread_only')) {
             $query->where(function($q) {
-                $q->where('is_read', false)
-                  ->orWhere('statut', 'non_lue');
+                $q->where('is_read', false)->orWhere('statut', 'non_lue');
             });
         }
-        
-        // Filtrage par statut si fourni (ancien système)
-        if ($request->has('statut')) {
-            $query->where('statut', $request->statut);
-        }
-        
-        // Filtrage par priorité si fourni
-        if ($request->has('priorite')) {
-            $query->where('priorite', $request->priorite);
-        }
-        
-        // Filtrage par canal si fourni
-        if ($request->has('canal')) {
-            $query->where('canal', $request->canal);
-        }
-        
-        // Filtrage par période si fourni
-        if ($request->has('date_debut')) {
-            $query->where('created_at', '>=', $request->date_debut);
-        }
-        
-        if ($request->has('date_fin')) {
-            $query->where('created_at', '<=', $request->date_fin);
-        }
-        
-        // Pagination
-        $perPage = $request->get('per_page', 20);
+
+        $perPage = min((int) $request->get('per_page', 20), 100);
         $notifications = $query->paginate($perPage);
-        
-        // Compter les notifications non lues
-        $unreadCount = Notification::where('user_id', $user->id)
-            ->where(function($q) {
-                $q->where('is_read', false)
-                  ->orWhere('statut', 'non_lue');
-            })
-            ->count();
-        
-        // Formater les notifications selon la nouvelle structure
-        $formattedNotifications = $notifications->map(function($notification) {
+
+        $formatted = $notifications->getCollection()->map(function ($n) {
             return [
-                'id' => (string) $notification->id,
-                'title' => $notification->title ?? $notification->titre ?? '',
-                'message' => $notification->message,
-                'type' => $notification->type,
-                'entity_type' => $notification->entity_type,
-                'entity_id' => $notification->entity_id ? (string) $notification->entity_id : null,
-                'is_read' => $notification->is_read !== null ? (bool) $notification->is_read : ($notification->statut === 'lue'),
-                'created_at' => $notification->created_at->toIso8601String(),
-                'action_route' => $notification->action_route,
+                'id' => (string) $n->id,
+                'title' => $n->title ?? $n->titre ?? '',
+                'message' => $n->message,
+                'type' => $n->type,
+                'entity_type' => $n->entity_type,
+                'entity_id' => $n->entity_id ? (string) $n->entity_id : null,
+                'is_read' => $n->is_read !== null ? (bool) $n->is_read : ($n->statut === 'lue'),
+                'created_at' => $n->created_at->toIso8601String(),
+                'action_route' => $n->action_route,
             ];
         });
-        
+
         return response()->json([
             'success' => true,
-            'data' => $formattedNotifications,
-            'unread_count' => $unreadCount,
+            'data' => $formatted->values(),
             'pagination' => [
                 'current_page' => $notifications->currentPage(),
                 'last_page' => $notifications->lastPage(),
                 'per_page' => $notifications->perPage(),
                 'total' => $notifications->total(),
+                'from' => $notifications->firstItem(),
+                'to' => $notifications->lastItem(),
             ],
-        ]);
+            'unread_count' => Notification::where('user_id', $user->id)->where('is_read', false)->count(),
+            'message' => 'Liste des notifications récupérée avec succès',
+        ], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
-    /**
-     * Détails d'une notification
-     * Accessible par tous les utilisateurs authentifiés
-     */
     public function show($id)
     {
-        $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
-        
-        // Marquer comme lue si ce n'est pas déjà fait
-        if ($notification->statut === 'non_lue') {
-            $notification->marquerCommeLue();
+        $notification = Notification::where('user_id', Auth::id())->findOrFail($id);
+        if (!$notification->is_read) {
+            $notification->update(['is_read' => true, 'statut' => 'lue', 'date_lecture' => now()]);
         }
-        
-        return response()->json([
-            'success' => true,
-            'notification' => $notification,
-            'message' => 'Notification récupérée avec succès'
-        ]);
+        return response()->json(['success' => true, 'notification' => $notification]);
     }
 
-    /**
-     * Marquer une notification comme lue
-     * Accessible par tous les utilisateurs authentifiés
-     * Compatible avec la nouvelle structure de la documentation
-     */
     public function markAsRead($id)
     {
-        $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
-        
-        if ($notification->is_read || $notification->statut === 'lue') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cette notification est déjà marquée comme lue'
-            ], 400);
-        }
-        
-        $notification->marquerCommeLue();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Notification marquée comme lue'
-        ]);
+        $notification = Notification::where('user_id', Auth::id())->findOrFail($id);
+        $notification->update(['is_read' => true, 'statut' => 'lue', 'date_lecture' => now()]);
+        return response()->json(['success' => true, 'message' => 'Marquée comme lue']);
     }
 
-    /**
-     * Marquer toutes les notifications comme lues
-     * Accessible par tous les utilisateurs authentifiés
-     * Compatible avec la nouvelle structure de la documentation
-     */
-    public function markAllAsRead()
-    {
-        $count = Notification::where('user_id', auth()->id())
-            ->where(function($q) {
-                $q->where('is_read', false)
-                  ->orWhere('statut', 'non_lue');
-            })
-            ->update([
-                'statut' => 'lue',
-                'is_read' => true,
-                'date_lecture' => Carbon::now()
-            ]);
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Toutes les notifications ont été marquées comme lues'
-        ]);
-    }
-
-    /**
-     * Archiver une notification
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function archive($id)
-    {
-        $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
-        
-        $notification->archiver();
-        
-        return response()->json([
-            'success' => true,
-            'notification' => $notification,
-            'message' => 'Notification archivée'
-        ]);
-    }
-
-    /**
-     * Archiver toutes les notifications lues
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function archiveAllRead()
-    {
-        $count = Notification::where('user_id', auth()->id())
-            ->where('statut', 'lue')
-            ->update(['statut' => 'archivee']);
-        
-        return response()->json([
-            'success' => true,
-            'count' => $count,
-            'message' => "$count notifications archivées"
-        ]);
-    }
-
-    /**
-     * Supprimer une notification
-     * Accessible par tous les utilisateurs authentifiés
-     * Compatible avec la nouvelle structure de la documentation
-     */
-    public function destroy($id)
-    {
-        $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
-        
-        $notification->delete();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Notification supprimée'
-        ]);
-    }
-
-    /**
-     * Supprimer toutes les notifications archivées
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function destroyArchived()
-    {
-        $count = Notification::where('user_id', auth()->id())
-            ->where('statut', 'archivee')
-            ->delete();
-        
-        return response()->json([
-            'success' => true,
-            'count' => $count,
-            'message' => "$count notifications archivées supprimées"
-        ]);
-    }
-
-    /**
-     * Statistiques des notifications
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function statistics()
-    {
-        $userId = auth()->id();
-        
-        $total = Notification::where('user_id', $userId)->count();
-        $nonLues = Notification::where('user_id', $userId)->where('statut', 'non_lue')->count();
-        $lues = Notification::where('user_id', $userId)->where('statut', 'lue')->count();
-        $archivees = Notification::where('user_id', $userId)->where('statut', 'archivee')->count();
-        $urgentes = Notification::where('user_id', $userId)->where('priorite', 'urgente')->where('statut', 'non_lue')->count();
-        
-        $parType = Notification::where('user_id', $userId)
-            ->selectRaw('type, count(*) as count')
-            ->groupBy('type')
-            ->get()
-            ->map(function($item) {
-                return [
-                    'type' => $item->type,
-                    'libelle' => $item->getTypeLibelle(),
-                    'count' => $item->count
-                ];
-            });
-        
-        $parPriorite = Notification::where('user_id', $userId)
-            ->selectRaw('priorite, count(*) as count')
-            ->groupBy('priorite')
-            ->get()
-            ->map(function($item) {
-                return [
-                    'priorite' => $item->priorite,
-                    'libelle' => $item->getPrioriteLibelle(),
-                    'count' => $item->count
-                ];
-            });
-        
-        $recentes = Notification::where('user_id', $userId)
-            ->where('created_at', '>=', Carbon::now()->subDays(7))
-            ->count();
-        
-        $statistiques = [
-            'total' => $total,
-            'non_lues' => $nonLues,
-            'lues' => $lues,
-            'archivees' => $archivees,
-            'urgentes' => $urgentes,
-            'recentes' => $recentes,
-            'par_type' => $parType,
-            'par_priorite' => $parPriorite
-        ];
-        
-        return response()->json([
-            'success' => true,
-            'statistiques' => $statistiques,
-            'message' => 'Statistiques des notifications récupérées avec succès'
-        ]);
-    }
-
-    /**
-     * Notifications non lues
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function unread()
-    {
-        $notifications = Notification::where('user_id', auth()->id())
-            ->where('statut', 'non_lue')
-            ->orderBy('created_at', 'desc')
-            ->get();
-        
-        return response()->json([
-            'success' => true,
-            'notifications' => $notifications,
-            'count' => $notifications->count(),
-            'message' => 'Notifications non lues récupérées avec succès'
-        ]);
-    }
-
-    /**
-     * Notifications urgentes
-     * Accessible par tous les utilisateurs authentifiés
-     */
-    public function urgent()
-    {
-        $notifications = Notification::where('user_id', auth()->id())
-            ->where('priorite', 'urgente')
-            ->where('statut', 'non_lue')
-            ->orderBy('created_at', 'desc')
-            ->get();
-        
-        return response()->json([
-            'success' => true,
-            'notifications' => $notifications,
-            'count' => $notifications->count(),
-            'message' => 'Notifications urgentes récupérées avec succès'
-        ]);
-    }
-
-    /**
-     * Créer une notification
-     * Accessible par Admin uniquement
-     */
     public function store(Request $request)
     {
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'type' => 'required|string|max:50',
-            'titre' => 'required|string|max:255',
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
             'message' => 'required|string|max:1000',
-            'data' => 'nullable|array',
-            'priorite' => 'required|in:basse,normale,haute,urgente',
-            'canal' => 'required|in:app,email,sms,push',
-            'date_expiration' => 'nullable|date|after:now'
+            'type' => 'required|string|in:info,success,warning,error,task',
+            'entity_type' => 'required|string|max:100',
+            'entity_id' => 'required|string|max:255',
+            'recipient_role' => 'nullable|string',
+            'recipient_ids' => 'nullable|array',
+            'user_id' => 'nullable|integer',
+            'priorite' => 'nullable|string|in:basse,normale,haute,urgente',
         ]);
 
-        // Dispatch le job pour créer la notification en arrière-plan
-        \App\Jobs\SendNotificationJob::dispatch([
-            'user_id' => $request->user_id,
-            'type' => $request->type,
-            'titre' => $request->titre,
-            'message' => $request->message,
-            'data' => $request->data,
-            'priorite' => $request->priorite,
-            'canal' => $request->canal,
-            'date_expiration' => $request->date_expiration
-        ]);
+        try {
+            $users = collect();
+            if ($request->filled('recipient_role')) {
+                $roleId = $this->getRoleId($validated['recipient_role']);
+                if ($roleId) {
+                    $users = User::where('role', $roleId)->where('is_active', true)->get();
+                }
+            } elseif ($request->filled('recipient_ids')) {
+                $users = User::whereIn('id', $validated['recipient_ids'])->where('is_active', true)->get();
+            } elseif ($request->filled('user_id')) {
+                $user = User::find($validated['user_id']);
+                if ($user && $user->is_active) $users = collect([$user]);
+            }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Notification en cours de création'
-        ], 201);
+            if ($users->isEmpty()) {
+                return response()->json(['success' => false, 'message' => 'Aucun destinataire'], 404);
+            }
+
+            $results = [];
+            $data = [
+                'entity_type' => $validated['entity_type'],
+                'entity_id' => $validated['entity_id'],
+                'action_route' => "/{$validated['entity_type']}s/{$validated['entity_id']}"
+            ];
+
+            foreach ($users as $user) {
+                try {
+                    $notification = $this->notificationService->createAndBroadcast(
+                        $user->id,
+                        $validated['type'],
+                        $validated['title'],
+                        $validated['message'],
+                        $data,
+                        $validated['priorite'] ?? 'normale',
+                        'app'
+                    );
+
+                    if ($notification) {
+                        $results[] = ['user_id' => $user->id, 'sent' => true, 'notification_id' => $notification->id];
+                    } else {
+                        $results[] = ['user_id' => $user->id, 'sent' => false];
+                    }
+                } catch (\Exception $e) {
+                    Log::error($e->getMessage());
+                    $results[] = ['user_id' => $user->id, 'sent' => false];
+                }
+            }
+
+            return response()->json(['success' => true, 'results' => $results], 201);
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la création de notification: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
-    /**
-     * Nettoyer les notifications expirées
-     * Accessible par Admin uniquement
-     */
-    public function cleanup()
+    private function getRoleId($roleName)
     {
-        $count = Notification::where('date_expiration', '<', Carbon::now())
-            ->delete();
-        
+        $map = ['admin' => 1, 'commercial' => 2, 'comptable' => 3, 'rh' => 4, 'technicien' => 5, 'patron' => 6];
+        return $map[strtolower($roleName)] ?? null;
+    }
+
+    public function destroy($id)
+    {
+        Notification::where('user_id', Auth::id())->findOrFail($id)->delete();
+        return response()->json(['success' => true, 'message' => 'Supprimée']);
+    }
+
+    public function statistics()
+    {
+        $userId = Auth::id();
         return response()->json([
             'success' => true,
-            'count' => $count,
-            'message' => "$count notifications expirées supprimées"
+            'statistiques' => [
+                'total' => Notification::where('user_id', $userId)->count(),
+                'non_lues' => Notification::where('user_id', $userId)->where('is_read', false)->count(),
+            ]
         ]);
     }
 }

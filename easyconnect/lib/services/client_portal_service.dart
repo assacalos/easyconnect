@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/utils/app_config.dart';
-import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 
 /// Service pour le portail client (rôle 7) : annonces, catalogue, offres, contact, demandes d'intervention.
@@ -13,7 +12,7 @@ class ClientPortalService {
     final uri = type != null
         ? Uri.parse('$_baseUrl/announcements?type=$type')
         : Uri.parse('$_baseUrl/announcements');
-    final res = await http.get(uri, headers: ApiService.headers());
+    final res = await HttpInterceptor.get(uri);
     await AuthErrorHandler.handleHttpResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -23,21 +22,21 @@ class ClientPortalService {
     final uri = category != null
         ? Uri.parse('$_baseUrl/catalog?category=$category')
         : Uri.parse('$_baseUrl/catalog');
-    final res = await http.get(uri, headers: ApiService.headers());
+    final res = await HttpInterceptor.get(uri);
     await AuthErrorHandler.handleHttpResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// Offres (articles marqués comme offres)
   static Future<Map<String, dynamic>> getOffers() async {
-    final res = await http.get(Uri.parse('$_baseUrl/offers'), headers: ApiService.headers());
+    final res = await HttpInterceptor.get(Uri.parse('$_baseUrl/offers'));
     await AuthErrorHandler.handleHttpResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// Coordonnées de contact
   static Future<Map<String, dynamic>> getContact() async {
-    final res = await http.get(Uri.parse('$_baseUrl/contact'), headers: ApiService.headers());
+    final res = await HttpInterceptor.get(Uri.parse('$_baseUrl/contact'));
     await AuthErrorHandler.handleHttpResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -63,9 +62,8 @@ class ClientPortalService {
       if (equipment != null && equipment.isNotEmpty) 'equipment': equipment,
       if (problemDescription != null && problemDescription.isNotEmpty) 'problem_description': problemDescription,
     };
-    final res = await http.post(
+    final res = await HttpInterceptor.post(
       Uri.parse('$_baseUrl/intervention-requests'),
-      headers: ApiService.headers(),
       body: jsonEncode(body),
     );
     await AuthErrorHandler.handleHttpResponse(res);
@@ -74,7 +72,7 @@ class ClientPortalService {
 
   /// Mes demandes d'intervention (suivi)
   static Future<Map<String, dynamic>> getMyInterventions() async {
-    final res = await http.get(Uri.parse('$_baseUrl/my-interventions'), headers: ApiService.headers());
+    final res = await HttpInterceptor.get(Uri.parse('$_baseUrl/my-interventions'));
     await AuthErrorHandler.handleHttpResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }

@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
-use App\Traits\SendsNotifications;
+use App\Http\Requests\RejectDevisRequest;
+use App\Http\Requests\StoreDevisRequest;
+use App\Http\Requests\UpdateDevisRequest;
+use App\Services\NotificationService;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use App\Models\Devis;
 use App\Models\DevisItem;
@@ -18,22 +22,31 @@ use Illuminate\Support\Str;
 
 class DevisController extends Controller
 {
-    use SendsNotifications, CachesData;
+    use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des devis avec filtres par rôle et statut
      */
     public function index(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
+        $this->authorize('viewAny', Devis::class);
+
         try {
-            $user = $request->user();
-            
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Utilisateur non authentifié'
-                ], 401);
-            }
-            
             // Générer une clé de cache unique basée sur les paramètres
             $cacheKey = 'devis_list_' . md5(json_encode([
                 'user_id' => $user->id,
@@ -119,21 +132,24 @@ class DevisController extends Controller
                 $query->where('user_id', $user->id);
             }
 
-            $perPage = min($request->get('per_page', 15), 100); // Limite max 100 par page
-            $page = $request->get('page', 1);
-            $devis = $query->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
+            $perPage = min((int) $request->get('per_page', 20), 100); // 20 par défaut, max 100 par page
+            $devis = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
+            $dataArray = DevisResource::collection($devis->items())->resolve();
             $response = [
                 'success' => true,
-                'data' => DevisResource::collection($devis->items()),
-                'meta' => [
+                'data' => $dataArray,
+                'pagination' => [
                     'current_page' => $devis->currentPage(),
                     'last_page' => $devis->lastPage(),
                     'per_page' => $devis->perPage(),
                     'total' => $devis->total(),
+                    'from' => $devis->firstItem(),
+                    'to' => $devis->lastItem(),
                     'has_next_page' => $devis->hasMorePages(),
                     'has_previous_page' => $devis->currentPage() > 1,
-                ]
+                ],
+                'message' => 'Liste des devis récupérée avec succès',
             ];
 
             // Mettre en cache pendant 5 minutes (si possible)
@@ -169,27 +185,15 @@ class DevisController extends Controller
     /**
      * Créer un nouveau devis
      */
-    public function store(Request $request)
+    public function store(StoreDevisRequest $request)
     {
         try {
-            $validated = $request->validate([
-                'client_id' => 'required|exists:clients,id',
-                'date_validite' => 'nullable|date|after:today',
-                'notes' => 'nullable|string',
-                'remise_globale' => 'nullable|numeric|min:0',
-                'tva' => 'nullable|numeric|min:0|max:100',
-                'conditions' => 'nullable|string',
-                'commentaire' => 'nullable|string',
-                'items' => 'required|array|min:1',
-                'items.*.designation' => 'required|string',
-                'items.*.quantite' => 'required|integer|min:1',
-                'items.*.prix_unitaire' => 'required|numeric|min:0'
-            ]);
+            $validated = $request->validated();
 
             DB::beginTransaction();
 
-            // Génération de la référence
-            $reference = 'DEV-' . date('Y') . '-' . str_pad(Devis::count() + 1, 4, '0', STR_PAD_LEFT);
+            // Génération de la référence (max numéro existant + 1 pour éviter conflit après suppressions)
+            $reference = Devis::generateNextReference();
 
             $devis = Devis::create([
                 'client_id' => $validated['client_id'],
@@ -197,11 +201,14 @@ class DevisController extends Controller
                 'date_creation' => now()->toDateString(),
                 'date_validite' => $validated['date_validite'],
                 'notes' => $validated['notes'],
-                'status' => 0, // Brouillon
+                'status' => $validated['status'] ?? 0, // Brouillon par défaut, ou envoyé si status=1
                 'remise_globale' => $validated['remise_globale'] ?? 0,
                 'tva' => $validated['tva'] ?? 0,
                 'conditions' => $validated['conditions'],
                 'commentaire' => $validated['commentaire'],
+                'titre' => $validated['titre'] ?? null,
+                'delai_livraison' => $validated['delai_livraison'] ?? null,
+                'garantie' => $validated['garantie'] ?? null,
                 'user_id' => $request->user()->id
             ]);
 
@@ -209,6 +216,7 @@ class DevisController extends Controller
             foreach ($validated['items'] as $item) {
                 DevisItem::create([
                     'devis_id' => $devis->id,
+                    'reference' => $item['reference'] ?? null,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
                     'prix_unitaire' => $item['prix_unitaire']
@@ -218,6 +226,13 @@ class DevisController extends Controller
             DB::commit();
 
             $devis->load(['client', 'commercial', 'items']);
+
+            // Notifier le patron si le devis est créé avec status = 1 (envoyé)
+            if ($devis->status == 1) {
+                $this->safeNotify(function () use ($devis) {
+                    $this->notificationService->notifyNewDevis($devis);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -246,37 +261,22 @@ class DevisController extends Controller
      */
     public function show($id)
     {
-        try {
-            $devis = Devis::with(['client', 'commercial', 'items'])->findOrFail($id);
-            
-            return response()->json([
-                'success' => true,
-                'data' => new DevisResource($devis)
-            ], 200);
+        $devis = Devis::with(['client', 'commercial', 'items'])->findOrFail($id);
+        $this->authorize('view', $devis);
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Devis non trouvé: ' . $e->getMessage()
-            ], 404);
-        }
+        return response()->json([
+            'success' => true,
+            'data' => new DevisResource($devis)
+        ], 200);
     }
 
     /**
-     * Modifier un devis (uniquement si brouillon)
+     * Modifier un devis (quel que soit le statut)
      */
     public function update(Request $request, $id)
     {
         try {
             $devis = Devis::findOrFail($id);
-
-            // Vérifier que le devis est en brouillon
-            if ($devis->status != 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Modification interdite, devis déjà envoyé'
-                ], 403);
-            }
 
             $validated = $request->validate([
                 'client_id' => 'required|exists:clients,id',
@@ -286,7 +286,11 @@ class DevisController extends Controller
                 'tva' => 'nullable|numeric|min:0|max:100',
                 'conditions' => 'nullable|string',
                 'commentaire' => 'nullable|string',
+                'titre' => 'nullable|string|max:255',
+                'delai_livraison' => 'nullable|string|max:255',
+                'garantie' => 'nullable|string|max:255',
                 'items' => 'required|array|min:1',
+                'items.*.reference' => 'nullable|string|max:100',
                 'items.*.designation' => 'required|string',
                 'items.*.quantite' => 'required|integer|min:1',
                 'items.*.prix_unitaire' => 'required|numeric|min:0'
@@ -301,7 +305,10 @@ class DevisController extends Controller
                 'remise_globale' => $validated['remise_globale'] ?? 0,
                 'tva' => $validated['tva'] ?? 0,
                 'conditions' => $validated['conditions'],
-                'commentaire' => $validated['commentaire']
+                'commentaire' => $validated['commentaire'],
+                'titre' => $validated['titre'] ?? null,
+                'delai_livraison' => $validated['delai_livraison'] ?? null,
+                'garantie' => $validated['garantie'] ?? null
             ]);
 
             // Supprimer les anciens items et créer les nouveaux
@@ -309,6 +316,7 @@ class DevisController extends Controller
             foreach ($validated['items'] as $item) {
                 DevisItem::create([
                     'devis_id' => $devis->id,
+                    'reference' => $item['reference'] ?? null,
                     'designation' => $item['designation'],
                     'quantite' => $item['quantite'],
                     'prix_unitaire' => $item['prix_unitaire']
@@ -339,17 +347,10 @@ class DevisController extends Controller
      */
     public function destroy($id)
     {
+        $devis = Devis::findOrFail($id);
+        $this->authorize('delete', $devis);
+
         try {
-            $devis = Devis::findOrFail($id);
-
-            // Vérifier que le devis est en brouillon
-            if ($devis->status != 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Suppression interdite, devis déjà envoyé'
-                ], 403);
-            }
-
             $devis->delete();
 
             return response()->json([
@@ -370,21 +371,17 @@ class DevisController extends Controller
      */
     public function send($id)
     {
+        $devis = Devis::findOrFail($id);
+        $this->authorize('update', $devis);
+
         try {
-            $devis = Devis::findOrFail($id);
-
-            if ($devis->status != 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Devis déjà envoyé'
-                ], 403);
-            }
-
             $devis->update(['status' => 1]); // Envoyé
             $devis->load(['client', 'commercial', 'items']);
 
             // Notifier le patron
-            $this->notifyApproverOnSubmission($devis, 'devis', 'Devis', 6, $devis->reference);
+            $this->safeNotify(function () use ($devis) {
+                $this->notificationService->notifyNewDevis($devis);
+            });
 
             return response()->json([
                 'success' => true,
@@ -404,31 +401,21 @@ class DevisController extends Controller
      * Accepter un devis
      */
     public function accept($id) {
-        try {
-            $devis = Devis::findOrFail($id);
-            
-            // Vérifier que le devis n'est pas déjà accepté ou rejeté
-            if ($devis->status == 2) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Ce devis est déjà accepté'
-                ], 403);
-            }
-            
-            if ($devis->status == 3) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Ce devis a été rejeté et ne peut pas être accepté'
-                ], 403);
-            }
+        $devis = Devis::findOrFail($id);
+        $this->authorize('validate', $devis);
 
-            // Accepter le devis (peut être brouillon 0 ou envoyé 1)
+        try {
+            // Accepter/valider le devis (quel que soit le statut actuel)
             $devis->status = 2; // Accepté/Validé
             $devis->save();
             $devis->load(['client', 'commercial', 'items']);
             
             // Notifier l'auteur du devis
-            $this->notifySubmitterOnApproval($devis, 'devis', 'Devis', 'user_id', $devis->reference);
+            if ($devis->user_id) {
+                $this->safeNotify(function () use ($devis) {
+                    $this->notificationService->notifyDevisValidated($devis);
+                });
+            }
             
             return response()->json([
                 'success' => true,
@@ -453,21 +440,12 @@ class DevisController extends Controller
     /**
      * Refuser un devis
      */
-    public function reject(Request $request, $id)
+    public function reject(RejectDevisRequest $request, $id)
     {
         try {
-            $validated = $request->validate([
-                'commentaire' => 'required|string'
-            ]);
+            $validated = $request->validated();
 
             $devis = Devis::findOrFail($id);
-
-            if ($devis->status != 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Devis non envoyé'
-                ], 403);
-            }
 
             $devis->update([
                 'status' => 3, // Refusé
@@ -476,7 +454,11 @@ class DevisController extends Controller
             $devis->load(['client', 'commercial', 'items']);
 
             // Notifier l'auteur du devis
-            $this->notifySubmitterOnRejection($devis, 'devis', 'Devis', $validated['commentaire'], 'user_id', $devis->reference);
+            if ($devis->user_id) {
+                $this->safeNotify(function () use ($devis, $validated) {
+                    $this->notificationService->notifyDevisRejected($devis, $validated['commentaire']);
+                });
+            }
 
             return response()->json([
                 'success' => true,
@@ -488,6 +470,42 @@ class DevisController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors du refus du devis: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Marquer un devis (proforma validé) comme payé. Statut 4 = payé.
+     * Accessible par Commercial / Comptable / Patron.
+     */
+    public function markAsPaid($id)
+    {
+        $devis = Devis::with(['client', 'items'])->findOrFail($id);
+        $this->authorize('markAsPaid', $devis);
+
+        try {
+            if ($devis->status == 4) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce devis est déjà marqué comme payé'
+                ], 400);
+            }
+            if ($devis->status != 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seul un devis validé peut être marqué comme payé'
+                ], 400);
+            }
+            $devis->update(['status' => 4, 'paid_at' => now()]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Devis marqué comme payé',
+                'data' => new DevisResource($devis)
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -536,13 +554,14 @@ class DevisController extends Controller
      */
     public function duplicate($id)
     {
-        try {
-            $originalDevis = Devis::with('items')->findOrFail($id);
+        $originalDevis = Devis::with('items')->findOrFail($id);
+        $this->authorize('view', $originalDevis);
 
+        try {
             DB::beginTransaction();
 
-            // Génération d'une nouvelle référence
-            $reference = 'DEV-' . date('Y') . '-' . str_pad(Devis::count() + 1, 4, '0', STR_PAD_LEFT);
+            // Génération d'une nouvelle référence unique
+            $reference = Devis::generateNextReference();
 
             $newDevis = Devis::create([
                 'client_id' => $originalDevis->client_id,
@@ -562,6 +581,7 @@ class DevisController extends Controller
             foreach ($originalDevis->items as $item) {
                 DevisItem::create([
                     'devis_id' => $newDevis->id,
+                    'reference' => $item->reference,
                     'designation' => $item->designation,
                     'quantite' => $item->quantite,
                     'prix_unitaire' => $item->prix_unitaire
@@ -648,7 +668,7 @@ class DevisController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => DevisResource::collection($devis)
+                'data' => DevisResource::collection($devis)->resolve()
             ], 200);
 
         } catch (\Exception $e) {
@@ -664,16 +684,18 @@ class DevisController extends Controller
      */
     public function count(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
+        $this->authorize('viewAny', Devis::class);
+
         try {
-            $user = $request->user();
-            
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Utilisateur non authentifié'
-                ], 401);
-            }
-            
             $validated = $request->validate([
                 'status' => 'nullable|integer',
                 'start_date' => 'nullable|date',
@@ -736,16 +758,18 @@ class DevisController extends Controller
      */
     public function stats(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
+        $this->authorize('viewAny', Devis::class);
+
         try {
-            $user = $request->user();
-            
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Utilisateur non authentifié'
-                ], 401);
-            }
-            
             $validated = $request->validate([
                 'status' => 'nullable|integer',
                 'start_date' => 'nullable|date',
@@ -826,16 +850,18 @@ class DevisController extends Controller
      */
     public function debug(Request $request)
     {
-        try {
-            $user = $request->user();
-            
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Utilisateur non authentifié'
-                ], 401);
-            }
+        $user = $request->user();
 
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
+        $this->authorize('debug', Devis::class);
+
+        try {
             $totalDevis = Devis::count();
             $devisByStatus = Devis::selectRaw('status, count(*) as count')
                 ->groupBy('status')

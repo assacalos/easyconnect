@@ -131,7 +131,10 @@ class Tax extends Model
 
     public function getComptableNameAttribute()
     {
-        return $this->comptable ? $this->comptable->prenom . ' ' . $this->comptable->nom : 'N/A';
+        if (!$this->relationLoaded('comptable') || !$this->comptable) {
+            return 'N/A';
+        }
+        return trim(($this->comptable->prenom ?? '') . ' ' . ($this->comptable->nom ?? '')) ?: 'N/A';
     }
 
     public function getCategoryNameAttribute()

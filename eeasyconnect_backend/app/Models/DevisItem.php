@@ -10,6 +10,7 @@ class DevisItem extends Model
     use HasFactory;
     protected $fillable = [
         'devis_id',
+        'reference',
         'designation',
         'quantite',
         'prix_unitaire',

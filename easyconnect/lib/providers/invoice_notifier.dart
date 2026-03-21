@@ -531,6 +531,8 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
 
   Future<void> approveInvoice(int invoiceId, {String? comments}) async {
     state = state.copyWith(isLoading: true);
+    final previousPending = List<InvoiceModel>.from(state.pendingInvoices);
+    final previousInvoices = List<InvoiceModel>.from(state.invoices);
     try {
       CacheHelper.clearByPrefix('invoices_');
       CacheHelper.clearByPrefix('factures_');
@@ -573,6 +575,34 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
           sentAt: o.sentAt,
           paidAt: o.paidAt,
         );
+      } else if (original != null) {
+        final o = original;
+        newInvoices.add(InvoiceModel(
+          id: o.id,
+          invoiceNumber: o.invoiceNumber,
+          clientId: o.clientId,
+          clientName: o.clientName,
+          clientEmail: o.clientEmail,
+          clientAddress: o.clientAddress,
+          commercialId: o.commercialId,
+          commercialName: o.commercialName,
+          invoiceDate: o.invoiceDate,
+          dueDate: o.dueDate,
+          subtotal: o.subtotal,
+          taxRate: o.taxRate,
+          taxAmount: o.taxAmount,
+          totalAmount: o.totalAmount,
+          currency: o.currency,
+          status: 'valide',
+          items: o.items,
+          notes: o.notes,
+          terms: o.terms,
+          paymentInfo: o.paymentInfo,
+          createdAt: o.createdAt,
+          updatedAt: DateTime.now(),
+          sentAt: o.sentAt,
+          paidAt: o.paidAt,
+        ));
       }
       state = state.copyWith(
           invoices: newInvoices, pendingInvoices: newPending);
@@ -584,6 +614,7 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
           result['success'] == 'true';
       if (ok) {
         DashboardRefreshHelper.refreshPatronCounter('invoice');
+        DashboardRefreshHelper.refreshCommercialDashboard();
         if (original != null) {
           NotificationHelper.notifyValidation(
             entityType: 'facture',
@@ -600,13 +631,13 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
           loadPendingInvoices();
         });
       } else {
-        await loadInvoices();
-        await loadPendingInvoices();
+        state = state.copyWith(
+            invoices: previousInvoices, pendingInvoices: previousPending);
         throw Exception('La validation a peut-être réussi. Vérifiez.');
       }
     } catch (e) {
-      await loadInvoices();
-      await loadPendingInvoices();
+      state = state.copyWith(
+          invoices: previousInvoices, pendingInvoices: previousPending);
       rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
@@ -615,6 +646,8 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
 
   Future<void> rejectInvoice(int invoiceId, String reason) async {
     state = state.copyWith(isLoading: true);
+    final previousPending = List<InvoiceModel>.from(state.pendingInvoices);
+    final previousInvoices = List<InvoiceModel>.from(state.invoices);
     try {
       final pendingIndex =
           state.pendingInvoices.indexWhere((i) => i.id == invoiceId);
@@ -655,6 +688,34 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
           sentAt: o.sentAt,
           paidAt: o.paidAt,
         );
+      } else if (original != null) {
+        final o = original;
+        newInvoices.add(InvoiceModel(
+          id: o.id,
+          invoiceNumber: o.invoiceNumber,
+          clientId: o.clientId,
+          clientName: o.clientName,
+          clientEmail: o.clientEmail,
+          clientAddress: o.clientAddress,
+          commercialId: o.commercialId,
+          commercialName: o.commercialName,
+          invoiceDate: o.invoiceDate,
+          dueDate: o.dueDate,
+          subtotal: o.subtotal,
+          taxRate: o.taxRate,
+          taxAmount: o.taxAmount,
+          totalAmount: o.totalAmount,
+          currency: o.currency,
+          status: 'rejetee',
+          items: o.items,
+          notes: o.notes,
+          terms: o.terms,
+          paymentInfo: o.paymentInfo,
+          createdAt: o.createdAt,
+          updatedAt: DateTime.now(),
+          sentAt: o.sentAt,
+          paidAt: o.paidAt,
+        ));
       }
       state = state.copyWith(
           invoices: newInvoices, pendingInvoices: newPending);
@@ -662,6 +723,8 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
       final result =
           await _invoiceService.rejectInvoice(invoiceId: invoiceId, reason: reason);
       if (result['success'] == true) {
+        DashboardRefreshHelper.refreshPatronCounter('invoice');
+        DashboardRefreshHelper.refreshCommercialDashboard();
         final inv = _findInvoice(invoiceId) ?? original;
         if (inv != null) {
           NotificationHelper.notifyRejection(
@@ -678,8 +741,14 @@ class InvoiceNotifier extends Notifier<InvoiceState> {
         loadInvoices().ignore();
         loadPendingInvoices().ignore();
       } else {
+        state = state.copyWith(
+            invoices: previousInvoices, pendingInvoices: previousPending);
         throw Exception(result['message']?.toString() ?? 'Erreur');
       }
+    } catch (e) {
+      state = state.copyWith(
+          invoices: previousInvoices, pendingInvoices: previousPending);
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

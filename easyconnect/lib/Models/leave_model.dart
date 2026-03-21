@@ -39,11 +39,25 @@ class LeaveRequest {
     this.leaveBalance,
   });
 
+  static String _employeeNameFromJson(Map<String, dynamic> json) {
+    final name = json['employee_name']?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    final emp = json['employee'];
+    if (emp is Map) {
+      final full = (emp['full_name']?.toString() ?? '').trim();
+      if (full.isNotEmpty) return full;
+      final first = (emp['first_name']?.toString() ?? '').trim();
+      final last = (emp['last_name']?.toString() ?? '').trim();
+      return '$first $last'.trim();
+    }
+    return '';
+  }
+
   factory LeaveRequest.fromJson(Map<String, dynamic> json) {
     return LeaveRequest(
       id: json['id'],
       employeeId: json['employee_id'],
-      employeeName: json['employee_name'] ?? '',
+      employeeName: LeaveRequest._employeeNameFromJson(json),
       leaveType: json['leave_type'],
       startDate: DateTime.parse(json['start_date']),
       endDate: DateTime.parse(json['end_date']),

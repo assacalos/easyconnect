@@ -319,22 +319,18 @@ class BordereauNotifier extends Notifier<BordereauState> {
       Bordereau? originalBordereau;
       if (idx != -1) {
         originalBordereau = bordereauList[idx];
-        if (state.currentStatus == 1) {
-          bordereauList.removeAt(idx);
-        } else {
-          bordereauList[idx] = Bordereau(
-            id: originalBordereau.id,
-            reference: originalBordereau.reference,
-            clientId: originalBordereau.clientId,
-            commercialId: originalBordereau.commercialId,
-            devisId: originalBordereau.devisId,
-            dateCreation: originalBordereau.dateCreation,
-            dateValidation: originalBordereau.dateValidation,
-            notes: originalBordereau.notes,
-            status: 2,
-            items: originalBordereau.items,
-          );
-        }
+        bordereauList[idx] = Bordereau(
+          id: originalBordereau.id,
+          reference: originalBordereau.reference,
+          clientId: originalBordereau.clientId,
+          commercialId: originalBordereau.commercialId,
+          devisId: originalBordereau.devisId,
+          dateCreation: originalBordereau.dateCreation,
+          dateValidation: originalBordereau.dateValidation,
+          notes: originalBordereau.notes,
+          status: 2,
+          items: originalBordereau.items,
+        );
         state = state.copyWith(bordereaux: bordereauList);
       }
       try {
@@ -357,11 +353,21 @@ class BordereauNotifier extends Notifier<BordereauState> {
             loadBordereaux(status: state.currentStatus).catchError((_) {});
           });
         } else {
-          await loadBordereaux(status: state.currentStatus);
+          if (originalBordereau != null && idx != -1) {
+            final rollback = List<Bordereau>.from(state.bordereaux);
+            rollback[idx] = originalBordereau;
+            state = state.copyWith(bordereaux: rollback);
+          } else {
+            await loadBordereaux(status: state.currentStatus);
+          }
           throw Exception('Erreur lors de l\'approbation - La réponse du serveur indique un échec');
         }
       } catch (e) {
-        if (originalBordereau != null) {
+        if (originalBordereau != null && idx != -1) {
+          final rollback = List<Bordereau>.from(state.bordereaux);
+          rollback[idx] = originalBordereau;
+          state = state.copyWith(bordereaux: rollback);
+        } else {
           await loadBordereaux(status: state.currentStatus);
         }
         if (!validationSucceeded) rethrow;
@@ -386,27 +392,23 @@ class BordereauNotifier extends Notifier<BordereauState> {
       Bordereau? originalBordereau;
       if (idx != -1) {
         originalBordereau = bordereauList[idx];
-        if (state.currentStatus == 1) {
-          bordereauList.removeAt(idx);
-        } else {
-          bordereauList[idx] = Bordereau(
-            id: originalBordereau.id,
-            reference: originalBordereau.reference,
-            titre: originalBordereau.titre,
-            clientId: originalBordereau.clientId,
-            commercialId: originalBordereau.commercialId,
-            devisId: originalBordereau.devisId,
-            dateCreation: originalBordereau.dateCreation,
-            dateValidation: originalBordereau.dateValidation,
-            notes: originalBordereau.notes,
-            status: 3,
-            items: originalBordereau.items,
-            commentaireRejet: commentaire,
-            etatLivraison: originalBordereau.etatLivraison,
-            garantie: originalBordereau.garantie,
-            dateLivraison: originalBordereau.dateLivraison,
-          );
-        }
+        bordereauList[idx] = Bordereau(
+          id: originalBordereau.id,
+          reference: originalBordereau.reference,
+          titre: originalBordereau.titre,
+          clientId: originalBordereau.clientId,
+          commercialId: originalBordereau.commercialId,
+          devisId: originalBordereau.devisId,
+          dateCreation: originalBordereau.dateCreation,
+          dateValidation: originalBordereau.dateValidation,
+          notes: originalBordereau.notes,
+          status: 3,
+          items: originalBordereau.items,
+          commentaireRejet: commentaire,
+          etatLivraison: originalBordereau.etatLivraison,
+          garantie: originalBordereau.garantie,
+          dateLivraison: originalBordereau.dateLivraison,
+        );
         state = state.copyWith(bordereaux: bordereauList);
       }
       try {
@@ -429,9 +431,23 @@ class BordereauNotifier extends Notifier<BordereauState> {
             );
           }
         } else {
+          if (originalBordereau != null && idx != -1) {
+            final rollback = List<Bordereau>.from(state.bordereaux);
+            rollback[idx] = originalBordereau;
+            state = state.copyWith(bordereaux: rollback);
+          } else {
+            await loadBordereaux(status: state.currentStatus);
+          }
           throw Exception('Erreur lors du rejet - La réponse du serveur indique un échec');
         }
       } catch (e) {
+        if (originalBordereau != null && idx != -1) {
+          final rollback = List<Bordereau>.from(state.bordereaux);
+          rollback[idx] = originalBordereau;
+          state = state.copyWith(bordereaux: rollback);
+        } else {
+          await loadBordereaux(status: state.currentStatus);
+        }
         rethrow;
       }
     } catch (e) {
@@ -444,6 +460,7 @@ class BordereauNotifier extends Notifier<BordereauState> {
         rethrow;
       }
       loadBordereaux(status: state.currentStatus).catchError((_) {});
+      rethrow;
     } finally {
       state = state.copyWith(isLoading: false);
     }

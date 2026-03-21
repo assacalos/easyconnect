@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +13,7 @@ import 'package:easyconnect/Views/Components/user_profile_card.dart';
 import 'package:easyconnect/Views/Components/paginated_data_view.dart';
 import 'package:easyconnect/utils/roles.dart';
 import 'package:easyconnect/utils/dashboard_entity_colors.dart';
+import 'package:easyconnect/utils/responsive_helper.dart';
 import 'package:easyconnect/Views/Components/skeleton_loaders.dart';
 import 'package:easyconnect/Views/Components/dashboard_web_chart_section.dart';
 import 'package:easyconnect/utils/error_helper.dart';
@@ -129,7 +129,7 @@ class _PatronDashboardEnhancedState extends ConsumerState<PatronDashboardEnhance
               const SizedBox(height: 8),
               _buildKpiPeriodSelector(context, state),
               const SizedBox(height: 10),
-              if (kIsWeb) _buildChiffresClesWeb(context, state) else _buildKpisGrid(context, state),
+              ResponsiveHelper.isMobile(context) ? _buildKpisGrid(context, state) : _buildChiffresClesWeb(context, state),
               if (state.rappels.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 _buildRappelsSection(context, state),
@@ -767,6 +767,7 @@ class _PatronDashboardEnhancedState extends ConsumerState<PatronDashboardEnhance
       _ValItem('Salaires', state.pendingSalaires, Icons.account_balance_wallet, DashboardEntityColors.salaires, '/salaires/validation'),
       _ValItem('Reporting', state.pendingReporting, Icons.analytics, DashboardEntityColors.reporting, '/reporting/validation'),
       _ValItem('Pointages', state.pendingPointages, Icons.access_time, DashboardEntityColors.pointages, '/pointage/validation'),
+      _ValItem('Congés', state.pendingLeaves, Icons.beach_access, DashboardEntityColors.conges, '/conges/validation'),
       _ValItem('Employés', null, Icons.people, DashboardEntityColors.employes, '/employees/validation'),
       _ValItem('Tâches', state.pendingTasks, Icons.task_alt, DashboardEntityColors.tasks, '/tasks'),
     ];
@@ -1060,6 +1061,7 @@ class _PatronDashboardEnhancedState extends ConsumerState<PatronDashboardEnhance
             _drawerItem(context, Icons.list, 'Liste des Clients', DashboardEntityColors.clients, '/clients'),
             _drawerItem(context, Icons.euro, 'Finances', DashboardEntityColors.finances, '/patron/finances'),
             _drawerItem(context, Icons.book, 'Journal des comptes', DashboardEntityColors.journal, '/journal'),
+            _drawerItem(context, Icons.beach_access, 'Validations congés', DashboardEntityColors.conges, '/conges/validation'),
             _drawerItem(context, Icons.analytics, 'Rapports', DashboardEntityColors.rapports, '/patron/reports'),
             _drawerItem(context, Icons.notifications_active, 'Besoins / Rappels techniciens', DashboardEntityColors.besoins, '/besoins'),
             if (userRole == 1)
@@ -1079,6 +1081,16 @@ class _PatronDashboardEnhancedState extends ConsumerState<PatronDashboardEnhance
               leading: Icon(Icons.task_alt, color: DashboardEntityColors.tasks, size: 22),
               title: const Text('Mes tâches', style: TextStyle(color: Colors.white70)),
               onTap: () { Navigator.pop(context); context.go('/tasks'); },
+            ),
+            const Divider(color: Colors.white54),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent, size: 22),
+              title: const Text('Déconnexion', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+              onTap: () async {
+                Navigator.pop(context);
+                await ref.read(authProvider.notifier).logout();
+                if (context.mounted) context.go('/login');
+              },
             ),
           ],
         ),

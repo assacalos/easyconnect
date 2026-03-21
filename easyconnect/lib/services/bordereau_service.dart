@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' show Response;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/bordereau_model.dart';
@@ -11,6 +11,8 @@ import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/cache_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
 import 'package:easyconnect/services/storage_service.dart';
+import 'package:easyconnect/services/api_service.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class BordereauService {
   final storage = GetStorage();
@@ -23,7 +25,7 @@ class BordereauService {
     String? search,
   }) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -43,13 +45,9 @@ class BordereauService {
       final response = await RetryHelper.retryNetwork(
         operation:
             () =>
-                http
-                    .get(
+                HttpInterceptor.get(
                       uri,
-                      headers: {
-                        'Accept': 'application/json',
-                        'Authorization': 'Bearer $token',
-                      },
+                      headers: headers,
                     )
                     .timeout(
                       AppConfig.extraLongTimeout,
@@ -104,7 +102,7 @@ class BordereauService {
         return cached;
       }
 
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final userRole = storage.read('userRole');
       final userId = storage.read('userId');
 
@@ -122,13 +120,9 @@ class BordereauService {
       final response = await RetryHelper.retryNetwork(
         operation:
             () =>
-                http
-                    .get(
+                HttpInterceptor.get(
                       Uri.parse(url),
-                      headers: {
-                        'Accept': 'application/json',
-                        'Authorization': 'Bearer $token',
-                      },
+                      headers: headers,
                     )
                     .timeout(
                       AppConfig.extraLongTimeout,
@@ -194,7 +188,7 @@ class BordereauService {
 
   Future<Bordereau> createBordereau(Bordereau bordereau) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
 
       final bordereauJson = bordereau.toJson();
 
@@ -209,14 +203,9 @@ class BordereauService {
 
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http
-                .post(
+            () => HttpInterceptor.post(
                   Uri.parse(url),
-                  headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
+                  headers: headers,
                   body: json.encode(bordereauJson),
                 )
                 .timeout(
@@ -240,7 +229,7 @@ class BordereauService {
         try {
           final responseData = json.decode(response.body);
           AppLogger.debug(
-            'Bordereau créé, réponse: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}',
+            'Bordereau créé, réponse: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}',
             tag: 'BORDEREAU_SERVICE',
           );
 
@@ -404,7 +393,7 @@ class BordereauService {
         throw Exception('Session expirée');
       } else if (response.statusCode == 500) {
         AppLogger.warning(
-          'Erreur 500 reçue: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}',
+          'Erreur 500 reçue: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}',
           tag: 'BORDEREAU_SERVICE',
         );
         try {
@@ -511,7 +500,7 @@ class BordereauService {
             CacheHelper.clearByPrefix('bordereaux_');
 
             // Chercher dans les bordereaux récents (sans cache)
-            final token = storage.read('token');
+            final headers = await ApiService.headersAsync();
             final userRole = storage.read('userRole');
             final userId = storage.read('userId');
 
@@ -531,12 +520,9 @@ class BordereauService {
               tag: 'BORDEREAU_SERVICE',
             );
 
-            final searchResponse = await http.get(
+            final searchResponse = await HttpInterceptor.get(
               Uri.parse(searchUrl),
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
+              headers: headers,
             );
 
             if (searchResponse.statusCode == 200) {
@@ -634,15 +620,10 @@ class BordereauService {
 
   Future<Bordereau> updateBordereau(Bordereau bordereau) async {
     try {
-      final token = storage.read('token');
-      final response = await http
-          .put(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.put(
             Uri.parse('${AppConfig.baseUrl}/bordereaux-update/${bordereau.id}'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
+            headers: headers,
             body: json.encode(bordereau.toJson()),
           )
           .timeout(
@@ -662,13 +643,10 @@ class BordereauService {
 
   Future<bool> deleteBordereau(int bordereauId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.delete(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.delete(
         Uri.parse('${AppConfig.baseUrl}/bordereaux-delete/$bordereauId'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -679,13 +657,10 @@ class BordereauService {
 
   Future<bool> submitBordereau(int bordereauId) async {
     try {
-      final token = storage.read('token');
-      final response = await http.post(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.post(
         Uri.parse('${AppConfig.baseUrl}/bordereaux/$bordereauId/submit'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       return response.statusCode == 200;
@@ -696,15 +671,12 @@ class BordereauService {
 
   Future<bool> approveBordereau(int bordereauId) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       final url = '${AppConfig.baseUrl}/bordereaux-validate/$bordereauId';
 
-      final response = await http.post(
+      final response = await HttpInterceptor.post(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       // Si le status code est 200 ou 201, considérer comme succès
@@ -741,32 +713,24 @@ class BordereauService {
 
   Future<bool> rejectBordereau(int bordereauId, String commentaire) async {
     try {
-      final token = storage.read('token');
+      final headers = await ApiService.headersAsync();
       // Essayer d'abord la route avec le format /bordereaux/{id}/reject
       String url = '${AppConfig.baseUrl}/bordereaux/$bordereauId/reject';
       final body = {'commentaire': commentaire};
 
-      http.Response response;
+      Response response;
       try {
-        response = await http.post(
+        response = await HttpInterceptor.post(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+          headers: headers,
           body: json.encode(body),
         );
       } catch (e) {
         // Si la première route échoue, essayer l'ancienne route
         url = '${AppConfig.baseUrl}/bordereaux-reject/$bordereauId';
-        response = await http.post(
+        response = await HttpInterceptor.post(
           Uri.parse(url),
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
+          headers: headers,
           body: json.encode(body),
         );
       }
@@ -796,13 +760,10 @@ class BordereauService {
 
   Future<Map<String, dynamic>> getBordereauStats() async {
     try {
-      final token = storage.read('token');
-      final response = await http.get(
+      final headers = await ApiService.headersAsync();
+      final response = await HttpInterceptor.get(
         Uri.parse('${AppConfig.baseUrl}/bordereaux/stats'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: headers,
       );
 
       if (response.statusCode == 200) {

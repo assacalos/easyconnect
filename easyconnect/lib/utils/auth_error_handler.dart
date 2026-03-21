@@ -1,10 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:easyconnect/services/session_service.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' show Response;
 import 'package:easyconnect/utils/logger.dart';
 
-/// Helper centralisé pour gérer les erreurs d'authentification
-/// Utilise des callbacks pour la déconnexion et l'affichage (plus de Get).
+/// Gestion centralisée des **401** et déconnexion.
+///
+/// **Chemin nominal (API métier)** : `HttpInterceptor` appelle déjà
+/// `SessionService.ensureValidToken`, puis en cas de 401 tente `refreshToken` et
+/// **réessaie une fois** la requête. Les services appellent ensuite
+/// [handleHttpResponse] : par défaut [skipRefresh] est `true` pour ne pas
+/// dupliquer un second cycle de refresh (comportement cohérent, un seul message
+/// « session expirée »). Pour une réponse 401 **sans** passer par
+/// `HttpInterceptor`, utiliser `skipRefresh: false`.
+///
+/// **Cas conservés** : période de grâce après login, debounce du snackbar,
+/// pas de déconnexion sur les écrans auth, [logoutCallback] depuis `main.dart`.
 class AuthErrorHandler {
   static bool _isHandlingLogout = false;
   static int? _lastSessionExpiredShownAt;
@@ -19,11 +29,23 @@ class AuthErrorHandler {
   /// Callback pour afficher un snackbar (ex: ScaffoldMessenger).
   static void Function(String title, String message, {Duration? duration})? showSnackbarCallback;
 
+  /// Réagit à une [Response] HTTP, surtout **401 Unauthorized**.
+  ///
+  /// [skipRefresh] : `true` par défaut — après une requête passée par
+  /// `HttpInterceptor` (refresh + retry déjà effectués). `false` si la requête
+  /// n’a pas utilisé l’intercepteur et qu’un refresh Sanctum peut encore aider.
   static Future<void> handleHttpResponse(
-    http.Response response, {
-    bool skipRefresh = false,
+    Response response, {
+    bool skipRefresh = true,
   }) async {
     if (response.statusCode == 401) {
+      if (_isHandlingLogout) {
+        AppLogger.debug(
+          '401 ignoré (déconnexion déjà en cours)',
+          tag: 'AUTH_ERROR_HANDLER',
+        );
+        return;
+      }
       if (SessionService.isWithinGracePeriodAfterLogin()) {
         AppLogger.info(
           '401 ignoré (période de grâce après connexion)',
@@ -63,6 +85,9 @@ class AuthErrorHandler {
   }
 
   static Future<void> handleException(dynamic error) async {
+    if (_isHandlingLogout) {
+      return;
+    }
     final errorString = error.toString().toLowerCase();
     if (errorString.contains('401') ||
         errorString.contains('unauthorized') ||
@@ -144,7 +169,7 @@ class AuthErrorHandler {
   static bool shouldIgnoreError(dynamic error) =>
       _isHandlingLogout;
 
-  static Future<bool> checkResponse(http.Response response) async {
+  static Future<bool> checkResponse(Response response) async {
     await handleHttpResponse(response);
     return response.statusCode >= 200 && response.statusCode < 300;
   }

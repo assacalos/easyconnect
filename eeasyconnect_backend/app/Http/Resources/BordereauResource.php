@@ -18,6 +18,7 @@ class BordereauResource extends JsonResource
         return [
             'id' => $this->id,
             'reference' => $this->reference,
+            'titre' => $this->titre,
             'client_id' => $this->client_id,
             'devis_id' => $this->devis_id,
             'user_id' => $this->user_id,
@@ -26,6 +27,9 @@ class BordereauResource extends JsonResource
             'status' => $this->status,
             'notes' => $this->notes,
             'commentaire' => $this->commentaire,
+            'etat_livraison' => $this->etat_livraison,
+            'garantie' => $this->garantie,
+            'date_livraison' => $this->date_livraison?->format('Y-m-d'),
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
             // Relations
@@ -59,6 +63,7 @@ class BordereauResource extends JsonResource
                 return $this->items->map(function ($item) {
                     return [
                         'id' => $item->id,
+                        'reference' => $item->reference,
                         'designation' => $item->designation,
                         'quantite' => $item->quantite,
                         'description' => $item->description,

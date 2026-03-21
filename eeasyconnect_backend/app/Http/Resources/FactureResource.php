@@ -84,7 +84,8 @@ class FactureResource extends JsonResource
                 ];
             }),
             'created_at' => $this->created_at?->toDateTimeString(),
-            'updated_at' => $this->updated_at?->toDateTimeString()
+            'updated_at' => $this->updated_at?->toDateTimeString(),
+            'paid_at' => $this->paid_at?->toIso8601String()
         ];
     }
 }

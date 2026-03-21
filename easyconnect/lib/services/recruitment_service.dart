@@ -1,9 +1,9 @@
+import 'package:easyconnect/utils/app_config.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:easyconnect/Models/recruitment_model.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/services/storage_service.dart';
-import 'package:easyconnect/utils/constant.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class RecruitmentService {
   static final RecruitmentService _instance = RecruitmentService._();
@@ -27,9 +27,9 @@ class RecruitmentService {
     required DateTime applicationDeadline,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-requests'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'title': title,
           'department': department,
@@ -65,7 +65,7 @@ class RecruitmentService {
     String? position,
   }) async {
     try {
-      String url = '$baseUrl/recruitment-requests';
+      String url = '${AppConfig.baseUrl}/recruitment-requests';
       List<String> params = [];
 
       if (status != null) {
@@ -82,9 +82,9 @@ class RecruitmentService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -130,9 +130,9 @@ class RecruitmentService {
   // Récupérer une demande de recrutement par ID
   Future<RecruitmentRequest> getRecruitmentRequest(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/recruitment-requests/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -151,9 +151,9 @@ class RecruitmentService {
   // Publier une demande de recrutement
   Future<Map<String, dynamic>> publishRecruitmentRequest(int id) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-requests/$id/publish'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id/publish'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -171,9 +171,9 @@ class RecruitmentService {
   // Approuver une demande de recrutement
   Future<Map<String, dynamic>> approveRecruitmentRequest(int id) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-requests/$id/approve'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id/approve'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -194,9 +194,9 @@ class RecruitmentService {
     required String rejectionReason,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/recruitment-requests/$id/reject'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id/reject'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({'rejection_reason': rejectionReason}),
       );
 
@@ -213,9 +213,9 @@ class RecruitmentService {
   // Fermer une demande de recrutement
   Future<Map<String, dynamic>> closeRecruitmentRequest(int id) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-requests/$id/close'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id/close'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -231,9 +231,9 @@ class RecruitmentService {
   // Annuler une demande de recrutement
   Future<Map<String, dynamic>> cancelRecruitmentRequest(int id) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-requests/$id/cancel'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id/cancel'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -271,18 +271,20 @@ class RecruitmentService {
       if (description != null) body['description'] = description;
       if (requirements != null) body['requirements'] = requirements;
       if (responsibilities != null) body['responsibilities'] = responsibilities;
-      if (numberOfPositions != null)
+      if (numberOfPositions != null) {
         body['number_of_positions'] = numberOfPositions;
+      }
       if (employmentType != null) body['employment_type'] = employmentType;
       if (experienceLevel != null) body['experience_level'] = experienceLevel;
       if (salaryRange != null) body['salary_range'] = salaryRange;
       if (location != null) body['location'] = location;
-      if (applicationDeadline != null)
+      if (applicationDeadline != null) {
         body['application_deadline'] = applicationDeadline.toIso8601String();
+      }
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/recruitment-requests/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode(body),
       );
 
@@ -301,9 +303,9 @@ class RecruitmentService {
   // Supprimer une demande de recrutement
   Future<Map<String, dynamic>> deleteRecruitmentRequest(int id) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/recruitment-requests/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-requests/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -325,15 +327,15 @@ class RecruitmentService {
   }) async {
     try {
       String url =
-          '$baseUrl/recruitment-requests/$recruitmentRequestId/applications';
+          '${AppConfig.baseUrl}/recruitment-requests/$recruitmentRequestId/applications';
 
       if (status != null) {
         url += '?status=$status';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -354,9 +356,9 @@ class RecruitmentService {
   // Récupérer une candidature par ID
   Future<RecruitmentApplication> getApplication(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/recruitment-applications/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-applications/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -380,9 +382,9 @@ class RecruitmentService {
     String? rejectionReason,
   }) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/recruitment-applications/$id/status'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-applications/$id/status'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'status': status,
           'notes': notes,
@@ -413,9 +415,9 @@ class RecruitmentService {
     int? interviewerId,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/recruitment-interviews'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-interviews'),
+        headers: await ApiService.headersAsync(),
         body: jsonEncode({
           'application_id': applicationId,
           'scheduled_at': scheduledAt.toIso8601String(),
@@ -445,7 +447,7 @@ class RecruitmentService {
     String? status,
   }) async {
     try {
-      String url = '$baseUrl/recruitment-interviews';
+      String url = '${AppConfig.baseUrl}/recruitment-interviews';
       List<String> params = [];
 
       if (applicationId != null) {
@@ -459,9 +461,9 @@ class RecruitmentService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -486,7 +488,7 @@ class RecruitmentService {
     String? department,
   }) async {
     try {
-      String url = '$baseUrl/recruitment-statistics';
+      String url = '${AppConfig.baseUrl}/recruitment-statistics';
       List<String> params = [];
 
       if (startDate != null) {
@@ -503,9 +505,9 @@ class RecruitmentService {
         url += '?${params.join('&')}';
       }
 
-      final response = await http.get(
+      final response = await HttpInterceptor.get(
         Uri.parse(url),
-        headers: ApiService.headers(),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -524,9 +526,9 @@ class RecruitmentService {
   // Récupérer les départements disponibles
   Future<List<String>> getDepartments() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/recruitment-departments'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-departments'),
+        headers: await ApiService.headersAsync(),
       );
 
       if (response.statusCode == 200) {
@@ -585,9 +587,9 @@ class RecruitmentService {
   // Récupérer les postes disponibles
   Future<List<String>> getPositions() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/recruitment-positions'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/recruitment-positions'),
+        headers: await ApiService.headersAsync(),
       );
 
       // Liste des postes par défaut

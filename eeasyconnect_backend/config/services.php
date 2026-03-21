@@ -32,7 +32,12 @@ return [
     ],
 
     'fcm' => [
+        // API Legacy (obsolète) - non utilisée par FcmV1Service ni par push:test
         'server_key' => env('FCM_SERVER_KEY'),
+
+        // API v1 (recommandée) : authentification par fichier JSON compte de service Firebase
+        // Chemin absolu ou relatif à base_path (ex: storage/app/firebase/service-account.json)
+        'service_account_json' => env('FCM_SERVICE_ACCOUNT_JSON', storage_path('app/firebase/service-account.json')),
     ],
 
 ];

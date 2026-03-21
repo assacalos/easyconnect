@@ -29,20 +29,26 @@ class RecruitmentDocumentController extends Controller
                 $query->where('file_type', $request->file_type);
             }
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $documents = $query->orderBy('uploaded_at', 'desc')->paginate($perPage);
 
-            // Transformer les données
-            $documents->getCollection()->transform(function ($document) {
+            $data = $documents->getCollection()->map(function ($document) {
                 return $this->formatDocument($document);
-            });
+            })->values();
 
             return response()->json([
                 'success' => true,
-                'data' => $documents,
-                'message' => 'Liste des documents récupérée avec succès'
-            ]);
+                'data' => $data,
+                'pagination' => [
+                    'current_page' => $documents->currentPage(),
+                    'last_page' => $documents->lastPage(),
+                    'per_page' => $documents->perPage(),
+                    'total' => $documents->total(),
+                    'from' => $documents->firstItem(),
+                    'to' => $documents->lastItem(),
+                ],
+                'message' => 'Liste des documents récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             return response()->json([

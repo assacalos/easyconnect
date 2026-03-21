@@ -2,214 +2,177 @@
 
 namespace App\Jobs;
 
+use App\Mail\EventNotificationMail;
 use App\Models\Notification;
+use App\Services\FcmV1Service;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class ProcessNotificationActionsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Le nombre de fois que le job peut être tenté.
-     *
-     * @var int
-     */
     public $tries = 3;
-
-    /**
-     * Le nombre de secondes à attendre avant de réessayer le job.
-     *
-     * @var int
-     */
     public $backoff = [10, 30, 60];
-
-    /**
-     * La notification à traiter
-     *
-     * @var Notification
-     */
     protected $notification;
 
-    /**
-     * Créer une nouvelle instance du job.
-     *
-     * @param Notification $notification
-     */
     public function __construct(Notification $notification)
     {
         $this->notification = $notification;
     }
 
-    /**
-     * Exécuter le job.
-     *
-     * @return void
-     */
     public function handle()
     {
         try {
-            // 1. Broadcast la notification (si un service de broadcast est disponible)
-            if (class_exists(\App\Services\NotificationService::class)) {
+            // Sauvegarder l'ID avant de recharger
+            $notificationId = $this->notification->id ?? null;
+            
+            // Recharger la notification depuis la base de données
+            // (nécessaire car avec SerializesModels, seul l'ID est sérialisé)
+            $this->notification = $this->notification->fresh(['user']);
+            
+            if (!$this->notification) {
+                Log::error("Notification introuvable dans ProcessNotificationActionsJob", [
+                    'notification_id' => $notificationId ?? 'N/A'
+                ]);
+                return;
+            }
+
+            // 1. Envoi Push (Firebase)
+            $this->sendPush();
+
+            // 2. Envoi WebSocket (Pusher/Reverb) pour mise à jour UI en direct
+            // On lance l'événement Laravel standard seulement si le broadcasting est activé
+            $broadcastDriver = config('broadcasting.default');
+            if ($broadcastDriver && $broadcastDriver !== 'null') {
                 try {
-                    $notificationService = app(\App\Services\NotificationService::class);
-                    if (method_exists($notificationService, 'broadcastNotification')) {
-                        $notificationService->broadcastNotification($this->notification);
-                        Log::info("Notification broadcastée", [
-                            'notification_id' => $this->notification->id
-                        ]);
-                    }
+                    event(new \App\Events\NotificationReceived($this->notification));
                 } catch (\Exception $e) {
-                    Log::warning('Impossible de broadcaster la notification: ' . $e->getMessage());
+                    // Ne pas faire échouer le job si le broadcasting échoue
+                    Log::warning("Erreur lors du broadcasting de la notification", [
+                        'notification_id' => $this->notification->id,
+                        'error' => $e->getMessage()
+                    ]);
                 }
             }
 
-            // 2. Envoyer une notification push (toujours, pas seulement si canal = push)
-            // Car on veut que le téléphone sonne pour toutes les notifications importantes
-            $this->sendPushNotification();
-
-            // 3. Envoyer un email (si le canal est email)
-            if (($this->notification->canal ?? 'app') === 'email') {
-                $this->sendEmailNotification();
-            }
-
-            // 4. Envoyer un SMS (si le canal est sms)
-            if (($this->notification->canal ?? 'app') === 'sms') {
-                $this->sendSmsNotification();
-            }
-
-            Log::info("Actions secondaires de notification traitées", [
-                'notification_id' => $this->notification->id
-            ]);
+            // 3. Envoi email au destinataire (en plus des notifications in-app / push)
+            $this->sendEmail();
 
         } catch (\Exception $e) {
-            Log::error('Erreur lors du traitement des actions secondaires de notification', [
+            Log::error("Erreur Job Notifications", [
+                'notification_id' => $this->notification->id ?? 'N/A',
                 'error' => $e->getMessage(),
-                'notification_id' => $this->notification->id
+                'trace' => $e->getTraceAsString()
             ]);
-            // Ne pas faire échouer le job pour les actions secondaires
-            // La notification est déjà en base, c'est l'essentiel
+            // Relancer l'exception pour que Laravel marque le job comme échoué
+            throw $e;
         }
     }
 
-    /**
-     * Envoyer une notification push
-     */
-    protected function sendPushNotification()
+    protected function sendPush()
     {
         try {
-            $pushService = app(\App\Services\PushNotificationService::class);
+            $pushService = app(FcmV1Service::class);
             
-            $title = $this->notification->title ?? $this->notification->titre ?? 'Notification';
-            $body = $this->notification->message ?? '';
-            
-            // Préparer les données pour le push
-            $pushData = $this->notification->metadata ?? $this->notification->data ?? [];
-            
-            if ($this->notification->entity_type) {
-                $pushData['entity_type'] = $this->notification->entity_type;
-            }
-            if ($this->notification->entity_id) {
-                $pushData['entity_id'] = $this->notification->entity_id;
-            }
-            if ($this->notification->action_route) {
-                $pushData['action_route'] = $this->notification->action_route;
+            // S'assurer que data est bien un array
+            $data = $this->notification->data ?? [];
+            if (is_string($data)) {
+                $data = json_decode($data, true) ?? [];
             }
             
+            $title = $this->notification->title ?? $this->notification->titre ?? 'Nouvelle notification';
+            $message = $this->notification->message ?? '';
+            
+            Log::info("Tentative d'envoi de notification push", [
+                'notification_id' => $this->notification->id,
+                'user_id' => $this->notification->user_id,
+                'title' => $title
+            ]);
+            
+            // Options explicites pour que le son et la priorité soient appliqués (client, devis, etc.)
             $options = [
-                'priority' => $this->getPushPriority($this->notification->priorite ?? 'normale'),
                 'sound' => 'default',
+                'priority' => in_array($this->notification->priorite ?? '', ['haute', 'urgente']) ? 'high' : 'high',
             ];
-            
+
             $result = $pushService->sendToUser(
                 $this->notification->user_id,
                 $title,
-                $body,
-                $pushData,
+                $message,
+                [
+                    'entity_type' => $data['entity_type'] ?? $this->notification->entity_type ?? null,
+                    'entity_id' => (string)($data['entity_id'] ?? $this->notification->entity_id ?? ''),
+                    'action_route' => $data['action_route'] ?? null,
+                    'id' => (string)$this->notification->id,
+                    'type' => $this->notification->type,
+                ],
                 $options
             );
             
-            if ($result['success']) {
-                Log::info("Notification push envoyée avec succès", [
-                    'notification_id' => $this->notification->id,
-                    'user_id' => $this->notification->user_id,
-                    'success_count' => $result['success_count'] ?? 0,
-                ]);
-            } else {
+            if (isset($result['success']) && !$result['success']) {
                 Log::warning("Échec de l'envoi de notification push", [
                     'notification_id' => $this->notification->id,
-                    'user_id' => $this->notification->user_id,
-                    'message' => $result['message'] ?? 'Erreur inconnue',
+                    'message' => $result['message'] ?? 'Raison inconnue'
                 ]);
             }
+            
         } catch (\Exception $e) {
-            Log::error("Erreur lors de l'envoi de notification push", [
-                'notification_id' => $this->notification->id,
-                'user_id' => $this->notification->user_id,
+            Log::error("Erreur lors de l'envoi push", [
+                'notification_id' => $this->notification->id ?? 'N/A',
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
+            throw $e;
         }
     }
 
     /**
-     * Convertir la priorité de notification en priorité FCM
-     * 
-     * @param string $priorite Priorité de la notification
-     * @return string Priorité FCM
+     * Envoie un email au destinataire de la notification (user_id) si l'utilisateur a un email valide.
+     * Une erreur d'envoi ne fait pas échouer le job.
      */
-    protected function getPushPriority($priorite)
+    protected function sendEmail(): void
     {
-        $priorites = [
-            'basse' => 'normal',
-            'normale' => 'normal',
-            'haute' => 'high',
-            'urgente' => 'high',
-        ];
-        
-        return $priorites[$priorite] ?? 'normal';
-    }
+        try {
+            $user = $this->notification->user;
+            if (!$user || empty(trim($user->email ?? ''))) {
+                return;
+            }
 
-    /**
-     * Envoyer un email
-     */
-    protected function sendEmailNotification()
-    {
-        // Implémenter l'envoi d'email
-        Log::info("Email notification envoyé", [
-            'notification_id' => $this->notification->id,
-            'user_id' => $this->notification->user_id
-        ]);
-    }
+            $data = $this->notification->data ?? [];
+            if (is_string($data)) {
+                $data = json_decode($data, true) ?? [];
+            }
 
-    /**
-     * Envoyer un SMS
-     */
-    protected function sendSmsNotification()
-    {
-        // Implémenter l'envoi de SMS
-        Log::info("SMS notification envoyé", [
-            'notification_id' => $this->notification->id,
-            'user_id' => $this->notification->user_id
-        ]);
-    }
+            $titre = $this->notification->title ?? $this->notification->titre ?? 'Nouvelle notification';
+            $message = $this->notification->message ?? '';
 
-    /**
-     * Gérer l'échec du job.
-     *
-     * @param \Throwable $exception
-     * @return void
-     */
-    public function failed(\Throwable $exception)
-    {
-        Log::error('Échec du traitement des actions secondaires de notification', [
-            'error' => $exception->getMessage(),
-            'notification_id' => $this->notification->id
-        ]);
-        // Ne pas faire échouer la notification elle-même
-        // Elle est déjà en base de données
+            $actionRoute = $data['action_route'] ?? null;
+            $actionUrl = null;
+            if (!empty($actionRoute)) {
+                $baseUrl = rtrim(config('app.url', ''), '/');
+                $actionUrl = str_starts_with($actionRoute, 'http') ? $actionRoute : $baseUrl . '/' . ltrim($actionRoute, '/');
+            }
+
+            $recipientName = trim(($user->prenom ?? '') . ' ' . ($user->nom ?? '')) ?: null;
+            Mail::to($user->email)->send(new EventNotificationMail(
+                $titre,
+                $message,
+                $actionUrl,
+                'Voir dans l\'application',
+                $recipientName
+            ));
+        } catch (\Exception $e) {
+            Log::warning("Erreur lors de l'envoi de l'email de notification", [
+                'notification_id' => $this->notification->id ?? 'N/A',
+                'user_id' => $this->notification->user_id ?? 'N/A',
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

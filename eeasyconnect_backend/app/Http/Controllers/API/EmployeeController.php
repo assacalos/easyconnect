@@ -4,18 +4,27 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
 use App\Traits\CachesData;
+use App\Traits\SendsNotifications;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\EmployeeLeave;
 use App\Models\EmployeePerformance;
 use App\Http\Resources\EmployeeResource;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EmployeeController extends Controller
 {
-    use CachesData;
+    use CachesData, SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Afficher la liste des employés
      */
@@ -117,21 +126,22 @@ class EmployeeController extends Controller
                 $query->where('hire_date', '<=', $request->hire_date_to);
             }
 
-            // Pagination (support pour 'limit' et 'per_page')
-            $perPage = $request->get('limit', $request->get('per_page', 15));
+            $perPage = min((int) $request->get('limit', $request->get('per_page', 20)), 100);
             $employees = $query->orderBy('first_name')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => EmployeeResource::collection($employees->items()),
+                'data' => EmployeeResource::collection($employees->items())->resolve(),
                 'pagination' => [
                     'current_page' => $employees->currentPage(),
                     'last_page' => $employees->lastPage(),
                     'per_page' => $employees->perPage(),
                     'total' => $employees->total(),
+                    'from' => $employees->firstItem(),
+                    'to' => $employees->lastItem(),
                 ],
-                'message' => 'Liste des employés récupérée avec succès'
-            ]);
+                'message' => 'Liste des employés récupérée avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             \Log::error('EmployeeController index error', [
@@ -247,6 +257,11 @@ class EmployeeController extends Controller
             ]);
 
             DB::commit();
+
+            // Notifier le patron pour validation
+            $this->safeNotify(function () use ($employee) {
+                $this->notificationService->notifyNewEmploye($employee);
+            });
 
             return response()->json([
                 'success' => true,

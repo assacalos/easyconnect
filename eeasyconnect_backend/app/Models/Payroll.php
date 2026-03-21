@@ -123,17 +123,26 @@ class Payroll extends Model
 
     public function getHrNameAttribute()
     {
-        return $this->hr ? $this->hr->prenom . ' ' . $this->hr->nom : 'N/A';
+        if (!$this->relationLoaded('hr') || !$this->hr) {
+            return 'N/A';
+        }
+        return trim(($this->hr->prenom ?? '') . ' ' . ($this->hr->nom ?? '')) ?: 'N/A';
     }
 
     public function getApproverNameAttribute()
     {
-        return $this->approver ? $this->approver->prenom . ' ' . $this->approver->nom : 'N/A';
+        if (!$this->relationLoaded('approver') || !$this->approver) {
+            return 'N/A';
+        }
+        return trim(($this->approver->prenom ?? '') . ' ' . ($this->approver->nom ?? '')) ?: 'N/A';
     }
 
     public function getPayerNameAttribute()
     {
-        return $this->payer ? $this->payer->prenom . ' ' . $this->payer->nom : 'N/A';
+        if (!$this->relationLoaded('payer') || !$this->payer) {
+            return 'N/A';
+        }
+        return trim(($this->payer->prenom ?? '') . ' ' . ($this->payer->nom ?? '')) ?: 'N/A';
     }
 
     public function getFormattedTotalGrossSalaryAttribute()

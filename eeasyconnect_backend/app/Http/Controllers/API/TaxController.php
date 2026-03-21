@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\API\Controller;
+use App\Services\NotificationService;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +16,13 @@ use Illuminate\Support\Facades\DB;
 class TaxController extends Controller
 {
     use SendsNotifications;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     /**
      * Liste des taxes avec filtrage par statut
      */
@@ -56,11 +64,9 @@ class TaxController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
-            // Pagination
-            $perPage = $request->get('per_page', 15);
+            $perPage = min((int) $request->get('per_page', 20), 100);
             $taxes = $query->paginate($perPage);
 
-            // Statistiques pour les onglets
             $stats = [
                 'en_attente' => Tax::where('status', 'en_attente')->count(),
                 'valide' => Tax::where('status', 'valide')->count(),
@@ -71,8 +77,7 @@ class TaxController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Taxes récupérées avec succès',
-                'data' => TaxResource::collection($taxes->items()),
+                'data' => TaxResource::collection($taxes->items())->resolve(),
                 'pagination' => [
                     'current_page' => $taxes->currentPage(),
                     'last_page' => $taxes->lastPage(),
@@ -81,8 +86,9 @@ class TaxController extends Controller
                     'from' => $taxes->firstItem(),
                     'to' => $taxes->lastItem(),
                 ],
-                'stats' => $stats
-            ]);
+                'stats' => $stats,
+                'message' => 'Taxes récupérées avec succès',
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             Log::error('Erreur lors de la récupération des taxes', [
@@ -133,8 +139,10 @@ public function validateTax(Request $request, $id): JsonResponse
 
             // Notifier l'auteur de la taxe
             if ($tax->comptable_id) {
-                $identifier = $tax->reference ?? $tax->id;
-                $this->notifySubmitterOnApproval($tax, 'tax', 'Taxe', 'comptable_id', $identifier);
+                $this->safeNotify(function () use ($tax) {
+                    $tax->load('comptable');
+                    $this->notificationService->notifyTaxeValidated($tax);
+                });
             }
 
             Log::info('Taxe validée', [
@@ -192,7 +200,13 @@ public function validateTax(Request $request, $id): JsonResponse
             ]);
 
             // Notifier l'auteur de la taxe
-            $this->notifySubmitterOnRejection($tax, 'tax', 'Taxe', $request->rejection_reason, 'comptable_id', $tax->reference ?? $tax->id);
+            if ($tax->comptable_id) {
+                $reason = $request->rejection_reason;
+                $this->safeNotify(function () use ($tax, $reason) {
+                    $tax->load('comptable');
+                    $this->notificationService->notifyTaxeRejected($tax, $reason);
+                });
+            }
 
             Log::info('Taxe rejetée', [
                 'tax_id' => $tax->id,
@@ -392,7 +406,9 @@ public function validateTax(Request $request, $id): JsonResponse
             $tax = Tax::create($validated);
             
             // Notifier le patron lors de la création
-            $this->notifyApproverOnSubmission($tax, 'tax', 'Taxe', 6, $tax->reference ?? $tax->id);
+            $this->safeNotify(function () use ($tax) {
+                $this->notificationService->notifyNewTaxe($tax);
+            });
 
             DB::commit();
 

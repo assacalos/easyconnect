@@ -141,23 +141,35 @@ class _ExpenseListState extends ConsumerState<ExpenseList>
             child: state.isLoading && state.expenses.isEmpty
                 ? const SkeletonSearchResults(itemCount: 6)
                 : state.expenses.isEmpty
-                    ? const Center(child: Text('Aucune dépense trouvée'))
-                    : PaginatedListView(
-                        scrollController: _scrollController,
-                        onLoadMore: notifier.loadMore,
-                        hasNextPage: state.hasNextPage,
-                        isLoadingMore: state.isLoadingMore,
-                        itemCount: state.expenses.length,
-                        itemBuilder: (context, index) {
-                          final expense = state.expenses[index];
-                          return _buildExpenseCard(
-                            context,
-                            expense,
-                            notifier,
-                            canManage,
-                            canApprove,
-                          );
-                        },
+                    ? RefreshIndicator(
+                        onRefresh: () => notifier.loadExpenses(forceRefresh: true),
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: 400,
+                            child: const Center(child: Text('Aucune dépense trouvée')),
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () => notifier.loadExpenses(forceRefresh: true),
+                        child: PaginatedListView(
+                          scrollController: _scrollController,
+                          onLoadMore: notifier.loadMore,
+                          hasNextPage: state.hasNextPage,
+                          isLoadingMore: state.isLoadingMore,
+                          itemCount: state.expenses.length,
+                          itemBuilder: (context, index) {
+                            final expense = state.expenses[index];
+                            return _buildExpenseCard(
+                              context,
+                              expense,
+                              notifier,
+                              canManage,
+                              canApprove,
+                            );
+                          },
+                        ),
                       ),
           ),
         ],

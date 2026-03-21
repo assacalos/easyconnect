@@ -1,15 +1,14 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:get_storage/get_storage.dart';
 import 'package:easyconnect/Models/user_model.dart';
 import 'package:easyconnect/Models/pagination_response.dart';
-import 'package:easyconnect/utils/constant.dart';
 import 'package:easyconnect/utils/app_config.dart';
 import 'package:easyconnect/services/api_service.dart';
 import 'package:easyconnect/utils/auth_error_handler.dart';
 import 'package:easyconnect/utils/logger.dart';
 import 'package:easyconnect/utils/retry_helper.dart';
 import 'package:easyconnect/utils/pagination_helper.dart';
+import 'package:easyconnect/services/http_interceptor.dart';
 
 class UserService {
   final storage = GetStorage();
@@ -41,9 +40,10 @@ class UserService {
 
       AppLogger.httpRequest('GET', url, tag: 'USER_SERVICE');
 
+      final headers = await ApiService.headersAsync();
       final response = await RetryHelper.retryNetwork(
         operation:
-            () => http.get(Uri.parse(url), headers: ApiService.headers()),
+            () => HttpInterceptor.get(Uri.parse(url), headers: headers),
         maxRetries: AppConfig.defaultMaxRetries,
       );
 
@@ -70,9 +70,9 @@ class UserService {
   /// Récupérer tous les utilisateurs
   Future<List<UserModel>> getUsers() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/users-list'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/users-list'),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -100,9 +100,9 @@ class UserService {
   /// Récupérer un utilisateur par ID
   Future<UserModel> getUserById(int id) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/users-show/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/users-show/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -131,9 +131,9 @@ class UserService {
       // S'assurer que is_active est inclus
       userData['is_active'] = user.isActive;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/users-create'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.post(
+        Uri.parse('${AppConfig.baseUrl}/users-create'),
+        headers: await ApiService.headersAsync(),
         body: json.encode(userData),
       );
 
@@ -155,9 +155,9 @@ class UserService {
   /// Mettre à jour un utilisateur
   Future<UserModel> updateUser(UserModel user) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/users-update/${user.id}'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.put(
+        Uri.parse('${AppConfig.baseUrl}/users-update/${user.id}'),
+        headers: await ApiService.headersAsync(),
         body: json.encode(user.toJson()),
       );
 
@@ -179,9 +179,9 @@ class UserService {
   /// Supprimer un utilisateur
   Future<bool> deleteUser(int id) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/users-delete/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.delete(
+        Uri.parse('${AppConfig.baseUrl}/users-delete/$id'),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);
@@ -194,9 +194,9 @@ class UserService {
   /// Activer/Désactiver un utilisateur
   Future<bool> toggleUserStatus(int id, bool isActive) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/users-status/$id'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.patch(
+        Uri.parse('${AppConfig.baseUrl}/users-status/$id'),
+        headers: await ApiService.headersAsync(),
         body: json.encode({'is_active': isActive}),
       );
 
@@ -210,9 +210,9 @@ class UserService {
   /// Récupérer les statistiques des utilisateurs
   Future<Map<String, dynamic>> getUserStats() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/users-stats'),
-        headers: ApiService.headers(),
+      final response = await HttpInterceptor.get(
+        Uri.parse('${AppConfig.baseUrl}/users-stats'),
+        headers: await ApiService.headersAsync(),
       );
 
       final result = ApiService.parseResponse(response);

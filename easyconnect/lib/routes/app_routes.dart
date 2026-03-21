@@ -1,5 +1,4 @@
-// Routes GetX remplacées par go_router (router/app_router.dart).
-// Ce fichier est conservé pour compatibilité / référence.
+// Stub historique : les routes vives sont dans router/app_router.dart (go_router).
 class AppRoutes {
   static List<dynamic> get routes => [];
 }

@@ -13,36 +13,28 @@ class Notification extends Model
     protected $fillable = [
         'user_id',
         'type',
-        'title',
-        'titre', // Ancien champ pour compatibilité
-        'message',
-        'data', // Ancien champ pour compatibilité
-        'metadata', // Nouveau champ
-        'statut', // Ancien champ pour compatibilité
-        'is_read', // Nouveau champ
-        'priorite',
-        'canal',
-        'date_lecture',
-        'date_expiration',
-        'envoyee',
-        'entity_type',
-        'entity_id',
-        'action_route'
+        'titre',          // Colonne réelle en base
+        'message',        // Colonne réelle en base
+        'data',           // Colonne réelle en base (stocke le JSON)
+        'statut',         // Colonne réelle en base (non_lue, lue)
+        'priorite',       // Colonne réelle en base
+        'canal',          // Colonne réelle en base
+        'date_lecture',   // Colonne réelle en base
+        'date_expiration',// Colonne réelle en base
+        'envoyee',        // Colonne réelle en base
     ];
 
     protected $casts = [
-        'data' => 'array',
-        'metadata' => 'array',
-        'date_lecture' => 'datetime',
+        'data'            => 'array',
+        'date_lecture'    => 'datetime',
         'date_expiration' => 'datetime',
-        'envoyee' => 'boolean',
-        'is_read' => 'boolean',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime'
+        'envoyee'         => 'boolean',
+        'created_at'      => 'datetime',
+        'updated_at'      => 'datetime'
     ];
 
     /**
-     * Relation avec l'utilisateur
+     * RELATION : Utilisateur
      */
     public function user()
     {
@@ -50,165 +42,81 @@ class Notification extends Model
     }
 
     /**
-     * Obtenir le statut en français
-     */
-    public function getStatutLibelle()
-    {
-        $statuts = [
-            'non_lue' => 'Non lue',
-            'lue' => 'Lue',
-            'archivee' => 'Archivée'
-        ];
-
-        return $statuts[$this->statut] ?? 'Inconnu';
-    }
-
-    /**
-     * Obtenir la priorité en français
-     */
-    public function getPrioriteLibelle()
-    {
-        $priorites = [
-            'basse' => 'Basse',
-            'normale' => 'Normale',
-            'haute' => 'Haute',
-            'urgente' => 'Urgente'
-        ];
-
-        return $priorites[$this->priorite] ?? 'Normale';
-    }
-
-    /**
-     * Obtenir le type en français
-     */
-    public function getTypeLibelle()
-    {
-        $types = [
-            'pointage' => 'Pointage',
-            'conge' => 'Congé',
-            'evaluation' => 'Évaluation',
-            'facture' => 'Facture',
-            'paiement' => 'Paiement',
-            'client' => 'Client',
-            'systeme' => 'Système',
-            'rapport' => 'Rapport'
-        ];
-
-        return $types[$this->type] ?? 'Autre';
-    }
-
-    /**
-     * Vérifier si la notification est expirée
-     */
-    public function isExpiree()
-    {
-        return $this->date_expiration && $this->date_expiration < Carbon::now();
-    }
-
-    /**
-     * Marquer comme lue
+     * LOGIQUE : Marquer comme lue
+     * Synchronise le statut et la date de lecture
      */
     public function marquerCommeLue()
     {
         $this->update([
             'statut' => 'lue',
-            'is_read' => true,
             'date_lecture' => Carbon::now()
         ]);
     }
 
     /**
-     * Obtenir le titre (compatibilité avec l'ancien système)
+     * COMPATIBILITÉ FRONTEND : 
+     * Pour éviter de modifier le code partout, on crée des "Accessors"
+     * qui récupèrent les infos là où elles sont (dans la colonne titre ou dans le JSON data)
      */
-    public function getTitleOrTitre()
+
+    // Accesseur pour $notification->title
+    public function getTitleAttribute()
     {
-        return $this->title ?? $this->titre ?? null;
+        return $this->titre;
     }
 
-    /**
-     * Obtenir is_read avec fallback sur statut
-     */
-    public function getIsReadValue()
+    // Accesseur pour $notification->is_read
+    public function getIsReadAttribute()
     {
-        if ($this->is_read !== null) {
-            return (bool) $this->is_read;
-        }
-        // Compatibilité avec l'ancien système
         return $this->statut === 'lue';
     }
 
-    /**
-     * Marquer comme archivée
-     */
-    public function archiver()
+    // Accesseur pour récupérer entity_type depuis le JSON data
+    public function getEntityTypeAttribute()
     {
-        $this->update(['statut' => 'archivee']);
+        return $this->data['entity_type'] ?? null;
+    }
+
+    // Accesseur pour récupérer entity_id depuis le JSON data
+    public function getEntityIdAttribute()
+    {
+        return $this->data['entity_id'] ?? null;
     }
 
     /**
-     * Scope pour les notifications non lues
+     * LIBELLÉS & TRADUCTIONS
      */
-    public function scopeNonLues($query)
+    public function getStatutLibelle()
     {
-        return $query->where('statut', 'non_lue');
+        return [
+            'non_lue' => 'Non lue',
+            'lue' => 'Lue',
+            'archivee' => 'Archivée'
+        ][$this->statut] ?? 'Inconnu';
+    }
+
+    public function getPrioriteLibelle()
+    {
+        return [
+            'basse' => 'Basse',
+            'normale' => 'Normale',
+            'haute' => 'Haute',
+            'urgente' => 'Urgente'
+        ][$this->priorite] ?? 'Normale';
     }
 
     /**
-     * Scope pour les notifications lues
+     * SCOPES
      */
-    public function scopeLues($query)
-    {
-        return $query->where('statut', 'lue');
-    }
+    public function scopeNonLues($query) { return $query->where('statut', 'non_lue'); }
+    public function scopeLues($query) { return $query->where('statut', 'lue'); }
+    public function scopePourUtilisateur($query, $userId) { return $query->where('user_id', $userId); }
 
-    /**
-     * Scope pour les notifications d'un type
-     */
-    public function scopeDeType($query, $type)
-    {
-        return $query->where('type', $type);
-    }
-
-    /**
-     * Scope pour les notifications d'une priorité
-     */
-    public function scopeDePriorite($query, $priorite)
-    {
-        return $query->where('priorite', $priorite);
-    }
-
-    /**
-     * Scope pour les notifications urgentes
-     */
-    public function scopeUrgentes($query)
-    {
-        return $query->where('priorite', 'urgente');
-    }
-
-    /**
-     * Scope pour les notifications d'un utilisateur
-     */
-    public function scopePourUtilisateur($query, $userId)
-    {
-        return $query->where('user_id', $userId);
-    }
-
-    /**
-     * Scope pour les notifications non expirées
-     */
     public function scopeNonExpirees($query)
     {
         return $query->where(function($q) {
             $q->whereNull('date_expiration')
               ->orWhere('date_expiration', '>', Carbon::now());
         });
-    }
-
-    /**
-     * Scope pour les notifications récentes
-     */
-    public function scopeRecent($query, $jours = 7)
-    {
-        return $query->where('created_at', '>=', Carbon::now()->subDays($jours));
     }
 }
